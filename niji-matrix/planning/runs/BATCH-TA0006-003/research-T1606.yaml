@@ -1,0 +1,922 @@
+handoff_schema_version: 2.0.0
+type: technique-research-handoff
+batch_ref: BATCH-TA0006-003
+work_item_ref: WORK-TA0006-T1606
+temporary_key_prefix: TA0006-003-T1606
+candidate:
+  source_type: attack
+  source_attack_id: T1606
+  name:
+    zh: 离权威 Web 认证材料构造
+    en: Off-Authority Web Authentication Material Construction
+recommendation:
+  decision: adapt
+  confidence: high
+  original_attack_subtechniques_imported: false
+  rationale:
+    paragraphs:
+      - zh: >-
+          ATT&CK Enterprise 19.1 的 T1606 把攻击者新建可用于 Web 或互联网服务的 Cookie、SAML 令牌及其他认证材料置于 Credential Access，且明确与窃取既有 Cookie 或访问令牌区分。这一直接目标应当保留；但父页同时把盗用签名秘密自行构造材料、让服务器依据 HMAC 预认证值换发 Cookie，以及调用 AWS AssumeRole 或 GetFederationToken 取得平台正式签发的临时凭据并列。后者具有可验证调用者、请求和响应，是授权接口被滥用，而不是攻击者在签发权威之外伪造材料。建议将 Niji 范围收敛为：攻击者自行构造新的认证声明、会话证明或认证链辅状态，并使依赖方在没有对应正常签发或验证链的情况下接受它。
+        en: >-
+          ATT&CK Enterprise 19.1 places newly generated cookies, SAML tokens, and other material usable against web or Internet services under Credential Access and distinguishes them from stolen existing cookies or access tokens. That direct objective should remain. The parent, however, groups several different semantics: constructing material with a stolen signing secret, presenting an HMAC preauthentication value that causes a server to issue a cookie, and calling AWS AssumeRole or GetFederationToken to receive platform-issued temporary credentials. The last path has an authoritative caller, request, and response and is abuse of an issuance API rather than adversary construction outside the issuer. Adapt the Niji scope to adversary-created authentication assertions, session proofs, or auxiliary authentication-chain state that a relying party accepts without the corresponding normal issuance or verification chain.
+      - zh: >-
+          两个 ATT&CK 子项仅提供 Cookie 与 SAML 两种实现广度。开放搜索比较了签名权来源、材料构造位置、完整凭据与辅状态、身份与权限声明、Audience/Recipient/InResponseTo/时间约束、依赖方验证来源及签发和使用两侧残余日志。研究收敛出两项跨媒介 Niji 子技术：一项按“完整可信证明是否在权威签发链外铸造”划分，另一项按“组合认证链是否用伪造辅状态补齐”划分。声明和值约束是两项内部均可能出现的验证维度；现有公开事件没有证明攻击者把某一声明或寿命字段作为独立且稳定的匿迹变量，因此不为它另设子项。
+        en: >-
+          The two ATT&CK children provide implementation breadth for cookies and SAML only. The open search compared signing authority, construction location, complete credentials versus auxiliary state, identity and privilege claims, audience, recipient, request and time bindings, verification source, and residual issuance and use logs. It converged on two cross-medium Niji children: complete trusted proof minted outside the authoritative issuance chain, and forged auxiliary state used to complete a composed authentication chain. Claims and constraint fields are verification dimensions that can occur inside either child. Public incident evidence does not establish a single claim or lifetime field as an independent stable stealth variable, so no additional child is created for those fields.
+proposed_content:
+  summary:
+    zh: 攻击者在正常签发或验证链之外构造新的 Web 认证材料，并利用可信签名、约束相容字段或组合认证状态使依赖方把它当作合法凭据接受。
+    en: Adversaries construct new web authentication material outside the normal issuance or verification chain and use trusted signatures, constraint-compatible fields, or composed authentication state to make a relying party accept it as legitimate.
+  definition_and_concept:
+    paragraphs:
+      - zh: >-
+          离权威 Web 认证材料构造是攻击者不让负责身份验证或会话建立的权威按正常流程产生材料，而自行计算、签名或组合一个新的认证声明、预认证证明、会话 Cookie 或等价辅状态，使 Web 应用、SaaS、云联合入口或其他依赖方把它映射为用户或服务身份。关键结果是新材料已被构造并具备依赖方可接受的结构与密码学证明；取得私钥、共享密钥、签发配置或账户口令只是前提，材料实际被接受及资源操作是后续证据阶段。
+        en: >-
+          Off-Authority Web Authentication Material Construction occurs when an adversary computes, signs, or composes a new authentication assertion, preauthentication proof, session cookie, or equivalent auxiliary state instead of having the responsible identity or session authority produce it through its normal flow. A web application, SaaS service, cloud federation endpoint, or other relying party can then map the material to a user or service identity. The defining result is newly constructed material with a structure and cryptographic proof the relying party can accept. Possession of a private key, shared secret, issuance configuration, or account password is a prerequisite; actual acceptance and resource action are later evidentiary stages.
+      - zh: >-
+          正常联合或会话流程具有可连接的步骤：主体完成主认证或 MFA，权威生成带 issuer、主体、权限、受众、时限和请求绑定的材料，依赖方校验后建立本地会话。伪造路径可能保留最后一步的成功登录，却缺少权威侧的认证和签发事件；也可能保留真实口令认证，只以伪造 Cookie 填补 MFA 或其他辅验证。Volexity 的 Dark Halo 调查观察到 OWA 接受由泄露 Duo 集成秘密计算的 duo-sid 值，而 Duo 服务没有对应认证尝试；Microsoft 与 Mandiant 的资料则显示受信 SAML 签名密钥可在 AD FS 正常签发路径之外产生被依赖方接受的声明。
+        en: >-
+          A normal federation or session flow has joinable stages: a principal completes primary authentication or MFA, an authority issues material with issuer, subject, privilege, audience, lifetime, and request bindings, and the relying party validates it before creating a local session. A forged path can preserve the final successful sign-in while lacking authority-side authentication and issuance, or preserve genuine password authentication while replacing MFA or another auxiliary step with a forged cookie. Volexity observed OWA accept a duo-sid value computed from a compromised Duo integration secret even though Duo recorded no corresponding authentication attempt. Microsoft and Mandiant reporting shows that a trusted SAML signing key can produce assertions outside the normal AD FS issuance path that relying parties accept.
+  stealth_characteristics:
+    paragraphs:
+      - zh: >-
+          匿迹性来自“验证正确”与“来源合法”被错误等同。依赖方可能只看到签名可由已信任密钥验证、字段格式正确且目标主体存在，因而把攻击者构造的材料记录为普通联合登录或应用会话。签名本身不能说明谁调用了签发器，也不能证明声明中的 MFA、身份、角色或认证时刻真实发生。Mandiant 的实验明确指出 Entra ID 会把接受的伪造断言记录为标准联合登录；单看依赖方或单看 AD FS 都不足，需要跨平面查找接受事件与认证、签发记录之间的缺口。
+        en: >-
+          Stealth arises when cryptographic validity is treated as proof of legitimate origin. A relying party may see a signature verifiable by a trusted key, well-formed fields, and an existing subject and record the adversary-constructed material as an ordinary federated sign-in or application session. A valid signature does not identify who invoked the issuer or prove that claimed MFA, identity, role, or authentication time occurred. Mandiant's experiment states that Entra ID records an accepted forged assertion as a standard federated sign-in. Neither the relying-party record nor AD FS alone is sufficient; defenders need the gap between acceptance and authority-side authentication and issuance.
+      - zh: >-
+          匿迹不等于无痕。私钥或 DPAPI 材料读取、联合信任变更、预认证密钥使用、应用主认证、依赖方登录、会话创建、Cookie 或断言 ID、来源设备和后继资源访问仍可能保留。OASIS SAML 规范还要求或建议校验签名、Recipient、Audience、NotOnOrAfter、InResponseTo 与重放 ID；这些约束既是攻击者必须满足的构造条件，也是防守方可保留的差分。合法 IdP 发起响应、时钟偏差、日志关闭和会话续期会产生表面缺口，因此“没有签发事件”只能作为分级证据而非单独定罪。
+        en: >-
+          The behavior is not trace-free. Access to private keys or DPAPI material, federation-trust changes, preauthentication-key use, application primary authentication, relying-party sign-ins, session creation, cookie or assertion identifiers, source devices, and downstream resource access can remain. The OASIS SAML profile also requires or recommends validation of signatures, Recipient, Audience, NotOnOrAfter, InResponseTo, and replay identifiers. These constraints are both construction requirements for the adversary and differentials defenders can retain. Legitimate IdP-initiated responses, clock skew, disabled logs, and session renewal can create apparent gaps, so missing issuance is tiered evidence rather than a standalone verdict.
+  scope_boundary_definition:
+    paragraphs:
+      - zh: >-
+          纳入需要证明攻击者构造了一个此前不存在的 Web 认证材料或认证链辅状态，并有密码学秘密、信任状态、格式语义或依赖方结果支持其可接受性。只发现签名密钥被读取、证书被导出或联合信任被修改，不足以证明材料已经构造；只有成功登录也不能区分伪造、窃取、重放或合法签发。证据应分为构造、依赖方接受和资源使用三级，并允许在缺少后级证据时保留较低置信度，而不把各级拼接为未观察到的完整攻击链。
+        en: >-
+          Inclusion requires evidence that the adversary constructed previously nonexistent web authentication material or auxiliary authentication-chain state, supported by a cryptographic secret, trust state, format semantics, or relying-party result showing potential acceptability. Finding a signing-key read, certificate export, or federation-trust change alone does not prove construction. A successful sign-in alone cannot distinguish forgery from theft, replay, or legitimate issuance. Evidence should be tiered as construction, relying-party acceptance, and resource use, retaining lower confidence when later stages are absent rather than splicing them into an unobserved complete chain.
+      - zh: >-
+          T1539 与 T1528 处理既有 Cookie 或应用访问令牌的取得，本技术只拥有新材料构造；T1558 处理 Kerberos 票据而非 Web/联合材料；T1556 及现有 NJT-0093/NJT-0100 处理验证器、认证流程或联合信任状态修改，若修改后又构造材料可以并列映射。T1649 或密钥取用技术拥有证书、私钥或共享秘密的取得阶段。Valid Accounts 与 NJT-0061 处理身份或会话被依赖方实际用于进入，资源访问是本技术的后继结果。AWS STS 等合法服务根据有权请求正式签发新凭据时，即使权限被滥用，也不因“新”而成为本技术；只有攻击者自行构造输入证明或输出材料，且签发权威没有执行对应正常流程时才纳入。
+        en: >-
+          T1539 and T1528 cover acquisition of existing cookies or application access tokens; this technique owns only newly constructed material. T1558 owns Kerberos tickets rather than web or federation material. T1556 and existing NJT-0093 or NJT-0100 own modifications to validators, authentication processes, or federation trust; a later construction event can be co-mapped. T1649 or key-retrieval techniques own acquisition of certificates, private keys, or shared secrets. Valid Accounts and NJT-0061 own actual identity or session use for entry, and resource access is a successor outcome. When a legitimate service such as AWS STS authoritatively issues new credentials for an authorized request, abuse does not become forgery merely because the credentials are new. Inclusion requires adversary construction of the input proof or output material without the authority performing the corresponding normal flow.
+  application_scenarios_and_threat_model:
+    application_scenarios:
+      paragraphs:
+        - zh: >-
+            在混合身份环境中，攻击者可从 AD FS 主机或其可访问的复制/机器密钥材料恢复正在使用的 token-signing 私钥，在外部主机生成冒充现有高权限主体的 SAML 断言，再提交给信任该 signer 的 SaaS 或云租户。攻击者也可先增加自有 signer，再离线构造断言；前一信任修改与后一材料构造必须分别记录。在应用集成环境中，泄露的 HMAC 或 MFA 集成秘密可用于计算服务器会接受的预认证值或辅 Cookie，使会话建立缺少正常供应商认证或签发记录。
+          en: >-
+            In a hybrid identity environment, an adversary can recover an active token-signing private key from an AD FS host, replication path, or machine-key material, generate a SAML assertion for an existing privileged subject on another host, and submit it to a SaaS service or cloud tenant that trusts the signer. The adversary may instead add a signer it controls and then construct assertions offline; the trust mutation and material construction remain separate events. In an application integration, a compromised HMAC or MFA integration secret can compute a preauthentication value or auxiliary cookie the server accepts, leaving session establishment without the normal provider authentication or issuance record.
+    threat_model:
+      attacker_model:
+        paragraphs:
+          - zh: >-
+              攻击者通常需要可用的签名私钥、共享集成秘密、可被依赖方信任的新 signer，或能构造服务器端状态的同等能力，并需了解材料格式、签名算法、主体映射、角色或声明、Audience/Recipient、时间窗、请求关联与会话处理。组合认证辅状态还可能需要真实用户名和口令以完成主认证。硬件不可导出密钥、独立信任审批、每会话随机 state、服务器到服务器授权码交换、严格受众/时限校验及快速轮换会增加成本或使旧材料失效。
+            en: >-
+              The adversary generally needs a usable signing private key, shared integration secret, newly trusted signer it controls, or equivalent ability to construct server-side state. It also needs knowledge of material format, algorithms, subject mapping, roles or claims, audience and recipient, time window, request correlation, and session processing. Auxiliary-state forgery may additionally require a real username and password for primary authentication. Hardware nonexportable keys, independent trust approval, per-session random state, server-to-server authorization-code exchange, strict audience and time validation, and rapid rotation increase cost or invalidate old material.
+      defender_model:
+        paragraphs:
+          - zh: >-
+              防守方假定能够从独立保留面读取身份权威的认证和签发事件、签名密钥或信任变化、依赖方登录与会话事件，以及 MFA/集成供应商的请求与批准。最可靠的模型以稳定 assertion/session/request ID 连接这些平面；缺少共同 ID 时，只能按主体、依赖方、时间、来源和声明摘要降级关联。AD FS 审计默认并非总是启用，SaaS 可能不公开原始断言或 signer 指纹，应用也可能不记录 Cookie 创建，因此日志覆盖应作为检测结果的一部分，而不能把缺失遥测直接解释为伪造。
+            en: >-
+              The defender is assumed to read authority-side authentication and issuance, signing-key or trust changes, relying-party sign-in and session events, and MFA or integration-provider requests and approvals from an independent retention plane. The strongest model joins these planes with stable assertion, session, or request identifiers; without them, correlation falls back to principal, relying party, time, origin, and claim digest at lower confidence. AD FS auditing is not always enabled, SaaS services may not expose raw assertions or signer fingerprints, and applications may omit cookie-creation logs. Coverage must therefore be part of the result rather than treating missing telemetry as proof of forgery.
+  stealth_mechanisms:
+    - mechanism_ref: NM-BT
+      role: primary
+      summary:
+        zh: 构造行为落在权威签发日志之外
+        en: Construction occurs outside authoritative issuance logs
+      analysis:
+        paragraphs:
+          - zh: >-
+              攻击者使用已经受信的签名能力或共享秘密在身份权威之外计算材料，关键构造不会经过正常认证、声明生成和 token issuance 代码路径。依赖方仍产生成功联合登录或会话，而权威侧对应事件缺失，单平面规则因而看不到构造来源，形成行为透明。Mandiant 的 ADFS 实验直接显示 Entra 记录标准联合登录且需要与 AD FS 签发记录交叉关联；Volexity 的 Duo 案例则显示 OWA 有主认证和 Cookie 接受，但 Duo 没有认证尝试。
+            en: >-
+              The adversary uses an already trusted signing capability or shared secret to compute material outside the identity authority, so the decisive construction bypasses normal authentication, claim generation, and token-issuance code paths. The relying party still emits a successful federated sign-in or session while the authority-side counterpart is absent. Single-plane rules therefore miss construction provenance, creating Behavioral Transparency. Mandiant's AD FS experiment directly shows Entra recording a standard federated sign-in and requiring correlation with AD FS issuance. Volexity's Duo case shows primary authentication and cookie acceptance at OWA with no Duo authentication attempt.
+      evidence_keys:
+        - TA0006-003-T1606-REF-MANDIANT-DPAPI-SAML
+        - TA0006-003-T1606-REF-MICROSOFT-ADFS-AUDIT
+        - REF-000509
+      confidence: high
+    - mechanism_ref: NM-FD
+      role: secondary
+      summary:
+        zh: 可信签名与相容字段赋予材料合法外观
+        en: Trusted signatures and compatible fields give material a legitimate appearance
+      analysis:
+        paragraphs:
+          - zh: >-
+              伪造材料沿用依赖方已经信任的 signer 或集成秘密，并设置现有主体、受众、时限及会话字段，使验证器看到的关键特征与正常材料相同。活动并非不可观察，而是签名成功和格式相容降低单一事件的恶意可区分性，形成特征伪装。Microsoft 的 Solorigate 资料说明受信证书签名可使异常被遗漏；OASIS 与 Zimbra 文档给出必须匹配的字段。公开事件没有披露操作者是否刻意选择每项字段来贴合本地统计基线，故对“字段仿形”的强匿迹意图保持中等置信度。
+            en: >-
+              Forged material uses a signer or integration secret the relying party already trusts and sets existing subjects, audiences, time bounds, and session fields so the verifier sees key features shared with legitimate material. The activity remains observable, but successful signature verification and compatible format reduce the discriminating value of one event, creating Feature Disguise. Microsoft Solorigate reporting explains how a trusted certificate can cause anomalies to be missed, while OASIS and Zimbra document the fields that must match. Public incidents do not reveal whether operators deliberately tuned every field to a local statistical baseline, so strong intent for field-level mimicry remains medium confidence.
+      evidence_keys:
+        - REF-000304
+        - TA0006-003-T1606-REF-OASIS-SAML-PROFILE
+        - TA0006-003-T1606-REF-ZIMBRA-PREAUTH
+      confidence: medium
+proposed_subtechniques:
+  - temporary_key: TA0006-003-T1606-CHILD-OFFCHAIN
+    name:
+      zh: 签发链外可信证明铸造
+      en: Trusted-Proof Minting Outside the Issuance Chain
+    summary:
+      zh: 攻击者利用已受信或新受信的签名能力，在权威签发器之外构造完整证明，使依赖方接受却找不到对应认证和签发事件。
+      en: The adversary uses an already trusted or newly trusted signing capability to construct a complete proof outside the authoritative issuer, leaving relying-party acceptance without corresponding authentication and issuance.
+    taxonomy_variable:
+      zh: 密码学可信证明的实际构造位置相对权威认证与签发链的关系
+      en: Location of cryptographically trusted proof construction relative to the authoritative authentication and issuance chain
+    counterfactual_trace:
+      zh: 正常材料同时留下主体认证、声明生成和签发事件；链外铸造保留依赖方接受及可能的密钥读取或信任变更，却没有匹配的权威签发事务。
+      en: Normal material leaves subject authentication, claim generation, and issuance events; off-chain minting leaves relying-party acceptance and possible key access or trust mutation without a matching authoritative issuance transaction.
+    definition_and_concept:
+      paragraphs:
+        - zh: >-
+            签发链外可信证明铸造是攻击者掌握依赖方信任的私钥、HMAC 密钥或同等签名能力后，在正常 IdP、SSO 或应用签发事务之外构造完整认证证明。证明可以是 SAML 断言、自包含签名 Cookie、预认证值或其他材料；子技术按构造来源与权威签发链的分离划界，不按协议或产品划界。若攻击者先添加自己的 signer，信任修改归相邻技术，本项从攻击者实际计算新证明开始。
+          en: >-
+            Trusted-Proof Minting Outside the Issuance Chain occurs when an adversary controls a private key, HMAC key, or equivalent signing capability trusted by a relying party and constructs a complete authentication proof outside the normal IdP, SSO, or application issuance transaction. The proof can be a SAML assertion, self-contained signed cookie, preauthentication value, or other material. The boundary is construction-source separation from the authoritative issuance chain, not protocol or product. If the adversary first adds its own signer, the trust mutation belongs to an adjacent technique and this child begins when the new proof is actually computed.
+    stealth_characteristics:
+      paragraphs:
+        - zh: >-
+            依赖方的签名校验成功、主体存在和字段可解析可与合法材料相同，因而其登录记录本身通常不显示“伪造”。决定性差异是权威侧缺少相同主体、依赖方和时点的认证及签发链，或材料中的声明、时限、受众和请求绑定与本地签发规则不一致。私钥访问、DPAPI 材料读取、异常 signer、同一断言重放和后继高价值操作仍是残余；若攻击者同时控制日志与 signer，来源差分也可能被伪造。
+          en: >-
+            Signature verification, subject existence, and parseable fields at the relying party can look identical to legitimate material, so the sign-in record itself usually does not say forged. The decisive differential is missing authority-side authentication and issuance for the same subject, relying party, and time, or claims, lifetime, audience, and request bindings inconsistent with local issuance rules. Private-key access, DPAPI-material reads, unexpected signers, assertion replay, and downstream high-value actions remain. If the adversary controls both signer and logs, it may also forge the origin differential.
+    scope_boundary_definition:
+      paragraphs:
+        - zh: >-
+            纳入要求材料在签发器正常事务之外由攻击者计算，并至少具有可验证的签名能力、结构语义或依赖方接受证据。仅导出证书或读取私钥是前置暴露；仅提交一个从合法 IdP 窃取的原令牌是 T1528/T1539；调用 AWS STS 让 AWS 正式返回凭据是令牌获取或权限滥用。SAML 中修改 issuer、signer trust 或 claim rule 属 T1556/NJT-0100 的状态变化，但随后由攻击者签发的具体断言可与本项并列。
+          en: >-
+            Inclusion requires adversary computation outside the issuer's normal transaction, with evidence of signing capability, structural semantics, or relying-party acceptance. Certificate export or private-key access alone is precursor exposure. Presenting an original token stolen from a legitimate IdP belongs to T1528 or T1539. Calling AWS STS and receiving an AWS-issued credential is token acquisition or authority abuse. Changing an issuer, signer trust, or claim rule belongs to T1556 or NJT-0100 state mutation, while a specific assertion later minted by the adversary can be co-mapped here.
+    application_scenarios_and_threat_model:
+      application_scenarios:
+        paragraphs:
+          - zh: >-
+              Solorigate 调查描述攻击者通过窃取 AD FS SAML 签名证书或把自有证书加入联合信任，随后为所选身份创建有效 SAML 令牌并访问云资源。Mandiant 2026 年受控评估进一步从机器 DPAPI 路径恢复活动签名私钥，生成冒充 Global Administrator 的断言并被 Entra ID 接受。Zimbra 文档则说明域级 preauth key 可对 account、by、expires 和 timestamp 计算 HMAC，服务器验证后返回 auth token；文档证明机制能力，不证明一次恶意在野使用。
+            en: >-
+              Microsoft Solorigate reporting describes attackers stealing an AD FS SAML signing certificate or adding their own certificate to federation trust and then creating valid SAML tokens for identities of their choice to access cloud resources. A 2026 Mandiant controlled assessment recovered an active signing key through machine DPAPI, forged an assertion impersonating a Global Administrator, and had Entra ID accept it. Zimbra documentation shows a domain preauth key computing an HMAC over account, identifier mode, expiry, and timestamp before the server returns an auth token. The documentation establishes mechanism capability, not a malicious field event.
+      threat_model:
+        attacker_model:
+          paragraphs:
+            - zh: >-
+                攻击者需要活动 signer 或共享密钥以及依赖方仍信任它的时间窗，并需复现签名算法、证书链、主体映射和验证约束。取得过期或未生效的 AD FS 证书可能导致断言被拒绝；Mandiant 指出配置数据库与活动主机证书可能漂移。严格 Recipient/Audience/InResponseTo、短 NotOnOrAfter、重放缓存和每会话绑定会压缩可用空间，但不能单独抵御活动私钥已失守。
+              en: >-
+                The adversary needs an active signer or shared secret and a window in which the relying party still trusts it, plus the ability to reproduce the signing algorithm, certificate chain, subject mapping, and validation constraints. An expired or inactive AD FS certificate can produce rejected assertions; Mandiant notes drift between configuration-database and active-host certificates. Strict Recipient, Audience, InResponseTo, short NotOnOrAfter, replay caching, and per-session binding narrow the usable space but cannot by themselves defeat a compromised active private key.
+        defender_model:
+          paragraphs:
+            - zh: >-
+                防守方需要 AD FS 或等价 IdP 的认证/签发事件、依赖方联合登录、signer 和信任清单、关键密钥访问与轮换记录。优先以 assertion/request/session ID 关联，次选主体、relying party、issue/accept time、issuer、声明摘要、来源和客户端。只有依赖方成功时先标记“签发来源未证实”；只有密钥读取时标记“伪造能力暴露”；两者以及后继资源操作连成链后才提高到已接受或已使用。
+              en: >-
+                Defenders need AD FS or equivalent IdP authentication and issuance, relying-party federated sign-ins, signer and trust inventory, sensitive-key access, and rotation records. Prefer assertion, request, or session identifiers, then fall back to principal, relying party, issue and acceptance time, issuer, claim digest, origin, and client. A relying-party success alone is issuance origin unverified. Key access alone is forgery capability exposed. Confidence rises to accepted or used only when these stages and downstream resource activity form a supported chain.
+    stealth_mechanisms:
+      - mechanism_ref: NM-BT
+        role: primary
+        summary:
+          zh: 依赖方成功缺少权威签发对应项
+          en: Relying-party success lacks an authoritative issuance counterpart
+        analysis:
+          paragraphs:
+            - zh: >-
+                链外签名让攻击者跳过 IdP 的主体认证、声明规则和签发审计，却复用依赖方信任的验证密钥。结果在依赖方表现为正常成功，而行为发生在其常规监控范围之外；跨 IdP—RP 关联才能恢复缺口。Mandiant 的受控结果和 Microsoft AD FS 事件语义直接支持这条因果链，但日志未启用或合法 unsolicited SAML 会降低缺口结论强度。
+              en: >-
+                Off-chain signing skips IdP subject authentication, claim rules, and issuance audit while reusing a verification key trusted by the relying party. The result appears as ordinary success at the relying party while construction remains outside its routine monitoring. Cross-IdP and relying-party correlation recovers the gap. Mandiant's controlled result and Microsoft AD FS event semantics directly support this causal chain, while disabled logging or legitimate unsolicited SAML lowers the strength of an absence conclusion.
+        evidence_keys:
+          - TA0006-003-T1606-REF-MANDIANT-DPAPI-SAML
+          - TA0006-003-T1606-REF-MICROSOFT-ADFS-AUDIT
+        confidence: high
+      - mechanism_ref: NM-FD
+        role: secondary
+        summary:
+          zh: 受信 signer 与约束相容声明伪装签发来源
+          en: Trusted signer and constraint-compatible claims disguise issuance origin
+        analysis:
+          paragraphs:
+            - zh: >-
+                攻击者以活动受信 signer 签名，并设置依赖方会接受的主体、Recipient、Audience、时限与请求字段；签名与结构特征和合法断言一致，使单个登录事件难以分类为恶意。OASIS 定义依赖方必须检查的约束，Microsoft 说明受信证书签名的异常可能被遗漏。字段仿形的具体在野选择公开有限，故保留中等置信度并要求以发行差分而非“签名有效”判定来源。
+              en: >-
+                The adversary signs with an active trusted signer and sets subject, Recipient, Audience, time, and request fields the relying party accepts. Signature and structural features match legitimate assertions, making one sign-in difficult to classify as malicious. OASIS defines the constraints a relying party checks, and Microsoft states that anomalies signed by a trusted certificate can be missed. Published field evidence reveals little about exact in-the-wild shaping choices, so confidence remains medium and origin must be decided by issuance differential rather than valid signature alone.
+        evidence_keys:
+          - REF-000304
+          - TA0006-003-T1606-REF-OASIS-SAML-PROFILE
+        confidence: medium
+    evidence_keys:
+      - TA0006-003-T1606-REF-ATTACK
+      - REF-000304
+      - TA0006-003-T1606-REF-MANDIANT-DPAPI-SAML
+      - TA0006-003-T1606-REF-MICROSOFT-ADFS-AUDIT
+      - TA0006-003-T1606-REF-OASIS-SAML-PROFILE
+      - TA0006-003-T1606-REF-ZIMBRA-PREAUTH
+    defense_keys:
+      - TA0006-003-T1606-DET-ISSUANCE
+      - TA0006-003-T1606-NJA-ISSUANCE-GAP
+      - TA0006-003-T1606-NJA-SIGNER-LINEAGE
+      - MIT-000073
+      - TA0006-003-T1606-MIT-VERIFIER
+    limitations:
+      paragraphs:
+        - zh: >-
+            Solorigate 公开资料确认两条取得签名能力的路径和攻击者创建令牌，但未公开每个受害者的完整断言字段、签发日志缺口或资源操作序列。Mandiant 2026 结果是受控评估而非外部攻击事件，Zimbra 是能力文档。它们共同支持机制和可检测差分，不能用于估计在野频率、默认日志覆盖或所有 IdP 的字段可用性。
+          en: >-
+            Public Solorigate reporting confirms two paths to signing capability and attacker-created tokens but does not publish complete assertion fields, issuance-log gaps, and resource-action sequences for each victim. Mandiant's 2026 result is a controlled assessment rather than an external attack, and Zimbra is capability documentation. Together they support the mechanism and detectable differential, but they cannot estimate prevalence, default logging coverage, or field availability across every IdP.
+  - temporary_key: TA0006-003-T1606-CHILD-AUXSTATE
+    name:
+      zh: 组合认证辅状态伪造
+      en: Composed-Authentication Auxiliary-State Forgery
+    summary:
+      zh: 攻击者保留真实主认证或其他合法步骤，仅伪造表示额外验证已完成的 Cookie 或状态，使应用在不联系相应权威的情况下建立会话。
+      en: The adversary retains genuine primary authentication or another legitimate step but forges a cookie or state indicating that an additional verification completed, causing the application to establish a session without the corresponding authority interaction.
+    taxonomy_variable:
+      zh: 最终会话由哪些认证步骤的真实结果组成，以及辅状态是否来自其声明的验证权威
+      en: Which genuine authentication-step results compose the final session and whether auxiliary state originates from its claimed verification authority
+    counterfactual_trace:
+      zh: 正常组合链有主认证、MFA 请求/批准、state 或 code 交换和会话创建；伪造辅状态保留主认证与会话成功，却缺少供应商请求或批准，并可能只有本地 Cookie 校验。
+      en: A normal composed chain has primary authentication, MFA request and approval, state or code exchange, and session creation; forged auxiliary state preserves primary authentication and session success while provider request or approval is absent and only local cookie validation may remain.
+    definition_and_concept:
+      paragraphs:
+        - zh: >-
+            组合认证辅状态伪造是攻击者不伪造整套主体凭据，而构造一个被应用解释为“额外认证、MFA、预认证或其他步骤已完成”的 Cookie、回调状态或等价证明，并把它与真实口令认证或现有应用流程组合。稳定边界是最终 allow 所依赖的各步骤来源不一致：主步骤确实发生，辅步骤只由攻击者计算的状态替代。若攻击者窃取用户已有辅 Cookie 并重放，归 T1539；若直接关闭 MFA 或修改验证器，归 T1556。
+          en: >-
+            Composed-Authentication Auxiliary-State Forgery does not fabricate the entire principal credential. Instead, the adversary constructs a cookie, callback state, or equivalent proof interpreted by an application as completion of an additional authentication, MFA, preauthentication, or other step and combines it with real password authentication or an existing application flow. The stable boundary is inconsistent provenance among steps supporting the final allow: the primary step occurred, while attacker-computed state substitutes for the auxiliary step. Theft and replay of an existing user's auxiliary cookie belongs to T1539, and disabling MFA or changing the validator belongs to T1556.
+    stealth_characteristics:
+      paragraphs:
+        - zh: >-
+            该变量保留了一部分真实认证痕迹，因此仅检查“是否有口令成功”或“应用是否看到格式正确的 Cookie”会把结果当作普通登录。缺口存在于认证链内部：MFA/集成供应商没有请求、挑战、批准或授权码交换，应用却建立了会话。残余包括主认证来源、辅 Cookie 或状态摘要、应用本地校验结果、会话 ID、供应商零事件、集成秘密访问和后继邮箱/资源行为。合法 bypass、fail-open、记住设备和迁移会产生相似链，必须以明确策略和有效期解释。
+          en: >-
+            This variable preserves part of the genuine authentication trace, so checks limited to successful password authentication or a well-formed cookie at the application can classify the result as ordinary login. The gap lies inside the chain: the MFA or integration provider has no request, challenge, approval, or authorization-code exchange, yet the application creates a session. Residuals include primary-authentication origin, auxiliary cookie or state digest, local validation outcome, session ID, provider-side absence, integration-secret access, and downstream mailbox or resource activity. Legitimate bypass, fail-open, remembered-device, and migration flows can look similar and require explicit policy and validity explanations.
+    scope_boundary_definition:
+      paragraphs:
+        - zh: >-
+            纳入要求至少一项真实认证步骤与一项由攻击者新构造的辅状态共同导致会话接受，并有供应商或应用语义说明该状态代表什么。仅有口令登录或 MFA 缺失可能是配置问题；仅看到 Cookie 无法区分新造与窃取；服务端 fail-open 归策略或流程问题，除非攻击者构造了被接受的材料。辅状态若由官方服务器在正常授权码交换后签发则不属于本项。
+          en: >-
+            Inclusion requires at least one genuine authentication step and one newly constructed auxiliary state to jointly cause session acceptance, with provider or application semantics explaining what the state represents. A password sign-in or absent MFA alone may be configuration error. A cookie alone cannot distinguish construction from theft. Server-side fail-open is a policy or process issue unless the adversary constructed accepted material. Auxiliary state issued by the official server after a normal authorization-code exchange is outside this child.
+    application_scenarios_and_threat_model:
+      application_scenarios:
+        paragraphs:
+          - zh: >-
+              Volexity 在 Dark Halo 入侵中观察到攻击者对 OWA 提供正常用户名和口令，Exchange 记录正常主认证，却没有 Duo 认证尝试；内存取证确认攻击者提交了与 Duo MFA 会话有关的 duo-sid Cookie。攻击者此前取得 OWA 服务器上的 Duo 集成秘密并计算可被服务器判为有效的值，从而跳过第二因素。该事件直接证明“真实主认证加伪造辅状态”，但属于旧式集成，不能外推到使用现代授权码交换的所有 Duo 部署。
+            en: >-
+              Volexity observed Dark Halo present a normal username and password to OWA. Exchange recorded ordinary primary authentication, while Duo had no authentication attempt, and memory forensics confirmed a duo-sid cookie associated with a Duo MFA session. The adversary had obtained the Duo integration secret from the OWA server and computed a value the server treated as valid, bypassing the second factor. The event directly proves genuine primary authentication plus forged auxiliary state, but it involved a legacy integration and cannot be generalized to every deployment using modern authorization-code exchange.
+      threat_model:
+        attacker_model:
+          paragraphs:
+            - zh: >-
+                攻击者需要完成或复用主认证，取得可计算辅状态的集成秘密或等价能力，并了解状态与用户名、会话、时间及应用回调的绑定规则。每会话高熵 state、同一浏览器会话保存、服务器到服务器 code exchange、用户名和 nonce 绑定、短有效期以及 fail-closed 能阻止静态或可预计算值跨会话使用。若主口令本身未知或应用要求不可导出的设备证明，攻击链可能无法完成。
+              en: >-
+                The adversary needs to complete or reuse primary authentication, obtain an integration secret or equivalent ability to compute auxiliary state, and understand bindings to username, session, time, and callback. High-entropy per-session state stored in the same browser session, server-to-server code exchange, username and nonce binding, short validity, and fail-closed behavior prevent static or precomputed values from working across sessions. The chain may fail if the primary password is unavailable or the application requires nonexportable device proof.
+        defender_model:
+          paragraphs:
+            - zh: >-
+                防守方需同时保存应用主认证、MFA 供应商请求/结果、state 或授权码交换、应用最终会话和策略 bypass/fail-open 决策，并用同一主体、应用、session/request ID 和短时间窗关联。若供应商与应用日志时钟不同步或旧集成不记录辅状态摘要，零事件只能作为弱证据；内存取证可在事后确认 Cookie，但通常不能成为持续实时检测依赖。
+              en: >-
+                Defenders need application primary authentication, MFA-provider request and result, state or authorization-code exchange, final application session, and policy bypass or fail-open decisions joined by principal, application, session or request ID, and a short window. If provider and application clocks differ or a legacy integration omits auxiliary-state digests, absence is only weak evidence. Memory forensics can confirm a cookie after the fact but usually cannot be a continuous real-time dependency.
+    stealth_mechanisms:
+      - mechanism_ref: NM-BT
+        role: primary
+        summary:
+          zh: 真实主认证遮住辅验证链缺口
+          en: Genuine primary authentication masks the auxiliary verification gap
+        analysis:
+          paragraphs:
+            - zh: >-
+                攻击者让口令验证按正常路径成功，仅把第二因素完成状态移到本地伪造 Cookie。应用和 Exchange 能看到真实主认证与最终会话，Duo 侧却没有认证事件；不跨系统重建完整步骤图时，缺失的行为落在既有单点监控之外并形成行为透明。Volexity 对同一事件同时检查 Exchange、Duo 和 OWA 内存，直接支持这条因果链。
+              en: >-
+                The adversary lets password validation succeed normally and moves only second-factor completion into a locally forged cookie. The application and Exchange see genuine primary authentication and a final session, while Duo has no authentication event. Without cross-system reconstruction of every step, the missing behavior falls outside point monitoring and creates Behavioral Transparency. Volexity examined Exchange, Duo, and OWA memory in the same incident, directly supporting this causal chain.
+        evidence_keys:
+          - REF-000509
+        confidence: high
+      - mechanism_ref: NM-FD
+        role: secondary
+        summary:
+          zh: 可验证辅 Cookie 模仿已完成 MFA 状态
+          en: A verifiable auxiliary cookie imitates completed MFA state
+        analysis:
+          paragraphs:
+            - zh: >-
+                由泄露集成秘密计算的值通过应用本地校验并呈现与真实 MFA 会话相同的 duo-sid 载体，令验证器把攻击者状态分类为已完成第二因素。恶意状态仍可由 Cookie 摘要、缺失供应商事务和异常会话来源区分，但单看格式和校验结果难以识别。该结论由 Dark Halo 案例直接支持，产品范围受旧式集成限制。
+              en: >-
+                A value computed with the compromised integration secret passed local application validation in the same duo-sid carrier used for a real MFA session, causing the verifier to classify attacker state as completed second factor. Cookie digest, absent provider transaction, and anomalous session origin can still distinguish it, but format and validation result alone do not. The Dark Halo case directly supports the conclusion within the limits of that legacy integration.
+        evidence_keys:
+          - REF-000509
+        confidence: high
+    evidence_keys:
+      - TA0006-003-T1606-REF-ATTACK
+      - REF-000509
+      - TA0006-003-T1606-REF-DUO-WEBSDK
+    defense_keys:
+      - TA0006-003-T1606-DET-COMPOSED
+      - TA0006-003-T1606-NJA-COMPOSED-GAP
+      - TA0006-003-T1606-MIT-VERIFIER
+    limitations:
+      paragraphs:
+        - zh: >-
+            公开直接事件集中在 Dark Halo 对旧式 Duo—OWA 集成的利用；当前 Duo Web SDK 使用每会话 state 和服务器端授权码交换，不应把旧 akey/duo-sid 细节当作现代产品字段。其他应用若用不同 Cookie、回调或服务器状态，需要重新证明绑定语义和日志字段，不能只替换产品名称。
+          en: >-
+            Direct public incident evidence centers on Dark Halo's abuse of a legacy Duo and OWA integration. The current Duo Web SDK uses per-session state and server-side authorization-code exchange, so old akey and duo-sid details are not modern product fields. Applications using different cookies, callbacks, or server state need fresh evidence of binding semantics and log fields rather than product-name substitution.
+defense_candidates:
+  detection_strategies:
+    - temporary_key: TA0006-003-T1606-DET-ISSUANCE
+      name:
+        zh: 权威签发与依赖方接受差分
+        en: Authority Issuance and Relying-Party Acceptance Differential
+      objective:
+        zh: 将依赖方接受的联合或签名认证材料回连到身份权威的认证、声明和签发事务，并把密钥或信任前置事件作为独立证据层。
+        en: Join relying-party acceptance of federated or signed authentication material back to authority-side authentication, claims, and issuance, with key or trust precursors retained as a separate evidence tier.
+      detects_keys:
+        - TA0006-003-T1606-PARENT
+        - TA0006-003-T1606-CHILD-OFFCHAIN
+      analytic_keys:
+        - TA0006-003-T1606-NJA-ISSUANCE-GAP
+        - TA0006-003-T1606-NJA-SIGNER-LINEAGE
+    - temporary_key: TA0006-003-T1606-DET-COMPOSED
+      name:
+        zh: 组合认证步骤完整性差分
+        en: Composed Authentication Step-Completeness Differential
+      objective:
+        zh: 对每个最终应用会话核对主认证、MFA/辅验证、state/code 交换和策略例外，识别由伪造辅状态补齐的认证链。
+        en: For each final application session, reconcile primary authentication, MFA or auxiliary verification, state or code exchange, and policy exceptions to identify chains completed with forged auxiliary state.
+      detects_keys:
+        - TA0006-003-T1606-CHILD-AUXSTATE
+      analytic_keys:
+        - TA0006-003-T1606-NJA-COMPOSED-GAP
+  detection_analytics:
+    - temporary_key: TA0006-003-T1606-NJA-ISSUANCE-GAP
+      strategy_key: TA0006-003-T1606-DET-ISSUANCE
+      name:
+        zh: 联合登录与 IdP 签发缺口联查
+        en: Federated Sign-In and IdP Issuance-Gap Join
+      logic:
+        zh: >-
+          先规范依赖方成功联合登录或断言接受，保存主体、应用/relying party、issuer、协议、接受时刻、来源、客户端、session/correlation 及可用的 assertion ID、声明摘要和时限。再在前后十分钟内查询同一 IdP 的 fresh credential、token issuance 和 issued claims；AD FS 优先使用 Activity ID 连接 1202、1200/299 和 500 类事件。精确 ID 无对应项输出 issuance_gap_high；只有主体和时间弱匹配则输出 issuance_origin_unverified。IdP 发起的 unsolicited response 不能因缺 InResponseTo 告警，但仍应有本地签发记录。日志覆盖不足时只输出 telemetry_gap，不越级宣称伪造。
+        en: >-
+          Normalize each successful federated sign-in or assertion acceptance at the relying party with principal, application or relying party, issuer, protocol, acceptance time, origin, client, session or correlation identifier, and available assertion ID, claim digest, and lifetime. Search the same IdP for fresh-credential, token-issuance, and issued-claims records within ten minutes. In AD FS, prefer Activity ID across event 1202, 1200 or 299, and 500-class records. An exact identifier with no counterpart yields issuance_gap_high; principal-and-time-only matching yields issuance_origin_unverified. IdP-initiated unsolicited responses must not alert merely because InResponseTo is absent, but they still require local issuance. Insufficient logging emits telemetry_gap rather than a forgery verdict.
+      data_requirements:
+        - source_type: identity_provider_authentication_issuance
+          channel: AD FS Security audit or equivalent IdP issuance audit
+          required_fields:
+            - timestamp
+            - identity_provider_id
+            - event_id_or_type
+            - activity_or_request_id
+            - principal_id
+            - relying_party_id
+            - result
+        - source_type: relying_party_federated_signin
+          channel: Entra sign-in or SaaS federation authentication log
+          required_fields:
+            - timestamp
+            - tenant_or_application_id
+            - principal_id
+            - issuer_id
+            - authentication_protocol
+            - result
+            - source_ip
+            - user_agent_or_client
+            - session_or_correlation_id
+        - source_type: assertion_validation_metadata
+          channel: federation gateway or protected diagnostic capture
+          required_fields:
+            - assertion_or_token_id_hash
+            - issuer_id
+            - audience_or_recipient
+            - issue_time
+            - not_on_or_after
+            - in_response_to_hash
+            - claims_digest
+      observables:
+        - relying_party_acceptance
+        - missing_fresh_authentication
+        - missing_token_issuance
+        - claim_or_lifetime_deviation
+        - telemetry_coverage_gap
+      correlation:
+        window: 10m-per-acceptance-with-signer-lifetime-lookback
+        dimensions:
+          - identity_provider_id
+          - tenant_or_application_id
+          - principal_id
+          - relying_party_id
+          - activity_or_request_id
+          - assertion_or_token_id_hash
+          - session_or_correlation_id
+          - issuer_id
+          - time
+      false_positives:
+        zh: IdP 发起 SSO、合法会话续期、缓存、日志延迟或丢失、时钟漂移、灾备 IdP 和跨租户代理会形成表面缺口，必须核对协议模式、日志健康和已批准拓扑。
+        en: IdP-initiated SSO, legitimate session renewal, caching, delayed or lost logs, clock drift, disaster-recovery IdPs, and cross-tenant brokers create apparent gaps; verify protocol mode, log health, and approved topology.
+      blind_spots:
+        zh: 未启用 AD FS success/failure 与 Application Generated 审计、SaaS 不提供 assertion 元数据、双方没有共同 ID、攻击者同时控制 IdP 日志或合法 signer 时，缺口只能低置信度关联。
+        en: The gap is low-confidence when AD FS success, failure, and Application Generated audit are disabled, SaaS omits assertion metadata, neither side shares an identifier, or the adversary controls IdP logs or the legitimate signer.
+      tuning_guidance:
+        zh: >-
+          先按 IdP、relying party 和流类型建立是否应出现 1202/1200/299/500 或等价事件的覆盖矩阵；允许项必须绑定具体流、owner、版本和期限。精确 assertion/request ID 缺失优先级最高；只有主体时间缺口需再结合 signer、声明、来源或高价值资源。原始 assertion 仅存入受控取证域，运营日志使用 ID hash 和 claims digest。
+        en: >-
+          Build an expected-event coverage matrix by IdP, relying party, and flow type for 1202, 1200, 299, 500, or equivalents. Allowances bind to a specific flow, owner, version, and expiry. Missing exact assertion or request identifiers has the highest priority; principal-and-time gaps require signer, claims, origin, or high-value resource context. Store raw assertions only in a controlled forensic domain and use identifier hashes and claim digests in operational logs.
+      evidence_keys:
+        - TA0006-003-T1606-REF-MICROSOFT-ADFS-AUDIT
+        - TA0006-003-T1606-REF-MANDIANT-DPAPI-SAML
+        - TA0006-003-T1606-REF-OASIS-SAML-PROFILE
+    - temporary_key: TA0006-003-T1606-NJA-SIGNER-LINEAGE
+      strategy_key: TA0006-003-T1606-DET-ISSUANCE
+      name:
+        zh: 签名密钥暴露到依赖方接受谱系
+        en: Signing-Key Exposure to Relying-Party Acceptance Lineage
+      logic:
+        zh: >-
+          对已登记 IdP 签名密钥、机器 DPAPI 保护材料、AD FS 配置/复制接口和联合信任变更收集访问者、主机、对象、旧新 signer、审批和结果。单独的 4663 文件访问、复制调用或信任变更只生成 capability_exposure。若同一 signer 有后续依赖方成功且缺失对应 IdP 签发，再按证书指纹、IdP、relying party 和有效期连接为 suspected_offchain_minting；只有材料接受或资源结果才能升级，不能把密钥读取直接写成令牌已造。
+        en: >-
+          Collect actor, host, object, old and new signer, approval, and result for inventoried IdP signing keys, machine-DPAPI protection material, AD FS configuration or replication interfaces, and federation-trust changes. A 4663 file access, replication call, or trust change alone emits capability_exposure. If the same signer later appears in a relying-party success without matching IdP issuance, join by certificate fingerprint, IdP, relying party, and validity as suspected_offchain_minting. Escalation requires accepted material or a resource result; key reads alone do not prove token creation.
+      data_requirements:
+        - source_type: signing_key_and_protection_access
+          channel: configured SACL 4663 or EDR cryptographic-key and DPAPI artifact telemetry
+          required_fields:
+            - timestamp
+            - host_id
+            - actor_id
+            - process_id
+            - object_path_or_key_id
+            - access_operation
+            - result
+        - source_type: federation_trust_inventory_audit
+          channel: IdP or tenant audit and trusted external inventory
+          required_fields:
+            - timestamp
+            - identity_provider_or_domain
+            - signer_fingerprint
+            - change_type
+            - initiator
+            - approval_id
+            - effective_from
+            - effective_to
+        - source_type: relying_party_federated_signin
+          channel: Entra sign-in or SaaS federation authentication log
+          required_fields:
+            - timestamp
+            - tenant_or_application_id
+            - principal_id
+            - issuer_id
+            - result
+            - session_or_correlation_id
+            - source_ip
+      observables:
+        - active_signing_key_access
+        - machine_dpapi_artifact_access
+        - federation_signer_change
+        - accepted_federated_signin
+        - missing_issuance_for_exposed_signer
+      correlation:
+        window: signer-validity-and-session-lifetime
+        dimensions:
+          - identity_provider_or_domain
+          - signer_fingerprint
+          - host_id
+          - actor_id
+          - principal_id
+          - tenant_or_application_id
+          - session_or_correlation_id
+          - time
+      false_positives:
+        zh: 批准的证书轮换、AD FS 节点加入/恢复、HSM 迁移、备份和灾难恢复会访问或改变密钥；须核对双人批准、活动 signer、目标节点及迁移窗口。
+        en: Approved certificate rotation, AD FS node enrollment or recovery, HSM migration, backup, and disaster recovery access or change keys; check dual approval, active signer, target node, and migration window.
+      blind_spots:
+        zh: SACL 未配置时没有 4663，内存内或 HSM 内操作可能没有文件路径，依赖方常不暴露 signer 指纹；过时数据库证书访问也可能与活动 signer 无关。
+        en: Event 4663 is absent without SACL configuration, in-memory or HSM operations may lack a file path, relying parties often omit signer fingerprints, and access to a stale database certificate may not involve the active signer.
+      tuning_guidance:
+        zh: >-
+          清单必须区分活动、次要、过期和数据库残留证书；仅对精确对象、批准操作者、维护主机和限时窗口降权。key access 与依赖方接受使用独立证据等级，只有再出现发行缺口、异常声明或资源结果才提升严重度。定期用无生产权限的 canary 验证 SACL、日志出口和 signer 映射。
+        en: >-
+          Inventory active, secondary, expired, and database-stale certificates separately. Down-weight only exact objects, approved actors, maintenance hosts, and bounded windows. Keep key access and relying-party acceptance as separate evidence tiers and raise severity only with an issuance gap, claim anomaly, or resource result. Regularly validate SACLs, export, and signer mapping with a nonproduction-capable canary.
+      evidence_keys:
+        - TA0006-003-T1606-REF-MANDIANT-DPAPI-SAML
+        - TA0006-003-T1606-REF-MANDIANT-ADFS-REPLICATION
+        - REF-000304
+    - temporary_key: TA0006-003-T1606-NJA-COMPOSED-GAP
+      strategy_key: TA0006-003-T1606-DET-COMPOSED
+      name:
+        zh: 主认证、MFA 事务与会话创建缺口联查
+        en: Primary Authentication, MFA Transaction, and Session-Creation Gap Join
+      logic:
+        zh: >-
+          以应用最终会话创建为中心，向前五分钟关联同一主体、应用和 session/request 的主认证、MFA 请求、挑战、批准/拒绝、state 生成与校验、授权码交换和 bypass/fail-open 决策。正常需要 MFA 的路径若有主认证成功和会话成功，却没有供应商 request/approval 或 code exchange，并出现本地辅 Cookie 校验，则输出 auxiliary_completion_gap。只有合法记住设备、break-glass 或 fail-open 策略命中且在有效期内才降权；若应用没有 Cookie/state 遥测，结果标为 chain_incomplete。
+        en: >-
+          Center on final application-session creation and look back five minutes for primary authentication, MFA request, challenge, approval or denial, state generation and validation, authorization-code exchange, and bypass or fail-open decision for the same principal, application, and session or request. If a path requiring MFA has successful primary authentication and session creation but no provider request, approval, or code exchange and has local auxiliary-cookie validation, emit auxiliary_completion_gap. Down-weight only a valid remembered-device, break-glass, or fail-open policy match. If the application lacks cookie or state telemetry, label the result chain_incomplete.
+      data_requirements:
+        - source_type: application_authentication_session
+          channel: OWA or web application authentication and session audit
+          required_fields:
+            - timestamp
+            - application_id
+            - principal_id
+            - primary_auth_result
+            - auxiliary_state_result
+            - session_id
+            - request_or_correlation_id
+            - source_ip
+            - user_agent_or_client
+            - final_result
+        - source_type: mfa_provider_transaction
+          channel: Duo or equivalent MFA provider audit
+          required_fields:
+            - timestamp
+            - integration_or_application_id
+            - principal_id
+            - mfa_request_id
+            - challenge_method
+            - result
+            - source_ip
+        - source_type: authorization_state_exchange
+          channel: application integration callback audit
+          required_fields:
+            - timestamp
+            - application_id
+            - session_id
+            - state_hash
+            - authorization_code_hash
+            - exchange_result
+            - bypass_or_fail_open_reason
+      observables:
+        - primary_authentication_success
+        - missing_mfa_request_or_approval
+        - local_auxiliary_state_acceptance
+        - missing_state_or_code_exchange
+        - final_session_creation
+      correlation:
+        window: 5m-per-session
+        dimensions:
+          - application_id
+          - integration_or_application_id
+          - principal_id
+          - session_id
+          - request_or_correlation_id
+          - mfa_request_id
+          - state_hash
+          - source_ip
+          - time
+      false_positives:
+        zh: 合法 remember-device、break-glass、分阶段 MFA、供应商故障 fail-open、服务账户、会话续期和日志延迟可省略交互挑战，必须由明确策略、owner 与有效期解释。
+        en: Legitimate remembered-device, break-glass, staged MFA, provider-outage fail-open, service accounts, session renewal, and delayed logs can omit interactive challenge and require an explicit policy, owner, and validity interval.
+      blind_spots:
+        zh: 旧应用可能只记录最终 allow，不记录辅 Cookie 摘要或 state；供应商和应用无共同 ID 时只能主体时间关联；攻击者控制应用服务器可篡改本地日志。
+        en: Legacy applications may record only final allow and omit auxiliary-cookie digest or state. Without a shared provider and application identifier, only principal-time correlation is possible. An adversary controlling the application server can alter local logs.
+      tuning_guidance:
+        zh: >-
+          按应用和策略版本维护“需要哪些步骤”的状态机，不能全局假定每次登录均有交互 MFA。白名单精确绑定 principal class、device/session、policy ID、原因和到期。高价值邮箱和管理入口对无供应商事务的 session 提高优先级，并定期以测试账户验证 state/code 与日志关联而不记录原始 Cookie。
+        en: >-
+          Maintain a required-step state machine by application and policy version rather than globally assuming every sign-in has interactive MFA. Allowances bind exactly to principal class, device or session, policy ID, reason, and expiry. Prioritize sessions without provider transactions for high-value mailboxes and management surfaces, and regularly test state or code logging with a test account without recording raw cookies.
+      evidence_keys:
+        - REF-000509
+        - TA0006-003-T1606-REF-DUO-WEBSDK
+  mitigations:
+    - temporary_key: TA0006-003-T1606-MIT-VERIFIER
+      name:
+        zh: Web 认证材料签发谱系与验证器绑定
+        en: Web Authentication Material Issuance Lineage and Verifier Binding
+      measures:
+        - key: strict-proof-constraint-validation
+          control_type: preventive
+          zh: 对签名材料校验活动 signer、issuer、Audience、Recipient、NotOnOrAfter、请求绑定和重放 ID；禁用无业务需要的 unsolicited 或无限寿命路径。
+          en: Validate active signer, issuer, Audience, Recipient, NotOnOrAfter, request binding, and replay identifier for signed material; disable unnecessary unsolicited or unbounded-lifetime paths.
+        - key: independent-issuance-acceptance-lineage
+          control_type: detective-support
+          zh: 独立保留 IdP 认证/签发与依赖方接受日志，传播稳定 request/assertion/session ID 或安全摘要，并持续验证日志完整性。
+          en: Independently retain IdP authentication and issuance plus relying-party acceptance, propagate stable request, assertion, or session identifiers or safe digests, and continuously validate logging integrity.
+        - key: per-session-auxiliary-state-binding
+          control_type: preventive
+          zh: 对 MFA 和集成回调使用高熵每会话 state、同主体与原会话绑定、短时授权码及服务器到服务器交换，缺失或不匹配时 fail closed。
+          en: Use high-entropy per-session state, same-subject and originating-session binding, short-lived authorization codes, and server-to-server exchange for MFA and integration callbacks, failing closed on absence or mismatch.
+        - key: material-and-session-recovery
+          control_type: containment
+          zh: 签名或集成秘密疑似失守时保全证据，轮换全部活动与重叠密钥，撤销受影响 token/Cookie/session，并逐依赖方验证旧材料已被拒绝。
+          en: On suspected signing or integration-secret compromise, preserve evidence, rotate every active and overlapping key, revoke affected tokens, cookies, and sessions, and verify old material is rejected at each relying party.
+      applications:
+        - target_key: TA0006-003-T1606-PARENT
+          use:
+            zh: >-
+              为每类 Web 认证材料登记权威 issuer、允许 signer、完整字段约束、正常签发步骤和接受方；构造、接受和资源使用分别分级。部署跨平面 ID/摘要，并在密钥事件后同时轮换、撤销和做依赖方拒绝测试。
+            en: >-
+              Register the authoritative issuer, allowed signer, complete field constraints, normal issuance steps, and relying parties for each web authentication material class. Tier construction, acceptance, and resource use separately. Deploy cross-plane identifiers or digests, and after a key event combine rotation, revocation, and relying-party denial testing.
+          expected_effect:
+            zh: 使密码学有效不再等同合法来源，并把权威外构造压缩到可由签发缺口、约束失败或恢复测试揭示的路径。
+            en: Prevent cryptographic validity from being treated as legitimate origin and constrain off-authority construction to paths exposed by issuance gaps, constraint failures, or recovery tests.
+          limitations:
+            zh: 活动受信密钥失守时严格字段校验仍可能全部通过；旧 SaaS 未必暴露 assertion ID 或支持全局撤销，轮换错误可能造成大范围登录中断。
+            en: Strict field validation can still pass with a compromised active key. Legacy SaaS may omit assertion identifiers or global revocation, and faulty rotation can cause broad sign-in outages.
+        - target_key: TA0006-003-T1606-CHILD-OFFCHAIN
+          use:
+            zh: >-
+              对联合或自包含签名材料强制 issuer、signer、受众、接收端、时限、请求和重放绑定，保留 IdP issuance 与 RP acceptance 共同 ID；与 MIT-000073 的 HSM、Tier 0 和独立 signer 治理共同实施。
+            en: >-
+              Enforce issuer, signer, audience, recipient, time, request, and replay bindings for federated or self-contained signed material and retain a common IdP-issuance and relying-party-acceptance identifier. Pair this with MIT-000073 HSM, Tier 0, and independent signer governance.
+          expected_effect:
+            zh: 拒绝结构或作用域不相容的材料，并让使用活动受信 signer 的链外证明留下可关联的签发缺口。
+            en: Reject structurally or contextually incompatible material and make off-chain proofs using an active trusted signer leave a correlatable issuance gap.
+          limitations:
+            zh: 合法 IdP 发起流程和日志缺失会造成缺口；若攻击者控制 signer 与发行日志，仍需独立保留、密钥访问和资源结果。
+            en: Legitimate IdP-initiated flows and log loss create gaps; if the adversary controls signer and issuance logs, independent retention, key access, and resource outcomes remain necessary.
+        - target_key: TA0006-003-T1606-CHILD-AUXSTATE
+          use:
+            zh: >-
+              将旧式静态或可预计算辅 Cookie 迁移为每会话 state 与短时授权码，绑定主体、应用、原会话和回调地址，由应用后端向 MFA 权威交换并验证结果；集成秘密失守时轮换并撤销所有依赖会话。
+            en: >-
+              Replace static or precomputable auxiliary cookies with per-session state and short-lived authorization codes bound to subject, application, originating session, and callback. Have the application backend exchange and validate the result with the MFA authority, and rotate secrets plus revoke every dependent session after compromise.
+          expected_effect:
+            zh: 使单个集成秘密或跨会话值不足以本地伪造“已完成 MFA”，同时为每个最终会话留下供应商事务对应项。
+            en: Make one integration secret or cross-session value insufficient to locally fabricate completed MFA and give every final session a provider-transaction counterpart.
+          limitations:
+            zh: 应用服务器完全失守时攻击者可能窃取 state、授权码或修改回调逻辑；fail-open 和紧急绕过仍需限时治理，迁移会影响旧客户端。
+            en: Full application-server compromise can expose state or codes or alter callback logic. Fail-open and emergency bypass still need time-bounded governance, and migration can affect legacy clients.
+      evidence_keys:
+        - TA0006-003-T1606-REF-OASIS-SAML-PROFILE
+        - TA0006-003-T1606-REF-MICROSOFT-ADFS-AUDIT
+        - TA0006-003-T1606-REF-DUO-WEBSDK
+        - TA0006-003-T1606-REF-MICROSOFT-ADFS-ROTATION
+        - REF-000509
+existing_library_reuse:
+  reference_refs:
+    - ref: REF-000304
+      resolution: reuse-and-extend-locator
+      note: Exact Microsoft Solorigate URL; extend locator from federation-trust modification to include Path 1 stolen AD FS signing certificate, attacker-created SAML tokens, and acceptance by cloud resources
+    - ref: REF-000509
+      resolution: reuse-and-extend-locator
+      note: Exact Volexity Dark Halo URL; current locator covers mailbox staging only, while the same report directly documents username/password authentication, absent Duo events, duo-sid cookie, and compromised integration secret
+    - ref: REF-000343
+      resolution: reuse
+      note: Federation trust and signer change semantics for the T1556/NJT-0100 boundary, not proof of off-chain construction by itself
+  claim_refs: []
+  case_refs:
+    - ref: CASE-000111
+      resolution: extend-subject-after-allocation
+      note: Existing Solorigate trust-modification case already states attacker-issued SAML token acceptance and MFA bypass; extend only if the formal T1606 object preserves that exact case meaning
+  strategy_refs: []
+  analytic_refs: []
+  mitigation_refs:
+    - ref: MIT-000073
+      resolution: extend-applications-after-allocation
+      note: Existing federation-trust and signing-key governance, HSM protection, rotation, all-path recovery, and session invalidation measures apply unchanged; add target-specific applications for the parent and off-chain child
+  relationship_refs: []
+library_candidates:
+  references:
+    - temporary_key: TA0006-003-T1606-REF-ATTACK
+      resolution: create
+      url: https://attack.mitre.org/techniques/T1606/
+      locator: Fixed Enterprise 19.1 parent behavior, Credential Access mapping, and two-child inventory T1606.001 and T1606.002
+      limit: Parent page anchors behavior and breadth only; it does not prove Niji child axes, and its authorized AWS STS example is excluded from the adapted forgery boundary
+    - temporary_key: TA0006-003-T1606-REF-MANDIANT-DPAPI-SAML
+      resolution: create
+      url: https://cloud.google.com/blog/topics/threat-intelligence/recovering-active-adfs-signing-keys-machine-dpapi/
+      locator: Active AD FS signing-key recovery, forged Global Administrator assertion accepted by Entra ID, standard federated sign-in logging, cross-ADFS/Entra detection, SACL 4663, HSM and rotation guidance
+      limit: Controlled assessment published in 2026, not an external adversary incident and not evidence of prevalence
+    - temporary_key: TA0006-003-T1606-REF-MANDIANT-ADFS-REPLICATION
+      resolution: create
+      url: https://cloud.google.com/blog/topics/threat-intelligence/abusing-replication-stealing-adfs-secrets-over-the-network
+      locator: AD FS token-signing semantics, arbitrary assertion capability, replication-service key extraction path, absent replication event, network restriction and monitoring
+      limit: Article explicitly says the replication extraction path had not then been observed in the wild; use as technical research, not an incident case
+    - temporary_key: TA0006-003-T1606-REF-MICROSOFT-ADFS-AUDIT
+      resolution: create
+      url: https://learn.microsoft.com/en-us/windows-server/identity/ad-fs/troubleshooting/ad-fs-tshoot-logging
+      locator: AD FS events 1200 through 1203, verbose 299/500/501 classes, Activity ID correlation, and auditing enablement
+      limit: Product-specific event semantics and configuration; event availability varies by AD FS version and enabled audit level
+    - temporary_key: TA0006-003-T1606-REF-OASIS-SAML-PROFILE
+      resolution: create
+      url: https://docs.oasis-open.org/security/saml/v2.0/saml-profiles-2.0-os.pdf
+      locator: Web Browser SSO signature, Recipient, NotOnOrAfter, InResponseTo, AudienceRestriction, replay ID, unsolicited-response and SessionNotOnOrAfter processing requirements
+      limit: Protocol standard establishes validation semantics, not malicious behavior or local logging availability
+    - temporary_key: TA0006-003-T1606-REF-ZIMBRA-PREAUTH
+      resolution: create
+      url: https://wiki.zimbra.com/wiki/Preauth
+      locator: Domain preauth HMAC over account, identifier mode, expires and timestamp, server verification, and auth-token cookie issuance
+      limit: Vendor mechanism documentation; page is community Tech Center material and does not prove malicious use or modern deployment prevalence
+    - temporary_key: TA0006-003-T1606-REF-DUO-WEBSDK
+      resolution: create
+      url: https://duo.com/docs/duoweb
+      locator: Current Web SDK per-session state generation and validation, authorization-code exchange, application binding, client-secret protection, and fail-open/fail-closed choice
+      limit: Current SDK semantics differ from the legacy akey and duo-sid integration in the Dark Halo incident
+    - temporary_key: TA0006-003-T1606-REF-MICROSOFT-ADFS-ROTATION
+      resolution: create
+      url: https://learn.microsoft.com/en-us/entra/identity/hybrid/connect/how-to-connect-emergency-ad-fs-certificate-rotation
+      locator: Emergency AD FS token-signing certificate rotation and old-certificate removal procedure
+      limit: Recovery procedure; it does not by itself prove construction or successful use of forged material
+    - temporary_key: TA0006-003-T1606-REF-AWS-STS
+      resolution: create
+      url: https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_temp_request.html
+      locator: AWS STS authoritative API request and response flow, caller authentication requirements, source identity and session credential issuance
+      limit: Boundary evidence showing legitimate platform issuance; not evidence of off-authority forgery
+  claims:
+    - temporary_key: TA0006-003-T1606-CLM-STAGES
+      resolution: create
+      proposition_zh: Web 认证材料构造、依赖方接受、会话建立和后继资源使用是不同证据阶段，任一阶段不能自动证明其余阶段。
+      proposition_en: Web authentication material construction, relying-party acceptance, session creation, and downstream resource use are distinct evidentiary stages, and no one stage automatically proves the others.
+      evidence_keys:
+        - TA0006-003-T1606-REF-ATTACK
+        - TA0006-003-T1606-REF-MANDIANT-DPAPI-SAML
+        - TA0006-003-T1606-REF-ZIMBRA-PREAUTH
+    - temporary_key: TA0006-003-T1606-CLM-OFFCHAIN
+      resolution: create
+      proposition_zh: 活动受信 signer 可在身份权威正常签发链之外生成被依赖方接受的 SAML 断言，使依赖方成功记录缺少对应 IdP 认证和签发事务。
+      proposition_en: An active trusted signer can create a SAML assertion outside the identity authority's normal issuance chain that a relying party accepts, leaving acceptance without the corresponding IdP authentication and issuance transaction.
+      evidence_keys:
+        - REF-000304
+        - TA0006-003-T1606-REF-MANDIANT-DPAPI-SAML
+        - TA0006-003-T1606-REF-MICROSOFT-ADFS-AUDIT
+    - temporary_key: TA0006-003-T1606-CLM-CONSTRAINTS
+      resolution: create
+      proposition_zh: 可信签名不足以独立证明合法来源，依赖方还应校验 Recipient、Audience、时限、请求绑定和重放状态，并将接受事件回连签发事务。
+      proposition_en: A trusted signature alone does not establish legitimate origin; relying parties should also validate Recipient, Audience, lifetime, request binding, and replay state and join acceptance to issuance.
+      evidence_keys:
+        - TA0006-003-T1606-REF-OASIS-SAML-PROFILE
+        - TA0006-003-T1606-REF-MANDIANT-DPAPI-SAML
+    - temporary_key: TA0006-003-T1606-CLM-AUXSTATE
+      resolution: create
+      proposition_zh: 泄露的应用集成秘密可使攻击者在真实主认证之后计算被本地应用接受的 MFA 辅状态，而外部 MFA 权威没有对应认证事件。
+      proposition_en: A compromised application-integration secret can let an adversary compute locally accepted MFA auxiliary state after genuine primary authentication while the external MFA authority has no corresponding authentication event.
+      evidence_keys:
+        - REF-000509
+    - temporary_key: TA0006-003-T1606-CLM-API-BOUNDARY
+      resolution: create
+      proposition_zh: 调用 AWS STS 等权威 API 后由平台签发的新临时凭据具有正式请求与响应链，不应仅因材料为新生成而归入权威外伪造。
+      proposition_en: New temporary credentials issued by an authoritative platform after an AWS STS or equivalent API call have an official request and response chain and are not off-authority forgery merely because they are newly generated.
+      evidence_keys:
+        - TA0006-003-T1606-REF-AWS-STS
+  cases:
+    - temporary_key: TA0006-003-T1606-CASE-SOLORIGATE-SIGNER
+      resolution: split-from-CASE-000111
+      event: Microsoft observed the Solorigate chain obtain AD FS signing capability through certificate theft or federation trust and create SAML tokens for chosen identities that were accepted for cloud access
+      evidence_keys:
+        - REF-000304
+      limit: Existing CASE-000111 centers trust-state mutation; this case would center material construction and must not imply every victim used both paths or expose unpublished assertion details
+    - temporary_key: TA0006-003-T1606-CASE-DARKHALO-DUO
+      resolution: create
+      event: Dark Halo used normal OWA username and password authentication plus a duo-sid value computed from the compromised Duo integration secret; Duo recorded no authentication attempt and OWA accepted the session
+      evidence_keys:
+        - REF-000509
+      limit: Legacy Duo and OWA integration; do not generalize akey or duo-sid fields to current SDK deployments
+  detection_strategies:
+    - temporary_key: TA0006-003-T1606-DET-ISSUANCE
+      resolution: create
+      distinction: Cross-plane authority issuance to relying-party acceptance, with key exposure and trust mutation retained as precursor tiers rather than proof of construction
+    - temporary_key: TA0006-003-T1606-DET-COMPOSED
+      resolution: create
+      distinction: Authentication-step completeness across application primary auth, MFA provider transaction, callback state or code exchange, and final session
+  detection_analytics:
+    - temporary_key: TA0006-003-T1606-NJA-ISSUANCE-GAP
+      resolution: create
+      distinction: Exact assertion/request/session linkage and explicit telemetry-gap state; does not reuse authentication-state mutation analytic NJA-000052
+    - temporary_key: TA0006-003-T1606-NJA-SIGNER-LINEAGE
+      resolution: create
+      distinction: Tiered key or trust capability exposure joined to later accepted material and issuance absence without equating a file access with forged-token success
+    - temporary_key: TA0006-003-T1606-NJA-COMPOSED-GAP
+      resolution: create
+      distinction: Per-session required-step state machine distinguishing forged auxiliary completion from replay, fail-open, remembered device, and policy bypass
+  mitigations:
+    - temporary_key: TA0006-003-T1606-MIT-VERIFIER
+      resolution: create
+      distinction: Strict web-proof constraints, cross-plane issuance lineage, per-session auxiliary-state binding, and relying-party denial verification; complements rather than duplicates MIT-000073 signing-key and trust governance
+  relationships: []
+research:
+  taxonomy_breadth_review:
+    attack_subtechnique_count: 2
+    attack_subtechnique_ids:
+      - T1606.001
+      - T1606.002
+    represented_dimensions:
+      - zh: Web Cookie、自包含会话值、预认证证明与应用本地校验实现
+        en: Web cookies, self-contained session values, preauthentication proofs, and application-local validation implementations
+      - zh: SAML 联合断言、签名证书、声明与依赖方信任实现
+        en: SAML federation assertions, signing certificates, claims, and relying-party trust implementations
+    breadth_trigger: ordinary
+    coverage_resolutions:
+      - attack_id: T1606.001
+        resolution: niji-variable-candidate
+        mapped_keys:
+          - TA0006-003-T1606-CHILD-OFFCHAIN
+          - TA0006-003-T1606-CHILD-AUXSTATE
+        note_zh: Cookie 既可承载完整链外签名证明，也可只承载组合认证的辅状态；媒介名称不能成为 Niji 边界。
+        note_en: A cookie can carry a complete off-chain signed proof or only auxiliary state in composed authentication, so the medium name is not a Niji boundary.
+      - attack_id: T1606.002
+        resolution: niji-variable-candidate
+        mapped_keys:
+          - TA0006-003-T1606-CHILD-OFFCHAIN
+        note_zh: SAML 提供 signer、issuer、claim 与受众/时间约束的实现证据，正式子项按签发来源差分而不是协议命名。
+        note_en: SAML provides implementation evidence for signer, issuer, claims, and audience or time constraints; the formal child is partitioned by issuance-source differential rather than protocol name.
+    candidate_stealth_axes_examined:
+      - axis: signing_authority_and_issuance_origin
+        disposition: formal
+        why_zh: 攻击者可控 signer 与构造位置，前后痕迹从 IdP 认证加签发加接受变为仅接受及密钥/信任残余，需要跨平面检测与密钥治理。
+        why_en: The adversary controls signer and construction location; traces change from IdP authentication plus issuance plus acceptance to acceptance with key or trust residuals, requiring cross-plane detection and key governance.
+      - axis: composed_authentication_auxiliary_state
+        disposition: formal
+        why_zh: 真实主认证与伪造辅状态产生不同于完整链外铸造的步骤缺口，检测需 MFA 事务状态机，缓解需每会话 state 和授权码交换。
+        why_en: Genuine primary authentication plus forged auxiliary state creates a step gap distinct from full off-chain minting, requiring an MFA transaction state machine and per-session state or authorization-code exchange.
+      - axis: identity_privilege_claim_shaping
+        disposition: folded-into-offchain-child
+        why_zh: 现有资料证明攻击者可选择身份与声明，但没有公开事件把声明取值选择独立证明为稳定匿迹变量；其最强防守价值仍是发行差分和目录/角色一致性。
+        why_en: Sources establish that an adversary can choose identities and claims but do not independently prove claim-value selection as a stable stealth variable; its strongest defense remains issuance differential and directory or role consistency.
+      - axis: audience_recipient_request_time_binding
+        disposition: parent-core
+        why_zh: 这些字段是材料可被接受的协议约束和检测维度；满足约束本身不证明独立匿迹意图，故写入验证器分析与缓解而不拆子项。
+        why_en: These fields are protocol acceptance constraints and detection dimensions. Satisfying them does not by itself prove an independent stealth intent, so they remain in verifier analytics and mitigation rather than a child.
+      - axis: stolen_signer_versus_added_signer
+        disposition: adjacent-technique
+        why_zh: 这是签名权取得或联合信任修改方式，由 T1649、T1556、NJT-0093/NJT-0100 等对象拥有；本技术从新材料构造开始。
+        why_en: This is acquisition of signing authority or federation-trust mutation owned by T1649, T1556, NJT-0093, NJT-0100, or related objects; this technique begins with new-material construction.
+      - axis: authoritative_broker_api_issuance
+        disposition: rejected
+        why_zh: AWS STS 等服务实际执行签发并记录请求与响应，不是权威外伪造；应按 API 权限滥用、临时权限或令牌获取处理。
+        why_en: Services such as AWS STS perform authoritative issuance and record the request and response, so the behavior is not off-authority forgery and belongs to API authority abuse, temporary privilege, or token acquisition.
+      - axis: server_side_session_store_insertion
+        disposition: evidence-deferred
+        why_zh: 理论上直接写会话存储可构造匹配 Cookie，但本批未找到足以固定攻击者控制、接受结果和独立防御的第一方事件证据。
+        why_en: Direct session-store writes can theoretically construct a matching cookie, but this batch found no first-party event evidence sufficient to establish attacker control, acceptance, and distinct defense.
+      - axis: delayed_or_context_aligned_use
+        disposition: adjacent-technique
+        why_zh: 构造后延迟、来源或设备拟态改变的是材料使用和入口情境，归 Valid Accounts、NJT-0061 或会话风险对象，不改变构造技术身份。
+        why_en: Delayed use and origin or device mimicry change material use and entry context and belong to Valid Accounts, NJT-0061, or session-risk objects rather than changing construction identity.
+    second_pass_required: false
+    second_pass_completed: false
+    proposed_niji_child_count: 2
+    breadth_gap_explained: true
+    reviewer_notes:
+      zh: >-
+        两个 Niji 子项不是 T1606.001/.002 的翻译：Web Cookie 可落入完整链外证明或组合辅状态，SAML 只为前者提供强实现证据。声明与受众/时间轴经过独立测试后收敛为子项内部约束，因为当前一手资料不能证明其独立匿迹意图与兄弟边界。主 Agent 应在跨技术收敛时继续核对 T1556 和 NJT-0093/NJT-0100，只把材料生成而非信任修改写入本父技术。
+      en: >-
+        The two Niji children do not translate T1606.001 and T1606.002. A web cookie can belong to complete off-chain proof or composed auxiliary state, while SAML provides strong implementation evidence for the first. Claims and audience or time axes were independently tested and converged as internal constraints because current primary sources do not establish distinct stealth intent and sibling boundaries. During cross-technique convergence, the primary agent should recheck T1556 and NJT-0093 or NJT-0100 and keep material generation, rather than trust mutation, in this parent.
+  evidence_coverage:
+    parent_behavior_keys:
+      - TA0006-003-T1606-REF-ATTACK
+      - REF-000304
+      - REF-000509
+      - TA0006-003-T1606-REF-ZIMBRA-PREAUTH
+    boundary_keys:
+      - TA0006-003-T1606-REF-AWS-STS
+      - TA0006-003-T1606-REF-OASIS-SAML-PROFILE
+      - REF-000343
+      - REF-000304
+    mechanism_support:
+      - mechanism: NM-BT
+        keys:
+          - TA0006-003-T1606-REF-MANDIANT-DPAPI-SAML
+          - TA0006-003-T1606-REF-MICROSOFT-ADFS-AUDIT
+          - REF-000509
+        limit: Direct controlled SAML acceptance plus direct Dark Halo incident; cross-product log fields still vary
+      - mechanism: NM-FD
+        keys:
+          - REF-000304
+          - REF-000509
+          - TA0006-003-T1606-REF-OASIS-SAML-PROFILE
+          - TA0006-003-T1606-REF-ZIMBRA-PREAUTH
+        limit: Trusted-signature and accepted-cookie appearance are direct; deliberate tuning of every claim to local baselines is not published
+    child_existence_support:
+      - child_key: TA0006-003-T1606-CHILD-OFFCHAIN
+        keys:
+          - REF-000304
+          - TA0006-003-T1606-REF-MANDIANT-DPAPI-SAML
+          - TA0006-003-T1606-REF-ZIMBRA-PREAUTH
+      - child_key: TA0006-003-T1606-CHILD-AUXSTATE
+        keys:
+          - REF-000509
+          - TA0006-003-T1606-REF-DUO-WEBSDK
+    unsupported_or_deferred:
+      - zh: 公开 Solorigate 资料没有逐受害者发布完整 assertion、claim、Audience、lifetime 与对应 AD FS/依赖方日志，不能声称每项字段均被刻意仿形。
+        en: Public Solorigate reporting does not publish complete per-victim assertions, claims, audiences, lifetimes, and paired AD FS or relying-party logs, so deliberate shaping of every field cannot be claimed.
+      - zh: Mandiant 的机器 DPAPI 路径是受控评估，AD FS replication 文章明确说当时未观察到该具体提取路径在野使用。
+        en: Mandiant's machine-DPAPI path is a controlled assessment, and the AD FS replication article explicitly said that specific extraction path had not then been observed in the wild.
+      - zh: 仅有依赖方登录或缺少 IdP 事件不能排除日志关闭、IdP 发起、续期、窃取或重放，必须输出覆盖状态并降级。
+        en: Relying-party sign-in or missing IdP events alone cannot exclude disabled logging, IdP initiation, renewal, theft, or replay and requires an explicit coverage state and lower confidence.
+      - zh: 服务器端 session store 直接写入尚缺少本批可复用的一手事件证据，不建议正式化。
+        en: Direct server-side session-store insertion lacks reusable first-party incident evidence in this batch and should remain deferred.
+      - zh: AWS AssumeRole/GetFederationToken 的正式服务签发不纳入适配后定义，不能用 ATT&CK 父页示例扩张 Niji 范围。
+        en: Authoritative service issuance through AWS AssumeRole or GetFederationToken is outside the adapted definition and cannot be used to expand Niji scope from the ATT&CK parent example.
+  content_depth_review:
+    compared_with_njt_0001: true
+    field_responsibilities_complete: true
+    candidate_specific_prose: true
+    repeated_prose_reviewed: true
+    notes:
+      zh: >-
+        父稿分别定义权威外构造、三阶段证据、密码学有效与来源合法的差异、相邻技术边界、攻击者构造约束和跨平面防守模型。两个子稿用不同的前后痕迹、传感器、误报和缓解措施证明兄弟边界；防御不把密钥访问、登录成功或日志缺失直接升级为完整伪造链。段落深度按 NJT-0001 的问题覆盖对照，未复制其对象数量或措辞。
+      en: >-
+        The parent separately defines off-authority construction, three evidence stages, cryptographic validity versus legitimate origin, adjacent boundaries, adversary construction constraints, and a cross-plane defender model. The two children establish sibling boundaries through different before-and-after traces, sensors, false positives, and mitigations. Defense does not promote key access, sign-in success, or missing logs directly into a complete forgery chain. Paragraph depth was compared with NJT-0001 by question coverage without copying its object counts or wording.
+  automation_review:
+    canonical_prose_bulk_generated: false
+    mechanical_uses:
+      - YAML serialization and recursive structural audit only
+  limitations:
+    paragraphs:
+      - zh: >-
+          证据层级跨协议且不均衡。Microsoft 的 Solorigate 调查提供在野签名能力取得、攻击者创建 SAML 和云访问链；Volexity 提供同一事件中主认证、Duo 零事件、Cookie 与集成秘密；Mandiant 2026 是受控签发密钥恢复与接受实验；OASIS、Zimbra、Duo 和 AWS 是协议或产品语义。不得把受控实验和能力文档升级为在野频率，也不得把不同来源阶段拼成同一受害者完整链。
+        en: >-
+          Evidence strength differs across protocols. Microsoft Solorigate reporting provides an in-the-wild chain from acquisition of signing capability to attacker-created SAML and cloud access. Volexity provides primary authentication, no Duo event, a cookie, and an integration secret in one incident. Mandiant 2026 is a controlled key-recovery and acceptance assessment. OASIS, Zimbra, Duo, and AWS provide protocol or product semantics. Controlled experiments and capability documentation do not establish field prevalence, and stages from different sources cannot be spliced into one victim's complete chain.
+      - zh: >-
+          日志缺口检测高度依赖本地配置。AD FS 审计可能未启用，SaaS 不一定导出 assertion 或 signer，合法 IdP 发起 SSO 和续期也可能缺主认证；旧应用则可能只记录最终 allow。正式 Analytic 应先报告 coverage_state，再按精确 ID、弱关联和资源结果分级。轮换 signer、共享秘密与全局会话可能造成业务中断，必须在保全证据后按厂商程序执行并验证旧材料在所有依赖方失效。
+        en: >-
+          Gap detection depends heavily on local configuration. AD FS audit may be disabled, SaaS services may omit assertion or signer data, legitimate IdP-initiated SSO and renewal may lack fresh authentication, and legacy applications may record only final allow. A formal analytic should report coverage_state first and tier exact identifiers, weak joins, and resource outcomes. Rotating signers, shared secrets, and all sessions can disrupt business and must follow vendor procedures after evidence preservation, with old material tested for denial at every relying party.
+  rejected_mechanisms:
+    - mechanism: NM-ST
+      reason_zh: 签名密钥可长期有效且材料可延迟使用，但本批一手事件没有独立证明攻击者以时间或空间分散规避阈值；延迟主要属于后继使用情境。
+      reason_en: Signing keys can remain valid and material can be used later, but primary incident evidence in this batch does not independently establish deliberate temporal or spatial dilution to evade thresholds; delay mainly belongs to successor-use context.
+    - mechanism: NM-DO
+      reason_zh: SAML、Cookie 或 HMAC 的密码学编码是验证格式，并不自动使已采集数据不可解释；本批匿迹效果来自可信外观和签发观察缺口。
+      reason_en: Cryptographic encoding of SAML, cookies, or HMACs is a validation format and does not automatically make collected data uninterpretable; the supported stealth effects are trusted appearance and issuance-observation gaps.
+  open_questions:
+    - zh: 主 Agent 应裁定 CASE-000111 仅扩展 subject_refs，还是把 Solorigate 的签名证书窃取路径拆成新的材料构造案例；两者不能重复叙述同一 trust-modification 中心事实。
+      en: The primary agent should decide whether to extend CASE-000111 subject_refs only or split the stolen-signing-certificate path into a new material-construction case; the same trust-mutation central fact must not be duplicated.
+    - zh: 主 Agent 应核对本批 T1606 与后续 T1556 的正式父边界，尤其是“新增 signer”只归验证/信任状态变化，而具体新断言可与本项并列。
+      en: The primary agent should recheck the formal boundary between this T1606 candidate and later T1556, especially that adding a signer belongs only to validation or trust-state mutation while a specific new assertion can be co-mapped here.
+    - zh: 若目标 Web 应用无法输出稳定 session/request ID 或辅状态摘要，应把 DET-COMPOSED 的部署状态标为受限，而不是用 IP 加五分钟的弱匹配制造高置信度告警。
+      en: If a target web application cannot export stable session or request identifiers or auxiliary-state digests, mark DET-COMPOSED deployment as limited rather than creating high-confidence alerts from an IP plus five-minute weak join.
+integration:
+  status: pending
+  resolutions: []

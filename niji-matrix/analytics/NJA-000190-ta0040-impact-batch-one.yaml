@@ -1,0 +1,110 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000190
+strategy_ref: DET-000174
+name:
+  zh: S3 生命周期规则变更与对象过期关联
+  en: S3 Lifecycle Rule Change and Object Expiry Correlation
+summary:
+  zh: 比较规则前后配置并连接服务到期事件、版本状态和关键对象受损结果。
+  en: Compare before-and-after rules and join service expiry, version state, and critical-object loss.
+domains:
+- enterprise
+platforms:
+- IaaS
+logic:
+  paragraphs:
+  - zh: 在 CloudTrail 管理事件出现 PutBucketLifecycle 或 PutBucketLifecycleConfiguration 时，独立抓取并规范化规则前后快照，包括启用状态、过滤前缀和标签、当前与非当前版本到期条件。计算是否新增到期、缩短保留期或扩大关键对象覆盖，并与变更审批和桶所有者基线比较；未授权扩张立即作为事前风险告警。
+    en: When CloudTrail management records PutBucketLifecycle or PutBucketLifecycleConfiguration, independently
+      capture normalized before-and-after rule snapshots including status, prefix and tag filters, and current and
+      noncurrent version expiry. Compute new expiry, shorter retention, or broader critical-object coverage and
+      compare change approval and bucket-owner baseline; alert on unauthorized expansion before impact.
+  - zh: 在 72 小时或规则到期上限中较长的观察范围内，按桶和可判定的过滤条件连接 EventBridge Object Deleted 中的 Lifecycle Expiration、通知或 CloudTrail
+      生命周期数据事件，再核对版本与合法读取结果。通知配置 ID 不一定等于规则 ID，需在本环境验证对应关系；删除标记与永久版本移除分开输出。
+    en: Over 72 hours or the longer rule-expiry horizon, join by bucket and verifiable filters to EventBridge Object
+      Deleted with Lifecycle Expiration, notifications, or CloudTrail lifecycle data events, then check versions
+      and legitimate reads. Notification configuration IDs need not equal rule IDs and require local mapping validation.
+      Emit delete-marker and permanent-version-removal outcomes separately.
+data_requirements:
+- source_type: s3-management-event
+  name:
+    zh: S3 生命周期管理事件
+    en: S3 lifecycle management events
+  channel: CloudTrail management events
+  required_fields:
+  - event.time
+  - event.name
+  - user.identity.arn
+  - source.ip
+  - bucket.name
+  - event.status
+- source_type: s3-lifecycle-version
+  name:
+    zh: 生命周期规则版本快照
+    en: Lifecycle rule version snapshots
+  channel: null
+  required_fields:
+  - bucket.name
+  - rule.id
+  - rule.status
+  - filter.prefix
+  - expiration.days
+  - revision.time
+  - approval.id
+- source_type: s3-lifecycle-outcome
+  name:
+    zh: S3 生命周期结果事件
+    en: S3 lifecycle outcome events
+  channel: EventBridge Object Deleted or S3 Lifecycle notification
+  required_fields:
+  - event.time
+  - bucket.name
+  - object.key
+  - deletion.reason
+  - deletion.type
+observables:
+- zh: 未获批准的启用到期规则扩大关键前缀覆盖
+  en: An unapproved enabled expiry rule broadens critical prefix coverage
+- zh: 服务到期结果出现在被更改规则覆盖的对象上
+  en: Service-expiry outcomes affect objects covered by the changed rule
+correlation:
+  window:
+    zh: 配置变更立即检查；结果关联至少 72 小时，并按规则到期条件延长。
+    en: Check configuration writes immediately; retain outcome correlation for at least 72 hours and extend it to
+      the rule's expiry horizon.
+  dimensions:
+  - bucket.name
+  - rule.id
+  - filter.prefix
+  - object.key
+  - revision.time
+  - event.time
+false_positives:
+- zh: 获批保留策略调整、旧版本清理和测试桶迁移会产生相似规则与过期事件
+  en: Approved retention changes, old-version cleanup, and test-bucket migration produce similar rules and expiry
+    events
+blind_spots:
+- zh: 缺少历史规则快照、结果通知未启用、服务延迟或版本清单缺失会削弱因果与损失判断
+  en: Missing historical rule snapshots, disabled outcome notifications, service delay, or absent version inventory
+    weaken causality and loss assessment
+tuning_guidance:
+  paragraphs:
+  - zh: 为关键桶维护批准规则摘要、最低保留期及前缀所有者清单。允许经审批的保留变更，但不得全局忽略服务主体的过期事件；根据版本状态区分事前规则风险、当前视图丢失和永久数据损失。
+    en: Maintain approved rule digests, retention floors, and prefix owners for critical buckets. Allow approved
+      retention changes without globally ignoring service-principal expiry; separate pre-impact rule risk, current-view
+      loss, and permanent data loss by version state.
+evidence_refs:
+- REF-000648
+- REF-000649
+- REF-000650
+- REF-000651
+- REF-000655
+- REF-000513
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-09-22'
+  modified: '2026-09-22'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

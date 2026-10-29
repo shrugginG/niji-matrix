@@ -1,0 +1,159 @@
+schema_version: 2.0.0
+type: technique
+id: NJT-0109
+name:
+  zh: 目标条件化激活门控
+  en: Target-Conditioned Activation Gating
+summary:
+  zh: 攻击者仅在预期目标条件匹配时暴露核心功能，使非目标与分析环境观察到退出或低价值路径。
+  en: Adversaries expose core functionality only when expected target conditions match, causing non-target and analysis environments
+    to observe exit or a low-value path.
+aliases:
+- Execution Guardrails
+- T1480
+classification:
+  tactic_refs:
+  - TA0005
+  origin:
+    kind: attack-adapted
+    source_attack_id: T1480
+    source_attack_version: '19.1'
+  decision_ref: DEC-TA0005-T1480
+definition_and_concept:
+  paragraphs:
+  - zh: 目标条件化激活门控是攻击者采集一个或多个预期目标属性，与内置或外部提供条件比较，并只在匹配时继续核心恶意动作的行为。直接目的在于把能力暴露限制到选定目标，减少非目标、研究者和自动分析环境取得真实功能的机会。
+    en: Target-Conditioned Activation Gating is adversary behavior that collects one or more expected target attributes, compares
+      them with embedded or externally supplied conditions, and continues the core malicious action only on a match. Its immediate
+      purpose is to limit capability exposure to selected targets and reduce opportunities for non-targets, researchers, and
+      automated analysis environments to obtain true functionality.
+  - zh: 父技术覆盖两类稳定变量：一类直接读取域、主机名、路径、设备、地域、用户代理、参数、文件或共享资源并执行可恢复的条件比较；另一类把环境值送入密钥派生，使核心内容只有在正确环境才能解密。字段、平台和算法是实现，但“可直接观察的比较分支”与“环境材料派生的密码恢复”需要不同证据与检测，因此建立两个子技术。
+    en: The parent covers two stable variables. One directly reads a domain, hostname, path, device, geolocation, user agent,
+      parameter, file, or share and performs a recoverable condition comparison. The other feeds environmental values into
+      key derivation so core content decrypts only in the correct environment. Fields, platforms, and algorithms are implementations,
+      but directly observable comparison branches and cryptographic recovery derived from environmental material require
+      different evidence and detection, so two children are established.
+stealth_characteristics:
+  paragraphs:
+  - zh: 门控使同一载荷在目标环境呈现完整行为，在其他环境只退出、自删、显示诱饵或不投递下一阶段。防守方因此难以从非目标样本重现功能，静态分析也可能缺少运行时条件或解密材料；攻击活动同时减少不必要传播和附带痕迹。
+    en: Gating causes the same payload to present full behavior in a target environment and only exit, self-delete, show a
+      decoy, or withhold a next stage elsewhere. Defenders therefore struggle to reproduce functionality from non-target samples,
+      and static analysis may lack runtime conditions or key material. The operation also reduces unnecessary propagation
+      and collateral traces.
+  - zh: 残余痕迹包括条件字段枚举、配置读取、环境值规范化、比较、密钥派生、解密成败和分支后的差异结果。显式门控可通过恢复条件并做单变量差分识别；密码门控需要同时捕获环境材料、派生参数、内容身份和解密结果。条件泄露、环境模拟或服务器侧决策审计都会降低匿迹效果。
+    en: Residual traces include condition-field enumeration, configuration reads, environment-value normalization, comparison,
+      key derivation, decryption success or failure, and differential branch outcomes. Explicit gating can be identified by
+      recovering the condition and performing a one-variable differential; cryptographic gating also requires environmental
+      material, derivation parameters, content identity, and decryption result. Condition disclosure, environment emulation,
+      or server-side decision auditing reduces the stealth effect.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 纳入攻击者选择目标特定条件，并用匹配结果控制核心恶意行为是否执行、解密、投递或继续的实例。判定需要条件、比较与后继差异三者相连；只有环境发现或出现一次互斥对象不足以成立。
+    en: Scope includes adversary selection of target-specific conditions and use of the match result to control whether core
+      malicious behavior executes, decrypts, delivers, or continues. Classification requires a join among condition, comparison,
+      and successor difference. Environment discovery alone or one mutex object is insufficient.
+  - zh: 普通兼容性检查、许可、功能开关、单实例控制、更新适用性、区域合规和安全策略属于正常反例。通用互斥仅保证单实例，未证明目标选择或能力保留时不纳入。检查已知沙箱值并在匹配时退出属于 NJT-0122；纯等待或延迟属于 NJT-0107。本技术要求预期目标值匹配或正确环境材料恢复后才继续核心恶意动作。
+    en: Ordinary compatibility checks, licensing, feature flags, single-instance control, update applicability, regional
+      compliance, and security policy are normal counterexamples. Generic mutual exclusion merely enforces one instance and
+      is excluded without evidence of target selection or capability withholding. Checking a known sandbox value and exiting
+      on a match belongs to NJT-0122, while pure waiting or delay belongs to NJT-0107. This technique requires the core malicious
+      action to continue only after an expected target value matches or correct environmental material enables recovery.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: 定向载荷可要求特定路径、域、主机、参数或客户端属性，并在匹配后才写出或投递下一阶段；EnvyScout 的 C 盘条件提供直接案例。环境键实例可从 PATH、目录名、域或设备值派生解密材料，使加密核心内容只有在正确环境恢复；Gauss 提供直接案例。
+      en: A targeted payload may require a particular path, domain, host, parameter, or client attribute and write or deliver
+        the next stage only after a match; EnvyScout's C-drive condition provides a direct case. An environmental-key instance
+        may derive decryption material from PATH, a directory name, a domain, or a device value so encrypted core content
+        recovers only in the correct environment; Gauss provides a direct case.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者需要预先知道目标属性、把条件安全嵌入或外部提供，并接受目标变化导致误拒绝的风险。条件越具体越能保护能力，但也越容易让失配阻断行动；条件与配置一旦被提取，防守方可模拟匹配环境。
+        en: The adversary knows target attributes in advance, embeds or supplies the condition securely, and accepts the risk
+          that target change causes false rejection. More specific conditions protect capability better but more readily block
+          the operation on mismatch. Once condition and configuration are extracted, defenders can emulate a matching environment.
+    defender_model:
+      paragraphs:
+      - zh: 防守方可观察系统与网络属性枚举、参数、配置、比较、密钥使用、互斥状态和分支结果，并能在隔离环境改变条件。加密条件、服务端门控、只发生一次的目标环境和缺少未匹配对照是主要盲区；合法软件广泛使用相同结构，需要签名、用途和发布来源基线。
+        en: Defenders can observe system and network attribute enumeration, parameters, configuration, comparisons, key use,
+          mutex state, and branch outcomes and can alter conditions in isolation. Encrypted conditions, server-side gating,
+          a one-time target environment, and no unmatched control are major blind spots. Legitimate software widely uses the
+          same structure and requires signing, purpose, and publisher baselines.
+stealth_mechanisms:
+- mechanism_ref: NM-BT
+  role: primary
+  summary:
+    zh: 目标条件把核心能力保留在非匹配观察环境之外
+    en: Target conditions keep core capability outside nonmatching observation environments
+  analysis:
+    paragraphs:
+    - zh: 攻击者在核心动作前采集并比较目标条件，失配时退出或保留载荷；非目标防守观察从完整执行缩减为条件检查和低价值分支，真实能力跨越条件边界后才出现，形成行为透明。
+      en: The adversary collects and compares target conditions before the core action and exits or withholds the payload
+        on mismatch. Non-target defensive observation contracts from full execution to condition checks and a low-value branch,
+        while true capability appears only after crossing the condition boundary, producing Behavioral Transparency.
+  evidence_refs:
+  - REF-000390
+  - REF-000420
+  - REF-000421
+  confidence: high
+subtechnique_taxonomy:
+  narrative:
+    paragraphs:
+    - zh: 建立两个 Niji 原生子技术。NJS-0109-001 覆盖可读属性经过明文、散列或规则比较直接控制后继分支，检测核心是恢复条件并比较匹配与失配结果；NJS-0109-002 覆盖环境值进入密钥派生并决定加密内容能否恢复，检测还必须关联派生与解密结果。条件字段、客户端或服务端位置、算法与平台都留在各子技术内部。ATT&CK T1480.001 作为第二子技术的研究输入但不直接导入；T1480.002 的通用互斥语义通常是功能性单实例控制，缺少目标选择与独立匿迹防御边界，故不继承。
+      en: Two Niji-native children are established. NJS-0109-001 covers readable attributes whose plaintext, hash, or rule
+        comparison directly controls a successor branch; detection centers on recovering the condition and comparing matched
+        and unmatched outcomes. NJS-0109-002 covers environmental values feeding key derivation and determining whether encrypted
+        content can be recovered; detection must additionally correlate derivation and decryption outcome. Condition field,
+        client- versus server-side location, algorithm, and platform remain implementations within each child. ATT&CK T1480.001
+        informs the second child but is not directly imported. T1480.002's generic mutual-exclusion semantics usually implement
+        functional single-instance control and are not inherited without target selection and an independent stealth-defense
+        boundary.
+  coverage: established
+  subtechnique_refs:
+  - NJS-0109-001
+  - NJS-0109-002
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000106
+    - DET-000124
+  mitigations:
+    coverage: not-applicable
+    mitigation_refs: []
+    rationale:
+      paragraphs:
+      - zh: 目标条件门控通常减少非目标受害范围，直接禁止条件机制可能损害正常软件且不会阻止上游入侵；防守重点是检测条件到恶意结果的链条并阻止更早执行。
+        en: Target-condition gating often reduces harm to non-targets. Prohibiting conditional mechanisms directly can damage
+          legitimate software and does not prevent earlier compromise, so defense focuses on detecting the condition-to-malicious-outcome
+          chain and preventing earlier execution.
+evidence:
+  claim_refs:
+  - CLM-000590
+  - CLM-000591
+  - CLM-000625
+  - CLM-000626
+  case_refs:
+  - CASE-000142
+  - CASE-000143
+  reference_refs:
+  - REF-000390
+  - REF-000420
+  - REF-000421
+research:
+  limitations:
+    paragraphs:
+    - zh: Microsoft 的 EnvyScout 报告直接展示属性匹配后的投递差异，Kaspersky 的 Gauss 报告直接展示环境派生密钥与不可恢复区段；两类子技术均为高置信。服务端门控可能不向端点暴露决策，密码门控在缺少正确环境时可能无法验证成功分支；因此分析必须保留“未观察到激活”与“已证明条件失配”之间的状态差异。
+      en: Microsoft's EnvyScout reporting directly exposes delivery differential after attribute matching, and Kaspersky's
+        Gauss reporting directly exposes an environment-derived key and unrecoverable sections, making both children high
+        confidence. Server-side gating may hide the decision from the endpoint, and cryptographic gating may leave the success
+        branch unverifiable without the correct environment. Analytics must therefore preserve the state difference between
+        activation not observed and condition mismatch established.
+lifecycle:
+  status: review
+  version: 0.2.0
+  created: '2026-09-19'
+  modified: '2026-09-21'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

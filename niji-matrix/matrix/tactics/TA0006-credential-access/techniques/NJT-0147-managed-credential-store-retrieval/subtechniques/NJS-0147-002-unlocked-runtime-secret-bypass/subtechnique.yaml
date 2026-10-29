@@ -1,0 +1,106 @@
+schema_version: 2.0.0
+type: evasion-subtechnique
+id: NJS-0147-002
+parent_ref: NJT-0147
+name:
+  zh: 解锁运行态旁路取密
+  en: Unlocked-Runtime Secret Bypass
+summary:
+  zh: 攻击者从正在处理保管库秘密的进程状态取得材料，避开逐项读取 API 和相应授权提示。
+  en: The adversary obtains material from a process handling unlocked vault secrets, bypassing per-item read APIs and their authorization prompts.
+aliases: []
+lineage:
+  attck_subtechnique_inherited: false
+definition_and_concept:
+  paragraphs:
+  - zh: 解锁运行态旁路取密是在保管应用或代理已经持有解密密钥或短暂明文的时段，攻击者读取其运行状态或转储进程以恢复秘密，而不向每个条目发起正常保管库请求。它按取用位置划分，可发生在系统钥匙串服务或应用密码管理器；“内存”不是充分条件，还要证明目标进程持有保管库材料及取得了可用秘密。
+    en: Unlocked-Runtime Secret Bypass reads or dumps the runtime state of a vault app or agent while it holds decryption keys or transient plaintext,
+      recovering secrets without ordinary per-item vault requests. The partition concerns retrieval location and can occur in a system keychain
+      service or application password manager. Memory access alone is insufficient; the target must handle vault material and usable secret recovery
+      must be supported.
+stealth_characteristics:
+  paragraphs:
+  - zh: 解锁运行态旁路取密把条目读取从保管库 API、提示和成功日志迁到高权进程访问；只看 API 的防守方可能漏掉秘密返回。异常句柄、调试或任务端口、转储文件、权限提升与后继外传仍可被观察。KeePass 官方说明敏感值大多在内存中再加密，但展示、剪贴板、自动输入、导出等操作会短暂产生明文，因此“进程转储必得全部密码”是错误推断。
+    en: Unlocked-Runtime Secret Bypass moves item retrieval from vault APIs, prompts, and success records to privileged process access, which
+      API-only defenders may miss. Anomalous handles, debugger or task ports, dump files, privilege changes, and later exfiltration remain visible.
+      KeePass documents that sensitive values are generally re-encrypted in memory, with transient plaintext during display, clipboard, auto-type,
+      or export. Thus a process dump does not necessarily yield every password.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 纳入要求攻击者访问处理保管秘密的运行态，并有密钥或明文恢复证据。合法故障转储、取证采集、辅助功能以及普通调试可能相似；应核对授权与结果。LSASS、SAM 或 NTDS 的系统认证材料按 T1003；键盘输入截获按 T1056；只从库文件离线猜测主口令按 NJS-0137-003
+      的验证阶段，而不是本运行态旁路。
+    en: Inclusion requires adversarial access to runtime state handling vault secrets and evidence of recovered keys or plaintext. Authorized
+      crash dumps, forensics, accessibility tools, and debugging can resemble this path and need authorization and outcome checks. LSASS, SAM,
+      or NTDS operating-system authentication material belongs to T1003; keystroke interception to T1056; and offline guesses against a copied
+      vault's master password to the NJS-0137-003 validation stage.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: 在旧版 macOS 已控 root 环境，Keydnap 读取 securityd 内存以寻找用户钥匙串解密密钥；在密码管理器客户端已解锁且正进行展示或导出时，攻击者也可能试图读取短暂明文。前者有原始恶意软件分析，后者由厂商运行态说明支持机制可行性，但不能未经实验宣称每个产品均可复制。
+      en: On legacy macOS with root control, Keydnap read securityd memory to find a user's keychain decryption key. On an unlocked password-manager
+        client during display or export, an adversary may also seek transient plaintext. The former has original malware analysis; the latter
+        is mechanistically possible from vendor runtime documentation but cannot be generalized to every product without testing.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者需要足够权限打开目标进程、识别正确的运行时窗口与材料布局，并在明文被擦除前取得结果。现代硬化、进程访问限制、内存保护、密钥隔离和用户锁库会降低或阻断效果；root 也不保证所有平台上能直接读取保管秘密。
+        en: The attacker needs sufficient privilege to open the target process, identify the relevant runtime window and material layout, and
+          recover data before plaintext is erased. Modern hardening, process access restrictions, memory protection, key isolation, and vault
+          lock can reduce or block the path; root does not guarantee direct access to every platform's secrets.
+    defender_model:
+      paragraphs:
+      - zh: 防守方可重点观察被保护的保管进程遭外部打开、调试或转储，并结合发起者父进程、签名、权限提升、输出文件和外联。Windows Sysmon Event 10 可报告进程访问但不证明内存读取内容；macOS 需具备任务端口或进程访问遥测；若监控只覆盖应用日志，则该旁路可能没有逐项读取记录。
+        en: Defenders can watch external opens, debugging, or dumps of protected vault processes and join initiator lineage, signature, privilege
+          changes, output files, and egress. Windows Sysmon Event 10 reports process access but does not prove memory contents were read. macOS
+          requires task-port or process-access telemetry. Application logs alone may contain no per-item record for the bypass.
+stealth_mechanisms:
+- mechanism_ref: NM-BT
+  role: primary
+  summary:
+    zh: 运行态读取绕开保管库逐项记录
+    en: Runtime read bypasses per-item vault records
+  analysis:
+    paragraphs:
+    - zh: 攻击者从保管服务或应用的已解锁状态提取密钥或短暂明文，而不向条目 API 发送对应请求。保管库审计因而不能直接列出被读取项；痕迹转移到进程访问和输出链。ESET 对 Keydnap 的反向分析直接支持旧版 securityd 路径，KeePass 官方资料则限制了可泛化程度：明文通常只在特定操作时短暂出现。
+      en: The adversary extracts keys or transient plaintext from an unlocked vault service or app without making corresponding item-API requests.
+        Vault audit therefore cannot directly enumerate accessed items; evidence moves to process access and output. ESET's reverse analysis directly
+        supports the older securityd path, while KeePass documentation limits generalization because plaintext ordinarily appears only transiently
+        during particular operations.
+  confidence: medium
+  evidence_refs:
+  - REF-000553
+  - REF-000551
+  - REF-000366
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000154
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000143
+evidence:
+  claim_refs:
+  - CLM-000726
+  case_refs:
+  - CASE-000190
+  reference_refs:
+  - REF-000553
+  - REF-000551
+  - REF-000366
+research:
+  limitations:
+    paragraphs:
+    - zh: Keydnap 证据聚焦旧版 macOS 的 securityd，不能推断新系统仍保留相同密钥布局。Sysmon ProcessAccess 表示打开进程，不表示成功读取可用秘密；合法诊断与响应也可访问密码管理器进程。检测必须按目标进程和权限收窄，秘密返回需另由转储内容或后继结果证实。
+      en: Keydnap evidence concerns legacy macOS securityd and does not establish the same key layout in modern releases. Sysmon ProcessAccess
+        means a process was opened, not that a usable secret was read. Authorized diagnostics and response can also access password-manager processes.
+        Detection must narrow by target process and rights, while secret return needs separate dump-content or successor evidence.
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-09-22'
+  modified: '2026-09-23'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

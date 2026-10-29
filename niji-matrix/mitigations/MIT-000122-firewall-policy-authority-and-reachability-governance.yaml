@@ -1,0 +1,89 @@
+schema_version: "2.0.0"
+type: mitigation
+id: MIT-000122
+name: {zh: 防火墙策略权限与可达性治理, en: Firewall Policy Authority and Reachability Governance}
+summary: {zh: 分离防火墙变更权，保护有效策略历史，并以真实流量验证规则实施与可信回滚。, en: "Separate firewall-change authority, preserve effective-policy history, and verify enforcement and trusted rollback with real traffic."}
+description:
+  paragraphs:
+    - zh: 本缓解把网络策略当作可验证的安全控制，而不是仅保存一份配置文本。组织为主机、云安全组、网络设备和虚拟化防火墙分别限定管理身份、变更范围与审批，保存不可由同一操作者覆盖的策略版本和规则命中，并用受控探测验证原应拒绝路径仍被拒绝。被攻击者控制的管理面或内核失去可信性时，应从不同权证据恢复前态并按签名策略重建。
+      en: This mitigation treats network policy as a verifiable security control rather than merely preserving configuration text. Organizations separately limit management identity, change scope, and approval for host, cloud-security-group, network-device, and virtualization firewalls; retain policy versions and rule hits that the same operator cannot overwrite; and use controlled probes to verify that paths expected to be denied remain denied. When the management plane or kernel is adversary-controlled, recover prior state from differently authorized evidence and rebuild from signed policy.
+    - zh: 广域停用、窄规则例外和路径重定向需要不同的恢复确认：前者验证整体 profile 与默认动作，第二类验证具体 selector 和首个越界会话，第三类验证 NAT 前后五元组与实际接收进程。自动回滚有助于缩短空窗，但如果没有保留中间版本和已完成会话，就会掩盖入侵而非恢复证据。
+      en: Broad disablement, narrow rule exceptions, and path redirection require different recovery checks. The first verifies entire profiles and default actions; the second verifies a specific selector and first boundary-crossing session; the third verifies pre- and post-NAT five-tuples and the real receiving process. Automatic rollback can shorten a blind interval, but without retaining intermediate versions and completed sessions it can conceal intrusion rather than recover evidence.
+domains: [enterprise]
+measures:
+  - key: separated-policy-authority
+    name: {zh: 不同权策略管理与审批, en: Differently Authorized Policy Management and Approval}
+    description:
+      paragraphs:
+        - zh: 将防火墙写入权限与普通主机管理员、应用部署和工作负载身份分离；对 profile 关闭、默认动作变化、宽来源例外、管理端口和 NAT 重定向要求按目标、来源、有效期与回滚结果审批，限制 break-glass 权限并记录其使用。
+          en: Separate firewall write authority from ordinary host administrators, application deployment, and workload identities. Require approval bound to target, source, lifetime, and rollback outcome for profile disablement, default-action changes, broad-source exceptions, management ports, and NAT redirection, and constrain and record break-glass use.
+    control_type: preventive
+  - key: versioned-effective-policy
+    name: {zh: 有效策略版本和独立命中留存, en: Versioned Effective Policy and Independent Hit Retention}
+    description:
+      paragraphs:
+        - zh: 从控制面和设备分别保存签名或不可变的有效策略、资源绑定、规则优先级、NAT 映射、变更主体及命中记录；对云资源保留安全组关联与控制面 API，避免只看当前规则或单一设备日志。
+          en: Preserve signed or immutable effective policy, resource attachment, rule precedence, NAT mapping, change principal, and hit records from both control plane and device. For cloud resources retain security-group association and control-plane APIs rather than relying on current rules or a single device log.
+    control_type: detective-support
+  - key: reachability-validation-recovery
+    name: {zh: 可达性验证与可信恢复, en: Reachability Validation and Trusted Recovery}
+    description:
+      paragraphs:
+        - zh: 对高价值边界运行低风险的允许/拒绝双向 canary，变更后验证目标路径、真实接收服务与预期裁决；疑似受损时保存前后策略和 flow 后从受信基线重建，确认历史暗门、临时规则及其后继会话已被调查。
+          en: Run low-risk allow and deny canaries across high-value boundaries and after changes verify target path, real receiving service, and expected decision. On suspected impairment preserve before-and-after policy and flow, rebuild from a trusted baseline, and investigate historical hidden openings, temporary rules, and their follow-on sessions.
+    control_type: containment
+applications:
+  - target_ref: NJT-0124
+    use:
+      paragraphs:
+        - zh: 对所有系统防火墙建立批准的有效策略与资源绑定图，给写入者最小权限和精确审批，并把独立审计、规则命中、NAT 后接收进程与 canary 结果关联到同一版本。
+          en: For all system firewalls, establish an approved effective-policy and resource-attachment graph, grant writers least privilege and exact approval, and join independent audit, rule hits, post-NAT receiver, and canary outcomes to the same version.
+    expected_effect:
+      paragraphs:
+        - zh: 攻击者难以悄然改变整体裁决、建立窄暗门或隐藏真实接收者；已发生的变更可以按版本和真实会话恢复，而不只按当前配置判断。
+          en: An adversary has more difficulty silently changing broad decisions, opening narrow backdoors, or hiding the real receiver; occurred changes can be reconstructed by version and real session rather than current configuration alone.
+    limitations:
+      paragraphs:
+        - zh: 控制面、设备和日志若被同一高权限主体共同控制，独立证据可能失效；策略验证会带来流量、成本及业务兼容性负担。
+          en: Independent evidence can fail when one privileged actor controls the management plane, device, and logs together. Policy validation also incurs traffic, cost, and business-compatibility burdens.
+  - target_ref: NJS-0124-001
+    use:
+      paragraphs:
+        - zh: 对整个 profile、zone 和默认动作启用配置锁定与实时批准，变更前后从独立位置测试若干原本应拒绝的路径，并监控拒绝量与资源绑定是否同时变化。
+          en: Lock entire profiles, zones, and default actions behind real-time approval, probe several previously denied paths from an independent position before and after change, and monitor deny volume and resource attachments together.
+    expected_effect:
+      paragraphs:
+        - zh: 大范围关停要么被阻断，要么迅速表现为配置与可达性的联合异常；可信恢复可以缩短全域暴露窗口。
+          en: Broad shutdown is blocked or quickly appears as a combined configuration and reachability anomaly, and trusted restoration shortens the fleet-wide exposure interval.
+    limitations:
+      paragraphs:
+        - zh: 故障切换或灾备可能确需临时宽放行；可用性优先的 break-glass 模式仍可能制造空窗，必须保留精确审批与到期。
+          en: Failover or disaster recovery may require temporary broad access; availability-first break-glass modes can still create a gap and need exact approval and expiry.
+  - target_ref: NJS-0124-002
+    use:
+      paragraphs:
+        - zh: 每个精确例外都绑定 owner、来源、目标服务、有效期和首个预期会话，限制 0.0.0.0/0 等宽来源，并对创建、修改、短时删除及资源重绑保留不可变版本。
+          en: Bind each scoped exception to owner, source, target service, lifetime, and first expected session, constrain broad sources such as 0.0.0.0/0, and retain immutable versions across creation, edit, brief deletion, and resource rebinding.
+    expected_effect:
+      paragraphs:
+        - zh: 恶意规则的匹配范围和生命周期更易被审查，攻击者必须接受更窄可用路径或留下未经批准的例外与会话关联。
+          en: Malicious-rule scope and lifetime become easier to review, forcing the adversary to accept a narrower usable path or leave an unapproved exception joined to a session.
+    limitations:
+      paragraphs:
+        - zh: 自动伸缩、第三方维护和动态地址会产生频繁合法变化；若产品不记录 rule-hit，只能通过策略模拟和 flow 推断生效。
+          en: Autoscaling, third-party maintenance, and dynamic addresses produce frequent legitimate changes; products without rule-hit logs permit only policy-simulation and flow-based inference of effect.
+  - target_ref: NJS-0124-003
+    use:
+      paragraphs:
+        - zh: 仅允许受管服务部署流程写 NAT/REDIRECT，保存 pre/post-NAT 会话和 conntrack 与本地 socket/PID 映射，并验证常用公开端口仍连接到其批准服务而非临时监听。
+          en: Permit only managed service-deployment workflows to write NAT or REDIRECT, retain pre/post-NAT sessions and conntrack-to-local-socket or PID mapping, and verify common public ports still reach approved services rather than temporary listeners.
+    expected_effect:
+      paragraphs:
+        - zh: 表面常用端口与真实后门接收者之间的错位可被恢复，来源限定的短时重定向更难藏在正常代理规则中。
+          en: The mismatch between an apparently ordinary port and real backdoor receiver can be recovered, and source-limited short redirects are harder to hide among normal proxy rules.
+    limitations:
+      paragraphs:
+        - zh: 透明代理和服务网格也会产生相同网络形状；封闭设备可能不导出 conntrack 或进程映射，受侵内核还可能伪造本地证据。
+          en: Transparent proxies and service meshes can produce the same network shape; closed devices may not export conntrack or process mapping, and a compromised kernel can forge local evidence.
+evidence_refs: [REF-000451, REF-000452, REF-000453, REF-000454, REF-000455, REF-000155]
+lifecycle: {status: review, version: "1.0.0", created: "2026-09-22", modified: "2026-09-22", contributors: [Niji Matrix Research], reviewers: []}

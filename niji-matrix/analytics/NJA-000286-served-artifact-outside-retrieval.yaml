@@ -1,0 +1,121 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000286
+strategy_ref: DET-000229
+name:
+  zh: 可服务产物创建至外部成功响应关联
+  en: Served Artifact Creation to Successful External Response Correlation
+summary:
+  zh: 把受害服务路径中的异常数据产物连接到外部请求、成功响应和发送字节。
+  en: Join an unusual data artifact in a victim-served path to an outside request, successful response, and sent
+    bytes.
+domains:
+- enterprise
+platforms: []
+logic:
+  paragraphs:
+  - zh: 建立服务实例的 physical_path_to_uri、deployment_principal、approved_content_source 和 expected_mime 清单。对 Web 根、静态目录、导出目录或对象存储的
+      FileCreated/FileRenamed 事件记录 file_id/hash/size/sensitivity、writer_process、account 和 deployment_id；随后在零至七十二小时内按
+      URI/path、host、size 与时间关联 IIS W3C、反向代理或对象访问日志中的外部 client_ip、method、status、sc_bytes、user_agent 和 auth_identity。若未批准主体生成敏感产物，外部
+      GET/下载返回成功且响应量与产物相容，则输出 pull_exfiltration_confirmed；只有文件或只有下载分别保持 staged_artifact 与 external_retrieval_candidate。删除与导出请求清理作为加权证据，不是必需条件。
+    en: Inventory physical_path_to_uri, deployment_principal, approved_content_source, and expected_mime for each
+      service instance. For FileCreated or FileRenamed events in web roots, static, export, or object-storage paths,
+      record file_id or hash, size, sensitivity, writer_process, account, and deployment_id. Over zero to seventy-two
+      hours, join by URI or path, host, size, and time to external client_ip, method, status, sc_bytes, user_agent,
+      and auth_identity in IIS W3C, reverse-proxy, or object-access logs. Emit pull_exfiltration_confirmed when
+      an unapproved principal creates a sensitive artifact and an outside GET or download succeeds with a response
+      size compatible with the artifact. File-only and download-only states remain staged_artifact and external_retrieval_candidate.
+      Deletion and export-request cleanup add weight but are not required.
+data_requirements:
+- source_type: endpoint-file
+  name:
+    zh: 服务目录文件事件
+    en: Served-directory file events
+  channel: DeviceFileEvents, Sysmon Event ID 11 or equivalent EDR
+  required_fields:
+  - event-time
+  - device-id
+  - action-type
+  - folder-path
+  - file-name
+  - file-size
+  - sha1-or-file-id
+  - sensitivity-label
+  - initiating-process-unique-id
+  - initiating-process-account
+- source_type: web-access
+  name:
+    zh: Web 服务访问与响应
+    en: Web service access and response
+  channel: IIS W3C, reverse proxy or object-access log
+  required_fields:
+  - event-time
+  - server-id
+  - client-ip
+  - method
+  - uri-stem-or-object-key
+  - status
+  - bytes-sent
+  - user-agent
+  - auth-identity
+- source_type: service-publication-map
+  name:
+    zh: 物理路径到公开 URI 映射
+    en: Physical path to public URI map
+  channel: web-server configuration and deployment inventory
+  required_fields:
+  - server-id
+  - physical-path
+  - uri-prefix
+  - expected-mime
+  - deployment-principal
+  - approved-content-source
+  - config-version
+observables:
+- zh: 非批准进程在可服务目录创建归档或伪装数据文件
+  en: An unapproved process creates an archive or disguised data file in a served directory
+- zh: 外部客户端请求映射 URI，服务返回成功状态与显著响应字节
+  en: An outside client requests the mapped URI and the service returns success with significant response bytes
+correlation:
+  window:
+    zh: 以二十四小时连接文件创建和外部取回，并保留物理路径到 URI 的映射版本。
+    en: Use twenty-four hours to join file creation and outside retrieval and retain versioned physical-path-to-URI
+      mappings.
+  dimensions:
+  - server-id
+  - file-or-object-id
+  - physical-path
+  - uri
+  - client-ip
+  - writer-process-start-key
+  - account
+  - deployment-id
+  - time
+false_positives:
+- zh: 批准静态发布、软件分发、客户下载和管理员导出
+  en: Approved static publishing, software distribution, customer download, and administrator export
+blind_spots:
+- zh: 内容由内存动态生成或 CDN 缓存绕过源访问日志
+  en: Content is generated in memory or CDN caching bypasses origin access logs
+- zh: Web 日志缺少响应字节，文件事件缺少创建进程
+  en: Web logs omit response bytes or file events omit creator process
+tuning_guidance:
+  paragraphs:
+  - zh: 对可服务目录实行批准部署主体和变更窗口正向清单，并保留 path-to-URI 版本。优先调查敏感标签、归档/图片扩展不一致、新外部客户端与创建后短时取回；不能以扩展名或响应大小单独判定。对 CDN 场景引入源站对象
+      ID 与边缘请求 ID，无法联接时明确降低置信度。
+    en: Positively inventory approved deployment principals and change windows for served locations and version
+      the path-to-URI map. Prioritize sensitivity labels, archive or image extension mismatch, new outside clients,
+      and retrieval shortly after creation; extension or response size alone is not decisive. For CDNs, add origin-object
+      and edge-request IDs and explicitly lower confidence when they cannot be joined.
+evidence_refs:
+- REF-000509
+- REF-000514
+- REF-000924
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-10-04'
+  modified: '2026-10-04'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

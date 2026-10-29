@@ -1,0 +1,110 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000307
+strategy_ref: DET-000238
+name:
+  zh: TLS—HTTP—提供方路由权威一致性分析
+  en: TLS-HTTP-Provider Routing-Authority Congruence Analytic
+summary:
+  zh: 验证同一共享边缘会话的外层名称与真实路由权威是否一致。
+  en: Validate congruence between outer identity and actual routing authority in one shared-edge session.
+domains:
+- enterprise
+platforms:
+- Windows
+- Linux
+- macOS
+- Network Devices
+logic:
+  paragraphs:
+  - zh: 以 device_id、session_id 或 provider_request_id 合并 DNS、TLS 与 HTTP 层，计算 outer_name、certificate_names、inner_routing_authority
+      和 route_owner 的一致关系。若 SNI 缺失或与 Host 不同，且 Host 未被证书覆盖、路由不属于同一批准账户/订阅，或提供方记录 SSLMismatchedSNI/421，则标记 routing_authority_divergence。只有再连接到未批准源站、C2
+      进程或控制结果时才提升高置信；同账户合法多域路由、Host 重写和旧客户端无 SNI 作为替代解释保留。
+    en: Join DNS, TLS, and HTTP layers by device_id, session_id, or provider_request_id and compute congruence among
+      outer_name, certificate_names, inner_routing_authority, and route_owner. Mark routing_authority_divergence when
+      SNI is absent or differs from Host and the Host is not certificate-covered, routing does not belong to the same
+      approved account or subscription, or the provider records SSLMismatchedSNI or 421. Raise to high confidence only
+      after joining an unapproved origin, C2 process, or control outcome. Preserve same-account legitimate multi-domain
+      routing, Host rewriting, and legacy no-SNI clients as alternatives.
+data_requirements:
+- source_type: dns-tls-http
+  name:
+    zh: dns tls http
+    en: dns tls http
+  channel: resolver, TLS sensor, decrypting proxy, or endpoint network telemetry
+  required_fields:
+  - event_time
+  - device_id
+  - resolved_name
+  - edge_ip
+  - session_id
+  - outer_name
+  - certificate_names
+  - certificate_id
+  - inner_routing_authority
+  - http_method
+  - request_path
+  - response_status
+- source_type: cdn-or-frontdoor-diagnostic
+  name:
+    zh: cdn or frontdoor diagnostic
+    en: cdn or frontdoor diagnostic
+  channel: provider access and diagnostic logs
+  required_fields:
+  - event_time
+  - provider_request_id
+  - outer_name
+  - inner_routing_authority
+  - provider_decision
+  - provider_result
+  - route_id
+  - route_owner
+  - origin_name
+  - origin_ip
+  - origin_url
+observables:
+- zh: SNI 与 Host/:authority 不一致且不属于批准的同账户路由
+  en: SNI and Host or :authority diverge outside an approved same-account route
+- zh: 提供方记录未批准源站或路由错误并连接端点控制结果
+  en: Provider logs show an unapproved origin or routing error joined to endpoint control outcome
+correlation:
+  window:
+    zh: 企业传感器联接五分钟；提供方 request_id 覆盖单次请求生命周期。
+    en: Five minutes for enterprise-sensor joins and the provider request lifetime for request_id.
+  dimensions:
+  - device_id
+  - session_id
+  - provider_request_id
+  - edge_ip
+  - outer_name
+  - inner_routing_authority
+  - certificate_id
+  - route_owner
+  - origin_name
+  - time
+false_positives:
+- zh: 合法 CDN 多租户、反向代理 Host 重写、迁移或测试
+  en: Legitimate CDN multitenancy, reverse-proxy Host rewriting, migration, or testing
+blind_spots:
+- zh: TLS/ECH/HTTP3 不可见或提供方账户/源站字段不可得
+  en: TLS, ECH, or HTTP3 is opaque or provider account and origin fields are unavailable
+tuning_guidance:
+  paragraphs:
+  - zh: 维护按应用、提供方账户/订阅、证书、前端域和源站绑定的批准路由图；先记录 mismatch，再对跨账户和未批准源站执行阻断。不要把所有 SNI/Host 差异等同恶意，也不能因知名 CDN 域而整体豁免。
+    en: Maintain an approved routing graph bound by application, provider account or subscription, certificate, front
+      domain, and origin. Observe mismatches before enforcing and block cross-account or unapproved-origin cases. Do
+      not equate every SNI-to-Host difference with malice or exempt an entire well-known CDN domain.
+evidence_refs:
+- REF-001024
+- REF-001029
+- REF-001030
+- REF-001031
+- REF-001026
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-10-04'
+  modified: '2026-10-04'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

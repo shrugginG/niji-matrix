@@ -1,0 +1,238 @@
+schema_version: 2.0.0
+type: technique
+id: NJT-0089
+name:
+  zh: 持久系统服务定义
+  en: Durable System-Service Definition
+summary:
+  zh: 攻击者在服务管理器中保存可重复产生系统进程的定义，并通过既有服务身份替换、受限枚举或生命周期分离降低从写入到持久执行及权限结果的可辨识性。
+  en: Adversaries preserve a service-manager definition that can repeatedly produce a system process and reduce distinguishability
+    from mutation to durable execution and authority outcome through established-service identity substitution, restricted
+    enumeration, or lifecycle separation.
+aliases:
+- Create or Modify System Process
+classification:
+  tactic_refs:
+  - TA0003
+  - TA0004
+  origin:
+    kind: attack-adapted
+    source_attack_id: T1543
+    source_attack_version: '19.1'
+  decision_ref: DEC-TA0003-T1543
+definition_and_concept:
+  paragraphs:
+  - zh: 持久系统服务定义是攻击者在操作系统、容器运行时或集群节点的服务管理器中创建或修改服务、守护进程、代理或等价控制对象，使其在启动、登录、管理器重载、失败恢复或期望状态重建时反复产生攻击者控制进程的技术。直接目标是把后续执行委托给受信系统管理器，从而在原入侵会话结束后仍保存运行入口。
+    en: Durable System-Service Definition creates or modifies a service, daemon, agent, or equivalent control object in an
+      operating-system, container-runtime, or cluster-node service manager so it repeatedly produces an adversary-controlled
+      process at boot, logon, manager reload, failure recovery, or desired-state reconciliation. Its direct objective is to
+      delegate later execution to a trusted system manager and preserve an execution entry after the original intrusion session
+      ends.
+  - zh: 概念锚是“被管理器持久保存的定义及其到进程的谱系”，不是一次进程创建、启动命令、平台或文件格式。T1569 负责一次服务执行；T1547 负责不以服务对象为核心的一般启动/登录映射；T1037 负责初始化脚本正文；T1574 负责模块或加载路径劫持。
+    en: The conceptual anchor is a manager-persisted definition and its lineage to a process, not a single process creation,
+      start command, platform, or file format. T1569 owns one-time service execution, T1547 general boot or logon mappings
+      not centered on a service object, T1037 initialization-script content, and T1574 module or load-path hijacking.
+  - zh: 服务定义既可在系统生命周期中持续恢复进程，也可能让可被较低权限主体影响的定义由更高权限服务管理器执行。后一种情况只有在运行身份实际带来此前没有的资源权限时，才同时服务于权限提升。
+    en: A service definition can durably restore a process across system lifecycles or cause a definition influenced by a
+      lower-authority principal to be executed by a higher-authority service manager. The latter also serves Privilege Escalation
+      only when the runtime identity actually provides resource authority that was previously unavailable.
+stealth_characteristics:
+  paragraphs:
+  - zh: 服务执行天然由 launchd、systemd、Service Control Manager、容器运行时或节点代理等受信高权限宿主发起。攻击者若保留既有服务名称、账户、启动条件和父进程，只替换目标路径或指令，运行事件会继续呈现正常服务身份；若再限制服务对象的查询权限，常规管理界面甚至不能列出底层仍存在的定义。两类变量分别削弱实体区分和观察覆盖。
+    en: Service execution naturally originates from trusted privileged hosts such as launchd, systemd, the Service Control
+      Manager, a container runtime, or a node agent. If an adversary preserves an established service name, account, trigger,
+      and parent process while substituting only the target path or directive, execution continues to present a normal service
+      identity. Restricting query rights on the service object can additionally remove an extant definition from routine management
+      views. The two variables separately weaken entity discrimination and observation coverage.
+  - zh: 服务并非无痕。定义版本、路径或内容哈希、对象权限、writer、服务账户、启动类型、管理器事务、解析后的映像、签名与后继网络结果可以恢复因果链。软件安装、补丁、容器编排、故障恢复和管理员修复会产生相似变化；缺少变更审批和历史快照时，单一新服务或重启事件不能证明恶意。
+    en: A service is not traceless. Definition version, path or content hash, object permissions, writer, service account,
+      start type, manager transaction, resolved image, signature, and follow-on network outcome can reconstruct causality.
+      Software installation, patching, container orchestration, failure recovery, and administrator repair produce similar
+      changes. Without change approval and historical snapshots, one new-service or restart event cannot establish maliciousness.
+  - zh: 权限提升链还会被层次和时间分离。配置侧看到早先 writer 与局部定义变化，执行侧只看到 SCM、systemd、launchd 或节点代理以正常账户启动服务，结果侧才出现新增授权。若检测把 root/SYSTEM 字符串或受信父进程当成既知良性，又没有保存
+      writer/pre-state 授权集合、实际 token 和首个新获准结果，身份借用、枚举遗漏与延迟启动会把一条提权因果链拆成若干看似正常事件。
+    en: An elevation chain is also separated by layer and time. The configuration side sees an earlier writer and local definition
+      change, the execution side sees SCM, systemd, launchd, or a node agent launching the service under a normal account,
+      and only the outcome side shows added authorization. If detection treats a root or SYSTEM string or trusted parent as
+      known-good and does not preserve writer or pre-state authorization, the actual token, and the first newly authorized
+      result, identity borrowing, enumeration omission, and delayed start divide one elevation chain into apparently normal
+      events.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 纳入由服务管理器持久保存、能在后续生命周期事件中重复创建系统级或后台进程的定义创建、目标修改、对象权限修改及其实际执行。判定必须同时确认定义具有跨会话或期望状态持续性、攻击者控制关键执行语义，并存在定义到后继进程的可证明连接。
+    en: Scope includes creation, target modification, or object-permission modification of a manager-persisted definition
+      capable of repeatedly creating a system-level or background process during a later lifecycle event, together with its
+      actual execution. Classification requires cross-session or desired-state durability, adversary control of critical execution
+      semantics, and a demonstrable connection from definition to successor process.
+  - zh: 只通过服务启动现有命令而未保存新状态归 T1569；只修改服务目标二进制内容归 NJT-0087；只修改模块解析或依赖搜索归 T1574；按时间运行归 T1053。服务名称拟态只有在保留或借用实际服务身份与运行上下文时才进入 NJS-0089-001，普通新服务使用相似名称仍只是父级行为。
+    en: Starting an existing command through a service without new durable state belongs to T1569, modifying only the target
+      binary content to NJT-0087, changing module resolution or dependency search to T1574, and calendar execution to T1053.
+      Service-name masquerading enters NJS-0089-001 only when it preserves or borrows an actual service identity and operating
+      context; a new service with a similar name remains parent behavior.
+  - zh: 服务以 LocalSystem、root 或其他高权限账户运行只说明潜在影响。如果定义修改本来就要求等同权限，或者用户级服务仍在同一权限下运行，就没有新的权限增加；错误访问控制或委派边应与相邻技术共同记录。
+    en: A service running as LocalSystem, root, or another privileged account shows potential impact only. If changing the
+      definition already requires equivalent authority, or a user service still runs at the same authority, no new privilege
+      is gained. Weak access control or delegation edges are recorded with the adjacent technique.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: 攻击者取得主机或集群服务管理权限后，可修改现有 unit、plist、Windows 服务或节点代理定义，或建立新定义，使载荷在重启、用户会话、失败恢复或节点调和时再次运行。高价值场景包括原交互会话即将丢失、工作负载会被重建，或攻击者希望由正常系统宿主承担后续启动的环境。
+      en: After gaining host or cluster service-management authority, an adversary can modify an existing unit, plist, Windows
+        service, or node-agent definition or establish a new definition so a payload runs again on reboot, user session, failure
+        recovery, or node reconciliation. High-value scenarios include impending loss of the interactive session, workload
+        rebuilds, or environments where the adversary wants a normal system host to perform later launches.
+    - zh: 权限提升场景包括低权限主体因错误的 service DACL、可写 unit/plist、部署控制面授权或其他定义输入边界而能改变由更高权限账户运行的服务。攻击者让 manager 消费精确恶意版本，并用所得 token 写受保护资源、访问此前被拒绝的对象或创建更高权限后继主体。若攻击者原先已经能完成同一结果，场景仍可确认持久服务滥用，但不确认提权。
+      en: Elevation scenarios include a lower-authority principal able to change a service run by a higher-authority account
+        because of a mistaken service DACL, writable unit or plist, deployment control-plane grant, or another definition-input
+        boundary. The adversary makes the manager consume the exact malicious version and uses the resulting token to modify
+        protected resources, access a previously denied object, or create a higher-authority successor. If the adversary could
+        already complete the same result, the scenario can establish durable service abuse but not elevation.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者需要写入服务定义、注册表、对象权限或编排规范的权限，能够控制解析后的可执行目标，并理解管理器加载、账户和恢复语义。既有身份替换还要求选择不会立即破坏业务的目标；受限枚举要求改变查询权限而不阻止管理器自身读取。强签名、只读系统分区、JIT
+          管理与声明式完整性会提高成本。
+        en: The adversary needs authority to write service definitions, registry state, object permissions, or orchestration
+          specifications, control of the resolved executable target, and knowledge of manager loading, account, and recovery
+          semantics. Established-identity substitution also requires a target that can be altered without immediately breaking
+          business; restricted enumeration requires changing query rights without blocking the manager itself. Strong signing,
+          read-only system partitions, JIT administration, and declarative integrity raise the cost.
+    defender_model:
+      paragraphs:
+      - zh: 防守方需要服务控制事务、定义与权限历史、解析后路径、文件身份、进程谱系和变更审批，并以稳定 object ID 跨重启关联。只看正在运行的进程会丢失创建者，只看管理器当前列表会漏掉隐藏对象，只看名称和父进程会接受被借用的服务身份。
+        en: The defender needs service-control transactions, definition and permission history, resolved paths, file identity,
+          process lineage, and change approval, correlated across reboots by stable object ID. Process-only monitoring loses
+          the creator, current-manager-list monitoring misses hidden objects, and name or parent-process-only baselines accept
+          a borrowed service identity.
+stealth_mechanisms:
+- mechanism_ref: NM-FD
+  role: primary
+  summary:
+    zh: 既有服务身份承载被替换的执行目标
+    en: An established service identity carries a substituted execution target
+  analysis:
+    paragraphs:
+    - zh: 攻击者保留已知服务名称、管理器、账户、启动条件和受信父进程，只改变 ImagePath、Exec 指令、符号链接解析或等价目标。执行日志仍携带正常服务外观，而真正语义转移到新的映像或命令；依赖名称、父进程或启动时间的分类因此难以区分恶意实体，形成特征伪装。ATT&CK
+        直接记录修改既有服务和 ImagePath，匿迹影响为高置信度综合结论。
+      en: The adversary preserves a known service name, manager, account, trigger, and trusted parent process while changing
+        only ImagePath, an Exec directive, symbolic-link resolution, or an equivalent target. Execution logs retain the normal
+        service appearance while real semantics move to a new image or command. Classification based on name, parent, or launch
+        time therefore struggles to distinguish the malicious entity, producing Feature Disguise. ATT&CK directly records
+        existing-service and ImagePath modification; the evasion effect is a high-confidence synthesis.
+    - zh: 在权限提升链中，攻击者的行为设计是保留成熟 service identity 而让被替换版本由更高权限账户执行；痕迹变化集中在较早 definition diff，执行侧仍显示正常 manager、账户和启动条件；只按运行身份或父进程观察的防守者会把新获准操作归因给受信服务；因此身份借用使攻击者控制和权限转换更难区分。CASE-000103
+        直接支持身份替换，但未公开权限 delta，所以跨战术效果保持 medium。
+      en: In an elevation chain, the adversary's design preserves a mature service identity while making the substituted version
+        execute under a higher-authority account. Trace change concentrates in an earlier definition difference while execution
+        still shows a normal manager, account, and start condition. A defender observing only runtime identity or parent process
+        attributes the newly authorized operation to a trusted service, so borrowed identity makes adversary control and authority
+        transition harder to distinguish. CASE-000103 directly supports identity substitution but does not expose an authority
+        difference, so cross-tactic effect remains medium.
+  evidence_refs:
+  - REF-000182
+  - REF-000291
+  - REF-000336
+  confidence: medium
+- mechanism_ref: NM-BT
+  role: secondary
+  summary:
+    zh: 服务对象权限使默认管理查询遗漏底层定义
+    en: Service-object permissions make default management queries omit the underlying definition
+  analysis:
+    paragraphs:
+    - zh: 攻击者修改服务对象安全描述符，使标准服务枚举或常规管理界面无权返回对象，但服务控制器仍能读取注册状态并执行它。行为不是删除痕迹，而是利用观察接口权限差异让关键定义落在默认监控范围之外，形成行为透明；底层注册表、原始服务控制
+        API、权限审计与进程结果仍可暴露它。
+      en: The adversary changes a service object's security descriptor so standard enumeration or routine management views
+        cannot return it while the service controller can still read registration state and execute it. Rather than removing
+        traces, the behavior exploits an observation-interface permission difference to move the critical definition outside
+        default monitoring, producing Behavioral Transparency. Underlying registry state, raw service-control APIs, permission
+        audit, and process outcomes can still expose it.
+  evidence_refs:
+  - REF-000182
+  - REF-000336
+  confidence: medium
+- mechanism_ref: NM-ST
+  role: secondary
+  summary:
+    zh: 持久定义把 writer 与高权限服务结果跨生命周期分离
+    en: A durable definition separates the writer from a privileged service outcome across lifecycle boundaries
+  analysis:
+    paragraphs:
+    - zh: 攻击者先写入或修改 manager 持久保存的 service definition，再等待启动、重启、失败恢复或期望状态调和。行为设计把直接操作委托给稍后的 manager；痕迹由一个连续提权动作变为较早配置变化、静置期和正常生命周期启动；短窗口防守观察只看见
+        writer 或后来的受信高权限 service，无法计算两者权限差；提权链因此被时序稀释为旧配置与例行执行。稳定 object/version、manager transaction、实际 token 和首个结果仍可恢复因果。
+      en: The adversary writes or changes a service definition persisted by the manager and waits for start, reboot, failure
+        recovery, or desired-state reconciliation. The behavioral design delegates direct action to the later manager. The
+        trace changes from one continuous elevation action into an earlier configuration change, dormancy, and a normal lifecycle
+        start. A short-window defender sees either the writer or the later trusted privileged service and cannot calculate
+        the authority difference, diluting the elevation chain into old configuration and routine execution. Stable object
+        and version, manager transaction, actual token, and first outcome can still recover causality.
+  evidence_refs:
+  - REF-000182
+  - REF-000337
+  confidence: medium
+subtechnique_taxonomy:
+  narrative:
+    paragraphs:
+    - zh: 本技术建立两项 Niji 原生子技术。既有服务身份替换固定“可见服务身份保持、执行目标语义改变”；受限枚举服务注册固定“底层对象存在、标准管理视图因权限差异不可见”。前者需要定义—目标—进程完整性关联，后者需要高权限原始状态与普通管理视图的差分，两者可以组合但不能互相替代。
+      en: This technique establishes two Niji-native children. Established-Service Identity Substitution fixes a visible service
+        identity while execution-target semantics change. Enumeration-Restricted Service Registration fixes an underlying
+        object that exists while standard management views cannot see it because of permission differences. The former requires
+        definition-target-process integrity correlation, while the latter requires a differential between privileged raw state
+        and ordinary management views. They can combine but do not substitute for one another.
+    - zh: 固定基线 T1543.001–.005 仅用于覆盖 launchd、systemd、Windows 和容器服务实现，没有按平台导入。分布式服务扇出虽可能降低单节点信号，但当前证据不能把它与合法期望状态编排稳定区分，因此保持
+        deferred。
+      en: Fixed-baseline T1543.001–.005 cover launchd, systemd, Windows, and container-service implementations but were not
+        imported by platform. Distributed service fanout may weaken per-node signals, but current evidence cannot stably separate
+        it from legitimate desired-state orchestration, so it remains deferred.
+  coverage: established
+  subtechnique_refs:
+  - NJS-0089-001
+  - NJS-0089-002
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000063
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000060
+evidence:
+  claim_refs:
+  - CLM-000364
+  - CLM-000365
+  - CLM-000366
+  - CLM-000546
+  - CLM-000547
+  case_refs:
+  - CASE-000103
+  reference_refs:
+  - REF-000131
+  - REF-000182
+  - REF-000289
+  - REF-000290
+  - REF-000291
+  - REF-000292
+  - REF-000336
+  - REF-000337
+research:
+  limitations:
+    paragraphs:
+    - zh: ATT&CK 父页与 Windows 服务材料直接证明既有目标修改、名称伪装和通过 SDDL 限制标准枚举；跨平台实现只在具有相同身份保留或视图差分时纳入。服务名称相似、受信父进程或枚举缺失均不能单独证明攻击意图，必须连接
+        writer、定义差异、权限和执行结果。
+      en: The ATT&CK parent and Windows-service material directly establish existing-target modification, name disguise, and
+        SDDL-based restriction of standard enumeration. Cross-platform implementations qualify only when they show the same
+        identity preservation or view differential. A similar service name, trusted parent, or missing enumeration cannot
+        alone establish adversary intent; writer, definition difference, permissions, and execution outcome must be joined.
+    - zh: 容器 DaemonSet、restart policy 与节点选择说明持久服务可跨节点传播，但公开来源没有证明攻击者为降低局部检测而选择扇出，也没有给出稳定区别于合法编排的阈值，因此未正式化为子项。服务内部不产生子进程、内存载荷或日志保留短会降低防守关联能力。
+      en: Container DaemonSets, restart policies, and node selection show that durable services can propagate across nodes,
+        but public sources do not establish adversary selection of fanout to reduce local detection or a stable threshold
+        separating it from legitimate orchestration, so no child is formalized. Services without child processes, memory-resident
+        payloads, and short log retention reduce defensive correlation.
+lifecycle:
+  status: review
+  version: 1.1.0
+  created: '2026-09-11'
+  modified: '2026-09-19'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

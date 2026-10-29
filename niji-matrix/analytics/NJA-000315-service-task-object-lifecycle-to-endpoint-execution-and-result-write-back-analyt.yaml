@@ -1,0 +1,152 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000315
+strategy_ref: DET-000242
+name:
+  zh: 服务任务对象生命周期—端点执行—结果回写分析
+  en: Service Task-Object Lifecycle to Endpoint Execution and Result Write-Back Analytic
+summary:
+  zh: 恢复服务任务对象从写入、读取、执行到结果回写的异步循环。
+  en: Recover an asynchronous service task-object loop from write and read through execution and result write-back.
+domains:
+- enterprise
+platforms:
+- Windows
+- Linux
+- macOS
+logic:
+  paragraphs:
+  - zh: 按 provider、namespace、container/object ID 与 version 建立 operator_or_unknown_write、implant_list_or_read、endpoint_control_outcome、implant_result_write、operator_or_unknown_read、delete_or_ack
+      状态机。以 request ID、token、对象路径/版本和 process 连接服务与端点。task read 加 endpoint outcome 输出 one_way_task_confirmed；另有 result/heartbeat
+      write 则输出 control_loop_confirmed。只有轮询或只有对象写分别保持 poll_only/object_only；外部 tenant 无 audit 时只输出 partial_loop。
+    en: Build operator_or_unknown_write, implant_list_or_read, endpoint_control_outcome, implant_result_write, operator_or_unknown_read,
+      and delete_or_ack states by provider, namespace, container or object ID, and version. Join service and endpoint
+      events with request ID, token, object path or version, and process. Task read plus endpoint outcome emits one_way_task_confirmed;
+      a result or heartbeat write emits control_loop_confirmed. Polling-only and object-write-only remain poll_only or
+      object_only, and an outside tenant without audit supports partial_loop only.
+data_requirements:
+- source_type: service-object-audit
+  name:
+    zh: service object audit
+    en: service object audit
+  channel: provider audit API, M365, GitHub, mailbox, or service export
+  required_fields:
+  - event_time
+  - provider
+  - resource_namespace_id
+  - object_actor_id
+  - token_id
+  - object_action
+  - object_type
+  - object_id
+  - container_id
+  - object_path
+  - object_version
+  - provider_request_id
+  - source_ip
+  - result_status
+  - object_bytes
+- source_type: graph-drive-delta
+  name:
+    zh: graph drive delta
+    en: graph drive delta
+  channel: Microsoft Graph driveItem delta or provider change API
+  required_fields:
+  - object_id
+  - object_name
+  - drive_id
+  - container_id
+  - object_bytes
+  - object_version
+  - content_version
+  - created_at
+  - modified_at
+  - creator_id
+  - modifier_id
+  - deletion_state
+  - page_cursor
+  - delta_cursor
+- source_type: endpoint-service-request
+  name:
+    zh: endpoint service request
+    en: endpoint service request
+  channel: EDR network plus proxy/CASB
+  required_fields:
+  - event_time
+  - device_id
+  - process_start_key
+  - principal_id
+  - service_action
+  - resource_uri
+  - result_status
+  - response_bytes
+  - provider_request_id
+- source_type: endpoint-outcome
+  name:
+    zh: 端点后果
+    en: Endpoint outcome
+  channel: EDR process, file, module, script, and command events
+  required_fields:
+  - event_time
+  - device_id
+  - process_start_key
+  - parent_process_start_key
+  - endpoint_action
+  - object_name
+  - object_path
+  - command_line
+  - object_hash
+observables:
+- zh: 操作者写入—植入读取—执行—结果回写/删除形成对象循环
+  en: Operator write, implant read, execution, and result write-back or deletion form an object loop
+- zh: 非同步进程周期列举/读取任务并产生心跳或结果对象
+  en: A non-sync process periodically lists or reads tasks and creates heartbeat or result objects
+correlation:
+  window:
+    zh: 读取到后果三十分钟、任务到结果二十四小时、对象/令牌历史三十日。
+    en: Thirty minutes from read to outcome, twenty-four hours from task to result, and thirty days of object or token
+      history.
+  dimensions:
+  - provider
+  - resource_namespace_id
+  - drive_id
+  - container_id
+  - object_id
+  - object_version
+  - object_path
+  - object_actor_id
+  - token_id
+  - provider_request_id
+  - device_id
+  - process_start_key
+  - endpoint_outcome_id
+  - time
+false_positives:
+- zh: 云同步协作、软件制品投放、自动作业队列和备份恢复
+  en: Cloud sync collaboration, software artifact delivery, automated job queues, and backup or restore
+blind_spots:
+- zh: 外部租户无审计、快速删除、API 批处理/缓存或内存结果不可见
+  en: No outside-tenant audit, rapid deletion, API batching or caching, or invisible in-memory outcomes
+tuning_guidance:
+  paragraphs:
+  - zh: 为同步、CI/CD、邮件和作业队列登记 app、tenant、container、对象前缀、动作和时间；轮询只作候选。优先 object ID/version，不把 .doc/.json/check/update 作为通用签名；保留
+      delete 与 delta cursor，窗口覆盖正常轮询周期。
+    en: Register application, tenant, container, object prefix, action, and time for sync, CI/CD, mail, and job queues.
+      Polling is only a candidate. Prefer object ID and version and do not treat .doc, .json, check, or update as universal
+      signatures. Retain delete and delta cursor and cover normal polling cycles.
+evidence_refs:
+- REF-000945
+- REF-001048
+- REF-001049
+- REF-001050
+- REF-000944
+- REF-001051
+- REF-000942
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-10-04'
+  modified: '2026-10-04'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

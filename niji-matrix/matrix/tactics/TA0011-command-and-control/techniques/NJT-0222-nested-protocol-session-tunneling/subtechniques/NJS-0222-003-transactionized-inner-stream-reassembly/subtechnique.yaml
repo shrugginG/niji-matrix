@@ -1,0 +1,123 @@
+schema_version: 2.0.0
+type: evasion-subtechnique
+id: NJS-0222-003
+parent_ref: NJT-0222
+name:
+  zh: 内层流事务化重组
+  en: Transactionized Inner-Stream Reassembly
+summary:
+  zh: 一个有状态内层控制流被拆入多次外层请求与响应，接收端按会话与片序重组后恢复命令。
+  en: One stateful inner control stream is divided among outer requests and responses and reassembled by session and fragment
+    order to recover commands.
+aliases: []
+lineage:
+  attck_subtechnique_inherited: false
+definition_and_concept:
+  paragraphs:
+  - zh: 内层流事务化重组指攻击者保留一个有状态命令/访问会话，却把其字节和状态片段编码进多个独立外层事务，再由隧道端点按 session ID、方向、片号或 offset 恢复原流。直接目的在于让只逐条解析 DNS 或 HTTP 请求的防守方看不到完整内层命令。外层协议、域名长度和编码字母表只是限制与参数，跨事务恢复内层语义才是本项变量。
+    en: Transactionized Inner-Stream Reassembly retains a stateful command or access session while placing its bytes and state
+      fragments in several independent outer transactions. A tunnel endpoint restores the original flow by session ID, direction,
+      fragment index, or offset. The direct purpose is keeping a defender that parses individual DNS or HTTP requests from
+      seeing a complete inner command. Outer protocol, domain length, and encoding alphabet are constraints and parameters;
+      recovery of inner semantics across transactions is the variable.
+  - zh: FortiGuard 对 TrickBot DNS 变体的客户端逆向恢复片序、总片数、缓冲区和与 HTTP 版本同构的命令结构，证明内层并非“每条 DNS 查询就是一个完整命令”。dnscat2 协议文档进一步显示会话与窗口确认如何维持跨事务流状态，但它是实现规范，不可作为
+      TrickBot 现场服务端结果的证据。
+    en: FortiGuard's reverse engineering of a TrickBot DNS variant recovered fragment order, total count, buffers, and command
+      structure isomorphic to its HTTP variant, showing that one DNS query is not necessarily a complete command. The dnscat2
+      protocol specification further shows how session and window acknowledgment maintain stream state across transactions,
+      but it is an implementation reference rather than evidence for TrickBot's field server outcomes.
+stealth_characteristics:
+  paragraphs:
+  - zh: 内层流事务化重组把一条命令链打散到许多正常形态的查询/响应，每条外层记录只含标签或小片段；短窗口、单事务规则和只看 DNS 异常长度的分析难以恢复命令方向与结果。流的状态在内存重组器和多个事务间移动，观察成本从单包解析变为长期排序与会话归并。
+    en: Transactionized Inner-Stream Reassembly scatters one command chain among many ordinary-shaped queries and responses,
+      each outer record holding only a label or small fragment. Short windows, single-transaction rules, and DNS-length heuristics
+      cannot recover command direction and result. State moves between an in-memory reassembler and several transactions,
+      shifting observation from one-packet parsing to longer ordering and session joins.
+  - zh: 残余包括重复 session ID、片号、offset、方向、确认、重传、相同进程的查询簇和重组后的命令/文件结果。完整原始事务、受管 resolver 日志与端点内存可恢复内层；缓存、丢包、加密 DNS 和低速间隔会使重组不完整，此时只能报告候选。
+    en: Residuals include repeated session IDs, fragment indices, offsets, direction, acknowledgments, retransmissions, query
+      clusters from one process, and command or file outcomes after reassembly. Complete raw transactions, managed-resolver
+      logs, and endpoint memory can restore the inner layer. Caching, loss, encrypted DNS, and slow intervals can leave reconstruction
+      incomplete, limiting the finding to a candidate.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 纳入要求同一内层会话跨至少两次外层事务被分片并按顺序恢复，且恢复后有可识别命令/访问结果。单条 DNS TXT 记录直接承载完整任务属于 NJT-0160 应用事务；仅 Base64 编码属于 NJT-0211；合法 DNS 隧道测试、远程调试或应用同步需按所有者、目的域和批准期限排除。
+    en: Inclusion requires one inner session fragmented across at least two outer transactions and reconstructed in order,
+      followed by a recognizable command or access outcome. One DNS TXT record directly containing a whole task belongs to
+      NJT-0160's application transaction. Base64 alone belongs to NJT-0211. Authorized DNS tunnel tests, remote debugging,
+      or application synchronization require exclusion by owner, destination domain, and approved period.
+  - zh: 本项是一条内层流到多次外层事务的分散关系；多流汇聚是多条内层流到一次外层会话。若隧道同时把内部服务端点与外部对端分开，还可并列端点解耦，但不得把同一片段计成多条内层服务。
+    en: This child disperses one inner flow into many outer transactions; multi-stream convergence maps several inner flows
+      into one outer session. Endpoint decoupling can co-apply if the tunnel also separates an internal service from the external
+      peer, but a fragment of one flow cannot be counted as another inner service.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: 在只能通过受管解析器访问外网的主机上，植入可把内层命令流拆进连续 DNS 查询和应答，由对端按 session/片序重组并回送结果。TrickBot 样本展示了客户端如何收集、排序并复原控制结构；真实环境中是否成功交付命令仍需服务端或端点结果关联。
+      en: On a host whose external access is limited to managed resolution, an implant can split an inner command stream among
+        DNS queries and answers for reassembly by session and fragment order and return results. A TrickBot sample shows how
+        its client collects, orders, and restores control structures. Successful command delivery in a field environment still
+        needs server or endpoint outcome correlation.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者需实现分片、序列、重传、方向和内层状态机，并控制外层域名或解析服务。DNS 缓存、长度限制、递归器丢弃与速率限制会影响可靠性；降低发送频率虽减少单窗密度，却延长任务延迟并增加累计可关联事务。
+        en: The actor must implement fragmentation, ordering, retransmission, direction, and the inner state machine and control
+          the outer domain or resolver path. DNS caching, length limits, resolver loss, and rate limits reduce reliability.
+          Lowering the send rate reduces one-window density but increases task latency and the total correlatable transaction
+          count.
+    defender_model:
+      paragraphs:
+      - zh: 防守方应保存带查询 ID、完整标签/响应、进程、解析器、方向与时间的原始事务，并从协议中提取 session ID、片号和 offset，在数小时窗口重组后验证内层命令结构及端点后继动作。只有异常域名长度或高熵标签，不能证明存在可恢复内层会话。
+        en: Defenders retain raw transactions with query ID, full label and response, process, resolver, direction, and time,
+          extract session ID, fragment index, and offset from the protocol, and validate inner command structure and endpoint
+          follow-on actions after reassembly over hours. An unusual domain length or high-entropy label alone cannot establish
+          a recoverable inner session.
+stealth_mechanisms:
+- mechanism_ref: NM-ST
+  role: primary
+  summary:
+    zh: 一个内层控制流的痕迹分散到多次外层事务
+    en: One inner control flow is dispersed across multiple outer transactions
+  analysis:
+    paragraphs:
+    - zh: 攻击者在外层请求与应答中只放内层会话片段，单次解析得到的是局部合法形态而非完整任务；跨事务状态留在重组器。单事务和短窗检测因此失去语义，防守方需以 session、片序、方向及端点结果恢复完整链，形成时空释痕。
+      en: The actor places only fragments of an inner session in outer requests and responses, so one parsed transaction shows
+        a locally plausible shape rather than a complete task while cross-transaction state remains in the reassembler. Single-transaction
+        and short-window detection loses semantics; defenders must restore the chain by session, fragment order, direction,
+        and endpoint outcome, producing Spatiotemporal Trace Dilution.
+  evidence_refs:
+  - REF-001142
+  - REF-001143
+  confidence: medium
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000258
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000200
+evidence:
+  claim_refs:
+  - CLM-001105
+  case_refs:
+  - CASE-000338
+  reference_refs:
+  - REF-001142
+  - REF-001143
+research:
+  limitations:
+    paragraphs:
+    - zh: FortiGuard 的客户端逆向与模拟服务端确认重组逻辑，但公开材料没有完整真实服务端事务或统一现场漏报记录；dnscat2 是独立实现说明。故本项的变量存在性成立，TrickBot 具体现场成功控制和普遍匿迹效果保持较低结论强度。
+      en: FortiGuard's client reverse engineering and simulated server confirm reconstruction logic, but public material lacks
+        full production server transactions or a common field miss record. dnscat2 documents an independent implementation.
+        The variable is supported, while specific TrickBot field control success and general stealth effect retain lower confidence.
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-10-05'
+  modified: '2026-10-05'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

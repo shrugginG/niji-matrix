@@ -1,0 +1,121 @@
+schema_version: 2.0.0
+type: evasion-subtechnique
+id: NJS-0178-003
+parent_ref: NJT-0178
+name:
+  zh: 易失运行态令牌提取
+  en: Volatile Runtime Token Extraction
+summary:
+  zh: 攻击者从进程内存、环境、临时脚本或 token broker/IPC 中提取只在当前运行生命周期可见的 token，并把明文材料复制到第二输出。
+  en: An adversary extracts a token visible only in the current runtime lifecycle from process memory, environment, a temporary
+    script, or token broker or IPC and copies plaintext material into a second output.
+aliases: []
+lineage:
+  attck_subtechnique_inherited: false
+definition_and_concept:
+  paragraphs:
+  - zh: 易失运行态令牌提取发生在 token 已进入合法运行进程或 job，但尚未或不会作为持久工件存在时。攻击代码可读取自身 environment、生成脚本、broker response，或跨进程读取持有 token 的 memory。分类依据是易失
+      runtime boundary，不是 CI/CD、Linux、runner.worker、某个变量名或内存 API。
+    en: Volatile Runtime Token Extraction occurs after a token enters a legitimate process or job but before it is persisted,
+      or when it is never persisted. Malicious code may read its own environment or generated script, a broker response, or
+      another process's token-bearing memory. The boundary is the volatile runtime boundary, not CI/CD, Linux, runner.worker,
+      a variable name, or memory API.
+stealth_characteristics:
+  paragraphs:
+  - zh: 易失运行态令牌提取通过平台可能在日志中掩码 secret，却必须把明文交给实际 consumer；恶意代码若与 consumer 同 job/process 或拥有调试权限，可在掩码前复制。合法流程继续并产生正常结果，外部只看到受信
+      runner 或应用。残余痕迹包括 process provenance、/proc/pid/mem/ptrace/debug、env read、临时脚本、unexpected child、archive 与 egress；同进程读取和内核级攻击会削弱归因。
+    en: Volatile Runtime Token Extraction A platform may mask a secret in logs while still delivering plaintext to the real
+      consumer. Malicious code in the same job or process, or with debug authority, can copy it before masking. The legitimate
+      workflow continues and returns a normal result, leaving a trusted runner or application appearance. Residue includes
+      process provenance, procfs memory, ptrace or debug, environment reads, temporary scripts, unexpected children, archives,
+      and egress. Same-process reads and kernel compromise weaken attribution.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 纳入要求 runtime 中存在完整 token 且复制进入攻击者控制输出。仅 crash dump、debug attach、environment 枚举或 secret 名称发现不足；批准 debugger、APM、EDR、support
+      bundle 和故障转储是强反例。若 token 从持久文件读取后只暂存在内存，以最初取得路径归持久工件；若正规 token service 在当前 request 返回则归签发返回面。
+    en: Inclusion requires complete token material in runtime and a copy into an adversary-controlled output. A crash dump,
+      debug attach, environment enumeration, or secret-name discovery alone is insufficient. Authorized debuggers, APM, EDR,
+      support bundles, and crash collection are strong counterexamples. If a token is first read from a persisted file and
+      then held in memory, Persisted Token-Artifact Retrieval owns initial acquisition. If a legitimate token service returns
+      it in the current request, Issuance-Return Token Acquisition applies.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: TeamPCP 在被污染 GitHub Actions 执行期间直接读取 runner.worker 的 /proc/PID/mem 提取明文 token，并在正常安全扫描继续时把材料加入加密外传。GitHub 官方说明
+        GITHUB_TOKEN 和已引用 secrets 在受侵 runner 中可被确定的攻击者收获，且日志 redaction 不是安全边界。
+      en: During poisoned GitHub Actions execution, TeamPCP read runner.worker through /proc/PID/mem to extract plaintext
+        tokens and added the material to encrypted exfiltration while normal security scanning continued. GitHub documentation
+        states that GITHUB_TOKEN and referenced secrets can be harvested by a determined attacker on a compromised runner
+        and that log redaction is not a security boundary.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者需要让未受信代码与 token consumer 共处一个 runner/job/process，或取得目标 process 的 memory/debug/env/IPC 读取权限，并在 token 过期或 job
+          结束前复制。隔离 runner、禁止不受信代码接触 secrets、最小 job permission、受保护进程、ptrace 限制和短期 token 会降低机会；同进程恶意依赖仍是难点。
+        en: The adversary must co-locate untrusted code with the token consumer in a runner, job, or process, or obtain memory,
+          debug, environment, or IPC read authority over the target process, then copy material before expiry or job completion.
+          Isolated runners, denying secrets to untrusted code, least job permissions, protected processes, ptrace restriction,
+          and short-lived tokens reduce opportunity. A malicious dependency in the same process remains difficult.
+    defender_model:
+      paragraphs:
+      - zh: 防守方把 workflow/repository/ref/action digest、runner/job、process start key、target process、memory/env/IPC operation、token
+          material assessment、archive 和 destination 连接。检测不应采集任意 process memory 到 SIEM；本地受限 scanner 只输出 token class、HMAC fingerprint、target
+          region 和 artifact hash。
+        en: Defenders join workflow, repository, ref, action digest, runner and job, process start key, target process, memory,
+          environment or IPC operation, token-material assessment, archive, and destination. Detection should not collect
+          arbitrary process memory into the SIEM. A restricted local scanner emits only token class, HMAC fingerprint, target
+          region, and artifact hash.
+stealth_mechanisms:
+- mechanism_ref: NM-FD
+  role: primary
+  summary:
+    zh: 在受信 runner 或应用保持正常输出时从其运行态复制 token
+    en: Copy tokens from a trusted runner or application runtime while its normal output continues
+  analysis:
+    paragraphs:
+    - zh: 恶意代码寄生受信 CI/security workflow，读取消费者必须持有的明文状态，并让正常扫描或构建继续。外部特征仍是合法 runner、真实 token 和成功 job，控制差异藏在 action digest、process
+        memory access 和第二输出。Unit 42 直接记录 runner.worker 明文 token 提取、正常扫描结果和外传，形成完整行为—trace—观察差因果链。
+      en: Malicious code inhabits a trusted CI or security workflow, reads plaintext state the consumer must hold, and lets
+        normal scanning or building continue. External features remain a legitimate runner, authentic token, and successful
+        job, while the control difference hides in action digest, process-memory access, and second output. Unit 42 directly
+        documents plaintext token extraction from runner.worker, normal scan results, and exfiltration, establishing the complete
+        behavior, trace, and observation-effect chain.
+  confidence: high
+  evidence_refs:
+  - REF-000811
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000206
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000188
+    - MIT-000052
+evidence:
+  claim_refs:
+  - CLM-000889
+  - CLM-000891
+  case_refs:
+  - CASE-000258
+  reference_refs:
+  - REF-000811
+  - REF-000814
+research:
+  limitations:
+    paragraphs:
+    - zh: TeamPCP 是对 CI runner 的强直接事件，但不能自动推广为所有 SaaS、移动应用或 token broker 的 memory 语义。GitHub 官方材料证明受侵 runner 的 secrets 可被收获，但不提供通用
+        process-memory 审计字段；同进程恶意代码可能没有跨进程 memory-read 事件，需依赖 workflow provenance 与第二输出。
+      en: TeamPCP is strong direct evidence for CI runners but cannot automatically generalize memory semantics to every SaaS
+        client, mobile application, or token broker. GitHub documentation establishes that compromised-runner secrets can
+        be harvested but does not provide universal process-memory audit fields. Malicious code in the same process may generate
+        no cross-process memory-read event, requiring workflow provenance and second-output evidence.
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-09-27'
+  modified: '2026-09-27'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

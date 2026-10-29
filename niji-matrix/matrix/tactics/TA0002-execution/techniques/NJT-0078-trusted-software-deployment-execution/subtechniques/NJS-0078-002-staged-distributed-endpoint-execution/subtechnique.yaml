@@ -1,0 +1,59 @@
+schema_version: 2.0.0
+type: evasion-subtechnique
+id: NJS-0078-002
+parent_ref: NJT-0078
+name: {zh: Fleet 范围分布式执行, en: Fleet-Scope Distributed Execution}
+summary: {zh: 攻击者让一个部署操作经目标集合与 Agent 队列扩散为不同主机和时间上的本地执行，使逐端点分析只见片段, en: Adversaries fan one deployment operation through target collections and agent queues into local executions across hosts and time so per-endpoint analysis sees fragments}
+aliases: [Staged Distributed Endpoint Execution]
+lineage: {attck_subtechnique_inherited: false}
+definition_and_concept:
+  paragraphs:
+    - zh: Fleet 范围分布式执行是攻击者从软件部署控制面选择组织、site、collection、设备组或动态查询，并让一个 package/script/command operation 通过各受管 agent 的 check-in、缓存和重试在多个端点运行。直接目标是以一次中央动作获得横向或大范围执行。稳定变量是一个控制对象到分散 fleet 结果的 fan-out 与聚合断点，不是必须按小批次、低速或某种拓扑部署。
+      en: Fleet-Scope Distributed Execution selects an organization site collection device group or dynamic query in a software-deployment control plane and has one package script or command operation run across endpoints through agent check-ins caches and retries. Its objective is lateral or broad execution from one central action. The stable variable is fan-out and the aggregation break from one control object to dispersed fleet outcomes rather than any requirement for small batches low speed or a topology.
+stealth_characteristics:
+  paragraphs:
+    - zh: Fleet 范围分布式执行让每台主机只出现一次 agent 下载或子进程，执行时间又因在线状态、队列和检查间隔错开；单端点告警缺少“还有多少主机”的控制面语义。APT32 的所有 ePO 系统拉取、AvosLocker 的 PDQ 全网分发和 Medusa 的 BigFix/PDQ 推送证明一个受信平台可以产生 fleet fan-out。攻击者是否刻意利用时间分散尚未被来源直接证明，故为 medium。
+      en: Fleet-Scope Distributed Execution leaves each host with one agent download or child and execution times differ because of online state queues and check-in intervals so endpoint alerts lack control-plane knowledge of how many other hosts are involved. APT32 all-system ePO pulls AvosLocker PDQ network distribution and Medusa BigFix or PDQ pushes prove fleet fan-out from a trusted platform. Sources do not directly establish deliberate use of temporal dispersion so confidence remains medium.
+    - zh: operation/job ID、package/script digest、target query 与 resolved membership、agent receipt、共同服务器 URL、首次执行时间和影响结果仍能聚合。全部目标同时运行会形成峰值，小范围目标则在控制面留下异常 scope；合法补丁也会大范围 fan-out，因此必须结合 operator、审批、package 与端点动作，不以主机数量定性。
+      en: Operation or job IDs package or script digests target queries and resolved membership agent receipts common server URLs first execution times and impact outcomes remain aggregatable. All-at-once runs create spikes while narrow targeting leaves anomalous scope in the control plane. Legitimate patches also fan out broadly so operator approval package and endpoint action are required rather than host count alone.
+scope_boundary_definition:
+  paragraphs:
+    - zh: 本轴要求一个企业管理 operation 被多个受管 agent 接收并产生执行，至少能证明共同 package/job/scope。只在一个端点使用部署工具归父级或 NJS-0078-001，不形成本轴；攻击者使用 worm 自传播或 PsExec 逐主机移动不属于部署 fleet fan-out。自然 agent 延迟可以造成分散，但必须有攻击者恶意中央 operation，不能把合法 rollout 当作匿迹。
+      en: The axis requires one enterprise management operation received by multiple managed agents and producing execution with at least common package job or scope evidence. Use on one endpoint belongs to the parent or NJS-0078-001 and does not establish this child. Worm propagation or host-by-host PsExec movement is not deployment fleet fan-out. Natural agent delay may disperse execution but requires a malicious central operation and does not turn a legitimate rollout into stealth.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+      - zh: 攻击者用本轴向企业工作站、服务器、ATM、分支、客户租户或网络设备分发后门、收集工具、wiper 或 ransomware。它可选择全部系统以快速冲击，或选择业务/地理 collection 达到特定目标；agent 的在线与重试机制使离线设备稍后继续执行。
+        en: Adversaries use the axis to distribute backdoors collection tools wipers or ransomware to enterprise workstations servers ATMs branches customer tenants or network devices. They may select all systems for rapid impact or business or regional collections for specific targets and agent online state and retries continue execution later on offline devices.
+  threat_model:
+    attacker_model:
+      paragraphs:
+        - zh: 攻击者需有权解析和选择 target collection、启动 operation 并提供可在异构端点执行的 payload。大范围部署要求兼容性和错误处理，失败率或 agent 离线会降低覆盖；同时更大的 scope 会增加控制面审计、网络流量和共同 hash，形成可检测聚合。
+          en: The adversary needs authority to resolve and select target collections start operations and provide payloads compatible with heterogeneous endpoints. Broad deployment requires compatibility and error handling while failures or offline agents reduce reach. Larger scope also increases control-plane audit network traffic and common hashes creating detectable aggregation.
+    defender_model:
+      paragraphs:
+        - zh: 防守方需要控制面的 target query、解析成员和 operation 状态，以及每个 agent receipt、下载、执行与结果。SOC 必须跨主机按 package/job 聚类而不是逐告警关闭；如果 SaaS/MSP 不提供全租户范围或 operation ID 没有传到终端，可用 digest、服务器和时间近似但无法精确证明 fan-out。
+          en: Defenders need control-plane target queries resolved members and operation status plus every agent receipt download execution and outcome. SOC must cluster across hosts by package or job rather than close alerts individually. If SaaS or MSP views omit tenant-wide scope or operation IDs do not reach endpoints digest server and time provide approximation but cannot prove exact fan-out.
+stealth_mechanisms:
+  - mechanism_ref: NM-ST
+    role: primary
+    summary: {zh: 单一控制任务分散为多主机不同时间的局部片段, en: One control job disperses into local fragments across hosts and time}
+    analysis:
+      paragraphs:
+        - zh: 攻击者利用 deployment collection 和 agent 队列，让一个 operation 在各主机独立出现，端点调查只见本机片段，形成时空释痕。三个案例证明平台 fan-out，但不直接证明低慢意图，因此 medium。以 operation/package/target membership 聚合所有 receipt 和进程可恢复共同来源，并识别影响范围。
+          en: The adversary uses deployment collections and agent queues so one operation appears independently on each host and endpoint investigation sees only a local fragment creating Spatiotemporal Trace Dilution. Three cases prove platform fan-out but not direct low-and-slow intent so confidence is medium. Aggregating receipts and processes by operation package and target membership recovers common origin and impact scope.
+    evidence_refs: [REF-000273, REF-000274, REF-000275, REF-000277]
+    confidence: medium
+defense:
+  detections: {coverage: available, strategy_refs: [DET-000089]}
+  mitigations: {coverage: available, mitigation_refs: [MIT-000090]}
+evidence:
+  claim_refs: [CLM-000295, CLM-000480, CLM-000481, CLM-000482, CLM-000483, CLM-000484, CLM-000485]
+  case_refs: [CASE-000096, CASE-000097, CASE-000098]
+  reference_refs: [REF-000130, REF-000273, REF-000274, REF-000275, REF-000277, REF-000278]
+research:
+  limitations:
+    paragraphs:
+      - zh: 案例公开了广泛分发但没有完整 target collection、各 agent 时间或攻击者是否刻意分批，因此子项只证明 fan-out 与防守聚合差异，不保留原来的“staged”低慢含义。合法补丁和事件响应具有相同分布；若没有中央 operation/package 证据，多主机共同 hash 也可能来自普通软件或其他传播技术。
+        en: Cases disclose broad distribution but not complete target collections agent timings or deliberate batching so the child establishes fan-out and defender aggregation differences without retaining the prior staged low-and-slow meaning. Legitimate patching and incident response have the same distribution and without central operation or package evidence common hashes across hosts may come from ordinary software or another propagation technique.
+lifecycle: {status: review, version: 2.0.0, created: '2026-09-10', modified: '2026-09-12', contributors: [Niji Matrix Research], reviewers: []}

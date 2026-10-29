@@ -1,0 +1,55 @@
+schema_version: "2.0.0"
+type: detection-analytic
+id: NJA-000039
+strategy_ref: DET-000061
+name: {zh: 原生 Syscall 来源与动态 API 解析差分分析, en: Native Syscall Origin and Dynamic API Resolution Differential Analytic}
+summary: {zh: 比较预期原生库路径、磁盘导入与真实运行时调用，并把差异连接到敏感内核结果。, en: Compare expected native-library paths and disk imports with actual runtime calls and join differences to sensitive kernel outcomes.}
+domains: [enterprise]
+platforms: [Windows]
+logic:
+  paragraphs:
+  - zh: 对每个敏感内存、进程、线程或模块操作生成 native_invocation_id，记录 process/thread entity、image/signature、OS build、API/syscall identity、syscall number、完整 call stack、每帧 module/memory backing 与权限。标记 syscall 指令位于非预期模块/非映像内存、真实 caller 绕过标准 native export、栈被截断或 syscall 号与 build 不符；间接 syscall 沿栈回溯到最初非标准 caller。
+    en: For every sensitive memory process thread or module operation generate a native invocation ID and record process or thread entity image and signature OS build API or syscall identity syscall number complete call stack and each frame's module or memory backing and permissions. Mark syscall instructions in unexpected modules or unbacked memory, true callers bypassing standard native exports, truncated stacks, and syscall numbers inconsistent with the build. For indirect syscalls walk the stack to the initial nonstandard caller.
+  - zh: 同时比较 PE 导入/字符串/imphash 与运行时 module enumeration、export traversal、GetProcAddress/等价 resolver、hash loop 和 indirect target。若敏感目标只在运行时出现，形成动态解析差分。把两类候选与 VirtualAlloc/Protect、WriteProcessMemory、thread/process create、module/driver/service、文件或网络结果连接；只有差异与结果在同一进程/线程序列中出现才升高置信度。
+    en: Compare PE imports strings and imphash with runtime module enumeration export traversal GetProcAddress or equivalent resolvers hashing loops and indirect targets. A sensitive target appearing only at runtime creates a dynamic-resolution differential. Join both candidate types to allocation or protection cross-process writes thread or process creation module driver or service and file or network outcomes. Raise confidence only when differential and outcome occur in one process or thread sequence.
+data_requirements:
+- source_type: kernel-native-operation
+  name: {zh: 内核原生操作与 Syscall 结果, en: Kernel native operation and syscall outcome}
+  channel: null
+  required_fields: [timestamp, process_entity_id, thread_id, operation_or_api, syscall_number, target_process_or_address, arguments_or_hash, result_status, os_build]
+- source_type: thread-call-stack
+  name: {zh: 完整线程调用栈与帧来源, en: Complete thread call stack and frame provenance}
+  channel: null
+  required_fields: [timestamp, process_entity_id, thread_id, frame_order, instruction_pointer, module_path, module_signature, symbol, memory_backing, memory_protection]
+- source_type: static-and-runtime-api-resolution
+  name: {zh: 静态导入与运行时导出解析, en: Static imports and runtime export resolution}
+  channel: null
+  required_fields: [process_entity_id, image_hash, import_name_or_hash, module_base, resolver_api_or_pattern, export_name_ordinal_or_hash, resolved_address, indirect_call_target]
+- source_type: native-execution-outcome
+  name: {zh: 内存、线程、进程、模块与服务结果, en: Memory thread process module and service outcomes}
+  channel: null
+  required_fields: [timestamp, process_entity_id, thread_id, memory_region_id, protection_change, cross_process_target, created_thread_or_process, loaded_module_or_driver, service_or_file_or_network_outcome]
+- source_type: low-level-software-baseline
+  name: {zh: JIT、安全软件与低层运行时基线, en: JIT security software and low-level runtime baseline}
+  channel: null
+  required_fields: [process_image, signer, product_role, expected_module_or_memory_origin, expected_api_or_syscall_set, os_build, approval_or_version, validity]
+observables:
+- {zh: 敏感 syscall 从非系统模块或可执行非映像内存发起，调用栈缺少预期 ntdll/native export 并随后创建线程或修改内存, en: A sensitive syscall originates from a non-system module or executable unbacked memory with the expected native export absent from the stack followed by thread creation or memory change}
+- {zh: 磁盘导入无敏感 API，但运行时遍历导出/哈希后间接调用该地址并产生服务、驱动或进程结果, en: Disk imports omit a sensitive API but runtime export traversal or hashing resolves and indirectly calls it before a service driver or process outcome}
+- {zh: syscall 号与当前 OS build 不匹配、首次失败后重新解析并成功执行同一敏感动作, en: A syscall number mismatches the current OS build then is re-resolved after failure and the same sensitive action succeeds}
+correlation:
+  window: {zh: 从进程启动或模块映射开始到敏感结果后一小时；长驻进程按 process entity 保留二十四小时调用序列。, en: From process start or module mapping through one hour after the sensitive outcome with long-lived processes retaining a twenty-four-hour sequence by process entity.}
+  dimensions: [host, process_entity, thread, image_hash, signer, os_build, syscall_number, call_stack, module, memory_region, resolver, resolved_address, target_process, outcome, time]
+false_positives:
+- {zh: JIT/浏览器、反作弊、性能/兼容层、安全/取证工具、压缩保护软件和受控红队测试, en: JIT or browsers anti-cheat performance or compatibility layers security or forensic tools packed protectors and authorized red-team testing}
+blind_spots:
+- {zh: 内核传感器不提供完整调用栈、栈欺骗或 CET/架构限制导致帧缺失, en: Kernel sensor lacks complete stacks stack spoofing or CET and architecture limitations remove frames}
+- {zh: 动态解析发生在离线阶段、解析器使用自定义模块格式或被批准进程完整代理, en: Dynamic resolution occurs before collection uses a custom module format or is fully proxied by an approved process}
+tuning_guidance:
+  paragraphs:
+  - zh: 按 OS build、进程角色、signer、模块/内存来源和敏感 API 集建立基线；允许项绑定具体产品版本、调用栈签名和结果，不永久放行非映像内存或某个 syscall。分别输出路径异常、解析差分和确认敏感结果，避免把低层开发工具全部定性。
+    en: Baseline OS build process role signer module or memory origin and sensitive API set. Bind allowances to a concrete product version call-stack signature and outcome rather than permanently allowing unbacked memory or one syscall. Output path anomaly resolution differential and confirmed sensitive outcome separately to avoid classifying all low-level development tools.
+  - zh: 在受控样本中验证 direct、indirect 与标准 API 的栈差异以及 GetProcAddress/delay-load 的良性模式；确保 syscall 号按 build 解析。没有全栈或 runtime target 时降低置信度，并把静态—动态比较限定在同一 image hash/版本。
+    en: Validate direct indirect and standard API stack differences and benign GetProcAddress or delay-load patterns with controlled samples and resolve syscall numbers by build. Lower confidence without full stacks or runtime targets and compare static to dynamic only within the same image hash or version.
+evidence_refs: [REF-000222, REF-000223, REF-000224, REF-000225, REF-000226]
+lifecycle: {status: review, version: 1.1.0, created: '2026-09-10', modified: '2026-09-12', contributors: [Niji Matrix Research], reviewers: []}

@@ -1,0 +1,127 @@
+schema_version: 2.0.0
+type: evasion-subtechnique
+id: NJS-0165-002
+parent_ref: NJT-0165
+name:
+  zh: 远程服务调用认证胁迫
+  en: Remote-Service Invocation Authentication Coercion
+summary:
+  zh: 攻击者调用可远程访问的服务操作并提供自己控制的网络位置，使服务或机器身份向该位置认证。
+  en: An adversary invokes a remotely reachable service operation with an adversary-controlled network location, causing a service or machine
+    identity to authenticate there.
+aliases: []
+lineage:
+  attck_subtechnique_inherited: false
+definition_and_concept:
+  paragraphs:
+  - zh: 远程服务调用认证胁迫是攻击者通过 RPC 或等价管理接口调用一个会解析网络路径或回连客户端的服务方法，使目标系统以服务、计算机或其他非交互主体向攻击者指定位置发起认证。稳定变量是“外部调用者借用服务控制面生成认证”，不是 EFSRPC、打印、备份或某个 PoC 名称。调用返回错误也可能说明路径被解析，但完整
+      Credential Access 结论仍要求监听端观察到挑战响应或等价材料。
+    en: Remote-Service Invocation Authentication Coercion uses RPC or an equivalent management interface to invoke a service method that resolves
+      a network path or calls back to a client, causing the target system to authenticate to an adversary-selected location as a service, computer,
+      or other noninteractive principal. The stable variable is an external caller borrowing a service control plane to generate authentication,
+      not EFSRPC, printing, backup, or a proof-of-concept name. An error return may show path resolution, but a completed Credential Access conclusion
+      still requires the listener to observe a challenge response or equivalent material.
+stealth_characteristics:
+  paragraphs:
+  - zh: 远程服务调用认证胁迫使本子项把外发认证归因到合法系统服务和机器账户，端点网络视图可能显示 lsass、服务宿主或 RPC 相关组件访问一个共享位置，而不是攻击者进程直接读取凭据。入站调用和出站认证还可能由不同进程、日志和网络方向记录，任一单侧都像普通管理或服务故障。差分证据是调用者、接口/方法、传入资源名、服务身份、出站目的地和认证结果之间缺少批准关系。
+    en: Remote-Service Invocation Authentication Coercion means that this child attributes outbound authentication to a legitimate system service
+      and machine account. Endpoint network telemetry may show lsass, a service host, or an RPC-related component reaching a share instead of
+      an adversary process reading credentials. The inbound call and outbound authentication can also be recorded by different processes, logs,
+      and network directions, with each side resembling administration or service failure. The differential is the absence of an approved relationship
+      among caller, interface or method, supplied resource name, service identity, egress destination, and authentication outcome.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 纳入要求攻击者控制远程调用及其中的回连位置，目标服务实际代表本机主体发出认证材料，且材料到达可观察端。一般 RPC 枚举、接口探测、服务崩溃、拒绝访问和无认证回连不满足完成结果。若攻击者先控制 DNS/网络路径让正常服务流量转向监听端，路径变化归 NJT-0136；若捕获后中继到另一服务，认证受众差归
+      NJS-0136-002；若破解响应，候选验证归 NJS-0137-003。
+    en: Inclusion requires adversary control of the remote call and callback location, actual service emission of authentication material for
+      a local principal, and arrival at an observable endpoint. RPC enumeration, interface probing, service crash, access denial, and callbacks
+      without authentication do not establish a completed result. If the adversary first controls DNS or network path to redirect ordinary service
+      traffic, the path change belongs to NJT-0136. Relay after capture belongs to NJS-0136-002 for the audience differential, and cracking belongs
+      to NJS-0137-003 for candidate verification.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: EFSRPC 为加密对象的远程管理、备份和恢复提供方法；其 EfsRpcOpenFileRaw 接收文件名并在服务端打开对象。PetitPotam PoC 把监听位置写入此类参数，促使 Windows 主机认证到另一机器；Microsoft 随后将其作为可能攻击域控或服务器的经典
+        NTLM 中继入口说明。该证据直接支持服务控制面胁迫变量，但正式分类不依赖 EFSRPC：其他服务方法只有在同样满足远程调用、攻击者指定回连和材料到达三项时才进入。
+      en: EFSRPC provides remote management, backup, and restore methods for encrypted objects, and EfsRpcOpenFileRaw accepts a file name for
+        server-side access. The PetitPotam proof of concept places a listener location in such a parameter and causes a Windows host to authenticate
+        to another machine; Microsoft subsequently described it as a classic NTLM relay entry point that can potentially attack domain controllers
+        or servers. This evidence directly supports the service-control-plane coercion variable, but formal classification does not depend on
+        EFSRPC. Other service methods enter only when they likewise satisfy remote invocation, adversary-selected callback, and material arrival.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者需要访问目标服务接口、满足必要的 RPC 绑定和调用权限、知道可促使服务解释网络路径的方法，并控制接收认证的监听端。匿名、低权域用户或已控账户能否调用取决于接口和系统版本；补丁可能封堵一个方法而保留其他路径。攻击者还需区分触发成功与后继中继成功：没有未绑定的目标服务、签名缺失或
+          EPA 缺口时，捕获材料仍可能无法换取权限。
+        en: The adversary needs reachability to the service interface, the necessary RPC binding and call authority, knowledge of a method that
+          makes the service interpret a network path, and control of the authentication listener. Whether anonymous, low-privilege domain, or
+          compromised-account access suffices depends on interface and system version, and a patch can close one method while leaving another
+          path. Trigger success must remain separate from relay success; without a target lacking signing, binding, or EPA, captured material
+          may not yield access.
+    defender_model:
+      paragraphs:
+      - zh: 防守方需要记录到关键服务器的入站 RPC 或管理调用，并把接口 UUID、方法、调用者、源地址和传入资源名连接到同一主机随后由服务或机器账户发起的网络认证。若只有防火墙流量，服务内部方法不可见；若只有 8004 或目标 4624，原始调用者可能丢失；加密 RPC、NAT
+          和服务宿主复用也会削弱关联。高价值机器账户的任何新出站认证目标应优先，但不能仅凭机器账户网络登录断言胁迫。
+        en: Defenders need inbound RPC or management-call records for critical servers and must join interface UUID, method, caller, source address,
+          and supplied resource name to subsequent network authentication from the same host under a service or machine account. Firewall telemetry
+          alone may miss the service method; 8004 or target 4624 alone can lose the initiating caller; encrypted RPC, NAT, and shared service
+          hosts weaken correlation. A new outbound destination for a high-value machine account deserves priority, but a machine-account network
+          logon alone does not prove coercion.
+stealth_mechanisms:
+- mechanism_ref: NM-BT
+  role: primary
+  summary:
+    zh: 服务控制面把攻击者触发转换为系统主体外发
+    en: Service control plane converts adversary input into system-principal egress
+  analysis:
+    paragraphs:
+    - zh: 攻击者的可见动作停留在合法远程接口，真正的认证由目标服务在自己的进程和账户下发起。仅观察出站端的防守方看到的是系统主体访问网络资源，原始攻击者来源处于另一控制面；仅观察入站端又可能只见一次失败的备份或管理调用。EFSRPC 规范说明方法的合法目的，PetitPotam
+        直接实验说明攻击者如何控制资源名，二者共同支持从调用到归因转移的行为透明链。
+      en: The adversary-visible action ends at a legitimate remote interface, while the target service initiates authentication under its own
+        process and account. A defender observing only egress sees a system principal accessing a network resource, with the original adversary
+        source in another control plane. A defender observing only ingress may see a failed backup or management call. The EFSRPC specification
+        establishes the method's legitimate purpose, and the direct PetitPotam experiment shows adversary control of the resource name; together
+        they support behavioral transparency from invocation to shifted attribution.
+  confidence: high
+  evidence_refs:
+  - REF-000706
+  - REF-000707
+  - REF-000708
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000187
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000168
+    - MIT-000169
+    - MIT-000132
+evidence:
+  claim_refs:
+  - CLM-000813
+  - CLM-000815
+  case_refs: []
+  reference_refs:
+  - REF-000706
+  - REF-000707
+  - REF-000708
+  - REF-000710
+research:
+  limitations:
+    paragraphs:
+    - zh: PetitPotam 是公开 PoC，Microsoft KB 说明潜在攻击与 AD CS 中继缓解，但本批未找到可独立核验的在野案例同时公开原始 RPC 调用、监听端挑战响应和最终目标结果。接口可调用性随补丁、服务状态与权限变化，不能把端口开放或 EfsRpcOpenFileRaw
+        错误码等同材料已捕获。正式案例置信度应由监听端证据和受害端关联共同决定。
+      en: PetitPotam is a public proof of concept, and Microsoft's KB describes potential attack and AD CS relay mitigation, but this batch found
+        no independently verifiable in-the-wild case publishing the original RPC call, listener-side challenge response, and final target outcome
+        together. Interface reachability changes with patches, service state, and authorization, so an open port or EfsRpcOpenFileRaw error code
+        cannot be equated with captured material. Formal case confidence should depend on both listener evidence and victim-side correlation.
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-09-23'
+  modified: '2026-09-23'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

@@ -1,0 +1,319 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000351
+strategy_ref: DET-000262
+name:
+  zh: 受害端 C2 成功与多视角暴露差分析
+  en: Victim C2 Success and Multi-Vantage Exposure Differential Analytic
+summary:
+  zh: 对请求资格与防守来源抑制分别做配对差分，并以受害端 C2 结果和前端规则确认。
+  en: Run paired differentials for request qualification and defensive-source suppression, confirming them with victim C2
+    outcomes and front rules.
+domains:
+- enterprise
+platforms:
+- Network
+- Windows
+- Linux
+logic:
+  paragraphs:
+  - zh: 第一步从 victim telemetry 建立 candidate endpoint：已确认恶意/未授权 process 在同一 destination 上产生 repeated bidirectional callback，或出现
+      task/config/payload、command/result、protocol-emulated C2 response；只凭 reputation/IOC 不设 victim_success。第二步按 endpoint+protocol+15-minute
+      bucket 规范化 probe/edge/origin events，建立 response_variant=(connection_result,status,header/body hash,length,redirect,certificate,edge_action,origin_reached,origin_status)。request-qualified
+      分支要求同 vantage/time 只改变 request_variant 后，implant-congruent 变体稳定 origin_reached/C2-like response，而 generic/invalid 变体进入
+      benign/error surface，至少重复两次或有 provider rule/audit。defender-suppressed 分支要求固定 request_variant/time，defender/scanner class
+      被 deny/reset/decoy，而 neutral/victim-aligned class 成功，至少两个 source classes 且有 matched rule/server deny 或两个独立重复。temporal-supporting
+      分支在 7–30 天窗口比较 listener/service open state 与 victim/actor activity；因当前 taxonomy defer，它提高 parent confidence 而不自动映射 NJS。最终只有
+      victim_success 与 exposure branch 同 endpoint/campaign 且差异不能由 approved policy 解释时输出 selective_c2_exposure_confirmed。
+    en: 'First establish a candidate endpoint from victim telemetry: a confirmed malicious or unauthorized process creates
+      repeated bidirectional callbacks to one destination, or a task, configuration, payload, command or result, or protocol-emulated
+      C2 response appears. Reputation or an IOC alone does not set victim_success. Second, normalize probe, edge, and origin
+      events by endpoint, protocol, and 15-minute bucket and construct response_variant from connection result, status, header
+      and body hashes, length, redirect, certificate, edge action, origin-reached state, and origin status. The request-qualified
+      branch requires a stable origin-reached or C2-like response for an implant-congruent variant and a benign or error surface
+      for a generic or invalid variant while vantage and time remain fixed, repeated at least twice or supported by provider
+      rule or audit evidence. The defender-suppressed branch holds request variant and time fixed and requires denial, reset,
+      or decoy for a defender or scanner class and success for a neutral or victim-aligned class across at least two source
+      classes, plus a matched rule or server deny record or two independent repetitions. The temporal-supporting branch compares
+      listener and service-open state with victim or actor activity across seven to thirty days. Because its taxonomy is deferred,
+      it raises parent confidence without mapping an NJS. Emit selective_c2_exposure_confirmed only when victim_success and
+      an exposure branch share endpoint and campaign and approved policy does not explain the difference.'
+data_requirements:
+- source_type: victim-endpoint-network
+  name:
+    zh: 受害端进程与网络连接
+    en: Victim Endpoint Process and Network Connections
+  channel: EDR process and network events
+  required_fields:
+  - event_time
+  - device_id
+  - destination_host
+  - destination_ip
+  - destination_port
+  - transport
+  - process_start_key
+  - process_image
+  - process_command_line
+  - network_action
+  - source_ip
+  - source_port
+- source_type: victim-c2-outcome
+  name:
+    zh: 受害端控制任务与结果
+    en: Victim C2 Task and Outcome
+  channel: EDR, NDR, sandbox, incident lineage, or validated protocol emulation
+  required_fields:
+  - event_time
+  - device_id
+  - process_start_key
+  - network_session_id
+  - malware_identity
+  - c2_callback_state
+  - c2_task_id
+  - c2_task_type
+  - c2_response_hash
+  - outcome_process_id
+  - outcome_object_hash
+  - c2_result_direction
+  - outcome_confidence
+- source_type: controlled-multivantage-probe
+  name:
+    zh: 授权多视点配对探测
+    en: Authorized Multivantage Paired Probes
+  channel: Authorized active measurement or provider-side replay
+  required_fields:
+  - event_time
+  - probe_id
+  - authorization_scope
+  - vantage_id
+  - probe_source_ip
+  - probe_source_asn
+  - probe_source_org
+  - probe_source_country
+  - vantage_class
+  - request_variant_id
+  - destination_host
+  - destination_ip
+  - destination_port
+  - application_protocol
+  - client_fingerprint
+  - tls_server_name
+  - request_method
+  - request_path
+  - request_feature_hash
+  - credential_material_present
+  - response_status
+  - response_header_hash
+  - response_body_hash
+  - response_bytes
+  - redirect_target
+  - connection_result
+  - response_latency
+  - certificate_fingerprint
+- source_type: aws-waf-edge
+  name:
+    zh: AWS WAF 边缘请求与规则日志
+    en: AWS WAF Edge Request and Rule Logs
+  channel: AWS WAF web ACL log
+  required_fields:
+  - event_time
+  - edge_policy_id
+  - edge_resource_id
+  - request_id
+  - client_ip
+  - client_asn
+  - client_country
+  - request_method
+  - request_path
+  - request_query
+  - request_headers
+  - client_fingerprint_ja3
+  - client_fingerprint_ja4
+  - edge_action
+  - matched_rule_id
+  - matched_rule_type
+  - additional_rule_matches
+  - edge_labels
+  - edge_response_status
+- source_type: cloudflare-http-edge
+  name:
+    zh: Cloudflare HTTP 边缘日志
+    en: Cloudflare HTTP Edge Logs
+  channel: Cloudflare HTTP requests Logpush
+  required_fields:
+  - event_time
+  - request_id
+  - client_ip
+  - client_asn
+  - client_country
+  - client_class
+  - request_host
+  - request_method
+  - request_path
+  - request_uri
+  - user_agent
+  - client_fingerprint_ja3
+  - client_fingerprint_ja4
+  - bot_score
+  - matched_rules
+  - edge_action
+  - matched_rule_id
+  - edge_response_status
+  - edge_response_content_type
+  - edge_response_bytes
+  - origin_ip
+  - origin_response_status
+  - edge_script_name
+  - edge_script_status
+- source_type: reverse-proxy-origin
+  name:
+    zh: 反向代理与源站访问日志
+    en: Reverse Proxy and Origin Access Logs
+  channel: Nginx, Apache, Envoy, load balancer, or equivalent front and origin logs
+  required_fields:
+  - event_time
+  - request_id
+  - client_ip
+  - forwarded_client_chain
+  - request_host
+  - request_method
+  - request_path
+  - user_agent
+  - cookie_name_set
+  - client_fingerprint
+  - edge_response_status
+  - edge_response_bytes
+  - origin_ip
+  - origin_response_status
+  - origin_latency
+  - origin_route
+  - matched_rule_id
+  - connection_result
+- source_type: exposure-policy-audit
+  name:
+    zh: 基础设施暴露策略审计
+    en: Infrastructure Exposure Policy Audit
+  channel: CDN, WAF, reverse proxy, firewall, security group, listener, and tenant audit log
+  required_fields:
+  - event_time
+  - tenant_id
+  - policy_actor_id
+  - infrastructure_resource_id
+  - edge_policy_id
+  - matched_rule_id
+  - rule_version
+  - rule_condition
+  - edge_action
+  - origin_route
+  - rule_enabled
+  - rule_valid_from
+  - rule_valid_to
+  - change_request_id
+  - policy_actor_ip
+  - previous_rule_value
+  - new_rule_value
+- source_type: longitudinal-service-observation
+  name:
+    zh: 长期服务可达性观察
+    en: Longitudinal Service Availability Observations
+  channel: Approved port, TLS, HTTP, and protocol health observations
+  required_fields:
+  - event_time
+  - vantage_id
+  - destination_host
+  - destination_ip
+  - destination_port
+  - application_protocol
+  - connection_result
+  - tls_result
+  - certificate_fingerprint
+  - service_surface_hash
+  - response_status
+  - response_body_hash
+observables:
+- zh: 已证实恶意进程成功连接的端点对普通安全探针只返回 404 重定向或关闭
+  en: A confirmed malicious process succeeds to an endpoint that gives generic safe probes only a 404, redirect, reset, timeout,
+    or closed service
+- zh: 植入体一致请求到达源站而普通变体停在前端
+  en: An implant-congruent request reaches the origin while a generic variant stops at the edge
+- zh: 相同请求从安全扫描来源被阻断而中性来源可达源站
+  en: The same request is blocked from a security-scanner source while a neutral source reaches the origin
+- zh: 前端规则明确匹配安全来源或植入体字段并选择拒绝诱饵或上游路由
+  en: A front rule matches security sources or implant fields and selects deny, decoy, or upstream routing
+- zh: 监听器只在受害端 C2 活动时段重复可用
+  en: The listener is repeatedly available only during victim C2 activity windows
+correlation:
+  window:
+    zh: 配对请求与观察者对照默认十五分钟，受害端结果关联二十四小时；时窗候选观察七至三十日，策略版本须覆盖事件时刻。
+    en: Match request and vantage comparisons within fifteen minutes and victim outcomes within twenty-four hours; observe
+      temporal candidates for seven to thirty days, with policy versions valid at event time.
+  dimensions:
+  - destination_host
+  - destination_ip
+  - destination_port
+  - application_protocol
+  - certificate_fingerprint
+  - request_variant_id
+  - vantage_class
+  - client_asn
+  - client_org
+  - client_country
+  - request_id
+  - matched_rule_id
+  - rule_version
+  - edge_action
+  - origin_ip
+  - origin_reached
+  - response_variant
+  - device_id
+  - process_start_key
+  - network_session_id
+  - c2_task_id
+  - campaign_cluster
+  - time
+false_positives:
+- zh: 合法反爬 抗滥用 DDoS 扫描拦截与速率限制
+  en: Legitimate anti-bot, abuse, DDoS, scan blocking, and rate controls
+- zh: 地域合规 mTLS 私有 API 和租户授权门
+  en: Geographic controls, mTLS, private APIs, and tenant authorization gates
+- zh: CDN 缓存 灰度发布 灾备和批准诱捕平台
+  en: CDN caching, staged releases, disaster recovery, and approved deception platforms
+blind_spots:
+- zh: 无受害端进程链或无法独立证实端点用于 C2
+  en: No victim process lineage or independent evidence that the endpoint is C2
+- zh: 一次性令牌 加密协议或隐私约束阻止安全复现
+  en: One-time tokens, encrypted protocols, or privacy limits preventing safe reproduction
+- zh: 服务提供方日志缺失且攻击者识别所有可用探针视点
+  en: Provider logs are unavailable and the actor recognizes every available probe vantage
+- zh: Anycast GeoDNS 缓存和短时监听造成不可配对观察
+  en: Anycast, GeoDNS, caching, and brief listeners prevent matched observations
+tuning_guidance:
+  paragraphs:
+  - zh: 为 approved external services 保存 owner、tenant/resource、purpose、allowed source classes、condition fields、rule ID/version、origin
+      set、release window 和 expiry。不要按 CDN/provider/domain 永久 allow，也不要把 security-vendor block 单独定性。先以 victim_success、provider
+      rule/audit 或 repeated matched A/B 提升置信；一次只改变一个 request/vantage factor。对 body/cookie/token 先 hash/redact，禁止把活跃 victim
+      credential 放入外部 probe。主动测量只在授权、owned、sinkholed、seized 或 provider-coordinated 范围内运行；其余使用被动/多组织 evidence。定期用批准 canary
+      验证 request ID、edge action 与 origin route 字段能关联。
+    en: For approved external services, retain owner, tenant and resource, purpose, allowed source classes, condition fields,
+      rule ID and version, origin set, release window, and expiry. Do not permanently allow a CDN, provider, or domain and
+      do not classify a security-vendor block alone. Raise confidence first from victim_success, provider rule or audit, or
+      repeated matched A/B observations, changing one request or vantage factor at a time. Hash or redact bodies, cookies,
+      and tokens and never place an active victim credential into an external probe. Run active measurement only in authorized,
+      owned, sinkholed, seized, or provider-coordinated scope; otherwise use passive and multi-organization evidence. Regularly
+      use approved canaries to verify that request ID, edge action, and origin route fields join correctly.
+evidence_refs:
+- REF-000625
+- REF-000975
+- REF-001154
+- REF-001155
+- REF-001156
+- REF-001158
+- REF-001157
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-10-05'
+  modified: '2026-10-05'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

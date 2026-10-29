@@ -1,0 +1,38 @@
+schema_version: "2.0.0"
+type: mitigation
+id: MIT-000171
+name: {zh: 网络设备映像信任、运行证明与恢复治理, en: Network-Device Image Trust Runtime Attestation and Recovery Governance}
+summary: {zh: 限制调试与映像写权，验证签名和启动链，周期证明运行代码并保留可信恢复路径。, en: "Restrict debug and image-write authority, validate signatures and boot chain, periodically attest running code, and retain a trusted recovery path."}
+description:
+  paragraphs:
+    - zh: 本缓解把持久映像、启动组件和运行内存作为三个独立信任面。AAA/JIT 限制 debug、memory write、image install、boot variable 与 reload 权限；离线厂商库保存签名、hash、manifest 和恢复映像，Trust Anchor/secure boot 验证启动消费；运行期间周期取得内存/模块证明和功能 canary。异常时先保全内存，再隔离并从已验证来源恢复，避免重载销毁唯一证据或从受侵 manifest 重装。
+      en: This mitigation treats persistent image, boot component, and running memory as three separate trust planes. AAA and JIT restrict debug, memory-write, image-install, boot-variable, and reload authority. An offline vendor store retains signatures, hashes, manifests, and recovery images while Trust Anchor or secure boot validates boot consumption; periodic memory or module attestation plus functional canaries cover runtime. On anomaly, preserve memory first, isolate, and recover from a verified source so reload does not destroy the only evidence or reinstall from a compromised manifest.
+domains: [enterprise]
+measures:
+  - key: separate-debug-image-boot-authority
+    name: {zh: 分离调试、映像与启动权限, en: Separated Debug Image and Boot Authority}
+    description: {paragraphs: [{zh: 通过 TACACS/RADIUS、JIT 和双人审批限制 debug/memory、映像写入、boot target 与 reload，远程保留完整命令、来源、hash 和结果。, en: "Use TACACS or RADIUS, JIT, and two-person approval to restrict debug or memory, image write, boot target, and reload operations and remotely retain complete command, source, hash, and result."}]}
+    control_type: preventive
+  - key: offline-image-trust-and-secure-boot
+    name: {zh: 离线映像信任库与安全启动, en: Offline Image Trust Store and Secure Boot}
+    description: {paragraphs: [{zh: 从厂商可信渠道保存型号专属签名/hash/manifest 和恢复映像，启用 Trust Anchor、secure boot、只读启动测量，并比较实际 loaded image 而非版本字符串。, en: "Retain model-specific signatures, hashes, manifests, and recovery images from trusted vendor channels; enable Trust Anchor, secure boot, and read-only boot measurement and compare the actual loaded image rather than a version string."}]}
+    control_type: preventive
+  - key: runtime-attestation-before-recovery
+    name: {zh: 恢复前运行证明与内存保全, en: Runtime Attestation and Memory Preservation Before Recovery}
+    description: {paragraphs: [{zh: 周期比较运行内存/模块与持久映像并执行流量、认证和遥测 canary；异常时先获取 core dump/内存证明，再从离线可信映像重装和 post-boot 复测。, en: "Periodically compare running memory or modules with the persistent image and run traffic, authentication, and telemetry canaries; on anomaly acquire a core dump or memory evidence first, then reinstall from an offline trusted image and retest after boot."}]}
+    control_type: detective-support
+applications:
+  - target_ref: NJT-0167
+    use: {paragraphs: [{zh: 为每台网络设备建立厂商映像—flash—boot—runtime—功能结果链，任何变化绑定 actor 和审批；出现差分时隔离设备、保存内存和配置并选择与变量匹配的恢复路径。, en: "Build a vendor-image to flash to boot to runtime to functional-outcome chain for every network device, binding every change to actor and approval. On a difference isolate the device, preserve memory and configuration, and choose recovery matching the variable."}]}
+    expected_effect: {paragraphs: [{zh: 攻击者需同时绕过高权操作审计、持久映像信任或运行证明，受信设备身份不再足以掩盖代码变化。, en: "An adversary must bypass privileged-operation audit plus persistent-image trust or runtime attestation, so trusted device identity no longer suffices to conceal code change."}]}
+    limitations: {paragraphs: [{zh: 旧设备可能不支持 secure boot/内存证明，获取 core dump 会影响可用性；完全供应链或 Trust Anchor 失陷需厂商和硬件级恢复，自动重载会销毁运行时证据。, en: "Legacy devices may lack secure boot or memory attestation and core-dump acquisition can affect availability. Full supply-chain or Trust Anchor compromise requires vendor and hardware-level recovery, while automatic reload destroys runtime evidence."}]}
+  - target_ref: NJS-0167-001
+    use: {paragraphs: [{zh: 限制 debug 与内存写命令，周期对关键函数/模块进行运行证明；告警时冻结 boot_id、获取 core dump 与会话审计后再隔离重载。, en: "Restrict debug and memory-write commands and periodically attest critical functions or modules. On alert freeze the boot_id and acquire core dump plus session audit before isolation and reload."}]}
+    expected_effect: {paragraphs: [{zh: 仅运行内存的补丁在重载前留下可比较证据，攻击者难以依靠闪存 hash 正常来掩盖运行代码。, en: "Runtime-only patches leave comparable evidence before reload, making it harder to hide running code behind a normal flash hash."}]}
+    limitations: {paragraphs: [{zh: 高频内存测量成本高，符号/布局随版本变化；没有原厂支持时只能抽样关键区域，未知补丁可能遗漏。, en: "Frequent memory measurement is costly and symbols or layout vary by version. Without vendor support only critical regions can be sampled and unknown patches may be missed."}]}
+  - target_ref: NJS-0167-002
+    use: {paragraphs: [{zh: 启用签名映像、Trust Anchor 与 boot variable 保护，映像写入后要求外部 hash 和下一 boot 测量；恢复使用离线已知良好映像并验证 ROMMON/bootloader。, en: "Enable signed images, Trust Anchor, and boot-variable protection; require an external hash and next-boot measurement after an image write. Recover with an offline known-good image and verify ROMMON or bootloader."}]}
+    expected_effect: {paragraphs: [{zh: 未批准存储映像难以跨重载被消费，设备内 manifest 同步篡改也会被外部信任库发现。, en: "An unapproved stored image is less able to be consumed across reload, and co-tampering with the on-device manifest is exposed by the external trust store."}]}
+    limitations: {paragraphs: [{zh: 合法应急升级和双 slot 恢复需要快速例外；启动根本身受侵或供应链签名恶意时，普通签名验证不足。, en: "Legitimate emergency upgrades and dual-slot recovery need rapid exceptions. Ordinary signature validation is insufficient when the boot root itself is compromised or the supply chain signs malicious content."}]}
+evidence_refs: [REF-000449, REF-000467, REF-000468, REF-000720]
+lifecycle: {status: review, version: "1.0.0", created: "2026-09-23", modified: "2026-09-23", contributors: [Niji Matrix Research], reviewers: []}

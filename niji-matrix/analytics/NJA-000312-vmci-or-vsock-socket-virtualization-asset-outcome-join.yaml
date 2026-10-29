@@ -1,0 +1,138 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000312
+strategy_ref: DET-000241
+name:
+  zh: VMCI/vsock 套接字—虚拟化资产—结果关联
+  en: VMCI or vsock Socket–Virtualization Asset–Outcome Join
+summary:
+  zh: 把 VMCI/vsock 端点、虚拟化资产和无 IP 会话结果关联。
+  en: Join VMCI or vsock endpoints, virtualization assets, and outcomes without IP sessions.
+domains:
+- enterprise
+platforms:
+- Linux
+- ESXi
+logic:
+  paragraphs:
+  - zh: '>- 从 vCenter/ESXi 清单解析 host_id、VM UUID、VMCI CID、vmci0.present/unrestricted 与批准服务，周期性核对 VIB 名称、vendor、version、acceptance
+      level、install date、签名和 Secure Boot 状态。对支持的 Linux 来宾/宿主用 eBPF 或能解析 sockaddr_vm 的传感器记录 socket/bind/connect/accept
+      的 AF_VSOCK、SOCK_STREAM/DGRAM、local/peer CID 和 port，并以 host/CID 将进程连接到 VM。告警条件要求未批准可执行文件或服务标签使用 VMCI、异常 VIB/配置变化，或该通道时间后出现
+      shell/文件传输结果；普通 auditd 的 a0–a3 若未解引用 sockaddr 只能发现 address family，不能声称看见 peer CID。'
+    en: '>- Parse host_id, VM UUID, VMCI CID, vmci0.present or unrestricted, and approved services from vCenter or ESXi
+      inventory, and periodically compare VIB name, vendor, version, acceptance level, install date, signature, and Secure
+      Boot state. On supported Linux guests or hosts, use eBPF or another sensor that decodes sockaddr_vm to record AF_VSOCK,
+      SOCK_STREAM or DGRAM, local and peer CID, and port for socket, bind, connect, and accept, then map the process
+      to a VM by host and CID. Alerting requires an unapproved executable or service label using VMCI, an anomalous VIB
+      or configuration change, or shell or file-transfer outcomes after the channel. Plain auditd a0–a3 without sockaddr
+      dereference can reveal the address family but cannot claim peer CID visibility.'
+data_requirements:
+- source_type: virtualization-inventory
+  name:
+    zh: ('virtualization_inventory', 'virtualization_inventory')
+    en: ('virtualization_inventory', 'virtualization_inventory')
+  channel: vCenter/ESXi and configuration management
+  required_fields:
+  - timestamp
+  - host_id
+  - vm_uuid
+  - vm_name
+  - vmci_cid
+  - vmci_present
+  - vmci_unrestricted
+  - approved_vmci_services
+- source_type: platform-integrity
+  name:
+    zh: ('platform_integrity', 'platform_integrity')
+    en: ('platform_integrity', 'platform_integrity')
+  channel: ESXi VIB inventory and Secure Boot validation
+  required_fields:
+  - timestamp
+  - host_id
+  - vib_name
+  - vendor
+  - version
+  - acceptance_level
+  - install_date
+  - signature_status
+  - secure_boot_status
+- source_type: vsock-syscall
+  name:
+    zh: ('vsock_syscall', 'vsock_syscall')
+    en: ('vsock_syscall', 'vsock_syscall')
+  channel: eBPF or enriched syscall sensor
+  required_fields:
+  - timestamp
+  - host_id
+  - vm_uuid
+  - pid
+  - exe
+  - syscall
+  - address_family
+  - socket_type
+  - local_cid
+  - local_port
+  - peer_cid
+  - peer_port
+  - result
+- source_type: endpoint-process-file
+  name:
+    zh: ('endpoint_process_file', 'endpoint_process_file')
+    en: ('endpoint_process_file', 'endpoint_process_file')
+  channel: null
+  required_fields:
+  - timestamp
+  - host_id
+  - vm_uuid
+  - process_entity_id
+  - parent_entity_id
+  - executable
+  - command_line
+  - file_path
+  - operation
+observables:
+- zh: 未批准 AF_VSOCK 进程使用异常 CID/port 且产生无 IP 会话结果
+  en: An unapproved AF_VSOCK process uses an unexpected CID and port and produces an outcome without an IP session
+- zh: 恶意/未签名 VIB 或 VMCI 配置变化连接宿主与来宾动作
+  en: A malicious or unsigned VIB or VMCI change joins host and guest actions
+correlation:
+  window:
+    zh: 每日比较配置/VIB，socket 到结果十分钟，稀有重连保留三十日。
+    en: Compare configuration and VIB daily, join socket to outcome within ten minutes, and retain thirty days for rare
+      reconnection.
+  dimensions:
+  - host_id
+  - vm_uuid
+  - vmci_cid
+  - peer_cid
+  - peer_port
+  - process_entity_id
+  - vib_name
+  - time
+false_positives:
+- zh: VMware Tools、备份/监控 agent 与批准的宿主—来宾 RPC
+  en: VMware Tools, backup or monitoring agents, and approved host-to-guest RPC
+blind_spots:
+- zh: hypervisor 篡改清单、缺少 sockaddr_vm 解析或短驻连接
+  en: The hypervisor tampers with inventory, sockaddr_vm is not parsed, or the connection is short-lived
+tuning_guidance:
+  paragraphs:
+  - zh: '>- 为每个集群维护 VMCI 业务服务、CID/port、VIB 发布者和升级窗口；任何未知 VMCI 使用先核验平台变更，再以结果侧进程/文件提高置信。CommunitySupported/unsigned VIB
+      是完整性风险但不是单独 C2 结论。'
+    en: '>- Maintain VMCI business services, CID and port, VIB publisher, and upgrade windows for each cluster. Verify
+      platform change before escalating unknown VMCI use and use outcome processes or files to raise confidence. A CommunitySupported
+      or unsigned VIB is an integrity risk rather than a standalone C2 conclusion.'
+evidence_refs:
+- REF-000053
+- REF-001038
+- REF-001039
+- REF-001042
+- REF-001043
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-10-04'
+  modified: '2026-10-04'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

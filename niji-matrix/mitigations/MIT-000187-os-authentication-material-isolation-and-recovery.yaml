@@ -1,0 +1,155 @@
+schema_version: 2.0.0
+type: mitigation
+id: MIT-000187
+name:
+  zh: OS 认证材料隔离与提取权限治理
+  en: OS Authentication-Material Isolation and Extraction-Authority Governance
+summary:
+  zh: 隔离认证运行态和存储读取，限制目录复制权限，并按材料范围执行凭据与域级恢复。
+  en: Isolate authentication runtime and store reads, restrict directory-replication authority, and perform credential or
+    domain recovery according to material scope.
+description:
+  paragraphs:
+  - zh: 本缓解同时控制运行态 reader、受保护认证存储、备份/快照权限和目录复制权。组织启用适用的进程保护与 Credential Guard，限制 ptrace、raw storage 和备份身份，版本化复制 ACL 与批准 DC/synchronizer，并保留
+      reader、view、request 和安全摘要化 output 的谱系。确认材料后按账户与材料类别轮换，广泛 NTDS 或 krbtgt 暴露进入受控域恢复。
+    en: This mitigation governs runtime readers, protected authentication stores, backup or snapshot authority, and directory-replication
+      rights together. Enable applicable process protection and Credential Guard, constrain ptrace, raw storage, and backup
+      identities, version replication ACLs and approved DCs or synchronizers, and retain lineage among reader, view, request,
+      and safely digested output. After material confirmation, rotate by account and material class, and enter controlled
+      domain recovery for broad NTDS or krbtgt exposure.
+domains:
+- enterprise
+measures:
+- key: runtime-authentication-isolation
+  name:
+    zh: 认证运行态隔离
+    en: Runtime Authentication Isolation
+  description:
+    paragraphs:
+    - zh: 对 Windows 启用适用的 LSA protection、Credential Guard/VBS 与受保护进程策略，限制调试、驱动与危险句柄权；对 Linux 收紧 ptrace、CAP_SYS_PTRACE、procfs
+        hidepid、root 使用和认证服务调试。
+      en: Enable applicable LSA protection, Credential Guard or VBS, and protected-process policy on Windows while restricting
+        debugging, drivers, and dangerous handle rights. On Linux, constrain ptrace, CAP_SYS_PTRACE, procfs hidepid, root
+        use, and debugging of authentication services.
+  control_type: preventive
+- key: credential-store-and-backup-authority
+  name:
+    zh: 凭据存储与备份权限治理
+    en: Credential Store and Backup Authority Governance
+  description:
+    paragraphs:
+    - zh: 对 SAM/SECURITY/SYSTEM、NTDS、shadow、system-state、raw volume 与备份副本使用最小读取/导出权限、隔离备份身份与网络、静态加密和不可变审计；批准 reader 绑定版本、target
+        和 output contract。
+      en: Apply least read and export authority, separate backup identities and networks, encryption at rest, and immutable
+        audit to SAM, SECURITY, SYSTEM, NTDS, shadow, system state, raw volumes, and backup copies. Bind approved readers
+        to version, target, and output contract.
+  control_type: preventive
+- key: directory-replication-authority
+  name:
+    zh: 目录复制权限治理
+    en: Directory Replication Authority Governance
+  description:
+    paragraphs:
+    - zh: 将目录复制扩展权仅授予批准 DC 与必要同步主体，持续版本化 ACL、host GUID、naming context、owner 与期限；网络上限制可调用 DRS 的来源，并对新增或首次使用复制权独立审批。
+      en: Grant directory-replication extended rights only to approved DCs and necessary synchronization principals, continuously
+        versioning ACL, host GUID, naming context, owner, and expiry. Restrict network origins that can invoke DRS and separately
+        approve new or first use of replication rights.
+  control_type: preventive
+- key: sensitive-read-and-output-lineage
+  name:
+    zh: 敏感读取与输出谱系
+    en: Sensitive Read and Output Lineage
+  description:
+    paragraphs:
+    - zh: 对认证目标启用可承受的进程/对象/复制审计，把 reader、view、request 与安全摘要化 output 关联；不得在集中日志保存原始口令、散列、密钥或完整 dump。
+      en: Enable sustainable process, object, and replication audit for authentication targets and join reader, view, and
+        request to safely digested output. Never store raw passwords, hashes, keys, or full dumps in centralized logs.
+  control_type: detective-support
+applications:
+- target_ref: NJT-0177
+  use:
+    paragraphs:
+    - zh: 盘点所有 OS 认证材料、依赖、合法 reader/replicator、保护和审计面，按运行态、活动存储、副本与复制路径分别最小化权限并验证材料暴露响应；离线验证材料恢复继续复用 MIT-000134。
+      en: Inventory every operating-system authentication material class, dependency, legitimate reader or replicator, protection,
+        and audit plane. Minimize authority separately for runtime, live store, copy, and replication paths and validate material-exposure
+        response. Continue to reuse MIT-000134 for recovery from exposed offline-verifier material.
+  expected_effect:
+    paragraphs:
+    - zh: 减少可读取或导出材料的主体与视图，使成功访问留下可映射到对象、输出和账户范围的证据，并为范围化轮换提供依据。
+      en: Reduce subjects and views capable of reading or exporting material, make successful access map to object, output,
+        and account scope, and support scoped rotation decisions.
+  limitations:
+    paragraphs:
+    - zh: 高权限认证、备份、安全和目录服务仍需合法访问；PPL、Credential Guard、hidepid 与 ACL 不覆盖所有材料或内核攻击，审计具有性能和秘密处理成本。
+      en: Privileged authentication, backup, security, and directory services still need legitimate access. PPL, Credential
+        Guard, hidepid, and ACLs do not cover every material class or kernel attack, and audit has performance and secret-handling
+        cost.
+- target_ref: NJS-0177-001
+  use:
+    paragraphs:
+    - zh: 为敏感目标建立 reader-target-output 合同，限制可加载模块与注入权，校验二进制和配置完整性，并让受信 reader 的危险访问接受与未知进程相同的结果关联。
+      en: Establish a reader-target-output contract for sensitive targets, constrain loadable modules and injection authority,
+        validate binary and configuration integrity, and subject dangerous access by trusted readers to the same outcome correlation
+        as unknown processes.
+  expected_effect:
+    paragraphs:
+    - zh: 角色贴合 image 不再形成白名单旁路，代码来源和异常输出成为阻断或调查条件。
+      en: A role-conforming image no longer creates an allowlist bypass, and code provenance plus anomalous output becomes
+        a blocking or investigative condition.
+  limitations:
+    paragraphs:
+    - zh: 内核控制、签名供应链失陷、同进程漏洞和传感器被篡改仍可避开；合法 EDR 与诊断需要严格限时例外。
+      en: Kernel control, compromised signing supply chain, in-process vulnerabilities, and sensor tampering can still evade,
+        while legitimate EDR and diagnostics need tightly bounded exceptions.
+- target_ref: NJS-0177-002
+  use:
+    paragraphs:
+    - zh: 对系统状态、快照、备份和 raw volume 使用隔离主体与网络，阻止普通管理员随意创建或导出，并把 copy ID 映射到敏感认证对象；介质控制继续复用 MIT-000107，离线材料响应复用 MIT-000134。
+      en: Use isolated principals and networks for system state, snapshots, backups, and raw volumes, prevent arbitrary creation
+        or export by ordinary administrators, and map copy identifiers to sensitive authentication objects. Continue to reuse
+        MIT-000107 for medium controls and MIT-000134 for offline-material response.
+  expected_effect:
+    paragraphs:
+    - zh: 降低活动路径外取得完整存储与依赖的机会，并让副本读取具有可追踪来源、对象和目的地。
+      en: Reduce opportunities to obtain a complete store and dependencies outside the live path and make copy reads traceable
+        to source, object, and destination.
+  limitations:
+    paragraphs:
+    - zh: 备份系统本身需要广泛权限，脱机介质和被攻陷备份控制面可绕过主机治理；副本加密取决于密钥分离。
+      en: Backup systems themselves need broad authority, offline media and a compromised backup control plane can bypass
+        host governance, and copy encryption depends on key separation.
+- target_ref: NJS-0177-003
+  use:
+    paragraphs:
+    - zh: 清点并收敛 replication extended rights，限制 DRS 来源到批准 host/GUID，监控 ACL 首次使用与 secret-bearing scope，并把同步主体与普通管理员分离；材料暴露后按域恢复计划和
+        MIT-000134 处置。
+      en: Inventory and minimize replication extended rights, restrict DRS origins to approved hosts or GUIDs, monitor first
+        use of ACLs and secret-bearing scope, and separate synchronization principals from ordinary administrators. Handle
+        material exposure through a domain-recovery plan and MIT-000134.
+  expected_effect:
+    paragraphs:
+    - zh: 未批准主机或账户难以让 DC 导出秘密，残余成功请求可按来源、权限、范围和 output 调查。
+      en: Unapproved hosts or accounts have greater difficulty making a DC export secrets, and residual successful requests
+        are investigable by origin, rights, scope, and output.
+  limitations:
+    paragraphs:
+    - zh: 获批准 DC 或同步主体失陷仍会通过来源控制，加密 RPC 可能限制内容检查；复制业务中断风险要求分阶段部署。
+      en: Compromise of an approved DC or synchronization principal still passes origin controls, encrypted RPC can limit
+        content inspection, and replication outage risk requires staged deployment.
+evidence_refs:
+- REF-000803
+- REF-000804
+- REF-000805
+- REF-000806
+- REF-000025
+- REF-000749
+- REF-000750
+- REF-000809
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-09-27'
+  modified: '2026-09-27'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

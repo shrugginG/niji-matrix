@@ -1,0 +1,123 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000208
+strategy_ref: DET-000188
+name:
+  zh: 联合登录与 IdP 签发缺口联查
+  en: Federated Sign-In and IdP Issuance-Gap Join
+summary:
+  zh: 联合登录与 IdP 签发缺口联查输出分层异常结果。
+  en: Federated Sign-In and IdP Issuance-Gap Join emits a graded anomaly result.
+domains:
+- enterprise
+platforms:
+- Identity Provider
+- SaaS
+- IaaS
+- Windows
+logic:
+  paragraphs:
+  - zh: 先规范依赖方成功联合登录或断言接受，保存主体、应用/relying party、issuer、协议、接受时刻、来源、客户端、session/correlation 及可用的 assertion ID、声明摘要和时限。再在前后十分钟内查询同一 IdP 的 fresh credential、token
+      issuance 和 issued claims；AD FS 优先使用 Activity ID 连接 1202、1200/299 和 500 类事件。精确 ID 无对应项输出 issuance_gap_high；只有主体和时间弱匹配则输出 issuance_origin_unverified。IdP
+      发起的 unsolicited response 不能因缺 InResponseTo 告警，但仍应有本地签发记录。日志覆盖不足时只输出 telemetry_gap，不越级宣称伪造。
+    en: Normalize each successful federated sign-in or assertion acceptance at the relying party with principal, application or relying party,
+      issuer, protocol, acceptance time, origin, client, session or correlation identifier, and available assertion ID, claim digest, and lifetime.
+      Search the same IdP for fresh-credential, token-issuance, and issued-claims records within ten minutes. In AD FS, prefer Activity ID across
+      event 1202, 1200 or 299, and 500-class records. An exact identifier with no counterpart yields issuance_gap_high; principal-and-time-only
+      matching yields issuance_origin_unverified. IdP-initiated unsolicited responses must not alert merely because InResponseTo is absent, but
+      they still require local issuance. Insufficient logging emits telemetry_gap rather than a forgery verdict.
+data_requirements:
+- source_type: identity-provider-authentication-issuance
+  channel: AD FS Security audit or equivalent IdP issuance audit
+  required_fields:
+  - timestamp
+  - identity_provider_id
+  - event_id_or_type
+  - activity_or_request_id
+  - principal_id
+  - relying_party_id
+  - result
+  name:
+    zh: identity-provider-authentication-issuance
+    en: Identity Provider Authentication Issuance
+- source_type: relying-party-federated-signin
+  channel: Entra sign-in or SaaS federation authentication log
+  required_fields:
+  - timestamp
+  - tenant_or_application_id
+  - principal_id
+  - issuer_id
+  - authentication_protocol
+  - result
+  - source_ip
+  - user_agent_or_client
+  - session_or_correlation_id
+  name:
+    zh: relying-party-federated-signin
+    en: Relying Party Federated Signin
+- source_type: assertion-validation-metadata
+  channel: federation gateway or protected diagnostic capture
+  required_fields:
+  - assertion_or_token_id_hash
+  - issuer_id
+  - audience_or_recipient
+  - issue_time
+  - not_on_or_after
+  - in_response_to_hash
+  - claims_digest
+  name:
+    zh: assertion-validation-metadata
+    en: Assertion Validation Metadata
+observables:
+- zh: 依赖方接受认证材料
+  en: The relying party accepts authentication material
+- zh: 缺少对应的新鲜主认证
+  en: Corresponding fresh primary authentication is absent
+- zh: 缺少对应权威签发事务
+  en: Corresponding authoritative issuance is absent
+- zh: 声明或有效期偏离批准语义
+  en: Claims or lifetime deviate from approved semantics
+- zh: 签发或接受遥测存在覆盖缺口
+  en: Issuance or acceptance telemetry has a coverage gap
+correlation:
+  window:
+    zh: 10m-per-acceptance-with-signer-lifetime-lookback
+    en: 10m-per-acceptance-with-signer-lifetime-lookback
+  dimensions:
+  - identity_provider_id
+  - tenant_or_application_id
+  - principal_id
+  - relying_party_id
+  - activity_or_request_id
+  - assertion_or_token_id_hash
+  - session_or_correlation_id
+  - issuer_id
+  - time
+false_positives:
+- zh: IdP 发起 SSO、合法会话续期、缓存、日志延迟或丢失、时钟漂移、灾备 IdP 和跨租户代理会形成表面缺口，必须核对协议模式、日志健康和已批准拓扑。
+  en: IdP-initiated SSO, legitimate session renewal, caching, delayed or lost logs, clock drift, disaster-recovery IdPs, and cross-tenant brokers
+    create apparent gaps; verify protocol mode, log health, and approved topology.
+blind_spots:
+- zh: 未启用 AD FS success/failure 与 Application Generated 审计、SaaS 不提供 assertion 元数据、双方没有共同 ID、攻击者同时控制 IdP 日志或合法 signer 时，缺口只能低置信度关联。
+  en: The gap is low-confidence when AD FS success, failure, and Application Generated audit are disabled, SaaS omits assertion metadata, neither
+    side shares an identifier, or the adversary controls IdP logs or the legitimate signer.
+tuning_guidance:
+  paragraphs:
+  - zh: 先按 IdP、relying party 和流类型建立是否应出现 1202/1200/299/500 或等价事件的覆盖矩阵；允许项必须绑定具体流、owner、版本和期限。精确 assertion/request ID 缺失优先级最高；只有主体时间缺口需再结合 signer、声明、来源或高价值资源。原始
+      assertion 仅存入受控取证域，运营日志使用 ID hash 和 claims digest。
+    en: Build an expected-event coverage matrix by IdP, relying party, and flow type for 1202, 1200, 299, 500, or equivalents. Allowances bind
+      to a specific flow, owner, version, and expiry. Missing exact assertion or request identifiers has the highest priority; principal-and-time
+      gaps require signer, claims, origin, or high-value resource context. Store raw assertions only in a controlled forensic domain and use identifier
+      hashes and claim digests in operational logs.
+evidence_refs:
+- REF-000714
+- REF-000712
+- REF-000715
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-09-23'
+  modified: '2026-09-23'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

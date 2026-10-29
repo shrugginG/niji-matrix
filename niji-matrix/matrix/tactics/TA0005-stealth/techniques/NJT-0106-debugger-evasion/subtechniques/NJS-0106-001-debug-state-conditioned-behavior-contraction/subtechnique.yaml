@@ -1,0 +1,118 @@
+schema_version: 2.0.0
+type: evasion-subtechnique
+id: NJS-0106-001
+name:
+  zh: 调试状态条件化行为收敛
+  en: Debug-State-Conditioned Behavior Contraction
+summary:
+  zh: 攻击者读取调试器存在状态，并在被调试时退出、进入诱饵路径或保留核心载荷。
+  en: Adversaries read debugger-presence state and exit, select a decoy path, or withhold a core payload when debugging is
+    present.
+aliases: []
+parent_ref: NJT-0106
+lineage:
+  attck_subtechnique_inherited: false
+definition_and_concept:
+  paragraphs:
+  - zh: 调试状态条件化行为收敛是程序读取用户态或内核调试状态、追踪者标识、断点或异常处理差异，并让结果否定真实后续行为的匿迹子技术。其直接目标是使调试条件下的分析者只观察到退出、诱饵或不完整阶段，而非调试条件仍可继续真实路径。
+    en: Debug-State-Conditioned Behavior Contraction is an evasion sub-technique in which a program reads user-mode or kernel
+      debugger state, tracing identifiers, breakpoints, or exception-handling differences and lets the result negatively gate
+      true successor behavior. Its immediate objective is to show an analyst only exit, decoy, or an incomplete stage under
+      debugging while the real path remains available without debugging.
+  - zh: 稳定变量是调试状态与后续结果之间的可重复条件关系。IsDebuggerPresent、TracerPid、PEB 标志、断点和时序检查是实现，不形成兄弟边界；大量无意义调试事件对通道预算的消耗属于 NJS-0106-002。
+    en: The stable variable is a repeatable conditional relationship between debugger state and successor outcome. IsDebuggerPresent,
+      TracerPid, PEB flags, breakpoints, and timing checks are implementations rather than sibling boundaries; consumption
+      of channel budget through large volumes of meaningless debug events belongs to NJS-0106-002.
+stealth_characteristics:
+  paragraphs:
+  - zh: 调试状态条件化行为收敛使同一样本在调试开启与关闭时呈现不同控制流、载荷阶段和外部结果。防守方若只看被调试的一次运行，可能把退出或空路径解释为无害、故障或不完整样本，不知道被保留的功能。
+    en: Debug-State-Conditioned Behavior Contraction causes one sample to present different control flow, payload stages,
+      and external outcomes when debugging is on and off. A defender observing only one debugged run may interpret exit or
+      an empty path as benign behavior, failure, or an incomplete sample without knowing the withheld capability.
+  - zh: 残余痕迹包括调试状态 API、/proc 追踪字段读取、PEB 访问、断点与异常检查，以及检查后的稳定退出码或载荷缺失。透明插桩、调试开关差分和外部文件网络观察会限制匿迹效果；两种条件下行为相同时不成立。
+    en: Residual traces include debugger-state APIs, /proc tracing-field reads, PEB access, breakpoint and exception checks,
+      and a stable exit code or payload absence after the check. Transparent instrumentation, debugger-on/off differential,
+      and external file or network observation limit the stealth effect; identical behavior in both conditions does not establish
+      the child.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 纳入调试状态查询或等价反馈与退出、诱饵路径、解码缺失、子进程缺失或网络阶段不出现之间的稳定条件关系。单次 API 调用、字符串或调试器进程发现不足以成立。
+    en: Scope includes a stable conditional relationship between a debugger-state query or equivalent feedback and exit, decoy
+      path, missing decoding, absent child process, or nonappearance of a network stage. One API call, string, or discovered
+      debugger process is insufficient.
+  - zh: 合法软件保护、反作弊、DRM、调试测试与崩溃处理是主要反例。虚拟机、沙箱、用户活动或时钟环境门控归 NJT-0122；大量调试消息或异常事件饱和观察通道归 NJS-0106-002。
+    en: Legitimate software protection, anti-cheat, DRM, debugger testing, and crash handling are primary counterexamples.
+      Virtual-machine, sandbox, user-activity, or clock-environment gating belongs to NJT-0122; saturation of the observation
+      channel by large volumes of debug messages or exception events belongs to NJS-0106-002.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: 恶意载荷可在入口函数、解包、网络通信或释放下一阶段之前读取 IsDebuggerPresent、TracerPid、PEB 标志或断点状态；检测到观察后退出或不执行后续。P2PInfect 中 TracerPid 与 strace 条件退出提供了直接案例。
+      en: A malicious payload may read IsDebuggerPresent, TracerPid, a PEB flag, or breakpoint state before entry, unpacking,
+        networking, or release of a next stage and then exit or omit the successor when observation is detected. P2PInfect's
+        TracerPid-linked exit under strace provides a direct case.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者需要可靠读取调试状态并在载荷释放前控制分支。状态可被透明插桩隐藏或伪造，合法环境可能使用追踪或调试器，误判会使攻击者丢失真实目标。
+        en: The adversary needs reliable debugger-state access and branch control before payload release. Transparent instrumentation
+          may conceal or forge the state, legitimate environments may use tracing or debuggers, and false assessment can cost
+          the adversary a genuine target.
+    defender_model:
+      paragraphs:
+      - zh: 防守方可观察调试状态读取、进程与线程寿命、退出码、解码、子进程、文件和网络结果，并按样本与进程 start key 比较调试开启、关闭与透明插桩运行。没有未调试对照、用户态插桩被绕过或外部结果不保留时形成盲区。
+        en: The defender observes debugger-state reads, process and thread lifetime, exit code, decoding, child-process, file,
+          and network outcomes and compares debugging-on, debugging-off, and transparent-instrumentation runs by sample and
+          process start key. Blind spots arise without an undebugged control, when user-mode instrumentation is bypassed, or
+          when external outcomes are not retained.
+stealth_mechanisms:
+- mechanism_ref: NM-BT
+  role: primary
+  summary:
+    zh: 调试状态在真实后续路径进入观察前否定执行
+    en: Debugger state negatively gates execution before the true successor path enters observation
+  analysis:
+    paragraphs:
+    - zh: 攻击者在核心阶段前读取调试状态，并在观察存在时退出或保留载荷，使痕迹从完整恶意执行缩减为状态查询与终止；防守方无法直接观察未进入的路径，因此形成行为透明。
+      en: The adversary reads debugger state before a core stage and exits or withholds the payload when observation is present,
+        contracting traces from complete malicious execution to a state query and termination. Defenders cannot directly
+        observe the path that never entered the run, producing Behavioral Transparency.
+  evidence_refs:
+  - REF-000414
+  - REF-000415
+  confidence: high
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000103
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000105
+evidence:
+  claim_refs:
+  - CLM-000621
+  case_refs:
+  - CASE-000138
+  reference_refs:
+  - REF-000386
+  - REF-000414
+  - REF-000415
+research:
+  limitations:
+    paragraphs:
+    - zh: P2PInfect 直接证明 Linux TracerPid 分支，Microsoft 文档证明 Windows 状态查询语义；跨平台存在性为高置信，但具体状态字段不能跨平台类推。
+      en: P2PInfect directly establishes a Linux TracerPid branch and Microsoft documentation establishes Windows state-query
+        semantics. Cross-platform existence is high confidence, but individual state fields cannot be generalized across platforms.
+    - zh: 合法反篡改、反作弊和 DRM 可以使用相同查询。缺少调试开关与后续结果差分时，只能确认状态查询，不得确认恶意行为收敛。
+      en: Legitimate anti-tamper, anti-cheat, and DRM can use the same queries. Without debugger-on/off successor-outcome
+        differential, only a state query can be established and malicious behavior contraction must not be asserted.
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-09-21'
+  modified: '2026-09-21'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

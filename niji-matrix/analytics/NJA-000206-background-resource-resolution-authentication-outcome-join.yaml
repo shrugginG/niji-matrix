@@ -1,0 +1,147 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000206
+strategy_ref: DET-000186
+name:
+  zh: 后台资源解析认证结果关联
+  en: Background Resource Resolution Authentication Outcome Join
+summary:
+  zh: 后台资源解析认证结果关联输出分层异常结果。
+  en: Background Resource Resolution Authentication Outcome Join emits a graded anomaly result.
+domains:
+- enterprise
+platforms:
+- Windows
+logic:
+  paragraphs:
+  - zh: 在入口解析消息、日历项、快捷对象、文档关系及其他可解析资源字段，保存对象哈希、属性键、规范化 URI、投递主体和计划触发时间；随后按对象与设备连接应用读取或渲染、进程网络连接、SMBClient 或 NTLM 审计和接收端结果。对象指向未批准目的地且同一设备或用户在解析后五分钟内发出
+      NTLM 或集成认证时输出 outbound_authentication_attempt；接收端或网络传感器确认挑战响应到达时升级为 material_observed；目标服务成功或离线破解另作后继结果。投递与解析可相隔三十天，但解析到认证保持窄窗；失败连接不得升级。
+    en: At ingress, parse messages, calendar items, shortcut-like objects, document relationships, and other resolvable resource fields, retaining
+      object hash, property key, normalized URI, delivery principal, and scheduled trigger time. Join later application read or render activity
+      to process network connections, SMBClient or NTLM audit, and receiver outcomes by object and device. Emit outbound_authentication_attempt
+      when an object points to an unapproved destination and the same device or user produces NTLM or integrated authentication within five minutes
+      of resolution. Upgrade to material_observed only when receiver or network evidence confirms challenge-response arrival; target-service success
+      or offline cracking remains a successor outcome. Delivery and resolution may be separated by thirty days, but resolution-to-authentication
+      stays narrow. A failed connection never upgrades the state.
+data_requirements:
+- source_type: ingress-object-metadata
+  channel: mail security, file analysis, collaboration audit, or content disarm pipeline
+  required_fields:
+  - event.timestamp
+  - object.id
+  - object.hash
+  - object.type
+  - property.name
+  - property.value
+  - resource.uri
+  - delivery.source
+  - delivery.recipient
+  - trigger.scheduled_time
+  name:
+    zh: ingress-object-metadata
+    en: Ingress Object Metadata
+- source_type: endpoint-object-process
+  channel: EDR, application audit, or OS file/object telemetry
+  required_fields:
+  - event.timestamp
+  - asset.id
+  - user.id
+  - logon.id
+  - object.id
+  - object.hash
+  - process.guid
+  - parent_process.guid
+  - process.image
+  - operation
+  name:
+    zh: endpoint-object-process
+    en: Endpoint Object Process
+- source_type: endpoint-network-authentication
+  channel: configured Sysmon Event 3, SMBClient Connectivity, NTLM Operational, or equivalent EDR
+  required_fields:
+  - event.timestamp
+  - asset.id
+  - user.id
+  - logon.id
+  - process.guid
+  - network.destination.name
+  - network.destination.ip
+  - network.destination.port
+  - network.protocol
+  - authentication.protocol
+  - authentication.target
+  - connection.result
+  name:
+    zh: endpoint-network-authentication
+    en: Endpoint Network Authentication
+- source_type: receiver-authentication-outcome
+  channel: managed decoy, network sensor, approved test receiver, or incident evidence
+  required_fields:
+  - event.timestamp
+  - receiver.id
+  - source.ip
+  - victim.asset_id
+  - principal.id
+  - authentication.protocol
+  - challenge.id
+  - response.observed
+  - authentication.result
+  name:
+    zh: receiver-authentication-outcome
+    en: Receiver Authentication Outcome
+observables:
+- zh: 非受信对象属性包含可解析外部资源
+  en: An untrusted object property contains a resolvable external resource
+- zh: 受信进程在后台解析该资源
+  en: A trusted process resolves the resource in the background
+- zh: 集成认证发往未批准目的地
+  en: Integrated authentication is sent to an unapproved destination
+- zh: 接收端观察到挑战响应材料
+  en: The receiver observes challenge-response material
+- zh: 对象交付后延迟触发认证
+  en: Authentication is triggered after a delay from delivery
+correlation:
+  window:
+    zh: 30d-delivery-to-resolution-and-5m-resolution-to-authentication
+    en: 30d-delivery-to-resolution-and-5m-resolution-to-authentication
+  dimensions:
+  - object.id
+  - object.hash
+  - asset.id
+  - user.id
+  - logon.id
+  - process.guid
+  - resource.uri
+  - network.destination.ip
+  - authentication.target
+  - challenge.id
+false_positives:
+- zh: 合法企业模板、内部共享图标、日历提醒声音、文档协作插件、软件分发和获批渗透测试可产生同类解析与认证；必须核对发布者、签名、资源 owner、受信域和工单，而不能整体白名单化 Office 或外壳进程。
+  en: Legitimate enterprise templates, shared icons, reminder sounds, collaboration plug-ins, software distribution, and authorized tests can
+    produce similar resolution and authentication. Check publisher, signature, resource owner, trusted domain, and ticket rather than blanket
+    allowlisting Office or shell processes.
+blind_spots:
+- zh: 原对象已删除或服务器端属性不可导出、网络连接由系统代理代发、Sysmon Event 3 未启用、个人设备不受管、攻击者监听端不可见、加密 Web 流量和内部 NAT 会削弱对象到材料的连接；SMBClient 失败事件不能确认泄露。
+  en: Deleted source objects, unavailable server-side properties, system-proxy connections, disabled Sysmon Event 3, unmanaged devices, invisible
+    adversary listeners, encrypted web traffic, and internal NAT weaken object-to-material lineage. SMBClient failure events cannot confirm leakage.
+tuning_guidance:
+  paragraphs:
+  - zh: 建立批准资源 URI 到发布者、应用、用户组和业务时段的精确映射；优先外部或新见目的地、高价值账户、无用户活动的解析及重复触发。对批准内部域降权仍保留原始属性与结果，按设备时钟误差校准五分钟窗口；把 attempt、material_observed 和 successor_use
+      分别告警。
+    en: Map approved resource URIs precisely to publisher, application, user group, and business window. Prioritize external or first-seen destinations,
+      high-value principals, resolution without user activity, and repeated triggers. Down-weight approved internal domains while retaining properties
+      and outcomes, calibrate the five-minute window for clock skew, and alert separately on attempt, material_observed, and successor_use.
+evidence_refs:
+- REF-000705
+- REF-000704
+- REF-000230
+- REF-000494
+- REF-000439
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-09-23'
+  modified: '2026-09-23'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

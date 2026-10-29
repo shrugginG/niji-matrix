@@ -1,0 +1,98 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000151
+strategy_ref: DET-000145
+name:
+  zh: 哈希材料取用与后继认证链
+  en: Hash-Material Access and Subsequent Authentication Lineage
+summary:
+  zh: 关联验证材料异常导出与受影响账户的后继认证，并保留破解状态未知。
+  en: Join abnormal export of verifier material to later authentication of affected accounts while preserving unknown cracking status.
+domains:
+- enterprise
+platforms:
+- Windows
+- Identity Provider
+logic:
+  paragraphs:
+  - zh: 从域控制器或凭据库文件审计中定位未批准的批量读取、快照复制、导出与大容量外传，将 material_id、actor_id、host_id 和事件时间串联；生成受影响账户集合。针对该集合标记材料暴露后首次认证、异常来源、MFA 拒绝或重置前使用。若攻击者计算设备不受监控，输出为材料泄露及疑似后继利用风险，不输出“观察到离线破解成功”；只有可信终端遥测显示破解进程与材料输入时才增加直接计算证据。
+    en: Find unauthorized bulk reads, shadow-copy access, export, and large transfers of domain-controller or credential-store material, joining
+      material_id, actor_id, host_id, and event time; derive the affected account set. For those accounts, mark first post-exposure authentication,
+      unusual source, MFA denial, or use before reset. If attacker compute is unmonitored, output material-exposure and possible follow-on-use
+      risk, not observed successful cracking. Add direct computation evidence only when trusted endpoint telemetry shows a cracking process and
+      input material.
+data_requirements:
+- source_type: credential-material-audit
+  name:
+    zh: 凭据材料文件与快照审计
+    en: Credential-material file and snapshot audit
+  channel: Domain controller file access and snapshot logs
+  required_fields:
+  - event_time
+  - actor_id
+  - host_id
+  - material_id
+  - operation
+  - result
+- source_type: identity-signin
+  name:
+    zh: 受影响身份后继认证
+    en: Later authentication of exposed identities
+  channel: IdP sign-in logs
+  required_fields:
+  - event_time
+  - stable_user_id
+  - source_ip
+  - result_code
+  - authentication_stage
+- source_type: material-account-map
+  name:
+    zh: 验证材料与账号映射
+    en: Verifier-material to account mapping
+  channel: null
+  required_fields:
+  - material_id
+  - stable_user_id
+  - mapping_source
+  - valid.from
+observables:
+- zh: 域数据库、哈希库或快照材料被未授权读取或外传
+  en: A domain database, hash store, or snapshot material is accessed or exported without authorization
+- zh: 材料暴露后受影响身份由新来源进行首次认证
+  en: An affected identity first authenticates from a new source after material exposure
+correlation:
+  window:
+    zh: 从首次材料暴露起到受影响秘密已确认重置或风险关闭，跨该期间保留材料—账户映射。
+    en: Correlate from first material exposure until affected secrets are confirmed reset or risk is closed, retaining material-to-account mapping
+      throughout.
+  dimensions:
+  - material_id
+  - actor_id
+  - host_id
+  - stable_user_id
+  - event_time
+false_positives:
+- zh: 域控制器备份、灾备演练及获批准的密码审计可能读取相同材料。
+  en: Domain-controller backup, disaster-recovery drills, and approved password audits may access the same material.
+blind_spots:
+- zh: 外部离线计算不可见，材料账号映射不全或哈希不对应可登录秘密时无法准确判断后继风险。
+  en: External offline compute is invisible, and incomplete material-to-account mapping or hashes unrelated to a usable login secret prevent precise
+    follow-on-risk assessment.
+tuning_guidance:
+  paragraphs:
+  - zh: 以获批准的备份账户、时间、输出目标和变更单排除正常作业；只在能验证材料与账号映射时构建受影响集合，并在重置或撤销后终止风险窗口。把取用事实、离线破解推断与实际登录结果分开呈报。
+    en: Use approved backup identities, schedules, destinations, and change tickets to exclude normal jobs. Build the affected set only when material-to-account
+      mapping is verified, and close the risk window after reset or revocation. Report material access, inferred offline cracking, and actual
+      sign-in outcomes separately.
+evidence_refs:
+- REF-000025
+- REF-000499
+- REF-000307
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-09-22'
+  modified: '2026-09-22'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

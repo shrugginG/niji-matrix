@@ -1,0 +1,72 @@
+schema_version: "2.0.0"
+type: technique
+id: NJT-0071
+name: {zh: 用户拟态输入注入执行, en: User-Mimetic Input Injection Execution}
+summary: {zh: 攻击者通过软件 API、窗口消息、远程控制或恶意 HID 向键盘/鼠标输入流注入操作，使系统和应用像处理真实用户动作一样启动命令或执行界面行为。, en: Adversaries inject keyboard or mouse actions through software APIs window messages remote control or malicious HIDs so the system and applications launch commands or perform interface actions as if driven by a real user.}
+aliases: [Input Injection]
+classification:
+  tactic_refs: [TA0002]
+  origin: {kind: attack-adapted, source_attack_id: T1674, source_attack_version: '19.1'}
+  decision_ref: DEC-TA0002-T1674
+definition_and_concept:
+  paragraphs:
+  - zh: 用户拟态输入注入执行是攻击者在没有用户实际完成相同动作的情况下，通过 SendInput/窗口消息/自动化框架、远程控制通道、Apple/GUI automation 或枚举为键盘/鼠标的 HID 设备，把合成按键、点击、粘贴与快捷键送入 OS 输入栈或目标窗口，使 shell、PowerShell、浏览器控制台、地址栏或 GUI 应用执行攻击者指令。直接目标是借应用正常输入处理路径取得 Execution。
+    en: User-Mimetic Input Injection Execution sends synthetic keys clicks paste and shortcuts into the OS input stack or a target window through SendInput window messages automation frameworks remote-control channels Apple or GUI automation or an HID enumerating as a keyboard or mouse without the user performing the same actions. This causes a shell PowerShell browser console address bar or GUI application to execute attacker instructions. Its direct objective is Execution through normal application input handling.
+  - zh: 概念锚是“注入者/设备—输入事件序列—活动 session/window/focus—目标应用—执行结果”，不是键盘、鼠标、USB 或 PowerShell 名称。脚本直接调用 API 而不模拟输入归相应执行技术；诱导真实用户键入/粘贴命令归用户执行，除非攻击者工具本身生成输入；输入只修改 UI 而未产生 Execution 时不属于当前战术实例。
+    en: The conceptual anchor is injector or device, input-event sequence, active session window or focus, target application, and execution outcome, not keyboard mouse USB or PowerShell names. A script directly calling an API without simulated input belongs to the corresponding execution technique. Persuading a real user to type or paste a command belongs to User Execution unless attacker tooling generates the input. Input only changing UI without producing Execution is outside the current tactic instance.
+stealth_characteristics:
+  paragraphs:
+  - zh: 核心匿迹矛盾是攻击者必须产生足以完成快捷键、命令和确认的可见输入序列，却希望 OS/应用把它当作当前用户或标准键盘。软件注入可利用活动窗口与用户 session，BackSwap 甚至等到银行 URL/交易界面出现才模拟打开控制台、粘贴并执行 JavaScript；事件因此继承真实焦点、浏览器状态和用户时间。SendInput/窗口消息、LLKHF_INJECTED 等标志、injector 进程、焦点变化和结果仍可暴露。
+    en: The central stealth tension is that an adversary must generate a visible sequence sufficient for shortcuts commands and confirmation while the OS or application treats it as the current user or standard keyboard. Software injection can use the active window and user session. BackSwap waited for a banking URL or transaction UI before simulating developer-console open paste and JavaScript execution, causing events to inherit real focus browser state and user timing. SendInput or window messages injected flags such as LLKHF_INJECTED injector process focus changes and outcomes remain residuals.
+  - zh: 恶意 USB 可枚举为通用 HID 键盘，从硬件设备栈注入按键，软件注入标志/进程可能不存在；FIN7 BadUSB 直接使用 Win+R/PowerShell 下载执行。攻击者还可放慢并随机化按键间隔以削弱机器速度/规则性阈值，但当前只有对抗研究证明该能力，未找到野外意图案例。PnP/VID/PID/driver、设备首次连接、时间序列、活动用户缺失和紧邻 shell/network 是残余；设备控制与多维检测会限制。
+    en: A malicious USB can enumerate as a generic HID keyboard and inject keys through the hardware device stack without a software injector flag or process. FIN7 BadUSB directly used Win+R and PowerShell for download and execution. An adversary can also slow and randomize intervals to weaken machine-speed or regularity thresholds, but only adversarial research establishes that capability and no field-intent case was found. PnP VID or PID driver first connection event sequence missing active user and proximate shell or network remain residuals. Device control and multidimensional detection constrain it.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 纳入攻击者控制软件或外设生成合成输入、目标 OS/application 接受事件并产生命令/代码执行的行为，要求识别输入来源/序列、目标 session/window 和结果。仅连接 USB、仅调用 SendInput、仅出现快捷键或用户本人键入均不足；屏幕阅读器、宏、自动化测试、远程支持、游戏/辅助设备会合法生成相同事件，需与批准身份、设备和用途比较。
+    en: Scope includes attacker-controlled software or peripherals generating synthetic input accepted by the target OS or application and producing command or code execution and requires input origin or sequence target session or window and outcome. A connected USB a SendInput call a shortcut or user typing alone is insufficient. Screen readers macros automated testing remote support games and assistive devices legitimately generate equivalent events and require approved identity device and purpose comparison.
+  - zh: 人类节奏子项要求攻击者有意控制时序以改变检测，而不是自然慢速；活动会话子项要求攻击者等到目标上下文/焦点出现，而不是任意后台注入；外设来源子项要求事件经设备/HID 栈冒充用户输入，而不是软件 API。键/鼠标/clipboard 只是事件类型，peripheral 产品、VID/PID 和 payload 目的不构成子项。
+    en: The human-cadence child requires deliberate timing control to change detection rather than naturally slow input. The active-session child requires waiting for target context or focus rather than arbitrary background injection. The peripheral-origin child requires events through the device or HID stack impersonating user input rather than a software API. Key mouse and clipboard are event types, and peripheral products VID or PID and payload purpose do not form children.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: 已驻留恶意软件可监控窗口/URL/交易状态并在用户活动时向浏览器或 GUI 注入；远程控制工具可在现有 session 生成输入；具备物理/供应/邮寄渠道的攻击者可把 BadUSB 接入解锁主机，快速打开 Run dialog、输入 PowerShell/terminal 命令并下载载荷。后续可执行脚本、改变交易、安装工具或横向移动。
+      en: Resident malware can monitor windows URLs or transaction state and inject into browsers or GUIs during user activity. Remote-control tools can generate input in an existing session. Adversaries with physical supply or mailing paths can attach BadUSB to an unlocked host rapidly open Run enter PowerShell or terminal commands and retrieve payloads. Follow-on actions can execute scripts alter transactions install tools or move laterally.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 软件注入需要进入目标 desktop/session、确定 window handle/focus、键盘 layout 和完整性级别，SendInput 受 UIPI 限制；活动门控还需持续监控状态并避免干扰用户。HID 方案需要物理接入/诱导、兼容设备和可靠按键脚本，受锁屏、USB Restricted Mode、设备控制和布局影响。人类节奏方案牺牲速度并增加用户察觉与干扰风险。
+        en: Software injection needs target desktop or session access window handle or focus keyboard layout and integrity level and SendInput is constrained by UIPI. Active gating additionally monitors state and avoids interfering with the user. HID attacks need physical access or inducement a compatible device and reliable key script and face lock screen USB Restricted Mode device control and layout. Human-cadence plans sacrifice speed and increase user observation and interference risk.
+    defender_model:
+      paragraphs:
+      - zh: 防守方模型假定可取得 input API 与 injector process、低层注入标志、window/focus/session、按键事件时间而非敏感全文、PnP/USB/VID/PID/driver、登录/锁屏、clipboard 和后继 process/command/network/file。软件标志不能覆盖硬件 HID，设备身份不能证明用户在场，速度阈值可被减速绕过；必须以来源、上下文、节奏和结果联合。输入内容采集涉及隐私，应优先保存序列特征和风险命令摘要。
+        en: The defender model assumes input API and injector process low-level injection flags window focus or session event timing rather than sensitive full text PnP USB VID or PID driver logon or lock state clipboard and successor process command network or file. Software flags do not cover hardware HID, device identity does not prove user presence, and speed thresholds can be evaded by slowdown. Origin context cadence and outcome must be joined. Input-content collection raises privacy concerns and should prioritize sequence features and risky-command digests.
+stealth_mechanisms:
+- mechanism_ref: NM-FD
+  role: primary
+  summary: {zh: 合成输入借用真实用户会话、人类节奏或标准 HID 来源特征, en: Synthetic input borrows real user-session human-cadence or standard-HID provenance features}
+  analysis:
+    paragraphs:
+    - zh: 三类变量分别复制输入分类依赖的特征：时间轴接近人类节奏，context 轴继承活动 session/focus，来源轴枚举为标准 HID。恶意事件与合法用户/设备输入共享可见特征，形成特征伪装。BackSwap 与 FIN7 BadUSB 直接支持 context/来源 high，QUACK/UKIP 支持 cadence 可控但无野外意图，故父机制 high、cadence 子项 medium。来源—事件—目标—结果联合仍可反证。
+      en: "The three variables reproduce features used to classify input: timing approaches human cadence, context inherits an active session or focus, and origin enumerates as a standard HID. Malicious events share visible features with legitimate user or device input, producing Feature Disguise. BackSwap and FIN7 BadUSB directly support context and origin at high confidence, while QUACK or UKIP supports controllable cadence without field intent, so the parent mechanism is high and the cadence child medium. Origin-event-target-outcome joins remain disconfirming."
+  evidence_refs: [REF-000245, REF-000246, REF-000247, REF-000248, REF-000249, REF-000250, REF-000251]
+  confidence: high
+subtechnique_taxonomy:
+  narrative:
+    paragraphs:
+    - zh: NJS-0071-001 固定输入事件间隔/变化，目标与来源可异常但节奏接近人类，检测核心是多维时序而非速度阈值。NJS-0071-002 固定激活 context，节奏可机器化、来源可软件，但输入只在真实 window/URL/transaction/session 活跃时发生，检测核心是 session 因果。NJS-0071-003 固定 device provenance，节奏/上下文可异常，但 HID 经硬件栈冒充键盘，检测核心是 PnP/设备—输入—结果。三者可共现但互不包含。
+      en: NJS-0071-001 fixes input intervals and variation; target and origin can be anomalous but cadence approaches human behavior and detection centers on multidimensional timing rather than speed thresholds. NJS-0071-002 fixes activation context; cadence can be machine-like and origin software but input occurs only when a real window URL transaction or session is active and detection centers on session causality. NJS-0071-003 fixes device provenance; cadence or context can be anomalous but an HID impersonates a keyboard through the hardware stack and detection centers on PnP or device-input-outcome. They can coexist but do not contain one another.
+    - zh: ATT&CK 无子项；开放搜索没有按键盘/鼠标/clipboard、SendInput/消息/远程工具、USB 产品或 payload 拆分。人类节奏保持 medium，若未来只有防御阈值研究而无攻击者控制证据，应合并回父级；当前 QUACK 对抗模型直接证明随机/减速控制和防守差异，允许暂保。
+      en: ATT&CK has no children and open search did not partition keyboard mouse or clipboard SendInput messages or remote tools USB products or payloads. Human cadence remains medium and should merge into the parent if future evidence remains only defensive-threshold research without adversary control. The current QUACK adversarial model directly establishes randomization or slowdown control and defensive difference and supports retaining it for review.
+  coverage: established
+  subtechnique_refs: [NJS-0071-001, NJS-0071-002, NJS-0071-003]
+defense: {detections: {coverage: available, strategy_refs: [DET-000086]}, mitigations: {coverage: available, mitigation_refs: [MIT-000087]}}
+evidence:
+  claim_refs: [CLM-000270, CLM-000271, CLM-000272, CLM-000273, CLM-000444, CLM-000445, CLM-000446, CLM-000447, CLM-000448, CLM-000449, CLM-000450]
+  case_refs: [CASE-000085, CASE-000086]
+  reference_refs: [REF-000123, REF-000245, REF-000246, REF-000247, REF-000248, REF-000249, REF-000250, REF-000251]
+research:
+  limitations:
+    paragraphs:
+    - zh: 直接野外/现场证据覆盖 BackSwap 活动 session 与 FIN7 BadUSB 外设来源；人类 cadence 只有学术/防御对抗研究证明攻击者可减速/随机化，保持 medium。Windows 事件最具体，Linux/macOS 只按等价 input/device/session 字段推广。辅助技术与远程支持产生高频良性输入，且完整按键内容涉及隐私；没有结果链时不得仅凭节奏或新 HID 归因。
+      en: Direct field evidence covers BackSwap active sessions and FIN7 BadUSB peripheral origin. Human cadence has only academic or defensive adversarial research proving slowdown or randomization and remains medium. Windows events are most concrete, while Linux and macOS generalize only through equivalent input device and session fields. Assistive technology and remote support create high-volume benign input and full keystroke content raises privacy concerns. Cadence or a new HID alone cannot attribute maliciousness without an outcome chain.
+lifecycle: {status: review, version: 1.1.0, created: '2026-09-10', modified: '2026-09-12', contributors: [Niji Matrix Research], reviewers: []}

@@ -1,0 +1,101 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000249
+strategy_ref: DET-000207
+name:
+  zh: Kubernetes 资源读取身份—范围—后继分析
+  en: Kubernetes Resource-Read Identity–Scope–Successor Analytic
+summary:
+  zh: 按身份和 scope 重构 Kubernetes list/get/watch，并与后继 exec/create 分开关联。
+  en: Reconstruct Kubernetes list, get, and watch by actor and scope and separately join later exec or create.
+domains:
+- enterprise
+platforms:
+- Kubernetes
+logic:
+  paragraphs:
+  - zh: 从 kube-apiserver audit 提取 list/get/watch 的 user、groups、sourceIPs、userAgent、verb、resource、subresource、namespace、name
+      和响应状态。与 ServiceAccount/RBAC、控制器及发布作业台账比较；新主体跨 namespace 或高价值资源形成读取图并随后出现 exec/create 时提高优先级。Metadata-only audit 可支持请求语义，响应对象数量或内容只有在策略确实记录时才使用。
+    en: Extract user, groups, sourceIPs, userAgent, verb, resource, subresource, namespace, name, and response status for
+      list, get, and watch from kube-apiserver audit. Compare ServiceAccount and RBAC scope plus approved controller and release
+      jobs. Prioritize a new actor reading across namespaces or high-value resources, especially before a separately modeled
+      exec or create. Metadata-only audit supports request semantics; response count or content is used only where the configured
+      policy actually records it.
+data_requirements:
+- source_type: kubernetes-audit
+  name:
+    zh: Kubernetes API 审计
+    en: Kubernetes API audit
+  channel: audit.k8s.io
+  required_fields:
+  - timestamp
+  - audit_id
+  - user.username
+  - user.groups
+  - source_ips
+  - user_agent
+  - verb
+  - object_ref.resource
+  - object_ref.subresource
+  - object_ref.namespace
+  - object_ref.name
+  - response_status.code
+  - stage
+- source_type: kubernetes-authority-baseline
+  name:
+    zh: Kubernetes 身份与作业基线
+    en: Kubernetes authority and job baseline
+  channel: null
+  required_fields:
+  - principal
+  - service_account
+  - allowed_verbs
+  - allowed_resources
+  - allowed_namespaces
+  - job_window
+  - owner
+observables:
+- zh: 陌生 ServiceAccount 或用户跨 namespace 列 Pod、节点或部署
+  en: An unfamiliar ServiceAccount or user lists pods, nodes, or deployments across namespaces
+- zh: 资源图读取后同一身份出现 exec 或 create 请求
+  en: An exec or create request follows resource-graph reads by the same identity
+correlation:
+  window:
+    zh: 先以同一 audit identity 30 分钟聚合资源图，并在后续两小时关联独立 exec/create；均按控制器和发布周期校准。
+    en: Start with a 30-minute resource-graph window per audit identity and a separate two-hour join to later exec or create,
+      calibrated to controller and release cadence.
+  dimensions:
+  - cluster
+  - principal
+  - source_ip
+  - resource
+  - namespace
+  - verb
+  - time
+false_positives:
+- zh: 控制器、GitOps、CSPM、监控、备份、调度和事件响应会合法读取大量资源
+  en: Controllers, GitOps, CSPM, monitoring, backup, scheduling, and incident response legitimately read many resources
+blind_spots:
+- zh: 未启用 audit、None 规则、仅节点 kubelet 视图、代理身份折叠和被盗合法 ServiceAccount 会削弱归因
+  en: Disabled audit, None rules, node-local kubelet views, proxy identity collapse, and stolen legitimate ServiceAccounts
+    weaken attribution
+tuning_guidance:
+  paragraphs:
+  - zh: 按控制器、ServiceAccount、namespace、resource/verb 和作业窗口建立有 owner/到期日的基线，不按 kubectl 名称放行。响应正文和 Secret 内容默认不集中保存，避免二次暴露。
+    en: Baseline by controller, ServiceAccount, namespace, resource and verb, and job window with owner and expiry; do not
+      allow by the kubectl name alone. Avoid central retention of response bodies or Secret content unless policy explicitly
+      requires it.
+evidence_refs:
+- REF-000819
+- REF-000820
+- REF-000821
+- REF-000211
+- REF-000375
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-09-27'
+  modified: '2026-09-27'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

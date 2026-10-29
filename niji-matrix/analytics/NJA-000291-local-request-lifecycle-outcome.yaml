@@ -1,0 +1,111 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000291
+strategy_ref: DET-000232
+name:
+  zh: 本地关机请求者—生命周期结果分析
+  en: Local Shutdown Requester–Lifecycle Outcome Analytic
+summary:
+  zh: 输出本地进程/WMI 请求者、权限、reason、Event 1074 与后继 boot/可用性链。
+  en: Emit local process or WMI requester, authority, reason, Event 1074, and successor boot or availability chain.
+domains:
+- enterprise
+platforms:
+- Windows
+logic:
+  paragraphs:
+  - zh: 连接 4688/DeviceProcessEvents 的 shutdown/restart process/command、ExitWindowsEx/WMI request attribution 和 Event
+      1074 requester/process/user/reason/type/comment；按 CorrelationId/OperationId 或进程/用户/时间匹配。
+    en: Join shutdown or restart process or command from 4688 or DeviceProcessEvents, ExitWindowsEx or WMI request
+      attribution, and Event 1074 requester, process, user, reason, type, and comment by correlation or operation
+      ID or process, user, and time.
+  - zh: 两分钟内验证 clean shutdown/start events 和 boot ID/uptime，三十分钟连接审批、维护窗口、外部 health 和用户影响。Event 41/6008 无受控请求先归 T1499/故障调查。
+    en: Within two minutes verify clean shutdown or start events and boot ID or uptime, and over thirty minutes join
+      approval, maintenance window, external health, and user impact. Event 41 or 6008 without a controlled request
+      routes first to T1499 or fault investigation.
+data_requirements:
+- source_type: windows-process-lifecycle
+  name:
+    zh: Windows 生命周期进程与 WMI
+    en: Windows lifecycle process and WMI
+  channel: DeviceProcessEvents, Security, WMI tracing
+  required_fields:
+  - event.time
+  - device.id
+  - process.unique.id
+  - process.name
+  - process.command.line
+  - account.sid
+  - correlation.id
+  - operation.id
+  - client.machine
+  - client.process.id
+- source_type: windows-system-lifecycle
+  name:
+    zh: Windows 系统生命周期事件
+    en: Windows system lifecycle events
+  channel: System event log
+  required_fields:
+  - event.time
+  - device.id
+  - event.id
+  - requester.process
+  - requester.user
+  - reason.code
+  - shutdown.type
+  - comment
+  - boot.id
+  - uptime
+- source_type: lifecycle-approval-health
+  name:
+    zh: 生命周期审批与健康
+    en: Lifecycle approval and health
+  channel: null
+  required_fields:
+  - asset.id
+  - approval.id
+  - maintenance.window
+  - probe.success
+  - user.impact
+  - owner.id
+observables:
+- zh: 无审批的 requester 与 Event 1074 及 clean transition 相连
+  en: An unapproved requester joins Event 1074 and a clean transition
+- zh: 生命周期转换与外部健康/用户访问中断相交
+  en: Lifecycle transition intersects external health or user-access interruption
+correlation:
+  window:
+    zh: requester 到 Event 1074 两分钟，审批/可用性三十分钟。
+    en: Use two minutes from requester to Event 1074 and thirty for approval and availability.
+  dimensions:
+  - device.id
+  - process.unique.id
+  - account.sid
+  - correlation.id
+  - boot.id
+  - event.time
+false_positives:
+- zh: 补丁、安装、故障恢复、管理员维护、UPS/电源策略和灾备
+  en: Patching, installation, fault recovery, administrator maintenance, UPS or power policy, and DR
+blind_spots:
+- zh: 硬断电、日志丢失、时钟变化、远程管理未记录或 requester 被代理进程遮蔽
+  en: Hard power loss, lost logs, clock change, unlogged remote management, or requester hidden by a broker process
+tuning_guidance:
+  paragraphs:
+  - zh: 按资产角色维护允许 requester/reason/窗口与 owner；reason 不作为批准。无受控请求的 unexpected reboot 单独调查，避免把故障推成 T1529。
+    en: Baseline allowed requester, reason, window, and owner by asset role; a reason is not approval. Investigate
+      unexpected reboot without controlled request separately rather than forcing T1529.
+evidence_refs:
+- REF-000294
+- REF-000977
+- REF-000978
+- REF-000979
+- REF-000980
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-10-04'
+  modified: '2026-10-04'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

@@ -1,0 +1,46 @@
+schema_version: "2.0.0"
+type: detection-analytic
+id: NJA-000214
+strategy_ref: DET-000191
+name: {zh: 叠加中继双会话关联分析, en: Overlay-Relay Bilateral Session Correlation Analytic}
+summary: {zh: 识别同一 relay 进程、服务或隧道在两个安全域建立成对会话并转发原本禁止的流量。, en: "Identify one relay process, service, or tunnel establishing paired sessions in two security domains and forwarding traffic that should be prohibited."}
+domains: [enterprise]
+platforms: [Linux, Windows, Network Devices]
+logic:
+  paragraphs:
+    - zh: 在 approved path graph 中标记 dual-homed 主机、管理跳板、MSP/VPN 入口和允许 relay。采集进程/服务、binary hash/signature、command/args、listener、tunnel/VPN/FRP config、principal/session、interface/namespace 与 socket，生成 relay_instance_id。将一侧 inbound session 与另一侧 outbound session 按 relay_instance_id、时间、byte/packet 比例、连接寿命和可用 payload/协议指纹配对。
+      en: Mark dual-homed hosts, management jump boxes, MSP or VPN entries, and allowed relays in the approved path graph. Collect process or service, binary hash and signature, command and arguments, listener, tunnel, VPN, or FRP configuration, principal and session, interface or namespace, and socket and generate relay_instance_id. Pair an inbound session on one side with an outbound session on the other by relay_instance_id, time, byte or packet ratio, connection lifetime, and available payload or protocol fingerprint.
+    - zh: 若 relay 未批准或 owner/用途不符，两个会话连接原本禁止的 domain pair，流量内容/容量关系支持转发并产生后继访问/外送，则输出 overlay_bridge。只有 relay 进程无双侧 flow 输出 relay_exposure；只有 VPN 登录但路径批准输出 authorized_remote_access。底层 route/ACL 被改写时转交 NJS-0168-001。
+      en: Emit overlay_bridge when the relay is unapproved or its owner or purpose mismatches, paired sessions connect a prohibited domain pair, content or volume relationship supports forwarding, and follow-on access or exfiltration occurs. A relay process without bilateral flow is relay_exposure, while a VPN sign-in on an approved path is authorized_remote_access. Underlying route or ACL rewrite transfers to NJS-0168-001.
+data_requirements:
+  - source_type: network-domain-and-relay-inventory
+    name: {zh: 网络域、双宿主与批准 relay 清单, en: Network Domain Dual-Homed and Approved Relay Inventory}
+    channel: null
+    required_fields: [host_or_device_id, interface_id, network_domain_id, approved_relay, relay_owner, approved_path_id, allowed_peer, allowed_protocol, expiry]
+  - source_type: relay-process-and-tunnel-state
+    name: {zh: relay 进程、服务、监听与隧道状态, en: Relay Process Service Listener and Tunnel State}
+    channel: Endpoint process service and VPN or device telemetry
+    required_fields: [timestamp, host_or_device_id, process_or_service_id, process_guid, binary_hash, signer, command_or_config, principal_id, session_id, listener, tunnel_id, interface_id]
+  - source_type: relay-bilateral-flow
+    name: {zh: relay 两侧 flow 与会话, en: Relay Bilateral Flows and Sessions}
+    channel: Endpoint socket NetFlow IPFIX or packet metadata
+    required_fields: [timestamp, host_or_device_id, process_guid_or_tunnel_id, interface_id, network_domain_id, source_ip, source_port, destination_ip, destination_port, protocol, flow_id, bytes, packets, duration, payload_fingerprint]
+observables:
+  - {zh: 未批准 FRP/VPN/proxy relay 同时绑定两个安全域接口, en: An unapproved FRP VPN or proxy relay binds interfaces in two security domains}
+  - {zh: 两侧会话在时间、字节和协议上形成稳定转发关系, en: Sessions on both sides form a stable forwarding relationship in time bytes and protocol}
+  - {zh: relay 路径承载禁止访问、载荷传输或数据外送, en: The relay path carries prohibited access payload transfer or data exfiltration}
+correlation:
+  window: {zh: 从 relay 创建前一小时覆盖会话全寿命及终止后四十八小时，长连接按滚动十五分钟配对。, en: "Correlate one hour before relay creation across the full session lifetime and forty-eight hours after termination, pairing long-lived connections in rolling fifteen-minute windows."}
+  dimensions: [host_or_device_id, relay_instance_id, process_guid_or_tunnel_id, principal_id, session_id, source_domain_id, destination_domain_id, inbound_flow_id, outbound_flow_id, protocol, time]
+false_positives:
+  - {zh: 批准的运维跳板、服务网格、反向代理、MSP VPN 或灾备中继在登记路径内运行, en: "Approved administration jump host, service mesh, reverse proxy, MSP VPN, or recovery relay operating on a registered path"}
+  - {zh: 同一主机的独立客户端与服务器会话时间接近但不转发内容, en: Independent client and server sessions on the same host are close in time but do not relay content}
+blind_spots:
+  - {zh: 加密 relay 且没有进程/socket 归因时只能依赖流量容量与时间, en: Encrypted relays without process or socket attribution leave only traffic volume and timing}
+  - {zh: MSP 或第三方域不共享 VPN/relay session 和目的网络日志, en: MSP or third-party domains do not share VPN or relay sessions and destination-network logs}
+tuning_guidance:
+  paragraphs:
+    - zh: 为所有批准 relay 绑定 owner、domain pair、binary/signature、监听、peer、用途和到期，不按工具名永久白名单。以双侧 flow 配对和禁止 path 为高置信门槛；对加密长连接使用 byte ratio、burst 和连接因果，不要求内容解密。独立会话需通过 payload/sequence 或明确转发配置确认。
+      en: Bind every approved relay to owner, domain pair, binary or signature, listener, peer, purpose, and expiry rather than permanently allowlisting a tool name. Use bilateral flow pairing and a prohibited path as the high-confidence gate. For encrypted long-lived connections use byte ratio, bursts, and connection causality without requiring decryption. Independent sessions need payload or sequence evidence or explicit forwarding configuration.
+evidence_refs: [REF-000721, REF-000724]
+lifecycle: {status: review, version: "1.0.0", created: "2026-09-23", modified: "2026-09-23", contributors: [Niji Matrix Research], reviewers: []}

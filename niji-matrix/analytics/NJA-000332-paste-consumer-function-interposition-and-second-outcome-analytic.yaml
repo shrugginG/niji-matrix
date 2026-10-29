@@ -1,0 +1,183 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000332
+strategy_ref: DET-000252
+name:
+  zh: 粘贴消费者函数介入与第二结果链分析
+  en: Paste-Consumer Function Interposition and Second-Outcome Analytic
+summary:
+  zh: 按对象、主体、会话与结果字段实现“粘贴消费者函数介入与第二结果链分析”。
+  en: Implement Paste-Consumer Function Interposition and Second-Outcome Analytic with object, principal, session, and outcome
+    fields.
+domains:
+- enterprise
+platforms:
+- Windows
+logic:
+  paragraphs:
+  - zh: 以主机、登录会话和不可变 process-start key 版本化每个剪贴板消费者，保存可执行文件、签名、模块、函数入口或导入目标基线。连接 source 对 target 的访问与写入、模块或私有内存映射、GetClipboardData/TranslateMessage
+      或等效路径的 inline/IAT detour、调用栈偏移及实际粘贴返回。只有未批准代码来源进入调用链且一次成功返回被复制到另一缓冲、文件、IPC 或网络结果时输出 paste_consumer_interception_confirmed；只有注入或
+      hook 输出 interposition_exposure，只有成功粘贴而无第二结果保持 normal_or_unresolved。
+    en: Version each clipboard consumer by host, logon session, and immutable process-start key and preserve executable, signer,
+      module, function-entry, or import-target baselines. Join source-to-target access and writes, module or private-memory
+      mapping, an inline or IAT detour on GetClipboardData, TranslateMessage, or an equivalent path, call-stack divergence,
+      and an actual paste return. Output paste_consumer_interception_confirmed only when unapproved code provenance enters
+      the call chain and one successful return is copied to another buffer, file, IPC, or network outcome. Injection or a
+      hook alone produces interposition_exposure, while a successful paste without a second outcome remains normal_or_unresolved.
+  - zh: 对 QBot 类链条，将被寄生应用的进程路径和窗口类别、剪贴板 sequence、读取线程、hook region、记录缓冲与加密文件写入连接，再追踪核心模块读取和传输。可复用 DET-000100/NJA-000082 的跨进程
+      source→write/map/load→dispatch 事实作为前置边，但本分析独立要求 clipboard return 与第二结果；不能从注入已确认自动提升为 T1115。对受信模块的合法 instrumentation
+      仅在 exact hash/version、owner、目标进程、函数用途、工单和到期窗口同时匹配时降噪。
+    en: For a QBot-like chain, join the parasitized application's process path and window category, clipboard sequence, read
+      thread, hooked region, record buffer, and encrypted file write, then follow the core module's read and transmission.
+      Cross-process source-to-write, map, or load-to-dispatch facts from DET-000100 and NJA-000082 can serve as a prerequisite
+      edge, but this analytic independently requires a clipboard return and second outcome. Confirmed injection cannot automatically
+      become T1115. Suppress legitimate instrumentation in a trusted module only when exact hash or version, owner, target
+      process, function purpose, ticket, and expiry window all match.
+data_requirements:
+- source_type: process-module-and-function-integrity
+  name:
+    zh: 进程、模块与函数路径完整性
+    en: Process, module, and function-path integrity
+  channel: validated EDR or memory-integrity sensor
+  required_fields:
+  - timestamp
+  - host_id
+  - logon_session_id
+  - process_start_key
+  - executable
+  - hash
+  - signer
+  - module_or_region
+  - backing_state
+  - function_or_import_target
+  - baseline_bytes_or_target
+  - observed_bytes_or_target
+  - call_stack
+- source_type: cross-process-write-load-dispatch
+  name:
+    zh: 跨进程写入、装载与调度谱系
+    en: Cross-process write, load, and dispatch lineage
+  channel: DET-000100/NJA-000082 compatible telemetry
+  required_fields:
+  - timestamp
+  - source_start_key
+  - target_start_key
+  - requested_and_granted_rights
+  - operation
+  - address_or_module
+  - content_hash_or_backing
+  - dispatch_type
+  - execution_result
+- source_type: validated-clipboard-return-and-paste-context
+  name:
+    zh: 经验证的剪贴板返回与粘贴上下文
+    en: Validated clipboard return and paste context
+  channel: null
+  required_fields:
+  - timestamp
+  - host_id
+  - process_start_key
+  - thread_id
+  - user_id
+  - window_category
+  - api_or_protocol
+  - clipboard_sequence_or_change_id
+  - format
+  - return_status
+  - returned_size_or_privacy_token
+  - return_call_stack
+- source_type: second-content-outcome
+  name:
+    zh: 第二内容副本与后继处理
+    en: Second content copy and downstream handling
+  channel: memory, file, IPC, and network telemetry
+  required_fields:
+  - timestamp
+  - producer_process_start_key
+  - consumer_or_destination
+  - operation
+  - byte_count
+  - content_privacy_token_or_sequence_ref
+  - file_path_or_ipc_id_or_remote
+  - result
+- source_type: approved-instrumentation-context
+  name:
+    zh: 获批进程内插桩上下文
+    en: Approved in-process instrumentation context
+  channel: asset and change-management inventory
+  required_fields:
+  - owner
+  - package_hash
+  - version
+  - target_process_scope
+  - approved_function_purpose
+  - ticket
+  - window_start
+  - window_end
+observables:
+- zh: 未批准 source 向正常剪贴板消费者写入、加载模块或映射私有可执行区域
+  en: An unapproved source writes to, loads a module into, or maps a private executable region in a normal clipboard consumer
+- zh: GetClipboardData、TranslateMessage 或等效粘贴路径的入口、导入目标或调用栈转入该代码来源
+  en: The entry, import target, or call stack of GetClipboardData, TranslateMessage, or an equivalent paste path diverts into
+    that code provenance
+- zh: 一次成功粘贴返回产生带同一 sequence 或隐私 token 的第二缓冲、加密文件、IPC 或网络结果
+  en: One successful paste return produces a second buffer, encrypted file, IPC, or network result with the same sequence
+    or privacy token
+correlation:
+  window:
+    zh: 注入或模块变更到进程终止保持同一 process-start key；单次粘贴返回到第二结果默认使用十秒紧凑窗口，第二结果到核心模块读取或传输可按稳定文件/IPC 键延伸三十分钟。长期应用不能只用宽时间邻近关联，必须有 region、module、thread、sequence、IPC
+      或内容隐私 token。
+    en: Keep injection or module changes attached to the same process-start key until process termination. Use a ten-second
+      tight window from one paste return to a second outcome, while a stable file or IPC key can extend the second outcome
+      to core-module read or transfer for thirty minutes. A long-lived application cannot be joined by broad temporal proximity
+      alone and requires a region, module, thread, sequence, IPC, or content-privacy token.
+  dimensions:
+  - host_id
+  - logon_session_id
+  - source_target_process_start_key
+  - module_or_memory_region
+  - function_or_import_target
+  - thread_id
+  - clipboard_sequence_or_change_id
+  - content_privacy_token_or_sequence_ref
+  - second_outcome_destination
+  - time
+false_positives:
+- zh: EDR、DLP、防恶意软件或数据分类产品可在应用内合法 hook 读取与消息函数
+  en: EDR, DLP, antimalware, or data-classification products may legitimately hook read and message functions in applications
+- zh: 无障碍、输入法、远程支持、自动化测试、调试器、profiler 和兼容性 shim 可改变消息或函数路径
+  en: Accessibility, input methods, remote support, test automation, debuggers, profilers, and compatibility shims can alter
+    message or function paths
+- zh: 应用自己的插件、崩溃处理和热补丁会产生模块、detour 或私有内存变化
+  en: Application plug-ins, crash handling, and hot patching can create module, detour, or private-memory changes
+blind_spots:
+- zh: direct syscall、内核级 hook、硬件或传感器被篡改时，source 与函数完整性边可能丢失
+  en: Direct syscalls, kernel-level hooks, hardware paths, or sensor tampering can erase source and function-integrity edges
+- zh: 只有周期性内存扫描时，短生命 detour、临时字节恢复或反射模块可能在两次扫描间消失
+  en: With periodic memory scanning alone, a short-lived detour, temporary byte restoration, or reflective module can disappear
+    between scans
+- zh: 没有返回结果或隐私安全对象键时，不能证明 hook 复制了内容而非只观察消息
+  en: Without a returned result or privacy-safe object key, the analytic cannot prove that the hook copied content rather
+    than merely observing messages
+tuning_guidance:
+  paragraphs:
+  - zh: 先按应用版本保存 GetClipboardData 和相关消息路径的预期入口、导入目标、模块与调用栈，并把批准 instrumentation 绑定 exact package/hash、owner、目标进程、用途、工单和到期窗口。不要按签名或进程名全局放行，也不要以单个
+      inline branch、IAT 变化或 RWX 区域直接确认。确认门必须同时包含未批准代码来源、成功 clipboard return 和第二结果；只有 T1055 前置边时保留注入告警而不追加本子项。
+    en: Baseline expected entries, import targets, modules, and call stacks for GetClipboardData and related message paths
+      by application version, and bind approved instrumentation to exact package or hash, owner, target process, purpose,
+      ticket, and expiry. Do not globally allow by signature or process name and do not confirm from one inline branch, IAT
+      change, or RWX region. The confirmation gate requires unapproved code provenance, a successful clipboard return, and
+      a second outcome. Where only a T1055 prerequisite edge exists, retain the injection alert without adding this child.
+evidence_refs:
+- REF-001098
+- REF-000362
+- REF-001095
+- REF-001099
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-10-05'
+  modified: '2026-10-05'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

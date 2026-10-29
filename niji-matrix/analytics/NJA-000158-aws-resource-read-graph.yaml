@@ -1,0 +1,109 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000158
+strategy_ref: DET-000150
+name:
+  zh: AWS 跨服务资源读取图分析
+  en: AWS Cross-Service Resource-Read Graph Analytic
+summary:
+  zh: 发现新来源身份跨 EC2、RDS 和桶清单进行读取后的异常后继操作。
+  en: Find anomalous successor actions after a new-origin identity reads across EC2, RDS, and bucket inventories.
+domains:
+- enterprise
+platforms:
+- AWS IaaS
+logic:
+  paragraphs:
+  - zh: 从已收集读类管理事件的 CloudTrail 归一化 EC2 DescribeInstances、RDS DescribeDBInstances 和 S3 ListBuckets 等经实际部署核实的资源查询。按账户、区域、访问键或可证明的会话谱系聚合
+      24 小时资源类别与来源，再与 7 日主体基线、批准 CSPM/IaC 作业和同身份后继变更比较。分页请求去重但保留查询次数；CloudTrail 只读事件不含完整返回资源集，不能将页数或事件数换算成发现的实例数。
+    en: Normalize EC2 DescribeInstances, RDS DescribeDBInstances, S3 ListBuckets, and other deployment-verified resource queries
+      from CloudTrail with read-management events retained. Aggregate resource classes and origins over 24 hours by account,
+      Region, access key, or proven session lineage, then compare a seven-day principal baseline, approved CSPM or IaC jobs,
+      and later changes by the same identity. Deduplicate pages while retaining request counts. CloudTrail read events lack
+      complete returned resource sets, so neither pages nor events can be converted into instance counts.
+data_requirements:
+- source_type: aws-cloudtrail-management-read
+  name:
+    zh: AWS CloudTrail 管理读事件
+    en: AWS CloudTrail management-read events
+  channel: organization trail or event data store with read management events
+  required_fields:
+  - event_time
+  - event_source
+  - event_name
+  - user_identity
+  - recipient_account_id
+  - aws_region
+  - source_ip_address
+  - read_only
+  - request_parameters
+- source_type: cloud-inventory-job-register
+  name:
+    zh: 获准云盘点作业登记
+    en: Approved cloud-inventory job register
+  channel: null
+  required_fields:
+  - principal_id
+  - account_id
+  - approved_regions
+  - approved_services
+  - job_window
+  - owner
+- source_type: aws-cloudtrail-management-write
+  name:
+    zh: AWS 后继管理写事件
+    en: AWS successor management-write events
+  channel: organization trail or event data store
+  required_fields:
+  - event_time
+  - event_name
+  - user_identity
+  - recipient_account_id
+  - aws_region
+  - source_ip_address
+observables:
+- zh: 新来源访问键连续查询多类 IaaS 资源
+  en: A new-origin access key queries several IaaS resource classes
+- zh: 同身份资源读取后出现安全组或实例操作
+  en: Security-group or instance actions follow resource reads by the same identity
+correlation:
+  window:
+    zh: 同一凭据或会话的资源读取至后继操作先用 24 小时窗口；主体角色基线至少覆盖 7 日并按作业周期校准。
+    en: Start with a 24-hour resource-read-to-successor window for one credential or session; retain at least seven days of
+      role baselines and calibrate to job cadence.
+  dimensions:
+  - account_id
+  - aws_region
+  - principal_id
+  - access_key_id
+  - source_ip
+  - resource_class
+  - time
+false_positives:
+- zh: CSPM、IaC 刷新、成本治理、灾备和应急盘点会跨服务读取并可能随后修改资源
+  en: CSPM, IaC refresh, cost governance, disaster recovery, and emergency inventory can read across services and later change
+    resources
+blind_spots:
+- zh: 未收管理读事件、跨账户或分区日志缺失、参数被截断、合法盘点身份被盗以及保留期短都会削弱重构
+  en: Missing management reads, account or partition gaps, truncated parameters, theft of an approved inventory identity,
+    and short retention weaken reconstruction
+tuning_guidance:
+  paragraphs:
+  - zh: 按账户、区域、主体职责和批准作业范围建立基线；获准盘点只降低正常来源权重，对新 IP、新访问键使用、意外资源类别和后继变更仍保留告警。不要把 NextToken、ListBuckets 的事件区域或一次 Describe 自动解释为攻击者获得完整资源图。
+    en: Baseline by account, Region, principal duty, and approved job scope. Approved inventory lowers weight for normal origins
+      but preserves alerts for new IPs, new key use, unexpected resource classes, and later changes. Do not treat NextToken,
+      a ListBuckets event Region, or one Describe as proof of a complete resource graph.
+evidence_refs:
+- REF-000522
+- REF-000523
+- REF-000524
+- REF-000525
+- REF-000513
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-09-22'
+  modified: '2026-09-22'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

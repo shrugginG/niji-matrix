@@ -1,0 +1,198 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000242
+strategy_ref: DET-000204
+name:
+  zh: OS 认证对象访问与输出结果联查
+  en: OS Authentication-Object Access and Output Outcome Join
+summary:
+  zh: 把 OS 敏感进程或存储读取连接到依赖、dump 输出和材料确认。
+  en: Join OS sensitive-process or store reads to dependencies, dump output, and material confirmation.
+domains:
+- enterprise
+platforms: []
+logic:
+  paragraphs:
+  - zh: 维护 credential_target_inventory，登记 Windows 认证进程、SAM/SECURITY/SYSTEM/NTDS 对象和 Linux 认证服务进程、/proc 入口、/etc/shadow 及配对依赖。对
+      Windows 连接 ProcessAccess、object/registry access、privilege、reader image/signature/call trace 与 dump/file/network output；对
+      Linux 连接 open/openat/pread、ptrace/process_vm_readv、PID、capability、uid、path/inode 与 output。目标被未批准 reader 读取后，三十分钟内出现可识别
+      dump、hive/database copy、hash/key record、archive 或 egress 时输出 material_extraction_candidate；只有内容解析或可信工具验证确认认证材料时升级为 material_confirmed。权限、句柄或文件名分别输出
+      capability_only、object_read 和 store_copied，不能自动升级。
+    en: Maintain a credential_target_inventory of Windows authentication processes, SAM, SECURITY, SYSTEM, and NTDS objects
+      and Linux authentication-service processes, /proc entries, /etc/shadow, and paired dependencies. On Windows, join ProcessAccess,
+      object or registry access, privilege, reader image, signature, or call trace to dump, file, or network output. On Linux,
+      join open, openat, pread, ptrace, process_vm_readv, PID, capability, UID, path or inode, and output. Emit material_extraction_candidate
+      when an unapproved reader accesses a target and an identifiable dump, hive or database copy, hash or key record, archive,
+      or egress follows within thirty minutes. Upgrade to material_confirmed only when content parsing or a trusted validation
+      tool establishes authentication material. Privilege, handle, or filename alone respectively emits capability_only, object_read,
+      or store_copied and cannot auto-upgrade.
+data_requirements:
+- source_type: windows-process-and-object-access
+  channel: configured Sysmon Event 10, EDR, Security 4656/4663, registry or file audit
+  required_fields:
+  - event.timestamp
+  - host.id
+  - user.id
+  - logon.id
+  - source_process.guid
+  - source_process.image
+  - source_process.signer
+  - source_process.parent_guid
+  - target_process.guid
+  - target_process.image
+  - object.path
+  - object.type
+  - access.mask
+  - call_trace
+  - privilege
+  - result
+  name:
+    zh: Windows 进程与对象访问
+    en: Windows process and object access
+- source_type: linux-process-and-file-access
+  channel: auditd, eBPF, EDR, procfs or LSM telemetry
+  required_fields:
+  - event.timestamp
+  - host.id
+  - uid
+  - auid
+  - session.id
+  - process.pid
+  - process.start_time
+  - process.exe
+  - process.hash
+  - syscall
+  - target.pid
+  - target.path
+  - target.inode
+  - capability
+  - ptrace.mode
+  - open.flags
+  - bytes.read
+  - result
+  name:
+    zh: Linux 进程与文件访问
+    en: Linux process and file access
+- source_type: material-output
+  channel: EDR file, process, memory-analysis, archive and network telemetry
+  required_fields:
+  - event.timestamp
+  - host.id
+  - process.guid_or_pid
+  - output.path
+  - output.hash
+  - output.size
+  - output.format
+  - material.class
+  - material.account_scope
+  - parser.tool
+  - parser.result
+  - destination
+  - bytes.out
+  name:
+    zh: 材料输出
+    en: Material output
+- source_type: credential-target-inventory
+  channel: asset, authentication-service, file-integrity and protected-object inventory
+  required_fields:
+  - host.id
+  - platform
+  - target.process_or_path
+  - target.material_class
+  - protection.expected
+  - allowed_reader
+  - allowed_rights
+  - dependency.object
+  - owner
+  - approval.id
+  - valid.from
+  - valid.to
+  name:
+    zh: 凭据目标清单
+    en: Credential-target inventory
+observables:
+- zh: 敏感认证进程读取
+  en: Sensitive authentication-process read
+- zh: 受保护 hive 或数据库读取
+  en: Protected hive or database read
+- zh: proc memory 或 ptrace 访问
+  en: Proc-memory or ptrace access
+- zh: shadow 验证文件读取
+  en: Shadow verifier-file read
+- zh: 配对存储依赖复制
+  en: Paired store-dependency copy
+- zh: 凭据 dump 输出
+  en: Credential-dump output
+- zh: 散列或密钥记录
+  en: Hash or key records
+- zh: 归档或外传
+  en: Archive or egress
+correlation:
+  window:
+    zh: 在读取后连续关联三十分钟输出，存在事务键时优先使用同一事务连接对象与材料。
+    en: Join output during thirty minutes after the read, preferring the same transaction to connect object and material where
+      available.
+  dimensions:
+  - host.id
+  - user.id
+  - logon.id
+  - source_process.guid
+  - process.pid
+  - target_process.guid
+  - target.pid
+  - object.path
+  - target.inode
+  - access.mask
+  - output.hash
+  - material.class
+  - destination
+false_positives:
+- zh: EDR/AV、LSA 或 PAM 组件、密码轮换、备份、系统状态维护、崩溃转储、调试、取证、迁移、目录维护和合规扫描会访问同类对象。必须绑定 reader 签名与版本、精确 target、rights、任务 owner、工单、输出目录、保留和目的；不能对白名单工具或
+    root/SYSTEM 全局放行。
+  en: EDR, antimalware, LSA or PAM components, password rotation, backup, system-state maintenance, crash dump, debugging,
+    forensics, migration, directory maintenance, and compliance scanning can access the same objects. Bind reader signature
+    and version, exact target, rights, task owner, case, output directory, retention, and destination. Never globally allowlist
+    a tool or root or SYSTEM identity.
+blind_spots:
+- zh: Sysmon Event 10 可被过滤且不证明读取内容，4663 依赖 SACL，Linux audit 需预配规则；内核读取、驱动、同进程恶意扩展、短暂内存、传感器受损和脱机介质可绕过。加密/压缩输出可能无法在线识别 material.class，数据库副本也可能在外部解析。只见外传而无源对象映射时范围不确定。
+  en: Sysmon Event 10 can be filtered and does not prove read content, Event 4663 depends on SACLs, and Linux audit requires
+    preconfigured rules. Kernel reads, drivers, malicious in-process extensions, transient memory, sensor impairment, and
+    offline media can bypass coverage. Encrypted or compressed output can hide material class, and a database copy can be
+    parsed externally. Scope remains unknown when egress lacks source-object mapping.
+tuning_guidance:
+  paragraphs:
+  - zh: 以目标敏感度和危险 rights 筛选，而不是匹配工具名；Windows 优先 LSASS/LSAIso、SAM/SECURITY/SYSTEM、NTDS 和 paired copy，Linux 优先认证服务 /proc/PID/mem/environ、ptrace/process_vm_readv
+      与 /etc/shadow。按 reader-target-role 建允许图并保留首次偏离，对 output parser 只记录材料类型和账户范围，不集中原始秘密。定期用授权测试验证 process/object 与 output
+      关联。
+    en: Filter by target sensitivity and dangerous rights rather than tool name. Prioritize LSASS or LSAIso, SAM, SECURITY,
+      SYSTEM, NTDS, and paired copies on Windows and authentication-service /proc/PID/mem or environ, ptrace or process_vm_readv,
+      and /etc/shadow on Linux. Build an allowed reader-target-role graph and retain first deviation. Record material class
+      and account scope from parsers without centralizing raw secrets. Regularly validate process or object-to-output joins
+      with authorized tests.
+  - zh: capability_only 或 object_read 先隔离 reader、保全内存与日志并核实授权；store_copied 立即限制文件/备份出口并评估依赖是否齐备。material_confirmed 时隔离主机、阻断攻击者会话、按
+      material.class 定位本地、服务、域或 ticket 签名账户，重置或轮换受影响秘密并撤销相关 session。若 NTDS、krbtgt 或广泛域材料可能暴露，进入经批准的域恢复计划，验证复制健康后按官方顺序轮换 krbtgt
+      与高权/用户/gMSA/信任材料，并证明旧票据和会话失效。
+    en: For capability_only or object_read, isolate the reader, preserve memory and logs, and verify authorization. For store_copied,
+      immediately constrain file and backup egress and assess whether dependencies are complete. On material_confirmed, isolate
+      the host, block adversary sessions, map local, service, domain, or ticket-signing accounts from material class, rotate
+      affected secrets, and revoke related sessions. If NTDS, krbtgt, or broad domain material may be exposed, enter an approved
+      domain-recovery plan, verify replication health, rotate krbtgt and privileged, user, gMSA, and trust material in the
+      official sequence, and prove old tickets and sessions no longer work.
+evidence_refs:
+- REF-000802
+- REF-000366
+- REF-000379
+- REF-000803
+- REF-000804
+- REF-000805
+- REF-000806
+- REF-000025
+- REF-000809
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-09-27'
+  modified: '2026-09-27'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

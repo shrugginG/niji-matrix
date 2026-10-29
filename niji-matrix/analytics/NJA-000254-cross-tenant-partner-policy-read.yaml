@@ -1,0 +1,102 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000254
+strategy_ref: DET-000209
+name:
+  zh: 跨租户伙伴策略读取归属分析
+  en: Cross-Tenant Partner-Policy Read Attribution Analytic
+summary:
+  zh: 识别异常 Microsoft Graph partner configuration 读取并连接会话和应用身份。
+  en: Identify abnormal Microsoft Graph partner-configuration reads and join session and application identity.
+domains:
+- enterprise
+platforms:
+- Microsoft Entra ID
+logic:
+  paragraphs:
+  - zh: 在已启用 Graph activity logs 的租户中识别 crossTenantAccessPolicy partners 列表或详情读取，按 AppId、UserId、DeviceId、SessionId、IP、roles/scopes
+      和 RequestUri 与批准身份治理作业比较。读取成功只证明请求，不能由日志恢复完整 partner policy；后继跨租户登录是独立上下文。
+    en: In tenants with Graph activity logs enabled, identify crossTenantAccessPolicy partner-list or detail reads and compare
+      AppId, UserId, DeviceId, SessionId, IP, roles or scopes, and RequestUri with approved identity-governance jobs. Success
+      establishes a request rather than the full partner policy; later cross-tenant sign-in is separate context.
+data_requirements:
+- source_type: microsoft-graph-activity
+  name:
+    zh: Microsoft Graph 活动日志
+    en: Microsoft Graph activity logs
+  channel: null
+  required_fields:
+  - timestamp
+  - request_method
+  - request_uri
+  - app_id
+  - user_id
+  - device_id
+  - session_id
+  - ip_address
+  - roles
+  - scopes
+  - response_status_code
+- source_type: entra-signin-context
+  name:
+    zh: Entra 登录会话
+    en: Entra sign-in context
+  channel: null
+  required_fields:
+  - timestamp
+  - user_id
+  - app_id
+  - session_id
+  - ip_address
+  - device_id
+  - conditional_access_status
+- source_type: approved-tenant-governance
+  name:
+    zh: 批准跨租户治理任务
+    en: Approved cross-tenant governance jobs
+  channel: null
+  required_fields:
+  - principal
+  - app_id
+  - tenant_scope
+  - job_window
+  - owner
+  - change_id
+observables:
+- zh: 陌生应用或用户读取多个跨租户 partner configurations
+  en: An unfamiliar application or user reads multiple cross-tenant partner configurations
+correlation:
+  window:
+    zh: 同一 user/app/session 30 分钟读取窗口，按 14 日治理作业基线比较；后继跨租户登录 24 小时。
+    en: Thirty minutes per user, app, and session with a 14-day governance-job baseline; later cross-tenant sign-in uses 24
+      hours.
+  dimensions:
+  - tenant_id
+  - user_id
+  - app_id
+  - session_id
+  - partner_target
+  - time
+false_positives:
+- zh: 身份治理、访问审查、租户迁移、合规和故障排查会合法读取
+  en: Identity governance, access review, tenant migration, compliance, and troubleshooting legitimately read partner policy
+blind_spots:
+- zh: Graph logs 需许可和诊断设置，响应不含完整策略，合法治理应用被盗会保持正常 app identity
+  en: Graph logs require licensing and diagnostic settings, responses omit complete policy, and a stolen governance application
+    retains a normal app identity
+tuning_guidance:
+  paragraphs:
+  - zh: 按 AppId、主体角色、tenant scope、设备和工单调优，不按 Graph GET 全面告警；未启用 Graph activity 时将此分支标为 unavailable。
+    en: Tune by AppId, actor role, tenant scope, device, and ticket rather than alerting on every Graph GET. Mark the branch
+      unavailable where Graph activity is not enabled.
+evidence_refs:
+- REF-000832
+- REF-000833
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-09-27'
+  modified: '2026-09-27'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

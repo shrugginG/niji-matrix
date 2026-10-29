@@ -1,0 +1,118 @@
+schema_version: 2.0.0
+type: evasion-subtechnique
+id: NJS-0092-001
+parent_ref: NJT-0092
+name:
+  zh: 可变镜像引用替换
+  en: Mutable Image-Reference Substitution
+summary:
+  zh: 攻击者让既有 tag 或镜像名解析为恶意 digest，使 workload 规范保留熟悉引用而内容身份改变。
+  en: Adversaries make an established tag or image name resolve to a malicious digest, preserving a familiar workload reference while changing
+    content identity.
+aliases: []
+lineage:
+  attck_subtechnique_inherited: false
+definition_and_concept:
+  paragraphs:
+  - zh: 可变镜像引用替换是攻击者把新恶意 manifest 或镜像版本推送到置备系统已经使用的可变 tag/名称下，使引用字符串不变而内容 digest 改变的匿迹子技术。直接目标是不修改 workload 规范即可让以后 pull 获得植入内容。
+    en: Mutable Image-Reference Substitution pushes a new malicious manifest or image version under a mutable tag or name already consumed by
+      provisioning, leaving the reference string unchanged while content digest changes. Its direct objective is to deliver implanted content
+      on later pulls without modifying the workload specification.
+stealth_characteristics:
+  paragraphs:
+  - zh: 可变镜像引用替换让 deployment YAML、仓库路径和 image tag 继续匹配批准基线，只有 tag 历史、resolved digest、manifest、签名或 SBOM 发生差异。若节点使用缓存，环境还可能同时运行新旧 digest；按名称盘点会把它们错误合并。
+    en: Mutable Image-Reference Substitution leaves deployment YAML, repository path, and image tag aligned with the approved baseline while tag
+      history, resolved digest, manifest, signature, or SBOM differs. Node caching may also leave old and new digests running simultaneously,
+      and name-based inventory incorrectly merges them.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 纳入攻击者控制 tag/name 到新 digest 的重定向且至少一个置备对象引用该名称。新增独立镜像名、只修改 deployment 引用或合法发布有批准记录时不属于本子项；固定 digest 但延后运行可属于 NJS-0092-002。
+    en: Include adversary-controlled retargeting of a tag or name to a new digest when at least one provisioning object references that name.
+      A separate new image name, changing only the deployment reference, or an approved legitimate release is outside this child. A digest-pinned
+      image that runs later can belong to NJS-0092-002.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: 攻击者取得内部 registry、镜像目录或构建发布账户的 push/retag 权限后，把恶意 manifest 推到生产 latest、stable 或语义版本 tag，并等待 rolling restart、节点漂移或新 pod 拉取。workload YAML
+        和 image 字符串保持不变，但运行实例解析到新 digest；节点缓存还可能让旧、新 digest 暂时并存。
+      en: After obtaining push or retag authority over an internal registry, image catalog, or build-release account, an adversary pushes a malicious
+        manifest under a production latest, stable, or semantic-version tag and waits for a rolling restart, node drift, or new pod pull. Workload
+        YAML and the image string remain unchanged while runtime resolves a new digest, and node caching can leave old and new digests coexisting
+        temporarily.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者需要 registry push/retag 或受信构建发布权限，知道哪些 deployment、autoscaling group 或模板使用可变引用，并生成与目标架构、入口点和运行依赖兼容的镜像。为了不触发可用性告警，还需保持健康检查和主要业务功能；错误
+          manifest、平台或签名会使实例拉取/启动失败。
+        en: The adversary needs registry push or retag or trusted build-release authority, knowledge of deployments, autoscaling groups, or templates
+          using mutable references, and an image compatible with target architecture, entrypoint, and runtime dependencies. To avoid availability
+          alerts, health checks and primary business function must remain. A wrong manifest, platform, or signature causes pull or start failure.
+      - zh: 不可变 tag、digest pinning、签名/attestation admission、职责分离、短寿命发布凭据和独立 registry audit 会提高成本。攻击者还必须处理节点缓存与 pull policy，否则部分实例继续运行旧 digest，造成版本分裂并暴露。
+        en: Immutable tags, digest pinning, signature or attestation admission, separation of duties, short-lived release credentials, and independent
+          registry audit raise cost. The adversary must also handle node cache and pull policy or some instances continue running the old digest,
+          creating version divergence and exposure.
+    defender_model:
+      paragraphs:
+      - zh: 防守方需要 registry push/retag 审计、actor、repository/tag、old/new digest、manifest/layer、签名/SBOM、构建来源与批准，并把 deployment/template 中的声明引用解析为每个节点实际运行
+          digest。Kubernetes audit、registry event、node pull 和 container start 应按 workload、pod/instance、node 和时间关联。
+        en: Defenders need registry push or retag audit, actor, repository or tag, old and new digest, manifest or layers, signature or SBOM,
+          build provenance, and approval, and must resolve declared references in deployments or templates to the digest actually running on each
+          node. Kubernetes audit, registry events, node pulls, and container starts should correlate by workload, pod or instance, node, and time.
+      - zh: 只检查 workload YAML 会遗漏 tag 指向变化，只检查 registry 当前 tag 会误读节点缓存，只检查一个实例会丢失上游 actor。防守方应保留 tag-to-digest 历史至少覆盖 rollout/rollback 周期，并把合法发布、回滚和紧急修复作为有
+          owner、工单与签名的反例。
+        en: Workload-YAML-only review misses tag retargeting, current-registry-only review misreads node cache, and one-instance review loses
+          the upstream actor. Defenders should retain tag-to-digest history through rollout and rollback cycles and treat legitimate releases,
+          rollbacks, and emergency fixes as counterexamples with owner, change record, and signature.
+stealth_mechanisms:
+- mechanism_ref: NM-FD
+  role: primary
+  summary:
+    zh: 熟悉 tag 遮蔽新的恶意内容身份
+    en: A familiar tag masks a new malicious content identity
+  analysis:
+    paragraphs:
+    - zh: 引用外观保持而 digest 改变，恶意内容借用已批准镜像名称，形成特征伪装；解析 digest 并验证签名可恢复差异。
+      en: The reference appearance remains while digest changes, allowing malicious content to borrow an approved image name and produce Feature
+        Disguise; resolving the digest and verifying its signature recovers the difference.
+  evidence_refs:
+  - REF-000185
+  - REF-000186
+  confidence: high
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000072
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000072
+evidence:
+  claim_refs:
+  - CLM-000375
+  case_refs: []
+  reference_refs:
+  - REF-000185
+  - REF-000186
+  - REF-000211
+  - REF-000214
+  - REF-000215
+research:
+  limitations:
+    paragraphs:
+    - zh: Kubernetes 文档直接证明 tag 可移动而 digest 唯一，ATT&CK 直接支持内部镜像植入；它们支持稳定变量，但不证明每次 tag 更新为恶意。没有未经批准 actor、内容/签名差异和至少一个实例解析结果时，只能报告供应链或发布异常。
+      en: Kubernetes documentation directly establishes mutable tags and unique digests, while ATT&CK directly supports internal-image implantation.
+        They support the stable variable but do not make every tag update malicious. Without an unapproved actor, content or signature difference,
+        and at least one instance-resolution outcome, only a supply-chain or release anomaly can be reported.
+    - zh: 缓存、镜像拉取策略、多架构 manifest 和 registry replication 会使当前 tag、节点 digest 与启动时间暂时不一致；合法 rollback 也会恢复旧 digest。调查必须使用事件时间和实际 resolved digest，不能从字符串相同或不同单独归因。
+      en: Caching, image pull policy, multiarchitecture manifests, and registry replication can temporarily separate current tag, node digest,
+        and start time, while legitimate rollback restores an older digest. Investigation must use event time and actual resolved digest and cannot
+        attribute from string equality or inequality alone.
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-09-11'
+  modified: '2026-09-12'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

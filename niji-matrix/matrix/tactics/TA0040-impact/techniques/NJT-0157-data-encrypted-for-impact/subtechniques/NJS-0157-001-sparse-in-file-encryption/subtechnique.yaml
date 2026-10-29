@@ -1,0 +1,123 @@
+schema_version: 2.0.0
+type: evasion-subtechnique
+id: NJS-0157-001
+parent_ref: NJT-0157
+name:
+  zh: 文件内稀疏加密
+  en: Sparse In-File Encryption
+summary:
+  zh: 攻击者只加密每个目标文件的间隔区段，使数据不可读而保留较低写入量和较多原始内容。
+  en: An adversary encrypts spaced regions within each target file, denying use while retaining lower write volume
+    and more original content.
+aliases: []
+lineage:
+  attck_subtechnique_inherited: false
+definition_and_concept:
+  paragraphs:
+  - zh: 文件内稀疏加密是在每个被选文件内部改写间隔分布的字节区域，同时保留其他区域的原始内容，使文件对原业务程序失效。其稳定控制变量是单一文件的区域覆盖密度和布局；处理了多少文件、选择何种扩展名或密码算法只是另外的实施参数。
+    en: Sparse In-File Encryption rewrites spaced byte regions inside each selected file while preserving other
+      original regions, making the file unusable to its business reader. Its stable control variable is regional
+      coverage density and layout within one file; the number of files, selected extensions, and cipher are separate
+      implementation parameters.
+  - zh: 攻击者的取舍是以更少写入换取足够业务破坏：过少区域变化可能保留可读性，过多则接近全文件加密并恢复强烈的 I/O 和整文件密文信号。研究对象是这种对痕迹强度与影响结果同时施加约束的设计。
+    en: The attacker trades lower write volume for enough business damage. Too little regional change may leave
+      the file usable; too much approaches full-file encryption and restores strong I/O and whole-file ciphertext
+      signals. The object of study is this design constraining trace strength and impact together.
+stealth_characteristics:
+  paragraphs:
+  - zh: 文件内稀疏加密使文件保留大块原始明文而只在指定区域产生密文，因而总写入量和整文件熵变化可低于完整加密。依赖整文件统计或单次高 I/O 峰值的监测更难在影响完成前识别它；修改区域、同一进程跨文件重复的布局和业务解析失败仍会留下证据。
+    en: Sparse In-File Encryption leaves large original plaintext regions and ciphertext only in selected spans,
+      so total writes and whole-file entropy shifts can be lower than with complete encryption. Monitoring based
+      on whole-file statistics or one high-I/O burst becomes less discriminating before impact completes. Modified
+      regions, repeated layouts across files by one process, and business parse failure still leave evidence.
+  - zh: 该子项降低的是每个文件内部的可见加密比例，而不是不处理某些文件。若防守方保存受保护前版本或诱饵文件并安全比较区域，低总体熵也无法掩盖结构性差分；没有这种内容证据时应只报告疑似加密写入。
+    en: This child lowers the visible encrypted proportion inside each file rather than skipping some files. Safe
+      regional comparison against protected prior versions or canaries can recover the structural differential despite
+      low overall entropy. Without that content evidence, report suspected encryption writes rather than a confirmed
+      sparse layout.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 纳入原本可用的文件被未授权加密为明文与密文交错的状态、正常读取受阻，且改写布局与更弱整文件或写入信号相连的情况。常规分块加密、压缩、数据库页更新以及获批重加密会产生局部变化，必须结合写入者、前版本、业务用途和密钥归属排除。
+    en: Include previously usable files transformed without authorization into interleaved plaintext and ciphertext,
+      with impaired normal reading and a layout tied to weaker whole-file or write signals. Ordinary chunked encryption,
+      compression, database page updates, and approved rekeying can also change regions; writer identity, prior
+      version, business use, and key custody are needed to exclude them.
+  - zh: 只跳过完整文件、目录或主机以维持系统运行的行为属于 NJT-0117；使用虚拟机让宿主看不到进程属于 NJS-0111-004。稀疏布局可与这些行为共现，但子项的证据必须在单个受损文件内部，而不能由总体受损比例代替。
+    en: Skipping entire files, directories, or hosts to maintain operation belongs to NJT-0117; using a VM to conceal
+      processes from the host belongs to NJS-0111-004. Sparse layout may co-occur with either, but evidence for
+      this child must be inside an affected file, not inferred from the overall fraction of damaged files.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: 勒索进程在终端或文件服务器遍历业务文件并仅改写各文件的间隔区段，可在短时间内令文档或其他结构化内容无法解析，同时避免全文件写入带来的巨大流量。即使本地日志只显示较低字节写入率，跨多个目录由同一进程修改业务文件仍可形成调查线索。
+      en: An encryptor on an endpoint or file server can traverse business files and rewrite only spaced regions
+        of each, quickly breaking documents or other structured content without full-file write traffic. Even if
+        local logs show lower byte-write rates, one process modifying business files across directories remains
+        an investigative lead.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者需取得文件内容写权限，能选出足以破坏解析的区域，并允许读取、定位和重复写入所产生的进程痕迹。不同格式对局部损坏的容忍度不同，固定字节步长不保证对所有文件有效；该设计的低写入收益与破坏可靠性互相制约。
+        en: The attacker needs file-content write authority, an ability to choose regions that disrupt parsing,
+          and tolerance for process traces from reading, seeking, and repeated writing. File formats differ in their
+          tolerance of local damage, so one byte stride does not work universally. Lower write volume and reliable
+          damage constrain each other.
+    defender_model:
+      paragraphs:
+      - zh: 防守方按设备和进程唯一键关联多文件写入，再从受保护前版本或诱饵安全取得改写偏移、区域熵及解析结果。Microsoft DeviceFileEvents 能支持文件与进程关联，却不提供区域熵；若文件服务器未受管理、前版本不存在或文件本来已加密，子项判定会变弱。
+        en: Defenders join multi-file writes by device and process unique key, then safely derive changed offsets,
+          regional entropy, and parse results from protected prior versions or canaries. Microsoft DeviceFileEvents
+          supports file and process correlation but does not supply regional entropy. An unmanaged file server,
+          absent prior version, or already encrypted content weakens child classification.
+stealth_mechanisms:
+- mechanism_ref: NM-FD
+  role: primary
+  summary:
+    zh: 保留明文区域降低整文件加密外观
+    en: Preserved plaintext regions reduce whole-file encryption appearance
+  analysis:
+    paragraphs:
+    - zh: 攻击者把密文限制在间隔区域，每个文件仍包含大量原始字节，单文件总写入和整文件熵变化弱于全量加密。只比较整文件指标的守方更难把该变化与普通批量编辑区分，形成特征伪装；对同一写入者跨文件的偏移模式和局部内容差分进行检查仍可识别。
+      en: The attacker confines ciphertext to spaced regions, leaving much original data in each file and reducing
+        per-file writes and whole-file entropy change relative to full encryption. Defenders using only whole-file
+        indicators have more difficulty separating it from bulk editing, producing feature disguise. Cross-file
+        offset patterns and local content differences for the same writer remain detectable.
+  evidence_refs:
+  - REF-000659
+  confidence: high
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000175
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000115
+evidence:
+  claim_refs:
+  - CLM-000782
+  case_refs: []
+  reference_refs:
+  - REF-000659
+  - REF-000475
+  - REF-000662
+research:
+  limitations:
+    paragraphs:
+    - zh: SentinelOne Labs 观察了多个使用间歇加密的家族及具体区域模式，足以支持此变量的存在，但不能推出所有部分覆写都是恶意，亦无适用于所有文件格式和传感器的阈值。样本层面的匿迹意图描述与具体受害环境的检测成败应分开。
+      en: SentinelOne Labs observed several families and regional patterns, supporting the variable's existence,
+        but neither every partial overwrite is malicious nor one threshold fits all formats and sensors. Sample-level
+        descriptions of evasion intent must be separated from detection outcomes in a particular victim environment.
+    - zh: 区域比较需要可信前版本、受控诱饵或安全的内容抽样，大型文件会增加存储和隐私成本。仅有 DeviceFileEvents 时可以调查批量写入，但不能声称已观察到稀疏密文布局。
+      en: Regional comparison needs a trusted prior version, controlled canary, or safe content sample and can raise
+        storage and privacy costs for large files. DeviceFileEvents alone supports investigation of bulk writes
+        but cannot establish observed sparse ciphertext layout.
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-09-22'
+  modified: '2026-09-22'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

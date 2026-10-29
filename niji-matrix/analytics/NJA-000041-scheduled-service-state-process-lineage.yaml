@@ -1,0 +1,189 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000041
+strategy_ref: DET-000063
+name:
+  zh: 计划与服务状态—进程谱系分析
+  en: Scheduled and Service State-to-Process Lineage Analytic
+summary:
+  zh: 以稳定关联键恢复计划与服务状态—进程谱系中的控制、执行与结果序列。
+  en: Recover the control, execution, and outcome sequence for Scheduled and Service State-to-Process Lineage through stable correlation keys.
+domains:
+- enterprise
+platforms:
+- Windows
+- Linux
+- macOS
+- Containers
+- ESXi
+- Network Devices
+logic:
+  paragraphs:
+  - zh: 分析先规范各数据源的时间、主体、目标和请求或进程标识，再建立控制或触发、真实执行和后继结果的有向序列。只有异常主体或情境与执行谱系、完整性变化或网络结果共同出现时才提高风险；任一层缺失时降低置信度而不把单点信号直接定性。
+    en: The analytic first normalizes time, principal, target, and request or process identifiers across sources, then builds a directed sequence from control or trigger through actual
+      execution to follow-on outcome. Risk rises only when an anomalous principal or context co-occurs with execution lineage, integrity change, or network outcome; a missing layer lowers
+      confidence rather than turning a point signal into a conclusion.
+  - zh: 对持久系统服务定义，先按稳定 object ID 比较创建前后名称、账户、启动条件、原始指令、解析路径、文件哈希和对象 ACL，再连接管理器重载或启动后的进程与网络结果。若身份保持而目标改变，进入身份替换分支；若普通枚举缺失但高权限原始状态和运行结果仍存在，进入受限枚举分支。只有未经批准的 writer、定义或权限差异与异常结果组合时提高风险。
+    en: For a durable system-service definition, compare pre-change and post-change name, account, start condition, raw directive, resolved path, file hash, and object ACL by stable object ID, then join the process and network outcome after manager reload or start. Identity preserved with a changed target enters the substitution branch. Absence from ordinary enumeration while privileged raw state and execution persist enters the restricted-enumeration branch. Risk rises only when an unapproved writer, definition or permission difference, and anomalous outcome combine.
+  - zh: TA0004 分支在同一 object/version 上保存 writer 与 pre-state 的授权集合、manager adoption 事件、实际 service account/token/security context、post-state 授权集合和首个此前被拒绝而现已允许的操作。只有 manager 消费攻击者控制版本、post-state 相对 pre-state 有正向权限差且新获准结果归因到该进程时输出 elevation_confirmed；若只证明跨启动恢复则输出 persistence_restored，只见定义或 ACL 差异则输出 definition_anomaly，权限键不全则输出 authority_unresolved。
+    en: The TA0004 branch preserves writer and pre-state authorization, manager-adoption event, actual service account, token, or security context, post-state authorization, and the first previously denied but now allowed operation for the same object and version. It emits elevation_confirmed only when the manager consumes the adversary-controlled version, post-state has a positive authority difference from pre-state, and the newly authorized result is attributable to that process. Cross-start restoration alone emits persistence_restored, a definition or ACL difference alone emits definition_anomaly, and missing authority keys emit authority_unresolved.
+data_requirements:
+- source_type: scheduler-service-control
+  name:
+    zh: 调度器与服务控制事件
+    en: Scheduler and service control events
+  channel: null
+  required_fields:
+  - timestamp
+  - device_id
+  - principal_id
+  - object_id
+  - object_type
+  - action
+  - definition_hash
+  - execution_account
+  - trigger_time
+- source_type: configuration-file-integrity
+  name:
+    zh: 任务与服务配置完整性
+    en: Task and service configuration integrity
+  channel: null
+  required_fields:
+  - timestamp
+  - device_id
+  - object_id
+  - path
+  - content_hash
+  - writer_process_id
+  - owner
+  - permissions
+- source_type: service-enumeration-differential
+  name:
+    zh: 服务标准视图与高权限原始状态
+    en: Standard service views and privileged raw state
+  channel: null
+  required_fields:
+  - timestamp
+  - device_id
+  - querying_principal_id
+  - object_id
+  - enumeration_method
+  - visible
+  - access_result
+  - raw_registration_present
+  - security_descriptor
+- source_type: endpoint-process-lineage
+  name:
+    zh: 端点进程与网络谱系
+    en: Endpoint process and network lineage
+  channel: null
+  required_fields:
+  - timestamp
+  - device_id
+  - object_id
+  - process_id
+  - parent_process_id
+  - image
+  - command_line
+  - user_id
+  - network_destination
+- source_type: service-authority-transition
+  name:
+    zh: 服务 writer、运行 token 与授权结果
+    en: Service writer, runtime token, and authorization outcome
+  channel: null
+  required_fields:
+  - timestamp
+  - device_id
+  - object_id
+  - definition_version
+  - manager_adoption_id
+  - writer_principal_id
+  - writer_authorization_set
+  - prestate_authorization_set
+  - execution_account
+  - runtime_token_id
+  - runtime_security_context
+  - poststate_authorization_set
+  - authority_delta
+  - outcome_operation
+  - outcome_resource
+  - authorization_result_before
+  - authorization_result_after
+  - outcome_process_id
+observables:
+- zh: 新建或修改任务在延迟后由调度器启动异常程序，且定义来源或执行账户不符合基线
+  en: A new or modified task launches an unusual program after delay and its definition origin or execution account is off baseline
+- zh: 服务对象在短窗口内创建、启动并删除，或既有守护进程在控制请求后产生异常结果
+  en: A service object is created, started, and deleted in a short window, or an existing daemon produces anomalous outcomes after a control request
+- zh: 既有服务名称和账户未变但解析路径、指令或文件身份改变，并产生不符合该服务基线的后继结果
+  en: An established service name and account remain while resolved path, directive, or file identity changes and produces an off-baseline successor outcome
+- zh: 普通服务枚举遗漏对象，而高权限原始注册状态与服务控制器进程结果证明对象仍存在并执行
+  en: Ordinary service enumeration omits an object whose continued existence and execution are shown by privileged raw registration state and service-controller process outcomes
+- zh: 同一服务定义版本由低于运行上下文的 writer 控制，manager 实际采用后以更高 token 完成此前被拒绝的首个资源操作
+  en: The same service-definition version is controlled by a writer below the runtime context, then actually adopted by the manager and completes the first resource operation previously denied under the higher token
+correlation:
+  window:
+    zh: 短驻服务使用十五分钟事务窗口；持久服务从定义或 ACL 变更延伸到下一次启动、重启、失败恢复或调和后的首个关键结果，并按 object/version 跨会话关联；计划任务从创建时刻延伸到首次或关键运行后一小时，并允许按任务身份跨重启关联。
+    en: Use a fifteen-minute transaction window for ephemeral services. A durable service spans definition or ACL change through the first critical outcome after start, reboot, failure recovery, or reconciliation and correlates across sessions by object and version. Scheduled tasks span creation through one hour after first or critical run and correlate across reboots by task identity.
+  dimensions:
+  - device
+  - principal
+  - object
+  - definition
+  - execution_account
+  - scheduler
+  - service_manager
+  - process
+  - time
+  - querying_principal
+  - object_permissions
+  - resolved_target
+  - definition_version
+  - manager_adoption
+  - writer_authority
+  - runtime_token
+  - authority_delta
+  - outcome_resource
+false_positives:
+- zh: 软件安装、系统启动、补丁、备份、编排作业和事件响应会创建或修改计划与服务。
+  en: Software installation, system startup, patching, backup, orchestration jobs, and incident response create or modify scheduled and service objects.
+- zh: 合法服务迁移、故障修复和基于职责的管理视图会改变目标或使不同管理员看到不同对象集合。
+  en: Legitimate service migration, failure repair, and role-based management views change targets or expose different object sets to different administrators.
+- zh: 管理员或部署主体可能本来已经拥有与 service runtime 等同的结果权限；LocalSystem/root 启动在这种情况下不是权限提升。
+  en: An administrator or deployment principal can already hold result authority equivalent to the service runtime; a LocalSystem or root start is not elevation in that case.
+blind_spots:
+- zh: 只保留状态快照、缺少对象标识、任务跨重启丢失创建日志或守护进程内部不产生子进程时会降低可见性。
+  en: Visibility drops when only state snapshots are retained, object identifiers are absent, task creation logs are lost across reboot, or daemon-internal execution creates no child
+    process.
+- zh: 传感器与普通管理员继承同一受限 token、原始注册状态不可读取或服务内部执行不暴露映像时，枚举差分和目标替换会同时失去可靠性。
+  en: Enumeration differential and target substitution both lose reliability when sensors inherit the same restricted token as ordinary administrators, raw registration state cannot be read, or in-service execution exposes no image.
+- zh: 未保存 writer/pre-state 授权集合、manager adoption、实际运行 token 或拒绝/允许资源结果时，分析只能报告服务异常或持久性，不能确认提权。
+  en: Without writer or pre-state authorization, manager adoption, the actual runtime token, or denied and allowed resource outcomes, the analytic can report only a service anomaly or persistence and cannot confirm elevation.
+tuning_guidance:
+  paragraphs:
+  - zh: 按业务角色、来源、资产、软件版本、变更窗口和正常执行谱系建立基线，并分别评分主体异常、控制差异与执行结果。白名单必须绑定具体主体、目标、用途和有效期，不能永久排除受信服务、签名进程、自动化身份或维护时段；对缺失数据明确降低置信度。
+    en: Build baselines by business role, origin, asset, software version, change window, and normal execution lineage, and score principal anomaly, control difference, and outcome separately.
+      Allowlists must bind a concrete principal, target, purpose, and validity period rather than permanently excluding trusted services, signed processes, automation identities, or
+      maintenance periods; explicitly lower confidence for missing data.
+  - zh: 对服务定义保存上一有效版本和解析后目标，不因名称、父进程或签名管理器而跳过比较。枚举差分允许项必须绑定角色设计和批准 ACL；访问拒绝、普通视图缺失和原始状态存在应分别评分，避免把合法 RBAC 或传感器权限故障直接判为隐藏服务。
+    en: Preserve the last valid service-definition version and resolved target and do not skip comparison because of name, parent process, or a signed manager. Allowances for enumeration differences must bind a designed role and approved ACL. Score access denial, absence from an ordinary view, and presence in raw state separately so legitimate RBAC or sensor-permission failure is not directly classified as a hidden service.
+  - zh: 权限结果先以真实资源的 pre-state deny 与 post-state allow 校准，不把 uid 0、SYSTEM、service account 名称、SCM 父进程或成功启动直接映射为 elevation。按 exact writer、object/version、runtime token、operation、resource、scope 与有效期约束例外，并让 definition anomaly、Persistence、confirmed elevation 和 unresolved authority 保持独立。
+    en: Calibrate authority outcome against an actual pre-state deny and post-state allow on the resource rather than mapping uid 0, SYSTEM, a service-account name, SCM parent, or successful start directly to elevation. Constrain exceptions by exact writer, object and version, runtime token, operation, resource, scope, and validity period, and keep definition anomaly, Persistence, confirmed elevation, and unresolved authority separate.
+evidence_refs:
+- REF-000127
+- REF-000131
+- REF-000182
+- REF-000289
+- REF-000290
+- REF-000292
+- REF-000336
+- REF-000337
+lifecycle:
+  status: review
+  version: 1.2.0
+  created: '2026-09-10'
+  modified: '2026-09-13'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

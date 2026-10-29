@@ -1,0 +1,105 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000187
+strategy_ref: DET-000171
+name:
+  zh: 低峰值外传的长窗累计与进程核验
+  en: Low-Peak Exfiltration Long-Window Accumulation and Process Check
+summary:
+  zh: 输出短时峰值低而长期出站量高、具有节流线索的外传任务。
+  en: Emit long-running outbound jobs with low short peaks, high cumulative bytes and throttling evidence.
+domains:
+- enterprise
+platforms:
+- Windows
+logic:
+  paragraphs:
+  - zh: 在已配置活动导出和出口方向的 IPFIX 采集点，将 octetDeltaCount 与流起止时间、源目标地址映射为短时间桶，并按同一设备、目的地和可关联进程累计二十四至七十二小时。筛出短桶持续低于本地峰值告警、长期累计量或持续时间却超出资产角色基线的任务；再核对进程参数中的
+      --bwlimit、-net、-once 或等价节流和数据来源，区分主动限速与拥塞、服务端限流。IPFIX 字段及导出周期须在部署处核验。仅有连接结束时的 Zeek conn.log 不能重建长连接内部的十五秒速率。
+    en: At an IPFIX observation point configured for active export and outbound direction, map octetDeltaCount,
+      flow start and end times, and endpoint addresses into short buckets, then accumulate twenty-four to seventy-two
+      hours by device, destination and attributable process. Select jobs whose short buckets remain below local
+      peak alerts while long-run bytes or duration exceed the asset-role baseline. Check process arguments such
+      as --bwlimit, -net and -once and the source data to separate intentional capping from congestion or server
+      throttling. Validate IPFIX fields and export interval in the deployment. A Zeek conn.log emitted at connection
+      end cannot reconstruct fifteen-second rates inside a long connection.
+data_requirements:
+- source_type: ipfix-egress-flow
+  name:
+    zh: 活动导出的出口流记录
+    en: Actively exported egress flow records
+  channel: IPFIX exporter configured with active timeout at the egress observation point
+  required_fields:
+  - flow-start-ms
+  - flow-end-ms
+  - source-ip
+  - destination-ip
+  - octet-delta-count
+- source_type: process-creation
+  name:
+    zh: 进程创建与命令行
+    en: Process creation and command line
+  channel: Sysmon Event ID 1 or equivalent EDR
+  required_fields:
+  - timestamp
+  - device-id
+  - process-guid
+  - account
+  - command-line
+- source_type: process-connection
+  name:
+    zh: 端点进程连接归属
+    en: Endpoint process connection attribution
+  channel: Microsoft Defender XDR DeviceNetworkEvents or equivalent
+  required_fields:
+  - timestamp
+  - device-id
+  - remote-ip
+  - initiating-process-unique-id
+observables:
+- zh: 同一外部目标的连续低峰值字节桶、跨小时累计量、同一发起进程及限速参数。
+  en: Consecutive low-peak outbound byte buckets to one external destination, multi-hour total, one initiating process
+    and rate-limit arguments.
+correlation:
+  window:
+    zh: 以二十四至七十二小时为初始累计期，同时保留导出器配置的短桶及进程存活时间。
+    en: Start with a twenty-four to seventy-two hour cumulative period while retaining the exporter's short buckets
+      and process lifetime.
+  dimensions:
+  - device-id
+  - destination-ip
+  - process-guid
+  - account
+false_positives:
+- zh: 批准的备份、数据迁移、媒体上传、网络链路饱和和服务端限流都可能呈现低峰值长时发送。
+  en: Approved backups, migration, media uploads, link saturation, and server-side throttling can all produce long
+    low-peak sends.
+blind_spots:
+- zh: 缺少周期字节计数无法从最终连接摘要复原速率；NAT、共享代理、TLS 与无法关联进程的流量会降低归属精度。
+  en: Without periodic byte counters, a final connection summary cannot reconstruct rates; NAT, shared proxies,
+    TLS, and flows without process linkage reduce attribution precision.
+- zh: IPFIX 八位组数包含报文头且受观察点方向影响；活动导出间隔若长于待测速率窗口，无法验证十五秒节流曲线，只能判断较粗时间粒度的累计量。
+  en: IPFIX octet counts include packet headers and depend on observation-point direction. If active exports are
+    coarser than the rate window, the analytic cannot verify a fifteen-second throttling curve and can only assess
+    coarser cumulative totals.
+tuning_guidance:
+  paragraphs:
+  - zh: 按资产角色、目的服务和批准迁移窗口设定累计量及持续时间，保留未知目的地和非典型进程的告警；同时测量短桶与长窗，避免用单一字节阈值覆盖所有环境。
+    en: Set total-volume and duration thresholds by asset role, service, and approved migration windows, retaining
+      alerts on unknown destinations and atypical processes; compare short buckets with long windows instead of
+      using one universal byte threshold.
+evidence_refs:
+- REF-000664
+- REF-000641
+- REF-000640
+- REF-000230
+- REF-000604
+- REF-000634
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-09-22'
+  modified: '2026-09-22'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

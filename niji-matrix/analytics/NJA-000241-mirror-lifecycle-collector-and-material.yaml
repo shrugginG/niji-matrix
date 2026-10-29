@@ -1,0 +1,159 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000241
+strategy_ref: DET-000203
+name:
+  zh: 镜像资源生命周期—收集器接收—认证材料关联
+  en: Mirror Resource Lifecycle–Collector Receipt–Authentication Material Correlation
+summary:
+  zh: 关联镜像资源 old/new、收集器 receipt、源认证流和材料结果。
+  en: Correlate mirror-resource old and new state, collector receipt, source authentication flow, and material outcome.
+domains:
+- enterprise
+platforms: []
+logic:
+  paragraphs:
+  - zh: 对每次 mirror create、patch、enable、disable 和 delete 保存 event-time 资源版本，规范 source interfaces/instances/subnets、filter、collector
+      target 与 actor。把镜像有效区间连接到收集器收到的封装或镜像字节，再与认证流目录相交。未经批准且覆盖高价值认证流时报告复制面异常；只有 collector artifact 的受限评估确认材料时才报告 TA0006 结果。删除后的现态为空不能关闭历史告警。
+    en: Preserve the event-time resource version for every mirror create, patch, enable, disable, and delete and normalize
+      source interfaces, instances or subnets, filter, collector target, and actor. Join the mirror-valid interval to encapsulated
+      or mirrored bytes received by the collector and intersect with the authentication-flow inventory. Report a copy-plane
+      anomaly when an unapproved mirror covers high-value authentication flows, and report a TA0006 outcome only after restricted
+      assessment of a collector artifact confirms material. Empty current state after deletion does not close the historical
+      alert.
+data_requirements:
+- source_type: mirror-control-plane-audit
+  name:
+    zh: 流量镜像控制面审计
+    en: Traffic-mirror control-plane audit
+  channel: cloud Admin Activity, switch AAA/configuration log, or equivalent
+  required_fields:
+  - timestamp
+  - platform
+  - tenant_or_project
+  - request_id
+  - actor_id
+  - operation
+  - mirror_id
+  - source_resources
+  - filter
+  - collector_target
+  - old_state
+  - new_state
+  - outcome
+- source_type: mirror-collector-flow
+  name:
+    zh: 镜像收集器接收流量
+    en: Mirror collector receipt flow
+  channel: VPC flow, switch telemetry, collector interface counters, or equivalent
+  required_fields:
+  - timestamp
+  - tenant_or_network
+  - mirror_id_or_encapsulation_key
+  - source_resource
+  - collector_target
+  - collector_interface
+  - packet_count
+  - byte_count
+  - flow_id
+- source_type: authentication-flow-inventory
+  name:
+    zh: 认证流与加密边界目录
+    en: Authentication-flow and encryption-boundary inventory
+  channel: identity, load balancer, service, and flow metadata
+  required_fields:
+  - timestamp
+  - tenant_or_network
+  - source_resource
+  - flow_id
+  - source
+  - destination
+  - protocol_family
+  - service_role
+  - material_class_expected
+  - encryption_or_obfuscation
+  - termination_boundary
+- source_type: restricted-material-assessment
+  name:
+    zh: 受限凭据材料评估
+    en: Restricted credential-material assessment
+  channel: privacy-controlled forensic review
+  required_fields:
+  - case_id
+  - artifact_id
+  - artifact_hash
+  - flow_id
+  - material_class
+  - plaintext_or_recoverable
+  - recovery_condition
+  - reviewer_id
+  - raw_secret_retained
+- source_type: mirror-approval-inventory
+  name:
+    zh: 批准镜像与收集器清单
+    en: Approved mirror and collector inventory
+  channel: asset and change management
+  required_fields:
+  - ticket_id
+  - mirror_id
+  - owner
+  - source_scope
+  - filter_scope
+  - collector_target
+  - valid_from
+  - valid_to
+  - data_purpose
+  - retention_policy
+observables:
+- zh: 新建或修改的镜像覆盖身份服务或管理认证流，并将副本发送至无 owner、跨项目或首次出现的收集器
+  en: A new or modified mirror covers identity-service or management-authentication flows and sends copies to an unowned,
+    cross-project, or first-seen collector
+- zh: 短时镜像在收集器接收大量认证流后被删除，且无相符工单和保留策略
+  en: A short-lived mirror is deleted after its collector receives substantial authentication traffic without a matching ticket
+    and retention policy
+correlation:
+  window:
+    zh: 从镜像 create/patch 前一小时覆盖其完整有效期、delete 及其后七日的收集器产物；request ID 和 mirror ID 可跨全生命周期，缺少 ID 时仅在十五分钟内按 source/target/filter
+      降级关联。
+    en: Start one hour before mirror create or patch and span its full validity, delete, and seven days of collector artifacts
+      afterward. Request ID and mirror ID may join the complete lifecycle; without them, use source, target, and filter only
+      within a fifteen-minute lower-confidence window.
+  dimensions:
+  - platform
+  - tenant_or_project
+  - request_id
+  - mirror_id
+  - actor_id
+  - source_resource
+  - filter
+  - collector_target
+  - flow_id
+  - ticket_id
+  - time
+false_positives:
+- zh: 获批 NDR/IDS、合规监测、故障诊断、容量分析、迁移验证和依法授权的监测
+  en: Approved NDR or IDS, compliance monitoring, troubleshooting, capacity analysis, migration validation, and lawfully authorized
+    monitoring
+blind_spots:
+- zh: 物理 TAP、云提供方内部且租户不可见的复制、受侵控制面删除审计、合法收集器本身被攻陷，以及镜像正文因端到端加密不可解释
+  en: Physical taps, provider-internal copies invisible to the tenant, compromised control plane deleting audit, compromise
+    of an approved collector, and end-to-end encryption that leaves mirrored payload uninterpretable
+tuning_guidance:
+  paragraphs:
+  - zh: 为每个批准镜像固定 owner、源资源、过滤器、collector、用途、保留期和到期时间，并对跨项目/网络目标及身份服务源提高严重度。先验证平台审计是否记录完整 request body；缺失敏感字段时用资源快照补齐。内容确认应在受限收集器完成，通用分析只处理资源与流元数据。
+    en: Pin owner, source resources, filter, collector, purpose, retention, and expiration for every approved mirror, with
+      higher severity for cross-project or cross-network targets and identity-service sources. Verify whether the platform
+      audit retains the complete request body and supplement missing sensitive fields with resource snapshots. Perform content
+      confirmation on a restricted collector while general analytics process only resource and flow metadata.
+evidence_refs:
+- REF-000792
+- REF-000795
+- REF-000801
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-09-27'
+  modified: '2026-09-27'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

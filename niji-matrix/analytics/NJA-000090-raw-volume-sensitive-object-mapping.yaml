@@ -1,0 +1,112 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000090
+strategy_ref: DET-000105
+name:
+  zh: 原始卷到敏感对象映射
+  en: Raw Volume to Sensitive Object Mapping
+summary:
+  zh: 输出原始设备访问、文件区间映射和敏感内容使用之间的关联。
+  en: Produce correlations among raw-device access, file-extent mapping, and use of sensitive content.
+domains:
+- enterprise
+platforms:
+- Windows
+- Network Devices
+logic:
+  paragraphs:
+  - zh: 对直接访问，记录进程打开的卷或设备、访问掩码、特权、偏移和长度，并把区间映射到文件系统元数据与敏感对象；对副本访问，记录副本创建者、源卷、副本标识、暴露路径和读取进程，再把副本对象映射回活动卷对象。将两类路径与输出文件、凭据访问和数据使用连接。未批准主体通过替代视图取得敏感对象、缺少等价活动文件访问且出现后继结果时输出 raw_view_bypass。
+    en: For direct access, record the volume or device opened by a process, access mask, privilege, offset, and length and
+      map extents to file-system metadata and sensitive objects. For copy access, record the creator, source volume, copy
+      identifier, exposed path, and reading process and map the copied object back to the live-volume object. Join both paths
+      to output files, credential access, and data use. Emit raw_view_bypass when an unapproved principal obtains a sensitive
+      object through an alternative view, lacks an equivalent live-file access, and produces a successor outcome.
+data_requirements:
+- source_type: raw-storage-io
+  name:
+    zh: 原始存储 I/O
+    en: Raw storage I/O
+  channel: null
+  required_fields:
+  - event.timestamp
+  - host.id
+  - process.start_key
+  - device.id
+  - volume.id
+  - access.mask
+  - io.offset
+  - io.length
+  - privilege
+  - result
+- source_type: file-extent-and-outcome
+  name:
+    zh: 文件区间与结果
+    en: File extents and outcome
+  channel: null
+  required_fields:
+  - host.id
+  - volume.id
+  - file.path
+  - file.extent
+  - file.sensitivity
+  - output.path
+  - successor.action
+  - successor.object_hash
+- source_type: storage-copy-control-plane
+  name:
+    zh: 存储副本控制面
+    en: Storage copy control plane
+  channel: null
+  required_fields:
+  - event.timestamp
+  - host.id
+  - actor.id
+  - process.start_key
+  - source.volume_id
+  - copy.id
+  - copy.path
+  - copy.operation
+  - result
+observables:
+- zh: 未批准进程打开原始系统卷并读取敏感文件区间
+  en: An unapproved process opens a raw system volume and reads sensitive file extents
+- zh: 块层读取没有对应文件打开但随后产生敏感内容
+  en: Block-layer reads lack a corresponding file open but are followed by sensitive content
+correlation:
+  window:
+    zh: 直接访问与区间映射使用同一 I/O 事务；副本链从创建覆盖到首次敏感对象读取；后继结果窗口依据凭据导出、暂存或数据使用的环境保留语义配置并记录，不设跨环境固定时长。
+    en: Use the same I/O transaction for direct access and extent mapping and cover copy creation through the first sensitive-object
+      read for copy chains. Configure and record the successor-outcome window from environment-specific retention semantics
+      for credential export, staging, or data use rather than impose one cross-environment duration.
+  dimensions:
+  - host.id
+  - process.start_key
+  - volume.id
+  - device.id
+  - io.extent
+  - file.path
+  - output.path
+false_positives:
+- zh: 备份、磁盘修复、取证、杀毒扫描和卷管理工具
+  en: Backup, disk repair, forensics, antivirus scanning, and volume-management tools
+blind_spots:
+- zh: 块遥测缺少进程归因、文件区间无法映射或设备固件内执行
+  en: Block telemetry without process attribution, unavailable file-extent mapping, or execution inside device firmware
+tuning_guidance:
+  paragraphs:
+  - zh: 为批准工具绑定签名、账户、设备、操作类型和变更窗口，不按工具名全局放行。优先监控目录数据库、凭据存储和安全配置区间，并验证备份任务是否具有工单与预期输出。
+    en: Bind approved tooling to signing, account, device, operation type, and change window rather than allow globally by
+      name. Prioritize directory databases, credential stores, and security-configuration extents and verify that backup tasks
+      have a work record and expected output.
+evidence_refs:
+- REF-000025
+- REF-000389
+- REF-000419
+lifecycle:
+  status: review
+  version: 0.2.0
+  created: '2026-09-19'
+  modified: '2026-09-21'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

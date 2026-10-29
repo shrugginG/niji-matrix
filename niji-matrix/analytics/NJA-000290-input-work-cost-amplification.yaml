@@ -1,0 +1,120 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000290
+strategy_ref: DET-000231
+name:
+  zh: 输入到内部工作成本放大分析
+  en: Input-to-Internal-Work Cost Amplification Analytic
+summary:
+  zh: 输出少量/短请求与异常 route 时延、CPU/事件循环阻塞、错误或 crash 的不对称。
+  en: Emit asymmetry between a few or short requests and abnormal route duration, CPU or event-loop blocking, errors,
+    or crash.
+domains:
+- enterprise
+platforms:
+- Linux
+- Windows
+- macOS
+logic:
+  paragraphs:
+  - zh: 从 WAF/ALB/应用日志取得 request ID、source、method、URI、args、headers、request length、route、target、processing time、status、error
+      与 trace；按 trace/request 连接 OTel duration、应用 CPU/heap/event-loop lag、OOM/crash/restart 和外部健康。
+    en: Obtain request ID, source, method, URI, args, headers, request length, route, target, processing time, status,
+      error, and trace from WAF, ALB, and application logs. Join by trace or request to OTel duration, application
+      CPU, heap, event-loop lag, OOM, crash or restart, and external health.
+  - zh: 按 route 建 30 天输入长度—时延/资源基线，在 1 分钟和 15 分钟查找短输入/低请求数却异常高代价和健康失败。对重复结构做安全特征化，不在生产重放恶意 payload。
+    en: Build a 30-day input-length-to-duration or resource baseline per route and find short input or low request
+      count with anomalously high cost and health failure over one and fifteen minutes. Safely characterize repeated
+      structure without replaying malicious payloads in production.
+data_requirements:
+- source_type: waf-alb-request
+  name:
+    zh: WAF/ALB 请求与目标日志
+    en: WAF or ALB request and target logs
+  channel: AWS WAF and ALB access logs
+  required_fields:
+  - event.time
+  - request.id
+  - trace.id
+  - source.ip
+  - http.method
+  - uri
+  - query.args
+  - request.length
+  - target.id
+  - request.time
+  - target.time
+  - status
+  - error.reason
+- source_type: otel-http
+  name:
+    zh: OpenTelemetry HTTP 指标与 trace
+    en: OpenTelemetry HTTP metrics and traces
+  channel: OpenTelemetry
+  required_fields:
+  - event.time
+  - trace.id
+  - route
+  - method
+  - server.duration
+  - status.code
+  - error.type
+- source_type: application-resource-health
+  name:
+    zh: 应用资源与可用性
+    en: Application resources and availability
+  channel: null
+  required_fields:
+  - event.time
+  - process.id
+  - cpu.time
+  - memory.bytes
+  - event.loop.lag
+  - oom.event
+  - crash.id
+  - restart.id
+  - probe.success
+observables:
+- zh: 短输入/低请求数对应异常 route 时延和资源代价
+  en: Short input or low request count maps to anomalous route duration and resource cost
+- zh: 同一输入结构与 OOM/crash 或合法健康失败相连
+  en: The same input structure joins OOM or crash or legitimate-health failure
+correlation:
+  window:
+    zh: 请求到 trace 正负一分钟；route 成本 1/15 分钟；基线 30 天。
+    en: Use plus or minus one minute from request to trace, one or fifteen minutes for route cost, and a 30-day baseline.
+  dimensions:
+  - route
+  - request.id
+  - trace.id
+  - source.ip
+  - input.feature
+  - process.id
+  - event.time
+false_positives:
+- zh: 合法复杂搜索/正则、报表生成、冷缓存、GC、部署回归和压测
+  en: Legitimate complex search or regex, report generation, cold cache, GC, deployment regression, and load test
+blind_spots:
+- zh: 无 per-request CPU、采样 trace、加密参数、异步队列断开 request ID 或 crash 后日志丢失
+  en: No per-request CPU, sampled traces, encrypted parameters, async queue breaking request IDs, or logs lost after
+    crash
+tuning_guidance:
+  paragraphs:
+  - zh: 按 route 和输入类别调优，不用一个时延阈值。严重度需输入结构重复、内部成本与 health result；标准 OTel 不提供 per-request CPU 时标记推断。
+    en: Tune by route and input class rather than one duration threshold. Severity needs repeated input structure,
+      internal cost, and health result; mark inference when standard OTel lacks per-request CPU.
+evidence_refs:
+- REF-000968
+- REF-000969
+- REF-000970
+- REF-000973
+- REF-000974
+- REF-000975
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-10-04'
+  modified: '2026-10-04'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

@@ -1,0 +1,100 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000082
+strategy_ref: DET-000100
+name:
+  zh: 跨进程内存—调度—权限结果分析
+  en: Cross-Process Memory-to-Dispatch-to-Authority-Outcome Analytic
+summary:
+  zh: 将 exact source/target、跨进程 memory/load mutation、payload backing、既有或新调度、目标内 first behavior 与权限差连接，区分 attempt、staged、confirmed、non-elevating 和 elevation-confirmed 状态。
+  en: Join exact source and target, cross-process memory or load mutation, payload backing, existing or new dispatch, in-target first behavior, and authority differential to separate attempt, staged, confirmed, non-elevating, and elevation-confirmed states.
+domains: [enterprise]
+platforms: [Windows, Linux, macOS]
+logic:
+  paragraphs:
+  - zh: >-
+      分析按 host、boot/session/namespace 与 immutable process-start key 版本化 source/controller 和 target，保存 executable/hash/signer、parent/owner、user/group/SID、token/integrity/privileges/capabilities、sandbox/LSM、architecture/session、start/end time 和 resource authorization set。对 kernel controller 或无法直接作为 process 表示的 source，必须保留可证明的 prior process/request 与 controller instance；不能用同一 PID 的时间邻近替代 source-target identity，也不能从 target 名称推定高权限。
+    en: >-
+      The analytic versions source or controller and target by host, boot, session, namespace, and immutable process-start key, preserving executable, hash, signer, parent or owner, user, group, or SID, token, integrity, privileges, capabilities, sandbox or LSM, architecture and session, start and end time, and resource-authorization set. A kernel controller or source not directly represented as a process requires a proven prior process or request and controller instance. Temporal proximity on a reused PID cannot replace source-target identity, and a target name cannot imply high authority.
+  - zh: >-
+      以 source-target pair 捕获 process open/attach/task-port 和 requested/granted rights，再连接 allocate/write/protect、section/map、module/load request 或 thread/context mutation 的 address range、bytes/hash、old/new protection、file/section/module backing 与 result。随后按 thread ID、callback/message/APC object、handle/request ID、address overlap、instruction pointer、call stack 和紧凑窗口连接 create/resume/context-set/queue/trigger 与 first target instruction/behavior。access 或 dispatch 被拒绝输出 injection_attempt；mutation 成功但 execution 未见输出 payload_staged；只有 mutation/load、dispatch 和 target execution 因果闭合才输出 injection_confirmed。
+    en: >-
+      For each source-target pair, capture process open, attach, or task-port activity and requested or granted rights, then join allocation, write, protection, section or map, module or load request, or thread or context mutation with address range, bytes or hash, old and new protection, file, section, or module backing, and result. Next join create, resume, context-set, queue, or trigger with first target instruction or behavior through thread ID, callback, message, or APC object, handle or request ID, address overlap, instruction pointer, call stack, and a tight window. Rejected access or dispatch produces injection_attempt. Successful mutation without observed execution produces payload_staged. Only a causally closed mutation or load, dispatch, and target-execution chain produces injection_confirmed.
+  - zh: >-
+      NJS-0103-001 要求 executed region 的 pages 不由与内容一致的 approved file-backed image/module 解释，并保留 allocation/writer、write→execute protection transition、private/anonymous/modified image state、content hash/entropy 与 first execution；单个 RWX/private flag 不足。NJS-0103-002 要求 dispatch carrier 在 mutation 前已经属于 target：记录原 thread/context/callback/message pre-state、source queue/write/set operation、触发条件和 instruction-pointer/call-stack divergence。new remote thread、普通 signed DLL load 或只有 APC API 没有实际执行分别留在 parent 或 unresolved，不机械套入子项。
+    en: >-
+      NJS-0103-001 requires executed pages not to be explained by an approved file-backed image or module consistent with their content and preserves allocator and writer, write-to-execute protection transition, private, anonymous, or modified-image state, content hash or entropy, and first execution. A single RWX or private flag is insufficient. NJS-0103-002 requires the dispatch carrier to have belonged to the target before mutation: record original thread, context, callback, or message pre-state, source queue, write, or set operation, trigger condition, and instruction-pointer or call-stack divergence. A new remote thread, ordinary signed-DLL load, or an APC API without actual execution respectively remains parent or unresolved and is not mechanically assigned to a child.
+  - zh: >-
+      对每个 injection_confirmed transaction，分析将 target-context code 的 first downstream file/network/credential/IPC/control/resource operation 与 source pre-state 和 target effective authority 连接。若至少一个 operation 对 source expected deny 而由 target observed allow，且 target/post-state authority 比 source 多出可枚举 permission/capability/namespace reach，输出 elevation_confirmed；权限相等或未使用差异输出 injection_confirmed_non_elevating；缺 pre-state、target authority 或 resource decision 输出 authority_unresolved。approved debugger/profiler/EDR/JIT/hot-patch/accessibility/backup 仅在 exact package/hash、owner、source-target pair、rights、payload/dispatch purpose、ticket/window 和 expected result 同时匹配时降噪。sensor stop、kernel write 或不一致 audit 追加 telemetry_integrity_at_risk。
+    en: >-
+      For each injection_confirmed transaction, the analytic joins the first downstream file, network, credential, IPC, control, or resource operation of target-context code with source pre-state and target effective authority. elevation_confirmed requires at least one operation expected denied for the source and observed allowed through the target plus an enumerable permission, capability, or namespace reach present in target or post-state but absent from source. Equivalent authority or unused difference produces injection_confirmed_non_elevating. Missing pre-state, target authority, or resource decision produces authority_unresolved. Approved debugger, profiler, EDR, JIT, hot-patch, accessibility, or backup activity is suppressed only when exact package or hash, owner, source-target pair, rights, payload or dispatch purpose, ticket or window, and expected result all match. Sensor stop, kernel write, or inconsistent audit adds telemetry_integrity_at_risk.
+data_requirements:
+- source_type: process-identity-authority-prestate
+  name: {zh: Source/target 进程身份与权限前态, en: Source and Target Process Identity and Authority Pre-State}
+  channel: null
+  required_fields: [timestamp, host_id, boot_session_or_namespace, process_start_key, pid, parent_or_controller_ref, executable, hash, signer, owner, user_group_or_sid, token_integrity_privileges_or_capabilities, sandbox_lsm_or_namespace, architecture_and_session, authorized_resources_and_operations, start_time, end_time]
+- source_type: cross-process-access-and-attach
+  name: {zh: 跨进程访问、attach 与 task handle, en: Cross-Process Access Attach and Task Handles}
+  channel: null
+  required_fields: [timestamp, host_id, source_start_key, target_start_key, operation, handle_task_or_request_id, requested_rights, granted_rights, result, kernel_or_user_mode]
+- source_type: cross-process-memory-and-load-mutation
+  name: {zh: 跨进程 memory、section 与装载变更, en: Cross-Process Memory Section and Load Mutation}
+  channel: null
+  required_fields: [timestamp, source_start_key, target_start_key, handle_or_request_id, operation, address_range, byte_count_or_hash, old_protection, new_protection, file_section_or_module_ref, backing_state, result]
+- source_type: target-dispatch-and-execution
+  name: {zh: Target thread、callback 与执行调度, en: Target Thread Callback and Execution Dispatch}
+  channel: null
+  required_fields: [timestamp, target_start_key, thread_id, dispatch_type, callback_message_or_apc_id, source_operation_ref, prestate_context, poststate_instruction_pointer, call_stack_or_start_address, trigger, execution_result]
+- source_type: memory-backing-and-content-provenance
+  name: {zh: 执行内存 backing 与内容来源, en: Executed-Memory Backing and Content Provenance}
+  channel: null
+  required_fields: [timestamp, target_start_key, address_range, region_type, allocation_source, writer_source, file_section_module_ref, file_hash, memory_hash_or_entropy, protection_history, first_execution_time]
+- source_type: target-behavior-and-resource-outcome
+  name: {zh: Target 内首个行为与资源结果, en: First In-Target Behavior and Resource Outcome}
+  channel: null
+  required_fields: [timestamp, target_start_key, thread_or_region_ref, action_class, resource_or_destination, operation, result, effective_identity_or_capability, authorization_decision_id, causality_ref]
+- source_type: approved-process-manipulation-context
+  name: {zh: 获批跨进程工具与变更上下文, en: Approved Cross-Process Tooling and Change Context}
+  channel: null
+  required_fields: [timestamp, owner, ticket_or_policy, approved_package_hash, approved_source_target_pair, approved_rights, approved_payload_or_dispatch_purpose, window_start, window_end, expected_result]
+observables:
+- {zh: 非预期 source 对 exact target 请求并获得 VM write、thread/context 或 task-port rights, en: An unexpected source requests and receives VM-write thread-context or task-port rights to an exact target}
+- {zh: source 随后在 target 分配、写入、映射、改保护或提交 module load，地址/handle/request 可闭合, en: The source then allocates writes maps reprotects or requests module load in the target with a closing address handle or request edge}
+- {zh: target thread、callback、APC 或 message 被创建、修改、排队或触发并转入相关 address/region, en: A target thread callback APC or message is created changed queued or triggered and transfers into the related address or region}
+- {zh: 写入成功但没有可证明 dispatch/execution，仅标记 payload_staged, en: A successful write lacks provable dispatch or execution and is labeled payload_staged only}
+- {zh: target 从 private/anonymous/modified-image 或无一致 file/module backing 的 region 首次执行, en: The target first executes from a private anonymous modified-image or otherwise inconsistently backed region}
+- {zh: target 既有 thread/callback/message pre-state 被 source 改变，触发后 instruction pointer 或 call stack 转入 payload, en: An existing target thread callback or message pre-state is changed by the source and transfers into payload by instruction pointer or call stack after triggering}
+- {zh: injection_confirmed 后 target-context code 完成首个 network/file/credential/IPC/control 结果, en: Target-context code completes its first network file credential IPC or control result after injection_confirmed}
+- {zh: 该结果对 source pre-state 预计拒绝而由 target observed allow，并存在可枚举权限差, en: The result was expected denied in source pre-state and observed allowed through the target with an enumerable authority difference}
+- {zh: kernel/controller activity、sensor stop 或 host audit 与独立 policy/resource log 不一致, en: Kernel or controller activity sensor stop or host audit disagrees with independent policy or resource logs}
+correlation:
+  window:
+    zh: >-
+      从 source/target 权限前态最后可信快照和首次 target discovery/access 起，覆盖 mutation、dispatch、target execution，直到首个新增授权结果或二十四小时；短生命周期 injection 默认使用十五分钟紧凑链，长期 service/browser 允许按 handle/request/region/thread/IPC identity 延伸，不能仅靠宽时间窗。process start key、handle/request、address overlap、thread/callback object、instruction pointer 与 resource decision ID 优先于 PID/name。疑似 kernel tamper 后独立记录至少保留九十日。
+    en: >-
+      Begin at the last trusted source and target authority pre-state and first target discovery or access and cover mutation, dispatch, target execution, and the first newly authorized result or twenty-four hours. Short-lived injection uses a fifteen-minute tight chain by default. A long-lived service or browser can extend through handle, request, region, thread, or IPC identity but not a broad time window alone. Process-start key, handle or request, address overlap, thread or callback object, instruction pointer, and resource-decision ID take precedence over PID or name. Retain independent records for at least ninety days after suspected kernel tampering.
+  dimensions: [host, boot_session_namespace, source_target_start_key, source_target_authority_prestate, parent_controller, handle_task_request, requested_granted_rights, memory_address_range, section_module_backing, protection_and_content, thread_callback_message_apc, instruction_pointer_call_stack, first_target_behavior, protected_resource_decision, authority_difference, owner_ticket_window, telemetry_integrity, time]
+false_positives:
+- {zh: Debugger、profiler、crash handler 或 assistive technology 按声明关系 attach 并修改目标, en: A debugger profiler crash handler or assistive technology attaches to and modifies a target through a declared relationship}
+- {zh: EDR、anti-malware、observability、backup 或 live-response agent 读取/写入进程并创建 helper thread, en: EDR anti-malware observability backup or live-response agents read or write a process and create helper threads}
+- {zh: Browser sandbox、application virtualization、JIT、hot patch、compatibility shim 或受信 plugin loader 执行跨进程变更, en: Browser sandboxes application virtualization JIT hot patching compatibility shims or trusted plugin loaders perform cross-process changes}
+- {zh: 授权 red-team、malware analysis 或 vendor test 在批准 target/window 执行 injection，但不应被误报为真实提权, en: Authorized red-team malware-analysis or vendor tests inject into an approved target and window but must not be reported as real privilege elevation}
+blind_spots:
+- {zh: User-mode hooks 被 direct syscall、kernel controller 或 tampered sensor 绕过，只有 host telemetry 时 source edge 可能丢失, en: Direct syscalls kernel controllers or tampered sensors bypass user-mode hooks and can erase the source edge from host-only telemetry}
+- {zh: 标准 loader 与 signed module 在 load telemetry 不完整时可能只留下 target 后继行为, en: Standard loaders and signed modules can leave only target follow-on behavior when load telemetry is incomplete}
+- {zh: 很短的 memory write/execute/free 或恢复 bytes 会在周期性 memory scan 间消失, en: Short memory write execute free or byte restoration can disappear between periodic memory scans}
+- {zh: APC/callback/message 已排队但 target 线程未满足触发条件，execution 状态可能长期 unresolved, en: Queued APC callback or message work can remain execution-unresolved while the target thread never reaches its trigger condition}
+- {zh: 缺少 source pre-state、target effective authority 或 resource allow/deny 会阻止 TA0004 结论, en: Missing source pre-state target effective authority or resource allow-deny data prevents a TA0004 conclusion}
+- {zh: PID reuse、跨 session/container 或不稳定时钟会把无关 writer、target 和结果误连, en: PID reuse cross-session or container activity and unstable clocks can misjoin unrelated writers targets and outcomes}
+tuning_guidance:
+  paragraphs:
+  - zh: >-
+      先按状态门调优：access/attach 形成 exposure，失败写入或调度形成 attempt，成功 mutation 无执行形成 staged，mutation/load→dispatch→target instruction 闭合才 confirmed；NJS-0103-001 再要求 inconsistent backing，NJS-0103-002 再要求 pre-existing carrier。对 high-value target 可以提高采集，但不能用 RWX、APC 或 remote thread 单点替代因果链。保留 unresolved 状态以衡量 sensor coverage，而不是静默丢弃。
+    en: >-
+      Tune state gates first: access or attach forms exposure, a failed write or dispatch forms attempt, successful mutation without execution forms staged, and only a closed mutation or load-to-dispatch-to-target-instruction chain is confirmed. NJS-0103-001 additionally requires inconsistent backing, while NJS-0103-002 requires a pre-existing carrier. High-value targets justify richer collection, but an RWX region, APC, or remote thread cannot replace the causal chain. Retain unresolved states to measure sensor coverage instead of silently dropping them.
+  - zh: >-
+      Allow 条目绑定 exact package/hash/version、owner、source-target pair、rights、dispatch/payload purpose、resource effect 和到期窗口；不要按 publisher、process name 或签名全局豁免。TA0004 风险只在正权限差和 first expected-deny/observed-allow result 后提升。对同权限 browser/explorer 注入输出 non_elevating，同时仍保留通用 T1055 告警；对 kernel/controller 或 audit gap 要求独立 control-plane corroboration。
+    en: >-
+      Bind allow entries to exact package, hash, or version, owner, source-target pair, rights, dispatch or payload purpose, resource effect, and expiring window. Never exempt globally by publisher, process name, or signature. Raise TA0004 severity only after a positive authority difference and first expected-deny and observed-allow result. Same-authority browser or explorer injection remains a generic T1055 alert but outputs non_elevating for TA0004. Kernel or controller paths and audit gaps require independent control-plane corroboration.
+evidence_refs: [REF-000108, REF-000243, REF-000362, REF-000363, REF-000365, REF-000366, REF-000367, REF-000370, REF-000371]
+lifecycle: {status: review, version: 0.1.0, created: '2026-09-13', modified: '2026-09-13', contributors: [Niji Matrix Research], reviewers: []}

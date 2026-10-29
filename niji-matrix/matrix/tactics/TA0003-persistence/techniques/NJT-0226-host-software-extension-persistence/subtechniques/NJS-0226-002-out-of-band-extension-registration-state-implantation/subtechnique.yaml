@@ -1,0 +1,75 @@
+schema_version: 2.0.0
+type: evasion-subtechnique
+id: NJS-0226-002
+parent_ref: NJT-0226
+name:
+  zh: 带外扩展注册状态植入
+  en: Out-of-Band Extension Registration-State Implantation
+summary:
+  zh: 攻击者直接写入扩展包和宿主 profile、policy、preference、Registry 或目录状态，使以后宿主加载它而不经过普通交互安装与同意链
+  en: Adversaries directly write extension packages and host profile policy preference Registry or directory state so a later host loads them without the ordinary interactive installation and consent chain
+aliases: []
+lineage: {attck_subtechnique_inherited: false}
+definition_and_concept:
+  paragraphs:
+  - zh: 带外扩展注册状态植入是攻击者绕过宿主通常的市场、UI 或用户同意路径，直接写入扩展包及 profile、policy、preference、Registry、扩展目录或 CLI 管理状态，使宿主以后把该状态当作可加载扩展。直接目标是省略易被市场或交互安装审计覆盖的创建路径，同时保留跨会话注册与宿主加载结果。
+    en: Out-of-Band Extension Registration-State Implantation bypasses the host's ordinary marketplace UI or user-consent path by directly writing an extension package and profile policy preference Registry extension-directory or CLI management state so the host later treats it as loadable. Its direct objective is to omit a creation path covered by marketplace or interactive-install audit while retaining cross-session registration and host-load outcomes.
+stealth_characteristics:
+  paragraphs:
+  - zh: 带外扩展注册状态植入让普通市场下载、安装 UI、同意和部分 marketplace 审计缺失，后来行为却由正常浏览器或 IDE extension host 执行。KREMLIN 在浏览器关闭或用户空闲时写入扩展目录和 Secure Preferences，重建 HMAC 与 App-Bound hash，使以后 Chrome 启动把恶意包作为认可状态加载。
+    en: Out-of-Band Extension Registration-State Implantation removes ordinary marketplace download installation UI consent and some marketplace audit while later behavior runs in a normal browser or IDE extension host. KREMLIN wrote extension directories and Secure Preferences after browser closure or user idleness and regenerated HMAC and App-Bound hashes so a later Chrome start loaded the malicious package as recognized state.
+  - zh: writer process、目标 profile、配置 old/new、package path/hash、developer/sideload/force 状态、完整性字段、first inventory 和 first host load 仍留痕。文件/Registry/policy 审计与 approved deployment 关联越完整，行为透明越弱；离线修改和管理平面失陷会扩大盲区。
+    en: Writer process target profile configuration old and new package path or hash developer side-load or force state integrity fields first inventory and first host load remain. More complete file Registry or policy audit and approved-deployment correlation reduce Behavioral Transparency while offline modification and compromised management planes expand blind spots.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 纳入必须有绕过普通安装/同意链的直接状态写入、可跨会话存在的包和注册、以及以后宿主加载。合法 MDM/Group Policy force install、企业镜像、profile 漫游、浏览器修复和批准 VSIX/CLI 是强反例；一次 `--load-extension` 或临时开发运行没有持久状态时排除。
+    en: Inclusion requires a direct state write bypassing ordinary install or consent a cross-session package and registration and a later host load. Legitimate MDM or Group Policy force install enterprise images profile roaming browser repair and approved VSIX or CLI are strong counterexamples. One load-extension or temporary development run without durable state is excluded.
+  - zh: 显示身份仿冒但安装仍走正常市场链归 NJS-0226-001；已有 identity 的恶意更新归 NJS-0059-001；独立事件谓词归 NJS-0090-001；通用模块执行归 NJT-0077。本项不声称扩展永远不出现在管理 UI，只拥有 creation path 和 writer—state—load 观察断点。
+    en: Displayed identity impersonation with an ordinary marketplace installation belongs to NJS-0226-001 malicious updates under an existing identity to NJS-0059-001 independent event predicates to NJS-0090-001 and generic module execution to NJT-0077. This child does not claim the extension remains forever absent from management UI and owns only the creation-path and writer-to-state-to-load observation break.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: 攻击者在取得本地用户、管理员、MDM、企业策略或 profile 文件写权后，等待宿主退出或空闲，写入 package 和注册状态，再让用户下次启动浏览器或打开 IDE 时加载恶意代码。它适合已有端点访问后建立持久执行，也可与供应链、计划任务或账户操纵等前置行为组合。
+      en: After gaining local-user administrator MDM enterprise-policy or profile-file write authority an adversary waits for host exit or idleness writes package and registration state and has the next browser start or IDE open load malicious code. It supports durable execution after endpoint access and can combine with supply chain scheduled task or account-manipulation precursors.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者需要理解宿主配置格式、完整性字段、profile 作用域、package layout 和关闭/重载条件，并有权写相关文件、Registry 或管理策略。格式错误会被宿主修复、拒绝或产生高信号告警；严格文件权限、受管策略和配置完整性会增加成本。
+        en: The adversary needs knowledge of host configuration formats integrity fields profile scope package layout and shutdown or reload conditions plus authority to write relevant files Registry or management policy. Incorrect formats can be repaired rejected or create high-signal alerts and strict file permissions managed policy and configuration integrity raise cost.
+    defender_model:
+      paragraphs:
+      - zh: 防守方需要文件、Registry、policy 和 CLI 审计，扩展 inventory 及 host-load telemetry，并能覆盖全部用户 profile、远程 extension host 和离线镜像。没有 writer 或 first load 归因时，只能确认未知扩展状态；管理平面本身失陷会让批准上下文不可信。
+        en: Defenders need file Registry policy and CLI audit extension inventory and host-load telemetry covering every user profile remote extension host and offline image. Without writer or first-load attribution only unknown extension state can be confirmed and compromise of the management plane makes approval context untrustworthy.
+stealth_mechanisms:
+- mechanism_ref: NM-BT
+  role: primary
+  summary:
+    zh: 带外配置写入与后续受信 extension host 运行分处不同观察面
+    en: Out-of-band configuration writes and later trusted extension-host execution occupy different observation surfaces
+  analysis:
+    paragraphs:
+    - zh: 攻击者从 profile、policy、Registry 或目录写入持久状态，省略普通市场/UI 安装事件；以后代码由正常浏览器或 IDE extension host 在另一时段运行。单一安装或进程视角不能恢复 writer—state—load—outcome 链，形成行为透明。配置审计、精确 package hash、first load 和结果关联可恢复因果。
+      en: The adversary writes durable state through profiles policies Registry or directories omitting ordinary marketplace or UI installation events while code later runs inside a normal browser or IDE extension host in another period. One installation or process vantage cannot recover writer-to-state-to-load-to-outcome lineage producing Behavioral Transparency. Configuration audit exact package hash first load and outcome correlation recover causality.
+  evidence_refs: [REF-000578, REF-000580, REF-001169]
+  confidence: medium
+defense:
+  detections: {coverage: available, strategy_refs: [DET-000264]}
+  mitigations: {coverage: available, mitigation_refs: [MIT-000233]}
+evidence:
+  claim_refs: [CLM-001129, CLM-001130, CLM-001132, CLM-001134]
+  case_refs: [CASE-000350]
+  reference_refs: [REF-000578, REF-000580, REF-001168, REF-001169]
+research:
+  limitations:
+    paragraphs:
+    - zh: KREMLIN 对 Chromium Secure Preferences、完整性 hash 重建和后续加载提供直接证据；跨 IDE 与其他宿主推广依赖本地配置模型，故父行为为 high 而本子项跨宿主机理保持 medium。某些宿主会在下次启动显示扩展，带外不意味着永久不可见。
+      en: KREMLIN provides direct evidence for Chromium Secure Preferences integrity-hash regeneration and later load while generalization to IDEs and other hosts depends on local configuration models. Parent behavior is high confidence but cross-host mechanism remains medium. Some hosts show the extension on next start and out-of-band does not mean permanently invisible.
+    - zh: MDM、Group Policy、企业镜像、profile 漫游、浏览器修复与开发者 CLI 合法使用相同文件和策略路径。缺少 change context、writer 或 first load 时不能从配置差分直接归因；离线写入和已失陷管理平面会使检测降级。
+      en: MDM Group Policy enterprise images profile roaming browser repair and developer CLI legitimately use the same file and policy paths. Without change context writer or first load configuration differentials cannot directly attribute and offline writes or compromised management planes lower detection confidence.
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-10-22'
+  modified: '2026-10-22'
+  contributors: [Niji Matrix Research]
+  reviewers: []

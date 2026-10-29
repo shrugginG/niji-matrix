@@ -1,0 +1,122 @@
+schema_version: 2.0.0
+type: evasion-subtechnique
+id: NJS-0190-002
+parent_ref: NJT-0190
+name:
+  zh: 原路径保持型复制外传
+  en: Original-Path-Preserving Replica Exfiltration
+summary:
+  zh: 在不替换原通信交付的情况下从网络或云控制面增加到独立收集器的复制边，使端点没有额外外传动作。
+  en: Add a copy edge from a network or cloud control plane to an independent collector without replacing original
+    delivery, leaving no additional egress action at the endpoint.
+aliases: []
+lineage:
+  attck_subtechnique_inherited: false
+definition_and_concept:
+  paragraphs:
+  - zh: 原路径保持型复制外传是攻击者在交换、路由、虚拟网络或等价基础设施中选择源流量和过滤范围，并让平台自动将副本交付到独立 collector，同时原数据仍到达原目的地。直接变量是新增复制边且不改写原路径；SPAN、RSPAN、ERSPAN、Packet
+      Mirroring 和具体云产品只是实现形式。
+    en: Original-Path-Preserving Replica Exfiltration selects source traffic and filter scope in switching, routing,
+      virtual network, or equivalent infrastructure and has the platform automatically deliver a copy to an independent
+      collector while original data still reaches its original destination. The direct variable is an added copy
+      edge without rewriting the original path. SPAN, RSPAN, ERSPAN, Packet Mirroring, and specific clouds are implementations.
+stealth_characteristics:
+  paragraphs:
+  - zh: 原路径保持型复制外传使原端点继续连接预期服务，进程没有第二个目的地，服务响应与用户体验也可保持正常，因此端点 EDR 和应用审计可能完全看不到副本。残余集中在镜像资源生命周期、设备命令、源接口/实例/子网、过滤器、封装标识、collector
+      目标和接收计数。短时镜像删除后现态为空，仍应由事件时资源版本和历史流量恢复。
+    en: Original-Path-Preserving Replica Exfiltration makes the source endpoint continues connecting to the expected
+      service, the process has no second destination, and service response and user experience can remain normal,
+      so endpoint EDR and application audit may not see the copy. Residuals concentrate in mirror-resource lifecycle,
+      device commands, source interfaces, instances or subnets, filters, encapsulation identifiers, collector target,
+      and receipt counters. Current state is empty after a short-lived mirror is deleted, but event-time resource
+      versions and historical flows can still recover it.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 纳入要求存在到独立 collector 的复制边、源范围覆盖相关数据以及副本实际接收或可执行交付路径。设备本地 PCAP 而未导出不构成 Exfiltration；把原流改路到攻击者后再转发属于路径重定向或
+      AiTM；合法 NDR、合规监控、容量分析和故障诊断须按 owner、工单、源/过滤器、固定 collector、有效期和数据处理目的排除。内容加密可能让副本无利用价值，但不会消除未授权复制事实。
+    en: Inclusion requires a copy edge to an independent collector, source scope covering relevant data, and actual
+      receipt or an executable delivery path. Device-local PCAP without export does not establish Exfiltration.
+      Rerouting the original flow through the adversary belongs to path redirection or adversary-in-the-middle.
+      Authorized NDR, compliance monitoring, capacity analysis, and troubleshooting require exclusion by owner,
+      ticket, source and filter, pinned collector, validity, and data-processing purpose. Encryption may make the
+      copy unusable but does not erase unauthorized replication.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: 行为者控制路由器或交换机管理面后可创建 SPAN/RSPAN/ERSPAN，将多个端口或 VLAN 的副本交给受控 collector；在 IaaS 中则可创建 Packet Mirroring，选择工作负载、子网和过滤器。联合通告记录国家支持行为者在受侵网络设备使用这些能力，但公开材料没有证明每个镜像会话都成功向攻击者外送可用内容。
+      en: After controlling router or switch management, an actor can create SPAN, RSPAN, or ERSPAN and deliver
+        copies of ports or VLANs to a controlled collector. In IaaS, the actor can create Packet Mirroring and select
+        workloads, subnets, and filters. The joint advisory records state-sponsored use of these capabilities on
+        compromised devices, but public material does not prove that every mirror session delivered usable content
+        to an adversary.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者需要镜像 create/update/delete 或设备 monitor/capture/export 权限、collector 接收与存储能力、源范围知识及到 collector 的路由。跨项目或跨网络目标可能需要额外身份和连接权限；过宽镜像会造成带宽、丢包和资源费用，端到端加密还限制内容价值。
+        en: The adversary needs mirror create, update, and delete or device monitor, capture, and export authority;
+          collector receipt and storage; source-scope knowledge; and routing to the collector. Cross-project or
+          cross-network targets may need additional identity and connectivity permission. Broad mirrors incur bandwidth,
+          loss, and resource cost, while end-to-end encryption limits content value.
+    defender_model:
+      paragraphs:
+      - zh: 防守方保存镜像对象的 event-time old/new state、actor、request ID、source/filter、collector、结果和批准工单，并把有效期连接到 collector
+          interface 的 packet/byte receipt。端点日志用于证明原会话而不是发现副本。缺少 collector receipt 时只报告“未授权复制面已建立”，不能升级为完成的数据外传。
+        en: Defenders retain event-time old and new mirror state, actor, request ID, source and filter, collector,
+          outcome, and approval record and join the validity interval to collector-interface packet and byte receipt.
+          Endpoint logs establish the original session rather than discover the copy. Without collector receipt,
+          report an unauthorized copy surface rather than completed data exfiltration.
+stealth_mechanisms:
+- mechanism_ref: NM-BT
+  role: primary
+  summary:
+    zh: 复制分支保持原会话目的地、响应和端点行为不变
+    en: A copy branch preserves original session destination, response, and endpoint behavior
+  analysis:
+    paragraphs:
+    - zh: 平台自动复制经过的流量并交给独立 collector，原端点与服务仍完成原会话，因此常规端点和应用视图没有第二条恶意发送。痕迹被移到管理面和 collector。联合通告支持行为者使用镜像能力，Google
+        审计文档支持镜像 create/patch/delete 与权限记录；把资源有效期、源流范围和 collector receipt 相连可破坏这种行为透明。
+      en: The platform automatically copies traversing traffic to an independent collector while endpoint and service
+        complete the original session, leaving no second malicious send in routine endpoint and application views.
+        Traces move to management plane and collector. The joint advisory supports actor use of mirroring capability,
+        and Google audit documentation supports mirror create, patch, delete, and permission records. Joining validity,
+        source-flow scope, and collector receipt defeats this behavioral transparency.
+  evidence_refs:
+  - REF-000792
+  - REF-000795
+  confidence: medium
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000220
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000199
+evidence:
+  claim_refs:
+  - CLM-000933
+  - CLM-000935
+  case_refs: []
+  reference_refs:
+  - REF-000792
+  - REF-000795
+  - REF-000604
+research:
+  limitations:
+    paragraphs:
+    - zh: 联合通告汇总多起活动，未把每个 SPAN/RSPAN/ERSPAN 配置逐一连接到攻击者 collector 的字节接收；Google 来源仅证明平台能力和审计方法。正式结论必须分开“复制配置存在”“collector
+        收到副本”和“副本含可用敏感数据”三层。物理 TAP、交换芯片或云提供方内部复制可能不留租户可见控制面日志。
+      en: The joint advisory aggregates multiple activities and does not connect every SPAN, RSPAN, or ERSPAN configuration
+        to byte receipt at an adversary collector. The Google source establishes platform capability and audit methods
+        only. Formal conclusions must separate mirror configuration, collector receipt, and usable sensitive content.
+        Physical taps, switch-silicon copies, or provider-internal replication may leave no tenant-visible control-plane
+        audit.
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-10-04'
+  modified: '2026-10-04'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

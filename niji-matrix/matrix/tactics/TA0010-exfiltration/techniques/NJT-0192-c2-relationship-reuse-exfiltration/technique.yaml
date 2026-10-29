@@ -1,0 +1,207 @@
+schema_version: 2.0.0
+type: technique
+id: NJT-0192
+name:
+  zh: C2 关系复用外传
+  en: C2-Relationship Reuse Exfiltration
+summary:
+  zh: 攻击者让已经承担命令控制的逻辑关系同时输送被盗数据，减少专用外传连接痕迹，并使数据泄露更难从控制回调和结果流量中分离。
+  en: An adversary uses a logical relationship already carrying command and control to transport stolen data, reducing
+    dedicated exfiltration-connection traces and making data loss harder to separate from callbacks and result traffic.
+aliases: []
+classification:
+  tactic_refs:
+  - TA0010
+  origin:
+    kind: attack-adapted
+    source_attack_id: T1041
+    source_attack_version: '19.1'
+  decision_ref: DEC-TA0010-T1041
+definition_and_concept:
+  paragraphs:
+  - zh: C2 关系复用外传指攻击者在植入体或远程控制组件已能同控制端交换任务、回调或执行结果后，让同一逻辑关系继续承载从受害环境取得的数据。直接目标是把数据交付给攻击者可接收的一侧；分类所固定的变量是外传与既有控制关系的同一性，而不是
+      HTTP、DNS、TCP、TLS、邮件或某一产品名称。
+    en: C2-Relationship Reuse Exfiltration occurs after an implant or remote-control component can already exchange
+      tasks, callbacks, or execution results with its controller and then uses that same logical relationship to
+      carry data acquired from the victim environment. Its direct objective is delivery to an attacker-accessible
+      receiver. The classification variable is identity between the exfiltration path and the established control
+      relationship, not HTTP, DNS, TCP, TLS, mail, or a product name.
+  - zh: 同一逻辑关系可以由一个长连接实现，也可以由指向同一控制端、使用相同客户端状态和消息协议的重复短连接实现。关键判定是外传未形成独立的控制面、目的关系或传输协议，而是借用原有 C2 的身份、路由和会话历史。只观察到恶意进程向一个被称为
+      C2 的主机上传文件，若无法证明此前存在控制交换，仍不足以确认本技术。
+    en: The logical relationship may be implemented by one long-lived connection or by repeated short connections
+      that preserve the same controller, client state, and message protocol. The essential test is that exfiltration
+      does not create a separate control plane, destination relationship, or transfer protocol but borrows the C2
+      relationship's identity, routing, and conversation history. Observing a malicious process upload a file to
+      a host labeled as C2 is insufficient when no preceding control exchange can be established.
+stealth_characteristics:
+  paragraphs:
+  - zh: 本技术减少外传阶段专有的新域名解析、目的主机、端口、证书握手、进程网络关系或应用身份。出站数据继承 C2 已有的源进程、控制端、协议与时间历史，使按“新外传目的地”或“收集后新建连接”建模的检测失去独立事件，也使调查者难以仅凭一条连接记录判断其中哪些字节是心跳、命令结果、主机登记还是被盗内容。
+    en: This technique reduces exfiltration-specific traces such as a new DNS lookup, destination, port, certificate
+      handshake, process-to-network relationship, or application identity. Outbound data inherits the C2 process,
+      controller, protocol, and temporal history. Detection models looking for a new exfiltration destination or
+      a new connection after collection lose a separate event, and one connection record cannot by itself show which
+      bytes are heartbeat, command output, host registration, or stolen content.
+  - zh: 复用并不消除痕迹。敏感文件或数据库读取、序列化与临时缓冲、客户端到服务端方向字节增加、请求体或消息长度变化、发送周期扰动以及控制端收到数据后的状态变化仍可观察。若防守方能把源数据读取、进程身份、C2 关系基线和关系内出站增量连接起来，复用优势会显著下降；若只有未解密
+      TLS 的最终连接摘要，则最多能证明流量形态变化，不能判定具体内容被盗。
+    en: Reuse does not erase traces. Sensitive file or database reads, serialization and temporary buffering, growth
+      in client-to-server bytes, request-body or message-length changes, cadence disturbance, and receiver-side
+      state changes remain observable. The advantage falls when a defender can join source-data access, process
+      identity, the C2 relationship baseline, and outbound growth inside that relationship. With only a final summary
+      for opaque TLS, the defender can establish a traffic-shape change at most, not theft of particular content.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 纳入必须同时证明三点：存在早于相关数据外送的 C2 任务、回调或结果关系；攻击者控制的组件通过该逻辑关系发送受害数据；关系复用改变了防守方对外传专用连接、功能阶段或数据来源的观察。重复 HTTP 请求仍可属于同一
+      C2 关系，单一持久 socket 也可成立；正常远程管理工具上传、软件遥测、故障转储和技术支持会产生相似形态，必须结合授权、源数据、操作者和目的端所有权排除。
+    en: 'Inclusion requires three linked facts: a C2 tasking, callback, or result relationship existed before the
+      relevant data left; an attacker-controlled component sent victim data through that logical relationship; and
+      reuse changed defender observation of an exfiltration-specific connection, functional phase, or data source.
+      Repeated HTTP requests may remain one C2 relationship, and a single persistent socket may also qualify. Authorized
+      remote-administration uploads, software telemetry, crash dumps, and technical support can look similar and
+      must be excluded using authorization, source data, operator, and destination ownership.'
+  - zh: 若攻击者另用 FTP、DNS 隧道或其他不同于 C2 的协议外传，直接对象属于 T1048；若核心是把数据送到云盘、代码托管或其他 Web 服务，且不依赖先前控制关系，则属于 T1567 或 T1537。Base64、压缩、加密和高熵只改变内容表示或可解释性，分别检查
+      T1132、T1573、NJT-0133 与 NJT-0152，不能成为本项子技术。TA0011 的 NJT-0160 分析应用会话如何维持控制，NJT-0152 分析控制消息如何混淆；本项分析已窃数据如何借同一控制关系离开。
+    en: If the actor exfiltrates over FTP, a DNS tunnel, or another protocol separate from C2, T1048 owns the direct
+      behavior. If the central behavior is delivery to cloud storage, code hosting, or another web service without
+      dependence on a prior control relationship, T1567 or T1537 applies. Base64, compression, encryption, and high
+      entropy change representation or interpretability and should be assessed under T1132, T1573, NJT-0133, and
+      NJT-0152; they do not define a child here. TA0011 NJT-0160 examines how an application session sustains control
+      and NJT-0152 how control messages are obscured. This object examines how stolen data leaves through that same
+      control relationship.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: 在植入体已周期访问控制端的环境中，攻击者可让同一客户端在回调时附带主机枚举、浏览器数据、命令输出或截图。Unit 42 的 SolarMarker 分析记录 .NET C2 客户端以加密 HTTP POST
+        同控制端通信、每六十秒检查指令，并通过既有 C2 通道外传基本主机信息；Mandiant 的 FakeUpdates 分析记录初始回调、系统信息回传与截图回传均指向同一 C2，并重复使用定制 Age 与 User-Agent
+        请求特征。这些案例证明关系复用真实存在，但不证明任何企业检测规则实际漏报。
+      en: Where an implant already contacts its controller periodically, the attacker may attach host inventory,
+        browser data, command output, or screenshots to the same client's callbacks. Unit 42 records a SolarMarker
+        .NET C2 client communicating with encrypted HTTP POST, checking for instructions every 60 seconds, and exfiltrating
+        basic host information over an existing C2 channel. Mandiant records FakeUpdates sending its initial callback,
+        system information, and later screenshots to the same C2 while reusing custom Age and User-Agent request
+        features. These cases establish real relationship reuse but do not show that any enterprise detection rule
+        actually missed it.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者必须已经控制受害端组件及 C2 接收侧，能够读取拟外传数据，并使现有客户端协议接受数据上传、命令结果或扩展字段。攻击者可能维持原消息节奏与大小，也可能接受显著的出站增量以提高吞吐；复用减少基础设施和新连接成本，却把数据交付绑定到同一控制端的可用性，一旦
+          C2 关系被封锁、会话被终止或端点被隔离，外传能力也会同时丧失。
+        en: The attacker must already control the victim-side component and C2 receiver, be able to read the intended
+          data, and make the existing client protocol accept uploads, command results, or extended fields. The actor
+          may preserve prior cadence and size or accept a conspicuous outbound increase for throughput. Reuse reduces
+          infrastructure and new-connection cost but couples delivery to the same controller's availability; blocking
+          the C2 relationship, terminating its sessions, or isolating the endpoint removes the exfiltration path
+          at the same time.
+    defender_model:
+      paragraphs:
+      - zh: 防守方假定至少在部分主机拥有进程唯一标识与网络连接归属，并在出口保存连接方向字节、持续时间、端点、协议和可得的 HTTP 事务元数据；敏感文件访问来自 EDR 或已配置 SACL 的对象访问审计。连接日志可识别相同进程与目的关系，HTTP
+          日志可借 uid 连接请求与流量，文件审计可提供源数据先行事件。若 Event 3 未启用、文件读取未审计、代理丢失原主机身份、TLS 不可检查或 C2 从内存收集数据，关联只能依赖较弱的流量相位变化。
+        en: The defender is assumed to have process-unique identifiers and network attribution on at least some
+          endpoints and to retain directional bytes, duration, endpoints, protocol, and available HTTP transaction
+          metadata at egress. Sensitive file access comes from EDR or object-access auditing with appropriate SACLs.
+          Connection logs identify a recurring process-destination relationship, HTTP logs join requests to flows
+          by uid, and file audit supplies a preceding source-data event. If Event 3 is disabled, reads are not audited,
+          a proxy loses source identity, TLS is opaque, or the C2 collects in-memory data, correlation must rely
+          on a weaker traffic-phase change.
+stealth_mechanisms:
+- mechanism_ref: NM-BT
+  role: primary
+  summary:
+    zh: 复用控制关系消除独立外传关系事件
+    en: Reusing the control relationship removes a separate exfiltration-relationship event
+  analysis:
+    paragraphs:
+    - zh: 攻击者让已经承担任务与结果交换的 C2 客户端和控制端同时承载被盗数据，因而不产生一条可单独标记为外传的源进程—目的端—协议关系。只寻找收集之后的新域名、新连接或新上传进程的观察逻辑看不到额外关系，必须在既有
+        C2 历史内部比较源数据访问与出站相位。ATT&CK 的父定义、SolarMarker 的既有通道描述与 FakeUpdates 的同端点请求序列共同支持行为到痕迹的链条；检测效果仍取决于端点和网络数据能否用稳定身份连接。
+      en: The attacker makes the C2 client and controller that already exchange tasks and results carry stolen data
+        as well, so no source-process, destination, and protocol relationship exists solely for exfiltration. Observation
+        logic that searches only for a new domain, connection, or upload process after collection sees no added
+        relationship and must compare source-data access with phases inside the existing C2 history. The ATT&CK
+        parent definition, SolarMarker's explicit existing-channel description, and FakeUpdates' same-destination
+        request sequence jointly support the behavior-to-trace chain. Detection still depends on whether endpoint
+        and network records can be joined with stable identities.
+  evidence_refs:
+  - REF-000925
+  - REF-000927
+  - REF-000928
+  confidence: medium
+subtechnique_taxonomy:
+  narrative:
+    paragraphs:
+    - zh: 建议建立一个 Niji 原生子项“控制回路内嵌外传”。它按外传功能同例行回调、登记或任务结果事务的结合程度划界：被盗数据进入已经重复出现的控制消息族，使防守必须比较同一关系中的消息语义、大小和源数据先行事件，而不能依赖新连接。该变量不按协议、服务、编码或数据类型划分，HTTP、定制
+        TCP 或其他可重复 C2 消息均可实现。
+      en: One Niji-native child, Control-Loop-Embedded Exfiltration, is proposed. Its boundary is how the exfiltration
+        function is combined with recurring callbacks, registration, or task-result transactions. Stolen data enters
+        an already recurring control-message family, so defenders must compare message semantics and sizes plus
+        preceding source-data access inside the same relationship rather than rely on a new connection. The variable
+        is independent of protocol, service, encoding, and data type and can be implemented in HTTP, custom TCP,
+        or other repeatable C2 messaging.
+    - zh: “复用同一长连接但启动独立批量传输阶段”形成了另一条候选轴，ATT&CK DET0348 也建议分析 persistent socket 上的敏感读取与出站量；然而本轮事件来源没有证明同一 socket
+        的存续、攻击者有意控制该变量及其独立防守差异，故只在研究层暂缓。逻辑 C2 关系复用仍由父项覆盖，不强行建立第二个 NJS。
+      en: Reusing one long-lived transport connection while entering a distinct bulk-transfer phase is a second
+        candidate axis, and ATT&CK DET0348 recommends analyzing sensitive reads and outbound volume on persistent
+        sockets. The reviewed incidents do not establish socket continuity, attacker control of that variable, and
+        a distinct defense difference together, so the axis is deferred in research. The parent still covers logical
+        C2 relationship reuse without forcing a second NJS.
+  coverage: established
+  subtechnique_refs:
+  - NJS-0192-001
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000223
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000201
+evidence:
+  claim_refs:
+  - CLM-000942
+  - CLM-000943
+  - CLM-000944
+  - CLM-000945
+  case_refs:
+  - CASE-000275
+  - CASE-000276
+  reference_refs:
+  - REF-000925
+  - REF-000926
+  - REF-000927
+  - REF-000928
+  - REF-000835
+  - REF-000230
+  - REF-000632
+  - REF-000634
+  - REF-000646
+research:
+  limitations:
+    paragraphs:
+    - zh: ATT&CK 固定版能够锚定既有 C2 关系与相同协议，SolarMarker 对“existing C2 channel”的表述最直接，FakeUpdates 对重复请求族和数据类型的观察最具体；但“channel”在公开材料中多为逻辑关系，不能自动解释为一个持续
+        socket。为避免证据越级，正式定义允许重复短连接，子项只划分控制事务族内嵌，持久会话续用保持待补证据。
+      en: The ATT&CK T1041 page anchors an existing C2 relationship and the same protocol, SolarMarker is most explicit
+        about an “existing C2 channel,” and FakeUpdates is most concrete about repeated request features and data
+        types. Public sources generally use “channel” as a logical relationship and cannot be read automatically
+        as one persistent socket. To avoid exceeding the evidence, the formal definition allows repeated short connections,
+        the child is limited to control-transaction-family embedding, and persistent-session continuation remains
+        deferred.
+    - zh: DET0348、Zeek 与 Sysmon 说明可实施的字段和关联方向，不证明某阈值或查询具有普遍准确度。Sysmon Event 3 默认未必启用，Windows 对象访问依赖 SACL 与部署，Zeek
+        conn.log 通常在连接结束后产生，TLS 和共享代理会隐藏应用事务或原主机。正式 Analytic 应在本地验证字段、留存、时间和连接身份，缺少源数据访问时不得仅凭出站字节声称已发生外传。
+      en: DET0348, Zeek, and Sysmon establish implementable fields and correlation directions, not universal accuracy
+        for a threshold or query. Sysmon Event 3 may be disabled, Windows object access depends on SACL and deployment,
+        Zeek conn.log is generally emitted after connection close, and TLS or shared proxies can hide application
+        transactions or originating hosts. A canonical Analytic must validate fields, retention, time, and connection
+        identity locally and must not claim exfiltration from outbound bytes alone when source-data access is absent.
+    - zh: 出口限制与关系终止会降低继续外送机会，但可能影响使用共享云、CDN 或合法远程管理产品的业务。已经外送的数据无法由后续控制追回，且攻击者可切换备用 C2、协议或服务；因此缓解应用必须同时处置端点植入、凭据与重连路径，并把新路径交给相邻候选分析。
+      en: Egress restriction and relationship termination reduce the opportunity for continued transfer but can
+        disrupt business using shared cloud, CDN, or legitimate remote-management products. Controls cannot recover
+        data already sent, and the attacker may switch to alternate C2, protocol, or service. Mitigation must therefore
+        address the endpoint implant, credentials, and reconnection paths together and route any new path to the
+        adjacent candidate analysis.
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-10-04'
+  modified: '2026-10-04'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

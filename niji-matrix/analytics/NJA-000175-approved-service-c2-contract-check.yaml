@@ -1,0 +1,120 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000175
+strategy_ref: DET-000163
+name:
+  zh: 产品服务契约与 C2 后果校验
+  en: Product Service Contract and C2 Outcome Check
+summary:
+  zh: 将宣称的产品遥测与获准进程、目的地、字段约束和响应后的行为逐项核对。
+  en: Check claimed product telemetry against approved process, destination, field constraints, and post-response
+    behavior.
+domains:
+- enterprise
+platforms:
+- Windows
+- Linux
+- macOS
+logic:
+  paragraphs:
+  - zh: 为具外联权的软件按版本维护获准进程签名、目的地主体、代理身份、Host/SNI、URI 模板及字段依赖。对呈现为产品遥测的会话，以设备和进程键连接 HTTP、DNS/TLS、软件清单与响应后行为；只在两个独立契约条件违背且出现控制样式后果时提升为高置信。单个
+      User-Agent、路径或新域名只作为审查入口。
+    en: Maintain versioned approved process signature, destination owner, proxy identity, Host/SNI, URI template,
+      and field dependencies for software with egress. Join sessions claiming to be product telemetry with HTTP,
+      DNS/TLS, software inventory, and post-response behavior by device and process. Raise to high confidence only
+      when two independent contract conditions fail and a control-like result follows. A User-Agent, path, or new
+      domain alone only starts review.
+  - zh: 对 SUNBURST 式 OIP 外观，检查随机会话 ID、事件名称、实际数据字段和目标域是否符合该版本产品的批准画像，并与同进程的文件、注册表或子进程动作相连。若批准画像缺失，应报告未验证服务身份，不把缺失基线直接视为恶意。
+    en: For SUNBURST-like OIP appearance, check session IDs, event names, actual data fields, and destination domain
+      against the approved profile for that product version, then join to files, Registry, or child-process actions
+      by the same process. Where the approved profile is missing, report unverified service identity rather than
+      interpreting the missing baseline as malice.
+data_requirements:
+- source_type: network-http
+  name:
+    zh: HTTP 请求响应元数据
+    en: HTTP request and response metadata
+  channel: Zeek http.log or proxy
+  required_fields:
+  - ts
+  - uid
+  - id.orig_h
+  - id.resp_h
+  - host
+  - uri
+  - method
+  - user_agent
+  - status_code
+- source_type: dns-tls
+  name:
+    zh: DNS 与 TLS 目标身份
+    en: DNS and TLS destination identity
+  channel: null
+  required_fields:
+  - event_time
+  - source_ip
+  - destination_ip
+  - query_or_sni
+  - certificate_fingerprint
+- source_type: endpoint-process-network
+  name:
+    zh: 端点进程与结果事件
+    en: Endpoint process and outcome events
+  channel: null
+  required_fields:
+  - event_time
+  - device_id
+  - process_id
+  - process_hash
+  - remote_ip
+  - action
+- source_type: approved-service-inventory
+  name:
+    zh: 批准的产品服务画像
+    en: Approved product service profile
+  channel: null
+  required_fields:
+  - software_id
+  - version
+  - approved_process
+  - approved_domain
+  - expected_request_schema
+observables:
+- zh: 产品遥测外观与获准目的地主体或字段依赖不符
+  en: Product-telemetry appearance conflicts with approved destination owner or field dependencies
+- zh: 同一进程在可疑响应后执行控制样式动作
+  en: The same process performs a control-like action after a suspicious response
+correlation:
+  window:
+    zh: 同一进程三十分钟，覆盖产品遥测请求、响应及后继动作。
+    en: Thirty minutes per process spanning telemetry request, response, and successor action.
+  dimensions:
+  - device_id
+  - process_id
+  - uid
+  - destination
+  - claimed_service
+  - time
+false_positives:
+- zh: 产品升级、区域 CDN、支持代理和供应商新遥测端点
+  en: Product upgrades, regional CDNs, support proxies, and new vendor telemetry endpoints
+blind_spots:
+- zh: TLS 内容不可见、清单滞后或攻击者使用真正批准的服务端点
+  en: Opaque TLS, stale inventory, or adversary use of a genuinely approved service endpoint
+tuning_guidance:
+  paragraphs:
+  - zh: 按版本审批服务画像，先观察后执行阻断；CDN 例外必须绑定软件版本、证书与字段约束，不能对签名进程或供应商域做永久整体豁免。合法紧急升级应能回填变更记录。
+    en: Approve service profiles by version and observe before enforcing a block. Bind CDN exceptions to software
+      version, certificate, and field constraints rather than permanently exempting a signed process or entire vendor
+      domain. Permit post-hoc change records for legitimate emergency upgrades.
+evidence_refs:
+- REF-000626
+- REF-000632
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-09-22'
+  modified: '2026-09-22'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

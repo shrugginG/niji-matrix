@@ -1,0 +1,142 @@
+schema_version: 2.0.0
+type: evasion-subtechnique
+id: NJS-0208-001
+parent_ref: NJT-0208
+name:
+  zh: 无连接分组序列控制
+  en: Connectionless Packet-Sequence Control
+summary:
+  zh: '>- 攻击者在无传输连接状态的分组或数据报中自行维护任务序列，使按连接与应用事务组织的监控难以重建命令往返。'
+  en: '>- Adversaries maintain their own task sequence in packets or datagrams without transport connection state, complicating
+    command reconstruction by monitoring organized around connections and application transactions.'
+aliases: []
+lineage:
+  attck_subtechnique_inherited: false
+definition_and_concept:
+  paragraphs:
+  - zh: '>- 无连接分组序列控制是攻击者不依赖 TCP 连接或应用事务的共享状态，而在每个网络控制消息或数据报中保存客户端标识、请求/回复角色、序列、长度或分片位置，并用这些字段维持可重复的任务和结果交换。直接目的不是简单“使用
+      ICMP/UDP”，而是让植入与控制端在没有传输连接生命周期的条件下自建 C2 会话。'
+    en: '>- Connectionless Packet-Sequence Control means the actor does not rely on shared TCP connection or application-transaction
+      state. Instead, client identity, request or response role, sequence, length, or fragment position is carried in
+      each network-control message or datagram and used to sustain repeatable task and result exchange. The direct purpose
+      is not simply to use ICMP or UDP, but to construct a C2 session without a transport connection lifecycle.'
+  - zh: '>- PingPull 的 ICMP 变体以 Echo Request 轮询、Echo Reply 下发命令，并用递增序列、total/current 和 PROJECT 标识重组结果；ShadowPad 的 UDP
+      变体在八字节头中保存 type、session_src_id 和 session_dst_id，并验证回复目标 ID。两个实现的字段不同，却都证明“应用自行补充无连接承载缺失的状态”是跨协议稳定变量。'
+    en: '>- PingPull''s ICMP variant polls with Echo Requests, receives commands in Echo Replies, and reassembles results
+      with an incrementing sequence, total or current lengths, and a PROJECT identifier. ShadowPad''s UDP variant stores
+      type, session_src_id, and session_dst_id in an eight-byte header and validates the destination ID in replies. Their
+      fields differ, but both demonstrate the cross-protocol variable of an application supplying state absent from a
+      connectionless carrier.'
+stealth_characteristics:
+  paragraphs:
+  - zh: 无连接分组序列控制使>- 无连接分组序列控制把一次任务往返拆成独立分组，网络侧没有 SYN/FIN、持久 socket 会话或标准事务 ID 可直接连接命令与结果。只保存按五元组聚合的短流或只检查单包签名，可能把轮询、命令、分片结果视为无关诊断或
+      UDP 数据报。防守方仍可观察双向端点、ICMP type/code/id/sequence、UDP 载荷长度、定时和攻击者自定义的重复结构，并可通过长窗口重建。
+    en: Connectionless Packet-Sequence Control means >- Connectionless Packet-Sequence Control divides a task round trip
+      into independent packets without SYN or FIN, a persistent socket session, or a standard transaction ID linking
+      command and result. Short-flow aggregation or single-packet signatures can treat polls, commands, and fragmented
+      results as unrelated diagnostics or UDP datagrams. Defenders can still observe bidirectional endpoints, ICMP type,
+      code, ID, and sequence, UDP payload length, timing, and repeated attacker-defined structures and reconstruct them
+      over a longer window.
+  - zh: '>- 匿迹收益高度依赖环境基线。在禁止外部 ICMP 或仅允许批准 UDP 服务的网络，流量会立即突出；完整 PCAP 和进程套接字数据也能恢复关联。Base64、AES、随机填充及端口 53/443 会进一步改变内容或分类，但分别属于编码、加密、消息外观或端口邻接事实，不是本子项的成立条件。'
+    en: '>- The stealth benefit depends heavily on local baseline. Traffic is immediately conspicuous where external
+      ICMP is prohibited or UDP is limited to approved services, and full packet capture plus process-socket data can
+      restore correlation. Base64, AES, random padding, and ports 53 or 443 further change content or classification,
+      but are encoding, encryption, message-appearance, or port facts rather than conditions of this child.'
+scope_boundary_definition:
+  paragraphs:
+  - zh: '>- 纳入需要无连接网络/传输承载、攻击者自定义会话字段以及持续命令—结果证据同时存在。正常 ping、traceroute、路由控制、QUIC、VoIP、游戏、监控心跳与批准 UDP 设备协议均为反例；仅凭高熵、固定长度或周期性不能定性。raw
+      TCP 因拥有连接生命周期留在父级核心；若 ICMP/UDP 内封装完整 TCP、SSH 或其他内层会话，则归 T1572。'
+    en: '>- Inclusion requires a connectionless network or transport carrier, attacker-defined session fields, and evidence
+      of continuing task and result exchange. Normal ping, traceroute, routing control, QUIC, VoIP, games, monitoring
+      heartbeats, and approved UDP device protocols are counterexamples. Entropy, fixed size, or periodicity alone is
+      insufficient. Raw TCP retains a connection lifecycle and stays parent core. ICMP or UDP carrying an intact TCP,
+      SSH, or other inner session belongs to T1572.'
+  - zh: '>- 若一个特殊分组只唤醒植入、打开端口或切换功能，激活变量归 T1205；只有相同无连接分组系列继续承载任务与结果时才并列本项。端口与协议的非典型配对归 T1571，命令字节的 Base64/AES 归 T1132/T1573，不能以这些邻接属性代替无连接会话证据。'
+    en: '>- If a special packet only wakes an implant, opens a port, or changes functionality, the activation variable
+      belongs to T1205. This child applies concurrently only when the same connectionless packet series continues to
+      carry tasks and results. An atypical protocol-to-port pairing belongs to T1571, while Base64 or AES command bytes
+      belong to T1132 or T1573; those adjacent attributes cannot substitute for connectionless-session evidence.'
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: '>- 攻击者进入允许诊断流量的电信或企业边界后，可让植入定期发 Echo Request 作为轮询，由控制端用 Echo Reply 下发命令，并将较长结果分段回传。另一个场景是在允许广泛 UDP 出站的服务器上使用短数据报握手和客户端/服务器会话
+        ID 维持控制，绕开仅分析代理事务或 TCP 连接的检测。'
+      en: '>- After reaching a telecommunications or enterprise boundary that permits diagnostic traffic, an actor can
+        have the implant poll with Echo Requests, receive commands in Echo Replies, and return longer results in fragments.
+        On a server with broad UDP egress, the actor can instead maintain control through a short datagram handshake
+        and client or server session IDs, bypassing detection limited to proxy transactions or TCP connections.'
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: '>- 攻击者需要双向可达性和能发送/接收自定义 ICMP 或 UDP 的植入权限，并须实现超时、丢包、乱序、重复分组与最大载荷处理。raw ICMP 通常需要特权或 CAP_NET_RAW；UDP 权限较低但更容易与批准业务冲突。对大结果进行分片会增加包数与异常长度分布，也使分析者获得重复结构。'
+        en: '>- The actor needs bidirectional reachability and implant permission to send and receive custom ICMP or
+          UDP and must implement timeout, loss, reordering, duplication, and maximum-payload handling. Raw ICMP commonly
+          needs privilege or CAP_NET_RAW. UDP needs less privilege but is more likely to collide with approved business
+          traffic. Fragmenting large results raises packet counts and creates unusual length distributions and repeated
+          structure for analysts.'
+    defender_model:
+      paragraphs:
+      - zh: '>- 防守方假定至少有边界 PCAP、Suricata/同类分组元数据或未采样的双向流，并在关键 Linux 主机上审计 socket 系统调用及进程。检测需要保留 ICMP type/code/id/sequence、方向、payload/dsize、UDP
+          源/目的端口、时间、flow_id/Community ID 与端点进程；只有 NetFlow 协议号和总字节时，难以确认攻击者自定义会话字段。'
+        en: '>- The defender is assumed to have boundary PCAP, Suricata or equivalent packet metadata, or unsampled bidirectional
+          flow, plus socket-syscall and process audit on critical Linux hosts. Detection needs ICMP type, code, ID, sequence,
+          direction, payload or dsize, UDP source and destination ports, time, flow_id or Community ID, and endpoint
+          process. With only a NetFlow protocol number and total bytes, attacker-defined session fields are difficult
+          to confirm.'
+stealth_mechanisms:
+- mechanism_ref: NM-ST
+  role: primary
+  summary:
+    zh: 自定义序列把控制往返拆散到无连接分组
+    en: Custom sequencing disperses control round trips across connectionless packets
+  analysis:
+    paragraphs:
+    - zh: '>- 攻击者以每包序列、长度、角色和客户端标识代替连接状态，使命令与结果成为分散的弱信号；按单包或短流窗口观察时，防守方难以恢复完整任务。PingPull 的递增序列与 total/current、ShadowPad
+        的源/目标会话 ID 直接支持这一因果链。若防守按端点、方向和自定义字段跨足够时间重组，分散效应会降低。'
+      en: '>- The actor replaces connection state with per-packet sequence, length, role, and client identifiers, leaving
+        commands and results as dispersed weak signals. Single-packet or short-flow views cannot readily restore the
+        task. PingPull''s incrementing sequence and total or current fields and ShadowPad''s source and destination session
+        IDs directly support this causal chain. The dispersion benefit shrinks when defenders reassemble by endpoint,
+        direction, and custom fields over sufficient time.'
+  evidence_refs:
+  - REF-001034
+  - REF-001035
+  confidence: high
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000240
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000213
+evidence:
+  claim_refs:
+  - CLM-001029
+  - CLM-001033
+  case_refs:
+  - CASE-000301
+  - CASE-000302
+  reference_refs:
+  - REF-001034
+  - REF-001035
+  - REF-001037
+research:
+  limitations:
+    paragraphs:
+    - zh: '>- Unit 42 的 PingPull 命令与文件读取结果来自分析环境中的测试命令，证明样本能力及完整往返，但不等于在受害网络捕获的操作者命令。VMware TAU 对 ShadowPad 的主动协议仿真发现服务器并验证
+        UDP 头关联，但没有给出某一组织中被绕过的检测。两个来源都支持状态结构，不支持通用包长、熵或时间阈值。'
+      en: '>- Unit 42''s PingPull command and file-read result came from a test command in the analysis environment,
+        establishing sample capability and a complete round trip rather than captured operator tasking in a victim network.
+        VMware TAU''s active ShadowPad protocol emulation found servers and validated UDP header relationships but does
+        not identify a detector bypassed in a particular organization. Both sources support state structure, not universal
+        packet-length, entropy, or timing thresholds.'
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-10-04'
+  modified: '2026-10-04'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

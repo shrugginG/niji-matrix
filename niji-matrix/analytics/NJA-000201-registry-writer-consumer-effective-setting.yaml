@@ -1,0 +1,46 @@
+schema_version: "2.0.0"
+type: detection-analytic
+id: NJA-000201
+strategy_ref: DET-000183
+name: {zh: Registry 写入者—消费者—有效设置分析, en: Registry Writer to Consumer to Effective-Setting Analytic}
+summary: {zh: 证明敏感 Registry 值是否被防御消费者采用并实际降低安全功能，而不是只发生一次本地写入。, en: Prove whether a sensitive Registry value was adopted by a defensive consumer and actually reduced security function rather than merely being written locally.}
+domains: [enterprise]
+platforms: [Windows]
+logic:
+  paragraphs:
+    - zh: 建立防御相关 Registry 清单，记录 hive、key/value identity、值类型、批准值/范围、consumer_id、消费触发、保护职责、owner/ACL、SACL 和集中/本地来源优先级。归一化 4657、Sysmon 12/13/14 或等效事务，保存 writer ProcessGuid、用户/logon ID、old/new value、结果和时间；当 4657 因 SACL 缺失不可用时，以远程事务和可信快照补充，但明确记录 old value 缺口。
+      en: Build a defensive Registry inventory recording hive, key and value identity, value type, approved value or range, consumer_id, consumption trigger, protective responsibility, owner and ACL, SACL, and central-versus-local source precedence. Normalize 4657, Sysmon 12, 13, or 14, or equivalent transactions while retaining writer ProcessGuid, user or logon ID, old and new value, result, and time. When 4657 is unavailable because the SACL is absent, supplement it with remote transactions and trusted snapshots while explicitly preserving the old-value gap.
+    - zh: 按 consumer_id 连接目标进程启动、策略刷新、浏览器/工具实际有效设置及篡改保护裁决；必要时运行不含真实恶意载荷的功能性 canary。值已写入但未消费输出 mutation_only；消费者读取但集中策略或篡改保护将其拒绝/覆盖，输出 adopted_but_blocked；只有有效设置相对基线下降、canary 或独立遥测确认控制缺失且无批准变更，才输出 effective_impairment。后继 C2 或恶意进程提高置信度，但不能代替控制结果。
+      en: Join target process start, policy refresh, actual effective browser or tool setting, and tamper-protection decision by consumer_id, running a functional canary without a real malicious payload when necessary. A value written but not consumed is mutation_only. A read value rejected or overridden by central policy or tamper protection is adopted_but_blocked. Emit effective_impairment only when the effective setting declines relative to baseline, a canary or independent telemetry confirms the missing control, and no approved change explains it. Follow-on C2 or malicious process raises confidence but cannot replace the control outcome.
+data_requirements:
+  - source_type: defensive-registry-inventory
+    name: {zh: 防御 Registry 值与消费者基线, en: Defensive Registry Value and Consumer Baseline}
+    channel: null
+    required_fields: [timestamp, device_id, hive_id, key_id, value_name, value_type, approved_value, consumer_id, consumption_trigger, control_id, owner_id, acl_hash, sacl_enabled, policy_precedence]
+  - source_type: registry-write-audit
+    name: {zh: Registry 值写入和 Writer 审计, en: Registry Value Write and Writer Audit}
+    channel: Windows Security 4657 or Microsoft-Windows-Sysmon/Operational
+    required_fields: [timestamp, device_id, key_id, value_name, writer_process_guid, writer_user_id, logon_id, operation, old_value, new_value, result_code]
+  - source_type: registry-consumer-effective-state
+    name: {zh: Registry 消费者与有效安全状态, en: Registry Consumer and Effective Security State}
+    channel: Product effective-settings and functional canary
+    required_fields: [timestamp, device_id, consumer_id, key_id, value_name, consumed_value, effective_value, value_source, tamper_decision, control_id, canary_result]
+observables:
+  - {zh: 非批准 writer 将防御 Registry 值从安全基线改为降低保护的状态, en: An unapproved writer changes a defensive Registry value from its secure baseline to a protection-reducing state}
+  - {zh: 消费者实际采用本地值且集中策略或篡改保护没有覆盖, en: The consumer actually adopts the local value without central policy or tamper protection overriding it}
+  - {zh: 同一 control_id 的受控功能验证在消费后失败, en: A controlled functional test for the same control_id fails after consumption}
+correlation:
+  window: {zh: 从写入前十五分钟至消费者下一次启动/刷新或最多二十四小时，并保留回滚后三十日的 writer—consumer 版本链。, en: "Correlate fifteen minutes before the write through the consumer's next start or refresh, capped at twenty-four hours, and retain the writer-to-consumer version chain for thirty days after rollback."}
+  dimensions: [device_id, hive_id, key_id, value_name, writer_process_guid, writer_user_id, logon_id, consumer_id, control_id, time]
+false_positives:
+  - {zh: 经批准的产品排障、兼容性设置或维护窗口内的临时本地更改, en: "Approved product troubleshooting, compatibility setting, or temporary local change during a maintenance window"}
+  - {zh: 集中策略与本地缓存短暂不一致但有效保护保持开启, en: Central policy and local cache are briefly inconsistent while effective protection remains enabled}
+blind_spots:
+  - {zh: 关键键未配置 SACL、Sysmon 规则不覆盖或旧值未保留时，无法完整重建写入前态, en: "Missing SACL, absent Sysmon coverage, or unretained old value prevents complete reconstruction of prior state"}
+  - {zh: 消费者不报告有效值或其健康状态来自同一受侵主机时，写入与结果之间可能无法可信闭合, en: The write-to-outcome chain may not close reliably when the consumer does not report effective value or health comes from the same compromised host}
+tuning_guidance:
+  paragraphs:
+    - zh: 按设备角色和产品版本维护有限的高风险 Registry 值清单，批准值必须包含来源优先级和消费者，而非只按路径匹配。变更白名单绑定 writer、key/value、old/new、工单和到期；对被篡改保护阻断的写入保留成功防御证据，对没有消费者结果的写入保留 unresolved，不因后继恶意指标自动补齐因果。
+      en: Maintain a bounded inventory of high-risk Registry values by device role and product version, including source precedence and consumer rather than matching path alone. Change allowlists bind writer, key and value, old and new state, ticket, and expiry. Preserve writes blocked by tamper protection as successful defense evidence and writes without a consumer result as unresolved rather than automatically filling causation from later malicious indicators.
+evidence_refs: [REF-000188, REF-000230, REF-000450, REF-000691, REF-000692]
+lifecycle: {status: review, version: "1.0.0", created: "2026-09-23", modified: "2026-09-23", contributors: [Niji Matrix Research], reviewers: []}

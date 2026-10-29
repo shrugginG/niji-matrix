@@ -1,0 +1,129 @@
+schema_version: 2.0.0
+type: evasion-subtechnique
+id: NJS-0192-001
+parent_ref: NJT-0192
+name:
+  zh: 控制回路内嵌外传
+  en: Control-Loop-Embedded Exfiltration
+summary:
+  zh: 攻击者把被盗数据放入周期回调、主机登记或任务结果的既有消息族，使外传表现为控制回路内部的数据增长而非新的传输关系。
+  en: An adversary places stolen data into an existing family of periodic callbacks, host registration, or task-result
+    messages so exfiltration appears as growth inside the control loop rather than a new transfer relationship.
+aliases: []
+lineage:
+  attck_subtechnique_inherited: false
+definition_and_concept:
+  paragraphs:
+  - zh: 控制回路内嵌外传是 C2 关系复用外传的一种实现：植入体把受害数据序列化到本来用于回调、登记、状态报告或命令结果的重复事务或消息外壳中，由原控制端按相同客户端身份解析。其直接目标仍是交付被盗数据，子项变量是数据外送与例行控制消息族的事务级合流，而不是采用
+      POST、JSON、XOR 或任何特定字段。
+    en: Control-Loop-Embedded Exfiltration is a form of C2-relationship reuse in which an implant serializes victim
+      data into recurring transactions or message envelopes already used for callbacks, registration, status reporting,
+      or command results, and the controller parses it under the same client identity. The direct objective remains
+      delivery of stolen data. The child variable is transaction-level coalescence between exfiltration and the
+      routine control-message family, not POST, JSON, XOR, or a particular field.
+stealth_characteristics:
+  paragraphs:
+  - zh: 控制回路内嵌外传使外传消息保留原有目的端、客户端状态、请求族和往返顺序；连接表不会出现一个新的外传关系，按消息观察时也可能只看到一次较大的回调或结果。剩余痕迹包括例行消息的请求体长度、方向字节、字段组合或熵发生变化，以及敏感读取后紧接同一消息族的发送。FakeUpdates
+      的系统信息与截图请求重复使用同一 C2 和定制请求特征，SolarMarker 则把主机信息送入已有的加密 HTTP 控制关系，但两份来源均未量化与良性回调的可分性。
+    en: Control-Loop-Embedded Exfiltration preserves the controller, client state, request family, and request-response
+      order, so connection tables show no new exfiltration relationship and a message-level observer may see only
+      a larger callback or result. Residual traces include changes in request-body length, directional bytes, field
+      combinations, or entropy within the routine message family and a send immediately after sensitive access.
+      FakeUpdates reused the same C2 and custom request features for system information and screenshots, while SolarMarker
+      placed host information into an existing encrypted HTTP control relationship. Neither source quantifies distinguishability
+      from benign callbacks.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 纳入要求存在可重复的 C2 消息族，并有证据把受害数据映射到该消息族中的回调、登记、状态或结果事务。通过同一逻辑 C2 关系启动一个另有 URI、操作码或传输阶段的文件上传仍由父项覆盖，除非能证明它继续使用例行控制外壳；仅因请求被编码或加密也不成立。合法资产代理、杀毒遥测、崩溃报告和远程支持会在固定回路中上送主机数据，必须以软件所有权、批准字段、数据来源及目的端排除。
+    en: Inclusion requires a recurring C2 message family and evidence mapping victim data into its callback, registration,
+      status, or result transaction. A file upload that uses the same logical C2 relationship but switches to another
+      URI, opcode, or transfer phase remains parent coverage unless it demonstrably retains the routine control
+      envelope. Encoding or encryption alone is also insufficient. Legitimate inventory agents, security telemetry,
+      crash reporting, and remote support send host data in fixed loops and must be excluded using software ownership,
+      approved fields, source data, and destination ownership.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: 后门完成初始回调并从控制端取得指令后，可在下一轮例行请求中把系统枚举、浏览器记录、命令输出或截屏作为状态字段、结果体或附件提交。SolarMarker 的既有 C2 外传与六十秒指令检查展示了周期控制语境；FakeUpdates
+        的第二次 POST 回传系统信息，并在后续同类定制请求中回传截图，展示了同一客户端请求族可以逐步承担不同被窃数据。
+      en: After a backdoor completes its initial callback and receives instructions, it can submit system inventory,
+        browser records, command output, or screenshots as a status field, result body, or attachment in the next
+        routine request. SolarMarker's existing-channel exfiltration and 60-second instruction checks show the periodic
+        control context. FakeUpdates returned system information in a second POST and later sent screenshots in
+        similarly customized requests, showing that one client request family can progressively carry different
+        victim data.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者需要控制消息生成器和控制端解析器，知道例行事务允许的字段或负载，并能在不破坏客户端状态机的情况下序列化、分段或重组数据。维持消息族可减少新接口开发和基础设施暴露，但容量上升、字段异常或回调延迟会偏离原回路；若严格保持小消息，则必须接受更长交付时间和更多重复事务。
+        en: The attacker needs control of the message generator and controller-side parser, knowledge of fields
+          or payloads allowed by the routine transaction, and the ability to serialize, segment, or reconstruct
+          data without breaking the client state machine. Preserving the message family reduces new interface development
+          and infrastructure exposure, but increased capacity, unusual fields, or delayed callbacks may deviate
+          from the prior loop. Keeping messages small instead imposes longer delivery and more repeated transactions.
+    defender_model:
+      paragraphs:
+      - zh: 防守方需把同一进程、客户端标识、目的端和 URI 或消息类型的历史事务作为回路基线，再将敏感读取与下一轮出站消息连接。可检查 HTTP 时能比较方法、URI、请求体长度、头字段和状态码；只有流量摘要时只能比较方向字节、持续时间和周期。代理重写、TLS
+          不可见、定制二进制协议或不记录读取的内存收集会降低消息级归因。
+        en: The defender needs a loop baseline of historical transactions sharing a process, client identity, destination,
+          and URI or message type, then joins a sensitive read to the next outbound message. Inspectable HTTP permits
+          comparisons of method, URI, request-body length, headers, and status; flow summaries permit only directional
+          bytes, duration, and cadence. Proxy rewriting, opaque TLS, custom binary protocols, or in-memory collection
+          without read telemetry weakens message-level attribution.
+stealth_mechanisms:
+- mechanism_ref: NM-BT
+  role: primary
+  summary:
+    zh: 外传语义藏入例行控制消息观察范围
+    en: Exfiltration semantics remain outside observation of routine control messages
+  analysis:
+    paragraphs:
+    - zh: 攻击者把受害数据放入已经重复出现的回调或结果事务，使防守设备继续记录同一进程、同一控制端和同一消息族，却没有独立的外传事件类型。若检测逻辑只识别新连接或只把该事务归为 C2 心跳，数据外送发生但不进入有效的外传告警视野；把敏感读取、请求体变化与同一回路的下一次发送连接起来可恢复观察。案例证明了相同
+        C2 请求族中的数据回传，实际漏报概率仍须在本地协议解析和阈值下验证。
+      en: The attacker places victim data in recurring callback or result transactions, so defensive systems continue
+        to record the same process, controller, and message family without a separate exfiltration event type. If
+        logic looks only for new connections or classifies the transaction solely as a C2 heartbeat, data leaves
+        without entering effective exfiltration alerting. Joining sensitive access and request-body change to the
+        next send in the same loop restores observation. The cases establish data return in a shared C2 request
+        family; actual miss probability still requires validation against local parsing and thresholds.
+  evidence_refs:
+  - REF-000927
+  - REF-000928
+  - REF-000926
+  confidence: medium
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000223
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000201
+evidence:
+  claim_refs:
+  - CLM-000943
+  - CLM-000944
+  case_refs:
+  - CASE-000275
+  - CASE-000276
+  reference_refs:
+  - REF-000927
+  - REF-000928
+  - REF-000926
+research:
+  limitations:
+    paragraphs:
+    - zh: 两项事件研究提供 HTTP 层面的控制与数据回传顺序，但未公开完整 PCAP、消息模式统计、误报率或部署阈值，也未证明每次回传都在同一 TCP/TLS socket 中完成。因此本子项只声称重复控制事务族的内嵌，不把持久传输会话续用或检测绕过效果写成事实。
+      en: The two incident studies provide HTTP-level control and data-return sequences but do not publish complete
+        PCAP, message-pattern statistics, false-positive rates, or deployment thresholds, and do not show that every
+        return used one TCP or TLS socket. This child therefore claims embedding in a recurring control-transaction
+        family only and does not present persistent-transport-session reuse or measured detection bypass as fact.
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-10-04'
+  modified: '2026-10-04'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

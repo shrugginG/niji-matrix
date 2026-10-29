@@ -1,0 +1,104 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000157
+strategy_ref: DET-000149
+name:
+  zh: 浏览器配置读取与进程结果谱系分析
+  en: Browser-Profile Read and Process-Outcome Analytic
+summary:
+  zh: 识别非批准主体读取历史或书签后产生的可归属结果。
+  en: Identify attributable outcomes after an unapproved actor reads history or bookmarks.
+domains:
+- enterprise
+platforms:
+- Windows
+logic:
+  paragraphs:
+  - zh: 先按已部署浏览器和用户盘点实际历史、书签及偏好文件，对高价值端点目标路径配置 ReadData SACL，并确认 Security 4663 确实产生对象访问事件。将 4663 的主机、SID、PID、时间与进程创建事件联结，剔除普通浏览器、同步、备份和获准取证作业；同一谱系随后写临时清单或出现外联时提高优先级。文件读事件只证明访问对象，不证明读出的
+      URL 内容；没有后继结果的非惯常读保持较低置信度。
+    en: Inventory actual history, bookmark, and preference paths by deployed browser and user; configure ReadData SACLs on
+      selected high-value endpoints and verify Security 4663 is emitted. Join host, SID, PID, and time to process creation,
+      compare ordinary browsers, sync, backup, and approved forensics, and prioritize same-lineage temporary inventories or
+      outbound traffic. A file-access event proves object access rather than the URLs read; unusual reads without a later
+      outcome remain lower confidence.
+data_requirements:
+- source_type: windows-security-object-access
+  name:
+    zh: Windows 文件对象访问
+    en: Windows file-object access
+  channel: Security 4663 with targeted SACL
+  required_fields:
+  - timecreated
+  - computer
+  - subjectusersid
+  - processid
+  - processname
+  - objectname
+  - accessmask
+- source_type: endpoint-process-lineage
+  name:
+    zh: 端点进程创建谱系
+    en: Endpoint process-creation lineage
+  channel: Sysmon Event 1 or verified EDR equivalent
+  required_fields:
+  - utc_time
+  - computer
+  - processguid
+  - processid
+  - parentprocessguid
+  - image
+  - user
+- source_type: endpoint-result-events
+  name:
+    zh: 端点文件与网络结果
+    en: Endpoint file and network outcomes
+  channel: null
+  required_fields:
+  - timestamp
+  - host_id
+  - process_guid
+  - event_kind
+  - object_or_destination
+observables:
+- zh: 非常用进程读取浏览历史或书签配置
+  en: An unusual process reads browser history or bookmark files
+- zh: 同一进程谱系随后生成清单或发出异常连接
+  en: The same process lineage later creates an inventory or unusual connection
+correlation:
+  window:
+    zh: 试点按同一进程谱系将文件读至后继结果关联 30 分钟，并用 7 日用户与设备作业基线；窗口只是待校准起点。
+    en: Pilot a 30-minute file-read-to-outcome join for one process lineage and a seven-day user and device job baseline;
+      the windows are calibration starting points.
+  dimensions:
+  - host_id
+  - user_sid
+  - process_guid
+  - profile_path
+  - time
+false_positives:
+- zh: 浏览器更新、配置恢复、企业漫游同步、索引备份及事件响应取证会访问相同文件
+  en: Browser updates, profile restoration, enterprise roaming sync, indexing, backup, and incident-response forensics access
+    the same files
+blind_spots:
+- zh: 没有目标 SACL 就没有可靠 4663；浏览器进程内或扩展 API 读取和先前复制的配置可能绕过所设文件路径
+  en: Without a target SACL there is no reliable 4663; in-browser or extension API reads and previously copied profiles may
+    bypass the monitored path
+tuning_guidance:
+  paragraphs:
+  - zh: 从少数高价值端点验证路径、事件量和进程联结，再按授权工具所有者、签名、用户与同步时段建立有期限的例外。不要永久放行浏览器进程名；若只见 Sysmon 文件创建，不能把它冒称为历史读取。
+    en: Validate paths, event volume, and process joins on a small high-value pilot, then define expiring exceptions by authorized
+      tool owner, signer, user, and sync period. Do not permanently allow a browser process name; a Sysmon file-create event
+      is not evidence of a history read.
+evidence_refs:
+- REF-000518
+- REF-000519
+- REF-000379
+- REF-000366
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-09-22'
+  modified: '2026-09-22'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

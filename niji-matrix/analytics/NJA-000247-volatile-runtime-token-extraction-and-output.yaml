@@ -1,0 +1,139 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000247
+strategy_ref: DET-000206
+name:
+  zh: 运行态 Token Consumer—Memory/Env/IPC—第二输出关联
+  en: Runtime Token Consumer–Memory or Environment or IPC–Second Output Correlation
+summary:
+  zh: 连接 runtime consumer、memory/environment/IPC 读取和第二输出，识别易失 token 提取。
+  en: Join runtime consumer, memory, environment, or IPC read, and second output to identify volatile token extraction.
+domains:
+- enterprise
+platforms: []
+logic:
+  paragraphs:
+  - zh: 识别持有 token 的 process/job 与其 code provenance，关联 source process 对 target memory、procfs、ptrace/debug、environment、generated
+      script 或 broker/IPC response 的读取。把成功操作连接到本地材料分类、archive/child process 和 network/repository output。跨进程 memory read 是高信号；同
+      process 恶意依赖需以 action/package digest、workflow change 与第二输出证明。只有完整 token 复制到恶意状态才升级取得。
+    en: Identify the token-consuming process or job and its code provenance, then correlate a source process reading target
+      memory, procfs, ptrace or debug, environment, generated script, or broker or IPC response. Join successful operations
+      to local material classification, archive or child process, and network or repository output. Cross-process memory reads
+      are high signal. Malicious dependencies in the same process require action or package digest, workflow change, and second-output
+      evidence. Upgrade to acquisition only when complete token material is copied into malicious state.
+data_requirements:
+- source_type: runtime-token-consumer
+  name:
+    zh: Token consumer、job 与代码 Provenance
+    en: Token consumer, job, and code provenance
+  channel: EDR, CI/CD, container runtime, application inventory
+  required_fields:
+  - timestamp
+  - host_or_runner_id
+  - job_or_workflow_id
+  - repository_or_application
+  - ref_or_version
+  - code_or_action_digest
+  - process_start_key
+  - process_image
+  - principal_id
+  - expected_token_class
+  - approved
+- source_type: runtime-secret-access
+  name:
+    zh: Process memory、environment、临时脚本与 IPC 访问
+    en: Process memory, environment, temporary script, and IPC access
+  channel: kernel, EDR, debug, procfs, file, or broker telemetry
+  required_fields:
+  - timestamp
+  - host_or_runner_id
+  - source_process_start_key
+  - target_process_start_key
+  - operation
+  - target_region_or_variable_or_channel
+  - bytes_returned
+  - privilege
+  - outcome
+- source_type: runtime-token-output
+  name:
+    zh: 运行态提取后的归档、子进程与外传
+    en: Archive, child process, and egress after runtime extraction
+  channel: process, file, repository, and network telemetry
+  required_fields:
+  - timestamp
+  - source_process_start_key
+  - output_process_or_artifact
+  - output_hash
+  - destination
+  - protocol_or_service
+  - bytes
+  - outcome
+- source_type: restricted-token-material-assessment
+  name:
+    zh: 受限 Token 材料与可用性评估
+    en: Restricted token material and usability assessment
+  channel: local privacy-controlled assessment
+  required_fields:
+  - case_id
+  - request_or_artifact_id
+  - token_class
+  - token_reference_or_hmac_fingerprint
+  - complete_material
+  - valid_at_acquisition
+  - audience
+  - scope
+  - refresh_capable
+  - sender_constrained
+  - bound_key_obtained
+  - reviewer_id
+  - raw_token_retained
+observables:
+- zh: CI runner 中非批准脚本读取 token consumer 的 procfs memory 后生成加密归档并向新域名或受害组织仓库写入
+  en: An unapproved script on a CI runner reads procfs memory of a token consumer, creates an encrypted archive, and writes
+    it to a new domain or victim-organization repository
+- zh: 同 job 恶意 action 读取 secret-bearing environment 或 generated script，合法 job 仍成功且出现未经批准第二输出
+  en: A malicious action in the same job reads a secret-bearing environment or generated script while the legitimate job succeeds
+    and an unapproved second output appears
+correlation:
+  window:
+    zh: 覆盖完整 job/process 生命周期；跨进程 read 到 archive/egress 默认十分钟，同 process 以 workflow/action 版本为键覆盖 job 起止及其后二十四小时。
+    en: Span the complete job or process lifetime. Use ten minutes from cross-process read to archive or egress, and for same-process
+      activity key on workflow or action version through job end and twenty-four hours afterward.
+  dimensions:
+  - host_or_runner_id
+  - job_or_workflow_id
+  - repository_or_application
+  - code_or_action_digest
+  - source_process_start_key
+  - target_process_start_key
+  - target_region_or_variable_or_channel
+  - token_fingerprint
+  - output_hash
+  - destination
+  - time
+false_positives:
+- zh: 调试器、crash dump、APM/EDR、support bundle、性能 profiler、批准 secret injection 和事件响应内存采集
+  en: Debuggers, crash dumps, APM or EDR, support bundles, performance profilers, approved secret injection, and incident-response
+    memory collection
+blind_spots:
+- zh: 同进程直接读取无独立事件、内核攻击、memory telemetry 不可用、短 job 已销毁、加密 broker、平台隐私限制，以及 output 只在攻击者内存存在
+  en: Same-process reads without independent events, kernel compromise, unavailable memory telemetry, destroyed short-lived
+    jobs, encrypted brokers, platform privacy limits, and output existing only in adversary memory
+tuning_guidance:
+  paragraphs:
+  - zh: CI/CD allowlist 绑定 immutable action/package digest、repository/ref、job、runner group、secret scope 和 owner，不能按进程名或 vendor
+      名放行。跨进程 memory read 先按 target role 和授权 debugger 调优；同 process 分支至少要求 provenance 差和第二输出。禁止集中采集完整 memory。
+    en: Bind CI/CD allowlists to immutable action or package digest, repository or ref, job, runner group, secret scope, and
+      owner rather than process or vendor name. Tune cross-process memory reads by target role and authorized debugger. Same-process
+      branches require at least provenance difference and second output. Do not centralize complete memory.
+evidence_refs:
+- REF-000811
+- REF-000814
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-09-27'
+  modified: '2026-09-27'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

@@ -1,0 +1,50 @@
+schema_version: "2.0.0"
+type: detection-analytic
+id: NJA-000202
+strategy_ref: DET-000184
+name: {zh: 影子计算 lineage—控制注册—首用分析, en: Shadow-Compute Lineage to Control Enrollment and First Use}
+summary: {zh: 识别由快照、映像或新建请求产生且在等效安全控制注册前承载恶意活动的计算身份。, en: "Identify compute identities created from snapshots, images, or new requests that carry malicious activity before equivalent security-control enrollment."}
+domains: [enterprise]
+platforms: [IaaS]
+logic:
+  paragraphs:
+    - zh: 规范化实例、磁盘、快照、映像和挂载的控制面事件，保存 request/event ID、actor/session、来源、时间、区域、账户/项目、source_resource_id、new_resource_id、image/snapshot ID、网络接口、安全组/IAM profile、user data、标签、审批和 API 结果。按 source_resource_id 与派生版本建立 lineage；直接空白创建也建立 root lineage。将新实例期望的安全代理、集中日志、漏洞管理、配置基线和强制策略转换为 enrollment checklist。
+      en: Normalize control-plane events for instance, disk, snapshot, image, and attachment operations, retaining request or event ID, actor and session, source, time, region, account or project, source_resource_id, new_resource_id, image or snapshot ID, network interface, security group and IAM profile, user data, labels, approval, and API result. Build lineage by source_resource_id and derived version; a blank creation starts a root lineage. Convert expected security agent, centralized logging, vulnerability management, configuration baseline, and mandatory policy for the new instance into an enrollment checklist.
+    - zh: 查找 first_boot、首个身份令牌、首个网络流、进程/脚本和数据挂载，生成 first_activity_time；比较每项控制的 enrolled/effective time。若 actor 未批准、lineage 来自敏感卷或已有目标，且恶意或高风险活动发生在等效控制生效前，输出 shadow_compute_fork。创建但无活动输出 unconsumed_resource，活动发生时控制已等效输出 governed_creation；只有“新”或代理上报延迟不升格。
+      en: Locate first_boot, first identity token, first network flow, process or script, and data attachment to derive first_activity_time, then compare each control's enrolled and effective time. Emit shadow_compute_fork when the actor is unapproved, lineage comes from sensitive volumes or an existing target, and malicious or high-risk activity occurs before equivalent controls become effective. A creation without activity is unconsumed_resource; activity after equivalent controls is governed_creation. Newness or agent reporting delay alone is not promoted.
+data_requirements:
+  - source_type: cloud-compute-lifecycle
+    name: {zh: 云计算与快照生命周期审计, en: Cloud Compute and Snapshot Lifecycle Audit}
+    channel: AWS CloudTrail or equivalent IaaS admin activity
+    required_fields: [timestamp, account_id, region, actor_id, session_id, source_ip, request_id, operation, source_resource_id, new_resource_id, snapshot_or_image_id, request_parameters, response_status, approval_id]
+  - source_type: compute-lineage-inventory
+    name: {zh: 实例 lineage、网络、IAM 与配置清单, en: Instance Lineage Network IAM and Configuration Inventory}
+    channel: null
+    required_fields: [timestamp, resource_id, lineage_root_id, source_snapshot_id, image_id, network_id, security_policy_ids, iam_profile_id, user_data_hash, tags, creation_time]
+  - source_type: security-control-enrollment
+    name: {zh: 安全控制注册与有效状态, en: Security-Control Enrollment and Effective State}
+    channel: null
+    required_fields: [timestamp, resource_id, control_id, expected, enrolled, effective, policy_version, agent_id, telemetry_last_seen]
+  - source_type: compute-first-activity
+    name: {zh: 新计算身份首个工作负载活动, en: First Workload Activity on New Compute Identity}
+    channel: Guest agent identity network and workload telemetry
+    required_fields: [timestamp, resource_id, boot_id, principal_id, activity_type, process_or_action, network_peer, data_resource_id]
+observables:
+  - {zh: 敏感快照或卷派生出未批准实例并应用不同网络/IAM 策略, en: A sensitive snapshot or volume derives an unapproved instance with different network or IAM policy}
+  - {zh: 首个工作负载活动早于强制代理、日志或策略生效, en: First workload activity precedes mandatory agent logging or policy effectiveness}
+  - {zh: 新实例被攻击者用于横向或数据活动而原实例控制仍只关联旧 resource ID, en: The actor uses a new instance for lateral or data activity while original controls remain tied to the old resource ID}
+correlation:
+  window: {zh: 从 snapshot/image 创建前二十四小时到新实例首用后七日，并保留 lineage 至资源删除后三十日。, en: "Correlate twenty-four hours before snapshot or image creation through seven days after first use and retain lineage for thirty days after resource deletion."}
+  dimensions: [account_id, region, request_id, actor_id, source_resource_id, new_resource_id, snapshot_or_image_id, network_id, iam_profile_id, control_id, time]
+false_positives:
+  - {zh: 经批准的灾备演练、蓝绿部署、扩容或取证克隆在首用前完成等效控制注册, en: "Approved disaster recovery, blue-green deployment, scaling, or forensic clone with equivalent controls enrolled before first use"}
+  - {zh: 安全代理已生效但管理面状态存在短时传播延迟, en: Security agent is effective while management-plane status has a brief propagation delay}
+blind_spots:
+  - {zh: 来宾 first activity 在代理注册前完全不可见且网络侧也未保留时，控制缺口无法定界, en: The gap cannot be bounded when all guest first activity occurs before agent enrollment and no network-side telemetry is retained}
+  - {zh: 跨账户复制不保留 source lineage 或目的账户审计不可访问, en: Cross-account copy omits source lineage or destination-account audit is inaccessible}
+tuning_guidance:
+  paragraphs:
+    - zh: 按账户、项目、镜像模板和部署流水线维护允许 lineage 与 enrollment SLO；审批需绑定 source/new resource、网络/IAM、用途和期限。不要永久白名单自动伸缩主体，而应验证其模板及首用前控制有效性；代理状态延迟时使用网络、身份和策略侧结果交叉确认。
+      en: Maintain allowed lineage and enrollment SLO by account, project, image template, and deployment pipeline. Approval binds source and new resource, network and IAM, purpose, and expiry. Do not permanently allowlist autoscaling identities; verify their template and control effectiveness before first use. When agent status lags, cross-check network, identity, and policy outcomes.
+evidence_refs: [REF-000103, REF-000697, REF-000698]
+lifecycle: {status: review, version: "1.0.0", created: "2026-09-23", modified: "2026-09-23", contributors: [Niji Matrix Research], reviewers: []}

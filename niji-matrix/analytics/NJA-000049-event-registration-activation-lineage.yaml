@@ -1,0 +1,123 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000049
+strategy_ref: DET-000070
+name:
+  zh: 持久回调注册—谓词—Broker—激活谱系分析
+  en: Durable Callback Registration-Predicate-Broker-Activation Lineage Analytic
+summary:
+  zh: 版本化持久回调，计算谓词选择性，连接 Broker callback 与首次或高风险 action，并在缺少精确 ID 时显式降低来源置信度。
+  en: Version durable callbacks, calculate predicate selectivity, join broker callbacks to first or high-risk actions, and explicitly lower provenance confidence when exact identifiers are absent.
+domains:
+  - enterprise
+platforms:
+  - Windows
+  - Linux
+  - macOS
+  - IaaS
+  - SaaS
+  - Containers
+logic:
+  paragraphs:
+    - zh: 从 WMI subscription、规则、file association、shell/interpreter hook、设备 match 或等价 callback 的创建/修改审计和周期快照提取稳定 object/filter/consumer/binding ID、namespace/interface、writer/CreatorSID、完整 predicate 与规范形、action、Broker、权限、owner、包/工单、创建/修改、到期和结果。与前一可信版本比较，输出新可执行 action、条件收窄、异常 writer、权限扩大或无 owner 状态；只有快照没有创建日志时降低来源置信度。
+      en: From creation or modification audit and periodic snapshots of WMI subscriptions, rules, file associations, shell or interpreter hooks, device matches, or equivalent callbacks, extract stable object or filter or consumer or binding ID, namespace or interface, writer or CreatorSID, complete predicate and normalized form, action, broker, permissions, owner, package or change record, creation or modification, expiry, and outcome. Compare with the prior trusted version and emit new executable action, narrowed condition, anomalous writer, expanded permission, or ownerless state. Lower provenance confidence when only a snapshot and no creation log exists.
+    - zh: 谓词分支将 predicate 引用的字段映射到候选事件流，计算候选数量、匹配数量、匹配比例、目标特异字段和首次触发延迟，并用代表性用户、设备、进程、对象或消息执行受控回放。低匹配率本身不定罪；只有攻击者可控或未批准条件、目标特异度及异常 action 之一同时存在时提高风险。事件字段缺失或条件不可解析时只输出静态 predicate 风险。
+      en: The predicate branch maps fields referenced by the predicate to candidate event streams, calculates candidate count, match count, match proportion, target-specific fields, and first-trigger delay, and performs controlled replay with representative users, devices, processes, objects, or messages. A low match rate is not malicious by itself. Risk rises only with an adversary-controlled or unapproved condition plus target specificity or anomalous action. Missing event fields or an opaque condition produces only static predicate risk.
+    - zh: Broker 分支把每次匹配事件连接到 callback transaction、provider host/服务主体和 action。WMI 优先使用 filter/consumer/binding ID、CreatorSID、CorrelationId/GroupOperationId/OperationId、namespace、ClientMachine/User/ClientProcessId、Wmiprvse PID 与后继 ProcessGuid；其他平台使用等价 registration/callback ID。没有精确 ID 时只在相同设备/租户、事件、目标和校准的短窗口内降级匹配，不能任意扩大窗口。
+      en: The broker branch joins each matching event to a callback transaction, provider host or service principal, and action. WMI prefers filter, consumer, and binding ID, CreatorSID, CorrelationId, GroupOperationId, OperationId, namespace, ClientMachine, User, ClientProcessId, Wmiprvse PID, and downstream ProcessGuid. Other platforms use equivalent registration or callback IDs. Without exact IDs, match only within the same device or tenant, event, target, and a calibrated short window at lower confidence rather than widening arbitrarily.
+    - zh: 最后连接进程、模块、脚本、资源或网络结果，并对同一 object/version 设置两个结果门。Persistence 要求注册跨原会话或重启存续、发生实际匹配且对象有效，并输出 persistence_confirmed。TA0004 另取得 writer/CreatorSID 或提交 caller 的 pre-state authorization set，解析 Broker/consumer 的实际 service identity、token、integrity、namespace、hosting/impersonation/delegation decision 与 post-state set，再连接首个 target resource authorization；缺 pre-state 或 actual token 输出 authority_unresolved，无新增权限输出 no_authority_gain，只有新增权限、pre-state expected deny、post-state observed allow 和 side effect 完整才输出 elevation_confirmed。同一版本两门都通过再输出 dual_result_confirmed。Solorigate 类明确恶意 binding 可提高持久/来源置信度，但合法自动化仍由 owner、批准包、预期谓词与历史结果降级，不能让 Persistence 自动推导提权。
+      en: Finally, join process, module, script, resource, or network outcome and apply two result gates to the same object and version. Persistence requires registration to survive the original session or reboot, an actual match while the object remains valid, and produces persistence_confirmed. TA0004 separately obtains the writer or CreatorSID or submitting caller's pre-state authorization set, resolves the broker or consumer's actual service identity, token, integrity, namespace, hosting, impersonation or delegation decision, and post-state set, and joins the first target-resource authorization. Missing pre-state or actual token produces authority_unresolved, no added permission produces no_authority_gain, and only added authority plus pre-state expected deny, post-state observed allow, and a side effect produces elevation_confirmed. Both gates for the same version produce dual_result_confirmed. A Solorigate-style malicious binding can raise persistence or provenance confidence, but legitimate automation remains lowered through owner, approved package, expected predicate, and historical outcomes, and Persistence never automatically implies elevation.
+data_requirements:
+  - source_type: event-callback-registration
+    name: {zh: 持久事件回调、规则与 Binding 注册, en: "Durable event callback, rule, and binding registration"}
+    channel: null
+    required_fields: [timestamp, device_or_tenant_id, namespace_or_interface, object_id, filter_id, consumer_id, binding_id, writer_or_creator_sid, predicate, action_or_consumer, broker, permissions, operation, outcome]
+  - source_type: callback-state-inventory
+    name: {zh: 回调版本、Owner 与批准清单, en: "Callback version, owner, and approval inventory"}
+    channel: null
+    required_fields: [snapshot_time, device_or_tenant_id, object_id, version, normalized_predicate, allowed_action, broker, owner, package_or_change_id, valid_from, valid_until, status]
+  - source_type: triggering-event-stream
+    name: {zh: 谓词候选、匹配与未匹配事件流, en: "Predicate candidate, matching, and nonmatching event stream"}
+    channel: null
+    required_fields: [timestamp, device_or_tenant_id, event_type, event_id, object_attributes, process_id, user_id, device_attributes, resource_id, match_result]
+  - source_type: broker-callback-transaction
+    name: {zh: Broker Callback、Provider 与 Caller 事务, en: "Broker callback, provider, and caller transaction"}
+    channel: null
+    required_fields: [timestamp, device_or_tenant_id, callback_or_object_id, operation_or_correlation_id, broker_process_id, broker_process_guid, namespace, client_machine, client_user, client_process_id, action, outcome]
+  - source_type: callback-execution-outcome
+    name: {zh: 回调后继进程、模块、脚本与资源结果, en: "Callback successor process, module, script, and resource outcome"}
+    channel: null
+    required_fields: [timestamp, device_or_tenant_id, callback_or_operation_id, process_guid, parent_process_guid, image_or_module, command_or_action, principal_id, target_resource, network_destination, outcome]
+  - source_type: callback-authority-delegation-and-resource-outcome
+    name: {zh: Callback Writer、Consumer 权限与资源结果, en: Callback Writer Consumer Authority and Resource Outcome}
+    channel: null
+    required_fields: [timestamp, device_or_tenant_id, registration_object_and_version, writer_or_creator_sid, submitting_caller, writer_or_caller_prestate_authorization_set, broker_or_consumer_identity, consumer_token_integrity_and_namespace, hosting_model, impersonation_or_delegation_decision, consumer_poststate_authorization_set, added_permission, target_resource, operation, previous_expected_result, actual_result, side_effect_id, approval_id]
+observables:
+  - zh: 新持久 callback 由非常见 writer/CreatorSID 建立，并把可执行 action 绑定到无 owner 或无批准对象。
+    en: A new durable callback is established by an uncommon writer or CreatorSID and binds an executable action to an ownerless or unapproved object.
+  - zh: predicate 相对前一版本显著收窄，仅匹配目标进程、对象、uptime、设备或管理事件，并在匹配后产生异常 action。
+    en: A predicate narrows materially from the prior version, matches only a target process, object, uptime, device, or management event, and produces an anomalous action after a match.
+  - zh: Sysmon/WMI 或等价审计出现 filter、consumer、binding 三元关系，action 或 CommandLineTemplate 不属于批准包。
+    en: Sysmon, WMI, or equivalent audit shows a filter, consumer, and binding relationship whose action or CommandLineTemplate is outside the approved package.
+  - zh: WmiPrvSE 或其他受信 Broker 产生异常后继行为，并可通过 object/operation/correlation 回连更早的未批准注册者。
+    en: WmiPrvSE or another trusted broker produces anomalous downstream activity linked through object, operation, or correlation to an earlier unapproved registrant.
+  - zh: 注册跨重启持续存在，首次触发延迟较长，但随后恢复载荷、远程访问或高价值资源动作。
+    en: Registration survives reboot and first triggers after a long delay before restoring a payload, remote access, or high-value resource action.
+  - zh: writer、predicate、匹配事件、Broker callback 与结果形成完整持久事件链。
+    en: Writer, predicate, matching event, broker callback, and outcome form a complete durable event chain.
+  - zh: 同一 object/version 由较低权限 writer/caller 建立，事件匹配后被更高 consumer context 采用，并首次完成 pre-state 会拒绝而 post-state 实际允许的资源操作。
+    en: The same object and version is established by a lower-authority writer or caller, adopted by a higher consumer context after a match, and first completes a resource operation denied in pre-state but actually allowed in post-state.
+  - zh: WmiPrvSE、installer、udev 或等价 Broker 显示高权限 action，但 pre-state、actual token 或资源 authorization 缺失，因而保持 authority_unresolved 而不是 elevation_confirmed。
+    en: WmiPrvSE, an installer, udev, or an equivalent broker shows a privileged action but pre-state, actual token, or resource authorization is missing, so the result remains authority_unresolved rather than elevation_confirmed.
+correlation:
+  window:
+    zh: 从注册创建或最后修改前一可信快照持续到删除、到期或 action 清除，默认最长九十日；谓词匹配率使用至少三十日并覆盖业务周期，callback 到后继结果使用五分钟直接窗口。精确 object/operation ID 可覆盖完整寿命，缺失时只允许校准短窗口降级。
+    en: Span from the trusted snapshot preceding registration creation or last modification through deletion, expiry, or action removal, with a default maximum of ninety days. Predicate match rates use at least thirty days and cover business cycles, while callback-to-outcome uses a direct five-minute window. Exact object or operation IDs can span full lifetime; missing identifiers permit only a calibrated short-window fallback at lower confidence.
+  dimensions: [device_or_tenant, namespace_or_interface, registration_object_and_version, writer_or_creator_sid, submitting_caller, predicate, event, callback_or_operation, broker_process_guid, client_process, consumer_identity_token_integrity_and_namespace, hosting_impersonation_or_delegation, writer_prestate_and_consumer_poststate_authorization, added_permission, successor_process_guid, resource_operation_authorization_and_side_effect, owner_or_approval, time]
+false_positives:
+  - zh: 备份、监控、设备管理、辅助功能、开发工具、安装器和用户 shell 定制会建立合法持久回调。
+    en: Backup, monitoring, device management, accessibility, development tools, installers, and user shell customization establish legitimate durable callbacks.
+  - zh: 高可用与业务自动化会使用窄谓词并在长延迟后由受信 Broker 执行。
+    en: High availability and business automation use narrow predicates and execute through trusted brokers after long delays.
+  - zh: 软件升级或规则迁移会同时重建 filter、consumer 与 binding，并在短期产生旧新版本重叠。
+    en: Software upgrades or rule migration rebuild filters, consumers, and bindings together and create short-lived old and new overlap.
+  - zh: 合法 installer、设备管理、监控、备份或响应 Broker 会接受低权限前端请求并按批准委托以更高权限完成维护，形成真实权限差但不是攻击。
+    en: Legitimate installer, device-management, monitoring, backup, or response brokers accept lower-authority front-end requests and complete approved maintenance with greater authority, creating a real authority difference without an attack.
+blind_spots:
+  - zh: in-process callback 不产生子进程、condition 不可解析或平台不记录 callback/object ID 时，执行关联只能依赖较弱时间和目标键。
+    en: When an in-process callback creates no child process, the condition is opaque, or the platform omits callback or object ID, execution correlation depends on weaker time and target keys.
+  - zh: 注册日志保留短于首次触发、事件流缺少谓词字段或 Broker 日志未导出时，选择性和来源无法恢复。
+    en: Selectivity and provenance cannot be recovered when registration logs expire before first trigger, event streams omit predicate fields, or broker logs are not exported.
+  - zh: 攻击者控制受信部署身份、软件包签名或 owner/审批清单时，恶意 callback 可能呈现为批准状态。
+    en: A malicious callback can appear approved when the adversary controls a trusted deployment identity, package signing, or owner and approval inventory.
+  - zh: 不同平台没有等价 filter/consumer/binding 或 operation ID 时，跨平台统一只能保留概念级检测而不能保证字段级覆盖。
+    en: When a platform lacks equivalent filter, consumer, binding, or operation IDs, cross-platform unification remains conceptual and cannot guarantee field-level coverage.
+  - zh: 只记录 service account 名称而不保存实际 token、namespace、delegation/impersonation 和资源 authorization decision 时，无法判断 consumer 是否相对 writer 新增权限。
+    en: Recording only a service-account name without actual token, namespace, delegation or impersonation, and resource-authorization decision prevents determination of whether the consumer added authority over the writer.
+tuning_guidance:
+  paragraphs:
+    - zh: 按 namespace/interface、Broker、业务 owner、软件包、writer 角色、谓词规范形和允许 action 建立版本基线；白名单绑定具体 object/binding ID、签名版本、工单与有效期，不能永久放行 WmiPrvSE、shell、Office 或安装器。静态未知对象、已触发未知对象、异常 action 与确认持久访问分级输出。
+      en: Build version baselines by namespace or interface, broker, business owner, package, writer role, normalized predicate, and allowed action. Bind allowances to concrete object or binding ID, signed version, change record, and validity rather than permanently allowing WmiPrvSE, shells, Office, or installers. Tier static unknown object, triggered unknown object, anomalous action, and confirmed persistent access separately.
+    - zh: 谓词低匹配率只在无 owner、目标特异字段、未经批准变化或异常结果同时存在时提高风险。回放覆盖代表性用户、设备、进程、对象和业务周期，不能因一次未触发即判安全；条件含敏感值时保存可审查摘要与 hash，并限制访问。
+      en: A low predicate match rate raises risk only with a missing owner, target-specific fields, unapproved change, or anomalous outcome. Replay covers representative users, devices, processes, objects, and business cycles and cannot treat one non-trigger as safe. When conditions contain sensitive values, retain a reviewable summary and hash under restricted access.
+    - zh: 对 Broker 分支验证 callback/operation ID 在注册、事件、provider host 和进程数据间如何传播；缺失时降低置信度并限定时间窗。合法管理基线按具体 consumer/action 和 caller 建立，不把任何 WmiPrvSE 子进程自动列恶，也不因父进程受信永久放行。
+      en: For the broker branch, validate how callback or operation ID propagates across registration, event, provider host, and process data. Lower confidence and constrain the time window when absent. Build legitimate administration baselines by concrete consumer or action and caller, neither making every WmiPrvSE child malicious nor permanently allowing it because the parent is trusted.
+    - zh: TA0004 规则先用真实 deny/allow 样本校准 writer 与 consumer authorization sets；分级输出 registration_risk、persistence_confirmed、authority_unresolved、no_authority_gain、elevation_confirmed 与 dual_result_confirmed。允许项绑定 exact caller、object/version、predicate、consumer、action、target、批准和有效期；SYSTEM/root、WmiPrvSE 或 installer 名称不形成永久豁免。处置时除禁用 callback，还需撤销该版本产生的进程、会话、账户、服务、文件/ACL 与远程资源 side effects。
+      en: Calibrate writer and consumer authorization sets with actual deny and allow samples before enabling the TA0004 rule. Tier outputs as registration_risk, persistence_confirmed, authority_unresolved, no_authority_gain, elevation_confirmed, and dual_result_confirmed. Bind allowances to exact caller, object and version, predicate, consumer, action, target, approval, and validity; SYSTEM or root, WmiPrvSE, or installer names receive no standing exemption. Response revokes processes, sessions, accounts, services, file or ACL changes, and remote-resource side effects produced by that version in addition to disabling the callback.
+evidence_refs:
+  - REF-000183
+  - REF-000230
+  - REF-000293
+  - REF-000294
+  - REF-000304
+  - REF-000312
+  - REF-000313
+  - REF-000353
+  - REF-000354
+lifecycle:
+  status: review
+  version: 1.1.0
+  created: "2026-09-11"
+  modified: "2026-09-13"
+  contributors: [Niji Matrix Research]
+  reviewers: []

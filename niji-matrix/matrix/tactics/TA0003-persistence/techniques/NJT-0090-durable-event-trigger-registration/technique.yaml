@@ -1,0 +1,267 @@
+schema_version: 2.0.0
+type: technique
+id: NJT-0090
+name:
+  zh: 持久事件触发注册
+  en: Durable Event-Trigger Registration
+summary:
+  zh: 攻击者保存注册者—谓词—事件—Broker—动作关系，使以后匹配上下文自动恢复执行，并以窄谓词或受信 Broker 来源分离降低短窗口观察与归因能力。
+  en: Adversaries preserve a registrant-predicate-event-broker-action relationship so a later matching context automatically
+    restores execution, using narrow predicates or trusted-broker provenance separation to reduce short-window observation
+    and attribution.
+aliases:
+- Event Triggered Execution
+classification:
+  tactic_refs:
+  - TA0003
+  - TA0004
+  origin:
+    kind: attack-adapted
+    source_attack_id: T1546
+    source_attack_version: '19.1'
+  decision_ref: DEC-TA0003-T1546
+definition_and_concept:
+  paragraphs:
+  - zh: 持久事件触发注册是攻击者在操作系统、WMI、解释器、规则引擎、设备管理器或应用回调框架中保存事件条件与动作的绑定，使未来文件/进程、用户状态、信号、设备属性、消息或管理事件出现时，由框架自动执行攻击者内容的技术。其直接目标是把一次注册转化为跨原会话和重启继续存在的激活入口，而不需要攻击者进程持续轮询或显式日历任务。
+    en: Durable Event-Trigger Registration is a technique in which an adversary preserves a binding between an event condition
+      and an action in an operating system, WMI, interpreter, rule engine, device manager, or application callback framework
+      so attacker content executes automatically when a future file or process, user state, signal, device attribute, message,
+      or management event occurs. Its direct objective is to turn one registration into an activation entry that survives
+      the original session and reboot without a continuously polling adversary process or explicit calendar task.
+  - zh: 本技术的概念锚是完整的注册者—谓词—事件—Broker—动作关系，不是具体 WMI 类、Registry 路径、脚本、DLL 或产品。Microsoft 说明永久 WMI consumer 由含 WQL Query 的 filter、consumer
+      和 binding 组成，并在 WMI 或系统重启后继续；Mandiant 也以同一三元结构监控持久订阅。纯时间/间隔触发归 T1053，启动/登录描述符归 NJT-0084，以库、COM、shim 或调试器解析重定向为直接对象的行为归
+      T1574，Office 持久扩展状态归 NJT-0095。
+    en: The conceptual anchor is the complete registrant-predicate-event-broker-action relationship rather than a specific
+      WMI class, Registry path, script, DLL, or product. Microsoft explains that a permanent WMI consumer consists of a filter
+      containing a WQL Query, a consumer, and a binding and continues after WMI or system restart; Mandiant uses the same
+      three-part structure to monitor durable subscriptions. Pure time or interval triggers belong to T1053, boot or logon
+      descriptors to NJT-0084, behavior centered on library, COM, shim, or debugger resolution redirection to T1574, and durable
+      Office extension state to NJT-0095.
+  - zh: 事件触发注册既可让动作跨会话或重启持续恢复，也可能把较低权限写入者的请求交给更高权限 Broker 或消费者执行。只有后者实际完成写入者此前无权执行的操作时，同一注册才同时服务于权限提升。
+    en: Event-triggered registration can restore an action across sessions or restarts or hand a request influenced by a lower-authority
+      writer to a higher-authority broker or consumer. The same registration also serves Privilege Escalation only when the
+      latter actually completes an operation unavailable to the writer.
+stealth_characteristics:
+  paragraphs:
+  - zh: 持久事件触发注册把一次控制面写入与以后执行分离。攻击者可以把谓词限制为目标进程、对象、uptime、设备 match key 或其他稀少上下文，使沙箱和短调查窗口只看到静态注册而没有动作；执行发生时又由 WmiPrvSE、应用、解释器或规则
+      Broker 的正常进程与权限上下文承载。短窗口的异常密度降低，进程树还会把受信 Broker 显示为直接来源，而不是早期注册者。
+    en: Durable Event-Trigger Registration separates one control-plane write from later execution. An adversary can constrain
+      the predicate to a target process, object, uptime, device match key, or another sparse context so a sandbox or short
+      investigation sees static registration but no action. When execution occurs, it runs under the normal process and privilege
+      context of WmiPrvSE, an application, interpreter, or rule broker. Anomaly density falls within a short window, and the
+      process tree presents the trusted broker rather than the earlier registrant as immediate provenance.
+  - zh: 注册与执行均留下可恢复痕迹：object/filter/consumer/binding ID、CreatorSID 或 writer、规范化谓词、action、创建时间、匹配事件、Broker 事务、provider host、callback
+      与后继进程/模块/网络结果。Solorigate 告警能够同时呈现 WMI filter、logical consumer 和计划命令，说明跨层连接可以恢复。备份、监控、设备管理、辅助功能、安装器和用户自动化也会建立合法回调；静态未知注册、低频匹配或受信父进程都不能单独证明恶意。
+    en: 'Registration and execution both leave recoverable evidence: object, filter, consumer, and binding IDs; CreatorSID
+      or writer; normalized predicate; action; creation time; matching event; broker transaction; provider host; callback;
+      and downstream process, module, or network outcome. Solorigate alerts could present a WMI filter, logical consumer,
+      and scheduled command together, showing that cross-layer joins can recover the chain. Backup, monitoring, device management,
+      accessibility, installers, and user automation also create legitimate callbacks. A static unknown registration, sparse
+      match, or trusted parent process alone cannot establish maliciousness.'
+scope_boundary_definition:
+  paragraphs:
+  - zh: 本技术纳入攻击者控制且跨原会话存在的事件条件—动作绑定，以及以后匹配事件实际产生的执行或访问恢复。判定至少需要稳定注册对象、writer/CreatorSID、可识别谓词、action/consumer、Broker 和结果之间的连接；攻击者必须控制谓词、动作或二者之一。平台、扩展点、配置介质、载荷类型和事件名称只影响实现，不形成
+      Niji 子技术。
+    en: This technique includes an adversary-controlled event-condition-to-action binding that survives the original session
+      and the execution or access restoration actually produced by a later matching event. Classification requires at least
+      a stable registration object, writer or CreatorSID, identifiable predicate, action or consumer, broker, and outcome
+      linkage, with the adversary controlling the predicate, action, or both. Platform, extension point, configuration medium,
+      payload type, and event name affect implementation but do not form Niji children.
+  - zh: 当前进程内临时 signal handler、攻击者进程直接轮询、纯日历任务和仅修改脚本正文分别不属于持久注册或归 T1053/T1037；以库、COM、IFEO 或 shim 解析顺序为直接对象时归 T1574。合法 callback
+      必须有 owner、部署来源、批准谓词、允许动作与寿命。事件天然低频、队列拥塞或注册故障造成的少量执行不是攻击者收窄变量；正常 Broker 子进程没有未批准注册关系时也不属于来源遮蔽。
+    en: An in-process temporary signal handler, direct polling by an adversary process, a pure calendar task, and a script-content-only
+      change are outside durable registration or belong to T1053 or T1037. When library, COM, IFEO, or shim resolution order
+      is the direct object, T1574 owns the behavior. A legitimate callback needs an owner, deployment origin, approved predicate,
+      allowed action, and lifetime. Sparse execution caused by an inherently rare event, queue congestion, or registration
+      failure is not an adversary-narrowed variable, and a normal broker child process without an unapproved registration
+      relationship is not provenance masking.
+  - zh: 高权限命名空间、受信 Broker、SYSTEM/root 身份或成功回调都只说明潜在影响。权限提升还要求攻击者能够从较低权限状态影响被实际消费的注册，并由消费者取得新的资源权限；正常管理代理和获批自动化是重要反例。
+    en: A privileged namespace, trusted broker, SYSTEM or root identity, or successful callback shows potential impact only.
+      Privilege Escalation also requires the adversary to influence the consumed registration from a lower-authority state
+      and the consumer to obtain new resource authority. Normal management agents and approved automation are important counterexamples.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: 攻击者在取得本地管理员、用户配置、WMI namespace、设备规则或云/应用自动化权限后，建立永久 WMI filter-consumer-binding、udev/Emond 规则、file association、shell/interpreter
+        hook 或等价订阅，然后退出原会话。系统重启或以后出现目标进程、uptime、设备、对象、消息或管理事件时，Broker 自动调用脚本、命令、模块或资源动作，重新启动载荷或恢复远程访问。
+      en: After obtaining local administrator, user-configuration, WMI namespace, device-rule, or cloud or application automation
+        authority, an adversary creates a permanent WMI filter-consumer-binding, udev or Emond rule, file association, shell
+        or interpreter hook, or equivalent subscription and exits the original session. After reboot or when a target process,
+        uptime, device, object, message, or management event appears, the broker automatically invokes a script, command,
+        module, or resource action to restart a payload or restore remote access.
+    - zh: 谓词轴适合能够预测目标环境而希望避免通用分析触发的操作者；Broker 轴适合希望让进程侧只看见正常宿主的操作者。两者可组合，例如一个窄 WQL filter 数日后由 WmiPrvSE 启动 consumer，但分类仍分别要求实际匹配率变化和注册者—Broker
+        来源分离。只有注册没有触发结果时可以报告持续风险状态，不能声称持久访问已经恢复。
+      en: The predicate axis suits an operator able to predict the target environment and avoid generic analysis triggers,
+        while the broker axis suits an operator seeking to leave process-side visibility with only a normal host. They can
+        combine, for example when a narrow WQL filter causes WmiPrvSE to launch a consumer days later, but classification
+        separately requires an actual match-rate effect and registrant-to-broker provenance separation. A registration with
+        no activation can be reported as durable risk state but cannot establish that persistent access was restored.
+    - zh: 在权限提升场景中，攻击者可能让 permanent WMI CommandLineEventConsumer、installer/udev 或等价 Broker 在更高服务上下文执行 action。Microsoft 明确说明
+        CommandLineEventConsumer 以 local system context 启动进程，但这个架构事实只形成候选权限边：分析仍须证明提交者或受控 writer 的 pre-state 无权完成目标操作、事件确实消费该版本、实际
+        consumer context 新增权限，并连接账户/文件/服务/进程、远程访问或其他资源的首个新获准结果。一个获批安装工作流可以具有同样权限差而不是攻击。
+      en: In an elevation scenario, an adversary can have a permanent WMI CommandLineEventConsumer, installer or udev path,
+        or an equivalent broker execute an action under a higher service context. Microsoft explicitly states that CommandLineEventConsumer
+        launches a process in the local-system context, but this architectural fact creates only a candidate authority edge.
+        Analysis must still establish that the submitting or controlled writer's pre-state could not perform the target operation,
+        the event consumed that version, the actual consumer context added authority, and the first newly authorized account,
+        file, service, process, remote-access, or other resource result followed. An approved installation workflow can have
+        the same authority difference without being malicious.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者需要写入持久注册 namespace、规则仓库、用户配置或 Broker 扩展面的权限，能够构造语法有效且跨重启保留的 filter/condition、consumer/action 和 binding，并知道目标会产生哪些事件。收窄谓词还要求掌握字段、频率和可靠性，接受激活时间不确定及环境变化导致失效；Broker
+          遮蔽要求动作兼容宿主接口、权限与执行限制。
+        en: The adversary needs authority to write a durable-registration namespace, rule store, user configuration, or broker
+          extension surface; ability to construct syntactically valid filter or condition, consumer or action, and binding
+          that survive restart; and knowledge of events the target will generate. Predicate narrowing also requires knowledge
+          of fields, frequency, and reliability plus tolerance for uncertain activation and invalidation by environmental
+          change. Broker masking requires an action compatible with host interfaces, privilege, and execution limits.
+      - zh: 攻击者还需测试谓词既足够窄又不会错过操作窗口，避免 consumer 错误、Broker 崩溃、异常子进程或过量触发。最小 namespace/规则写权、JIT 管理、签名/允许动作、版本化 owner 清单、Sysmon
+          19/20/21、WMI Activity 与多情境回放会增加成本。无法控制持久注册只控制一次事件时，本技术不成立。
+        en: The adversary must test that the predicate is narrow without missing the operational window and avoid consumer
+          errors, broker failure, anomalous child processes, or excessive triggers. Least namespace or rule-write authority,
+          JIT administration, signed or allowed actions, versioned owner inventory, Sysmon 19, 20, and 21, WMI Activity, and
+          multi-context replay raise cost. If the adversary controls only one event and not durable registration, this technique
+          does not hold.
+    defender_model:
+      paragraphs:
+      - zh: 防守方需要版本化注册对象，保存设备/租户、namespace/interface、object/filter/consumer/binding ID、CreatorSID/writer、谓词及规范形、action、Broker、权限、owner、包/工单和到期。候选事件流需要谓词引用的字段，执行侧需要
+          Broker/provider host、callback 或 operation ID、进程/模块/脚本、主体和资源/网络结果，才能跨重启连接注册—匹配—激活。
+        en: Defenders need versioned registration objects retaining device or tenant, namespace or interface, object or filter
+          or consumer or binding ID, CreatorSID or writer, predicate and normalized form, action, broker, permissions, owner,
+          package or change record, and expiry. Candidate event streams need fields referenced by the predicate, and the execution
+          side needs broker or provider host, callback or operation ID, process or module or script, principal, and resource
+          or network outcome to join registration, match, and activation across restart.
+      - zh: 观察窗口必须覆盖注册完整寿命和首次/高风险触发，而不是只覆盖进程启动前后几分钟。没有 callback ID 时只能按 object、事件、设备、目标与窄时间窗降级关联；in-process action 可能没有子进程。条件加密、事件字段未保留、注册日志早于首次触发过期或攻击者控制可信部署身份都会形成盲区，合法自动化必须通过
+          owner 与预期匹配集合排除。
+        en: The observation window must cover the registration's full lifetime and first or high-risk trigger rather than
+          only minutes around process start. Without a callback ID, correlation falls back to object, event, device, target,
+          and a narrow time window at lower confidence, while an in-process action may have no child process. Encrypted conditions,
+          unretained event fields, registration logs expiring before first trigger, and adversary control of a trusted deployment
+          identity create blind spots. Legitimate automation requires owner and expected-match-set counterexamples.
+stealth_mechanisms:
+- mechanism_ref: NM-ST
+  role: primary
+  summary:
+    zh: 收窄谓词把激活稀释到目标相关少数事件
+    en: Narrow predicates dilute activation into a few target-relevant events
+  analysis:
+    paragraphs:
+    - zh: 攻击者把 filter 或规则限定为特定进程、对象、uptime、信号、设备属性、用户状态或管理操作，注册长期存在但只有少数事件匹配。Mandiant 展示 WMI filter 可以用 uptime 条件决定何时执行，Microsoft
+        则说明 permanent consumer 只有在事件满足 Query 时才运行。通用沙箱、单次重放和短窗口看到的激活次数下降，注册与结果还跨时间分离，形成时空释痕。
+      en: The adversary constrains a filter or rule to a specific process, object, uptime, signal, device attribute, user
+        state, or management operation, leaving a long-lived registration with only a few matching events. Mandiant shows
+        a WMI filter using an uptime condition to determine execution, while Microsoft explains that a permanent consumer
+        runs only when an event satisfies its Query. Generic sandboxes, one-time replay, and short windows see fewer activations,
+        while registration and outcome are separated in time, producing Spatiotemporal Trace Dilution.
+    - zh: 条件表达式、候选事件、历史匹配率、首次触发延迟和后继结果仍能恢复选择性。来源直接证明谓词可配置和低频条件，但 Mandiant 示例来自红队，公开 Solorigate 案例又没有完整 WQL 与匹配率，攻击者为降低检测而选择窄条件仍属强推断。因此父级与
+        NJS-0090-001 的该机理保持 medium，而非把所有低频 callback 视为已证实匿迹。
+      en: Condition expression, candidate events, historical match rate, first-trigger delay, and downstream outcome can recover
+        selectivity. Sources directly establish configurable predicates and sparse conditions, but the Mandiant example is
+        a red-team engagement and the public Solorigate case lacks complete WQL and match rates, leaving adversary selection
+        of a narrow condition for detection reduction strongly inferred. This mechanism therefore remains medium at the parent
+        and NJS-0090-001 rather than treating every sparse callback as demonstrated stealth.
+  evidence_refs:
+  - REF-000183
+  - REF-000312
+  - REF-000313
+  confidence: medium
+- mechanism_ref: NM-BT
+  role: secondary
+  summary:
+    zh: 受信 Broker 执行把原始注册者留在早期控制面
+    en: Trusted-broker execution leaves the original registrant in an earlier control plane
+  analysis:
+    paragraphs:
+    - zh: 攻击者先写入 filter、consumer 和 binding，之后由 WMI 或其他受信 Broker 响应环境事件并执行 action。Microsoft 说明 provider 可加载在 Wmiprvse.exe 并以系统服务身份运行；Solorigate
+        案例显示恶意 WMI binding 在重启后恢复命令。进程审计因而显示当前 Broker 和 action，却没有早期 writer；关键来源没有进入单点执行检测的理解范围，形成行为透明。
+      en: The adversary first writes a filter, consumer, and binding, after which WMI or another trusted broker responds to
+        an environmental event and executes the action. Microsoft explains that providers can load in Wmiprvse.exe under service
+        identities, and the Solorigate case shows a malicious WMI binding restoring a command after reboot. Process audit
+        therefore shows the current broker and action but not the earlier writer, leaving critical provenance outside point
+        execution detection and producing Behavioral Transparency.
+    - zh: Sysmon WMI filter/consumer/binding 事件、CreatorSID、object ID、WMI Activity operation/correlation 字段、provider host 与后继进程能够恢复链。WMI
+        对来源分离的证据最直接；其他应用、解释器和规则 Broker 只有在存在相同的持久注册者—执行主体分离时才纳入。行为与 Solorigate 实例有直接支持，但跨所有 Broker 的统一仍含推断，父级保持 medium，WMI
+        子项实例可更高。
+      en: Sysmon WMI filter, consumer, and binding events, CreatorSID, object ID, WMI Activity operation or correlation fields,
+        provider host, and downstream process can recover the chain. WMI provides the strongest provenance-separation evidence.
+        Other application, interpreter, and rule brokers qualify only with the same durable registrant versus executing-principal
+        separation. Behavior and a Solorigate instance are directly supported, but unification across every broker requires
+        inference, so parent confidence remains medium while a WMI instance can be higher.
+  evidence_refs:
+  - REF-000183
+  - REF-000230
+  - REF-000293
+  - REF-000294
+  - REF-000304
+  - REF-000312
+  - REF-000313
+  confidence: medium
+subtechnique_taxonomy:
+  narrative:
+    paragraphs:
+    - zh: 本技术建立两个 Niji 原生子技术。上下文收窄事件谓词激活改变“哪些事件及多高频率会执行”，状态键是条件表达式与匹配集合，检测需要谓词解析、候选事件基线和长期首次触发；受信事件 Broker 来源遮蔽改变“执行侧显示谁发起动作”，状态键是注册者、binding、Broker/provider
+        与 callback 结果，检测需要跨控制/执行面的来源谱系。两者可叠加，但各自在另一变量不存在时仍成立。
+      en: This technique defines two Niji-native children. Context-Narrowed Event-Predicate Activation changes which events
+        and at what frequency cause execution, with condition expression and match set as state keys and predicate parsing,
+        candidate-event baselines, and long-horizon first-trigger detection. Trusted Event-Broker Provenance Masking changes
+        whom the execution side presents as the action initiator, with registrant, binding, broker or provider, and callback
+        outcome as state keys and provenance lineage across control and execution planes. They can combine, but each holds
+        without the other variable.
+  coverage: established
+  subtechnique_refs:
+  - NJS-0090-001
+  - NJS-0090-002
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000070
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000069
+evidence:
+  claim_refs:
+  - CLM-000367
+  - CLM-000368
+  - CLM-000369
+  - CLM-000557
+  - CLM-000558
+  case_refs:
+  - CASE-000115
+  reference_refs:
+  - REF-000183
+  - REF-000230
+  - REF-000293
+  - REF-000294
+  - REF-000304
+  - REF-000312
+  - REF-000313
+  - REF-000353
+  - REF-000354
+research:
+  limitations:
+    paragraphs:
+    - zh: Microsoft 与 Mandiant 直接支持 WMI filter、consumer、binding、WQL 谓词和跨重启持久性；Solorigate 直接支持恶意 WMI binding 与恢复执行，但没有公开完整谓词和长期匹配率。因此
+        Broker 来源分离在 WMI 上证据较强，谓词收窄的匿迹意图为 medium。其他 ATT&CK 实现只有出现同等状态键和观察效果时才能外推，不能从平台名称机械归类。
+      en: Microsoft and Mandiant directly support WMI filters, consumers, bindings, WQL predicates, and persistence across
+        restart, while Solorigate directly supports a malicious WMI binding and restored execution but does not publish complete
+        predicates and long-term match rates. Broker provenance separation has stronger WMI evidence, whereas stealth intent
+        for predicate narrowing remains medium. Other ATT&CK implementations generalize only when they expose equivalent state
+        keys and observation effects and cannot be classified mechanically by platform name.
+    - zh: 注册对象可能只存在于快照而缺少创建日志，in-process action 可能没有子进程，平台也可能不传播 callback ID；条件表达式可能包含敏感业务数据或不可解析代码。没有事件流无法计算匹配率，没有注册历史无法恢复
+        writer，没有后继结果只能确认持久风险状态。合法监控与自动化会使用窄谓词和受信 Broker，必须以 owner、包、批准和预期匹配集合排除。
+      en: A registration object can appear only in a snapshot with no creation log, an in-process action can create no child
+        process, and a platform may not propagate callback ID. A condition can contain sensitive business data or opaque code.
+        Without an event stream, match rate cannot be calculated; without registration history, writer cannot be recovered;
+        without downstream outcome, only durable risk state is established. Legitimate monitoring and automation use narrow
+        predicates and trusted brokers and require owner, package, approval, and expected match set as counterexamples.
+lifecycle:
+  status: review
+  version: 1.2.0
+  created: '2026-09-11'
+  modified: '2026-09-19'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

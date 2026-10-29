@@ -1,0 +1,167 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000238
+strategy_ref: DET-000202
+name:
+  zh: 外部信任请求与 MFA 事务情境联查
+  en: External Trust Request and MFA Transaction Context Join
+summary:
+  zh: 把外部支持叙事、challenge、用户动作和 session 结果跨通信与身份平面关联。
+  en: Correlate an external support narrative, challenge, user action, and session outcome across communication and identity
+    planes.
+domains:
+- enterprise
+platforms: []
+logic:
+  paragraphs:
+  - zh: 规范聊天、通话、邮件或服务台事件的 user、sender/caller、tenant/number、external label、thread/case、claimed role、requested action 与 independent_confirmation；在前后十五分钟连接同一
+      user 的 IdP challenge、application、source、device、显示情境、批准和 token/session。若外部或新关系声称支持/安保角色、要求完成 MFA，而没有登记工单或已知回呼确认，并与异常来源的
+      challenge 对齐，输出 cross_channel_mfa_context。challenge 与通信存在但用户拒绝时标为 interrupted；批准后 session 签发升级为 successful_context_brokerage。只有通信或只有
+      challenge 时输出一侧线索，不能自动补全另一侧。
+    en: Normalize user, sender or caller, tenant or number, external label, thread or case, claimed role, requested action,
+      and independent_confirmation from chat, call, mail, or help-desk events. Within fifteen minutes on either side, join
+      the same user's IdP challenge, application, origin, device, displayed context, approval, and token or session. Emit
+      cross_channel_mfa_context when an external or new relationship claims a support or security role, asks for MFA completion
+      without a registered case or known callback confirmation, and aligns with a challenge from an anomalous origin. Mark
+      a paired communication and challenge with user denial as interrupted, and upgrade approval followed by session issuance
+      to successful_context_brokerage. Communication-only or challenge-only evidence remains one-sided and cannot fill the
+      missing side automatically.
+data_requirements:
+- source_type: communication-or-support-request
+  channel: enterprise chat, telephony metadata, mail, help-desk, or support workflow
+  required_fields:
+  - event.timestamp
+  - user.id
+  - channel.type
+  - sender_or_caller.id
+  - sender.tenant_id
+  - sender.external_label
+  - sender.number
+  - thread.id
+  - case.id
+  - claimed.role
+  - requested.action
+  - independent_confirmation.status
+  name:
+    zh: 通信或支持请求
+    en: Communication or support request
+- source_type: authoritative-relationship-inventory
+  channel: directory, support roster, partner inventory, and approved-contact workflow
+  required_fields:
+  - principal.id
+  - organization.id
+  - role
+  - known.contact
+  - support.queue
+  - relationship.valid_from
+  - relationship.valid_to
+  - workflow.owner
+  name:
+    zh: 权威关系清单
+    en: Authoritative relationship inventory
+- source_type: mfa-transaction-context
+  channel: IdP sign-in and MFA provider audit
+  required_fields:
+  - event.timestamp
+  - tenant.id
+  - user.id
+  - application.id
+  - request.id
+  - correlation.id
+  - challenge.id
+  - source.ip
+  - source.geo
+  - device.id
+  - displayed.application
+  - displayed.location
+  - response.result
+  - response.timestamp
+  name:
+    zh: MFA 事务情境
+    en: MFA transaction context
+- source_type: token-session-outcome
+  channel: IdP and relying-party session or resource audit
+  required_fields:
+  - event.timestamp
+  - user.id
+  - application.id
+  - correlation.id
+  - session.id
+  - token.issued
+  - sign_in.result
+  - resource.action
+  name:
+    zh: 令牌与会话结果
+    en: Token and session outcome
+observables:
+- zh: 外部支持或安保幌子
+  en: External support or security pretext
+- zh: 缺少登记工单
+  en: No registered support case
+- zh: 缺少独立回呼确认
+  en: Missing independent callback
+- zh: 通信与挑战时间对齐
+  en: Temporal alignment of communication and challenge
+- zh: 来源与显示情境不一致
+  en: Source-to-context mismatch
+- zh: 请求后批准与会话
+  en: Approval and session after request
+correlation:
+  window:
+    zh: 关联 challenge 前后十五分钟的通信与身份事件，并用三十天关系历史判断发送者和支持情境。
+    en: Join communication and identity events during fifteen minutes before and after the challenge and use thirty-day relationship
+      history to assess sender and support context.
+  dimensions:
+  - user.id
+  - sender_or_caller.id
+  - sender.tenant_id
+  - thread.id
+  - case.id
+  - application.id
+  - request.id
+  - correlation.id
+  - challenge.id
+  - source.ip
+  - device.id
+  - session.id
+false_positives:
+- zh: 合法服务台远程支持、MFA 注册或恢复、设备更换、入职培训、身份平台故障通知和获批红队会同时产生沟通与 challenge。要求工单、已知联系信息、实际支持队列、批准人、限定时段和用户主动请求；新外包商或收购后的新租户需要先更新权威关系清单，而不是永久白名单。
+  en: Legitimate help-desk support, MFA registration or recovery, device replacement, onboarding, identity-platform outage
+    notification, and authorized red teaming can produce both communication and challenge. Require a case, known contact,
+    actual support queue, approver, bounded window, and user initiation. New vendors or post-acquisition tenants require updates
+    to the authoritative relationship inventory rather than permanent allowlisting.
+blind_spots:
+- zh: 个人手机、端到端加密消息、面对面交谈和不受管邮箱可能没有企业遥测；真实支持账户或租户被攻陷会通过来源核验；通话内容缺失时 claimed role 与 requested action 只能来自用户报告。跨平台没有共同 ID 时，十五分钟关联只是强推断，时钟误差和批量日志延迟会破坏次序。
+  en: Personal phones, end-to-end encrypted messages, face-to-face conversation, and unmanaged mail may have no enterprise
+    telemetry. A compromised genuine support account or tenant passes provenance checks. Without call content, claimed role
+    and requested action may exist only in user reporting. A fifteen-minute join without a cross-platform common identifier
+    is strong inference rather than proof, and clock skew or batch-log delay can break ordering.
+tuning_guidance:
+  paragraphs:
+  - zh: 为支持、安保、身份恢复和外部合作建立权威联系人、队列与禁止事项，要求任何 MFA 协助带可核验工单，并把外部标签、关系新鲜度和缺少独立确认作为权重而非单独定罪。优先高权限用户、与 challenge 同时出现的即时消息、登录地与认证器地理不一致及批准后敏感资源访问；不在日志中保存
+      MFA 数字或 OTP 正文。
+    en: Maintain authoritative contacts, queues, and prohibited requests for support, security, identity recovery, and external
+      partners. Require any MFA assistance to carry a verifiable case and use external labeling, relationship novelty, and
+      missing independent confirmation as weights rather than standalone verdicts. Prioritize privileged users, messages coincident
+      with a challenge, divergence between sign-in and authenticator geography, and sensitive access after approval. Do not
+      store MFA numbers or OTP content in logs.
+  - zh: 用户拒绝或及时报告时，封锁发起来源、暂停 challenge 并保全通信与 IdP 记录；用户已批准时按 session 已签发处理，撤销 token/session、重置主凭据、核对认证器和设备变更并调查资源访问。若支持账户或租户被攻陷，除目标用户处置外还要吊销该通信主体、验证其他对话与工单，并恢复权威联系人目录。
+    en: On user denial or timely reporting, block the initiating origin, pause challenges, and preserve communication and
+      IdP records. After approval, treat the incident as potentially session-issued, revoke tokens and sessions, reset the
+      primary credential, check authenticator and device changes, and investigate resource access. If a support account or
+      tenant was compromised, revoke that communication principal, validate other conversations and cases, and restore the
+      authoritative contact directory in addition to remediating the target user.
+evidence_refs:
+- REF-000784
+- REF-000436
+- REF-000307
+- REF-000787
+- REF-000786
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-09-27'
+  modified: '2026-09-27'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

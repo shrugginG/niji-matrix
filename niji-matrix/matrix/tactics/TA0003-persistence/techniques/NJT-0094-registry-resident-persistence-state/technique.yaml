@@ -1,0 +1,159 @@
+schema_version: 2.0.0
+type: technique
+id: NJT-0094
+name:
+  zh: 注册表驻留持久状态
+  en: Registry-Resident Persistence State
+summary:
+  zh: 攻击者把以后会被系统、应用或载荷消费的状态保存在 Windows Registry，并可利用 kernel/API 字符串语义差让持久对象脱离标准工具盘点。
+  en: Adversaries retain state for later consumption by a system, application, or payload in the Windows Registry and can exploit kernel versus API string semantics to keep a persistent object out of standard-tool inventory.
+aliases:
+  - Modify Registry
+classification:
+  tactic_refs:
+    - TA0003
+  origin:
+    kind: attack-adapted
+    source_attack_id: T1112
+    source_attack_version: "19.1"
+  decision_ref: DEC-TA0003-T1112
+definition_and_concept:
+  paragraphs:
+    - zh: >-
+        注册表驻留持久状态是攻击者在 Windows Registry 中创建或修改键、值和访问属性，使配置、命令、载荷内容或引用、会话材料及激活参数在原写入进程和交互会话结束后仍被操作系统、服务、应用或攻击者 consumer 读取的技术。其直接目标是把维持访问所需状态放入系统提供的持久键值数据库，并在启动、应用事件或载荷恢复时重新消费，而不是要求写入动作本身执行代码。
+      en: >-
+        Registry-Resident Persistence State is a technique in which an adversary creates or changes Windows Registry keys, values, and access attributes so configuration, commands, payload content or references, session material, and activation parameters remain available to an operating system, service, application, or adversary consumer after the original writer and interactive session end. Its direct objective is to place state needed for continuing access in the system-provided persistent key-value database for later consumption at startup, an application event, or payload recovery rather than requiring the write itself to execute code.
+    - zh: >-
+        本技术的概念锚是可证明的 writer—Registry state—consumer—result 谱系，不是任何碰巧使用 Registry 的上层行为。Mandiant 对 FIN7 的调查直接展示 loader 从固定键读取、解压并执行 CARBANAK 载荷；该状态与触发它的 shim、服务启动和进程结果可以并列记录，但直接对象不同。Run/Winlogon 映射归 NJT-0084，服务定义归 NJT-0089，Office 启动扩展归 NJT-0095，认证路径归 NJT-0093；Registry 只是这些对象的介质时不吸收其语义。
+      en: >-
+        The conceptual anchor is demonstrable writer-to-Registry-state-to-consumer-to-result lineage rather than every upper-layer behavior that happens to use the Registry. Mandiant's FIN7 investigation directly shows a loader reading, decompressing, and executing a CARBANAK payload from a defined key. That state can be recorded alongside the shim, service startup, and process outcome that trigger it, but the direct objects remain different. Run or Winlogon mappings belong to NJT-0084, service definitions to NJT-0089, Office startup extensions to NJT-0095, and authentication paths to NJT-0093. This object does not absorb those semantics when the Registry is only their medium.
+stealth_characteristics:
+  paragraphs:
+    - zh: >-
+        注册表驻留持久状态处在软件安装、组策略、用户配置和应用缓存产生的大量合法变化之中，单独按未知路径或值名分类很难证明恶意。已支持的 Niji 变量更具体：kernel 用带长度字符串表示对象名，而常用 Win32 工具按 null 结尾字符串处理，攻击者可以创建 native/raw hive 中存在且可被兼容 consumer 使用、但 Regedit、reg query 或其他标准枚举报错、截断或遗漏的对象。Kovter 分析显示同一值在 Regedit、reg query 与 Autoruns 中出现不同结果。
+      en: >-
+        Registry-Resident Persistence State exists among high volumes of legitimate changes from software installation, Group Policy, user configuration, and application caches, making an unknown path or value name insufficient to establish maliciousness. The supported Niji variable is more specific: the kernel represents object names as counted strings while common Win32 tools process null-terminated strings, allowing an adversary to create an object that exists in native or raw-hive state and remains consumable by a compatible consumer but errors, truncates, or disappears in Regedit, reg query, or other standard enumeration. Kovter analysis shows different results for the same value across Regedit, reg query, and Autoruns.
+    - zh: >-
+        状态没有从系统中消失。Registry create/delete、value set 与 rename 事务、writer 进程和用户、原始名称字节、key/value hash、ACL、last-write、raw hive cell、native 与 Win32 查询结果、consumer read、后继进程/服务/网络事件仍能恢复谱系。软件更新、安装器、合法兼容层和扫描过程中正在变化的值会产生同形差异；缺少同一快照、等价权限或 consumer 结果时，只能报告 Registry 状态或视图异常。
+      en: >-
+        The state has not disappeared from the system. Registry create or delete, value set and rename transactions, writer process and user, raw name bytes, key or value hash, ACL, last-write time, raw hive cell, native and Win32 query results, consumer read, and later process, service, or network events can reconstruct lineage. Software updates, installers, legitimate compatibility layers, and values changing while a scan runs can create similar discrepancies. Without the same snapshot, equivalent privilege, or a consumer outcome, defenders can report only Registry-state or view anomaly.
+scope_boundary_definition:
+  paragraphs:
+    - zh: >-
+        本技术纳入攻击者控制的 Registry 状态在原会话之后仍存在，并由可识别的系统、应用或载荷 consumer 读取以保存或恢复访问的行为。判定至少需要稳定 key identity 或原始 hive 证据、写入来源、持续时间以及 consumer 或后继结果；只凭键名、路径、值类型或 Registry 修改命令不足。平台固定为 Windows，但 hive、用户/系统作用域、数据类型、写入 API 和上层用途不形成 Niji 子技术。
+      en: >-
+        This technique includes adversary-controlled Registry state that remains after the original session and is read by an identifiable system, application, or payload consumer to preserve or restore access. Classification requires at least stable key identity or raw-hive evidence, write origin, duration, and a consumer or downstream outcome. A key name, path, value type, or Registry-modification command alone is insufficient. The platform is Windows, but hive, user or system scope, data type, write API, and upper-layer purpose do not form Niji children.
+    - zh: >-
+        一次性修改且没有后续消费、只关闭安全设置、只获得凭据或只保存普通配置分别属于非持久修改、Defense Impairment、Credential Access 或正常状态。编码或加密 value 的内容遮蔽归 Obfuscated Files and Information；远程 Registry 只是写入来源；Registry virtualization 或 WOW64 视图差只有在攻击者有意控制并改变防守观察时才可能研究为匿迹变量。null/API 子项要求等价权限视图差，不能把 ACL 拒绝、传感器故障或工具自身 bug 混入。
+      en: >-
+        A one-time mutation with no later consumption, disabling only a security setting, obtaining only credentials, or storing ordinary configuration belongs respectively to nonpersistent change, Defense Impairment, Credential Access, or normal state. Content obscuration through encoded or encrypted values belongs to Obfuscated Files and Information. Remote Registry is only a write origin. Registry virtualization or WOW64 view differences become stealth research candidates only when adversary-controlled and shown to change defender observation. The null or API child requires an equivalent-privilege view difference and excludes ACL denial, sensor failure, and unrelated tool bugs.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+      - zh: >-
+          攻击者在取得用户 hive、系统 hive、应用配置或安装/服务写权限后，把载荷、解密材料、命令、服务器地址或重新激活参数保存为 Registry 状态，并让已有或新建 consumer 在启动、登录、应用事件或定期运行时读取。FIN7 的 loader 从 Registry 恢复 CARBANAK 内容展示了完整状态消费链；Kovter 则把 Run 与 file-association 状态放入用户 hive，使以后启动或文件处理重新触发。
+        en: >-
+          After obtaining write authority over a user hive, system hive, application configuration, installer, or service context, an adversary stores payload content, decryption material, commands, server addresses, or reactivation parameters as Registry state and has an existing or new consumer read it at startup, sign-in, an application event, or recurring execution. FIN7's loader recovering CARBANAK content from the Registry demonstrates complete state-consumption lineage, while Kovter places Run and file-association state in user hives for later startup or file handling.
+      - zh: >-
+          伪隐藏场景中，攻击者使用 native API 或能够传入带长度名称的代码创建含嵌入式 null 的对象，再让兼容 loader 或 Windows 路径消费它；常规事件响应脚本依赖 Regedit、reg query 或单一 Win32 wrapper 时可能把错误或截断当作对象不存在。目标不是让所有工具都不可见，而是在默认盘点与实际 consumer 之间制造稳定观察差。
+        en: >-
+          In a pseudo-hidden scenario, the adversary uses a native API or code able to pass a counted name to create an object with an embedded null and then uses a compatible loader or Windows path to consume it. Routine incident-response scripts relying on Regedit, reg query, or one Win32 wrapper can treat an error or truncation as object absence. The objective is not invisibility to every tool but a stable observation difference between default inventory and the actual consumer.
+  threat_model:
+    attacker_model:
+      paragraphs:
+        - zh: >-
+            父级行为要求攻击者具有目标 hive 和路径的写权限，知道哪一 consumer 会在何时、以什么安全上下文读取状态，并使值格式、长度、编码和 ACL 与 consumer 兼容。攻击者需要保持 consumer 存续或能够重建它；只写入无人读取的数据不能形成 Persistence。选择高频合法路径可降低单项显著性，但错误类型、权限或内容会导致应用故障、事件噪声或载荷无法恢复。
+          en: >-
+            The parent behavior requires write authority over the target hive and path, knowledge of which consumer will read state, when, and under which security context, and value format, length, encoding, and ACL compatible with that consumer. The adversary must keep the consumer available or be able to rebuild it; writing data no process reads cannot form Persistence. A high-volume legitimate path can reduce individual salience, but an incorrect type, permission, or content can break the application, generate event noise, or prevent payload recovery.
+        - zh: >-
+            伪隐藏实现还要求理解 kernel counted string 与 Win32 null-terminated string 差异、能够创建和以后定位带 null 的对象，并验证选定 consumer 不受工具解析限制。其优势受 Sysmon/ETW 或等价 Registry 事务采集、最小 ACL、独立 raw hive 采集、RootkitRevealer/RegDelNull 类视图和离线恢复限制。版本变化或 hive 修复也可能使隐藏对象不可用。
+          en: >-
+            A pseudo-hidden implementation additionally requires knowledge of kernel counted-string versus Win32 null-terminated-string semantics, the ability to create and later locate a null-bearing object, and validation that the selected consumer is not constrained by the same tool parsing. Sysmon or ETW-equivalent Registry transaction collection, least ACL, independent raw-hive acquisition, RootkitRevealer or RegDelNull-style views, and offline recovery constrain the advantage. Version changes or hive repair can also make the hidden object unusable.
+    defender_model:
+      paragraphs:
+        - zh: >-
+            防守方模型假定能够取得 Registry 对象创建/删除、值写入和重命名事件，保存设备、writer ProcessGuid/PID、用户、operation、目标与结果，并定期生成包含 key/value hash、ACL、last-write 和 owner 的可信状态快照。consumer 侧需要 Registry read 或可替代的加载、进程、服务和网络结果，以稳定 key identity、设备、进程与时间连接 writer—state—consumer。
+          en: >-
+            The defender model assumes Registry object create or delete, value set, and rename events with device, writer ProcessGuid or PID, user, operation, target, and result, plus periodic trusted snapshots containing key or value hash, ACL, last-write, and owner. The consumer side needs Registry read or substitute load, process, service, and network outcomes so writer, state, and consumer can be joined by stable key identity, device, process, and time.
+        - zh: >-
+            对伪隐藏对象，标准与 native/raw 查询必须针对同一 hive 快照、相同逻辑路径和等价读取权限，并记录原始名称字节、visible 状态与 error code。只在当前系统在线执行两次串行扫描会受到状态变化竞争影响；只比较不同权限会把 ACL 拒绝误判为 API 差。Registry 审计关闭、in-process consumer 无读取遥测、用户 hive 未装载或 raw parser 不支持当前版本都是关键盲区。
+          en: >-
+            For pseudo-hidden objects, standard and native or raw queries must use the same hive snapshot, same logical path, and equivalent read privilege while retaining raw name bytes, visible state, and error code. Two serial scans on a live system are exposed to state-change races, and different privileges can misclassify ACL denial as an API differential. Disabled Registry audit, an in-process consumer with no read telemetry, an unloaded user hive, or a raw parser unsupported for the current version are critical blind spots.
+stealth_mechanisms:
+  - mechanism_ref: NM-BT
+    role: primary
+    summary:
+      zh: API 字符串语义差使可消费状态脱离标准盘点
+      en: API string-semantic differential keeps consumable state out of standard inventory
+    analysis:
+      paragraphs:
+        - zh: >-
+            攻击者以 kernel 可保存的带长度名称创建包含嵌入式 null 的 Registry 对象，而常用 Win32 工具在 null 处结束字符串或无法正常打开、显示与删除对象。兼容 consumer 仍能读取真实状态，默认盘点却得到错误、截断名称、默认值外观或缺失结果。关键持久状态没有进入依赖成功枚举的分析逻辑，从而形成行为透明，而不是从 hive 中真正消失。
+          en: >-
+            The adversary creates a Registry object with a counted name containing an embedded null that the kernel can retain, while common Win32 tools terminate the string at the null or cannot correctly open, display, or delete the object. A compatible consumer still reads the real state, but default inventory receives an error, truncated name, default-value appearance, or omission. Critical persistent state does not enter analysis that depends on successful enumeration, producing Behavioral Transparency rather than actual absence from the hive.
+        - zh: >-
+            Sysinternals 直接解释 API 与 kernel 字符串差并提供 RegHide/RegDelNull，CrowdStrike 的 Kovter 分析直接展示多个工具对含 null/unreadable 值的不同结果和实际持久化。raw hive/native 差分、事务事件、原始名称字节和 consumer 结果可以恢复链条。父技术的普通 Registry 状态并不天然具有本机理，只有符合 NJS-0094-001 的视图差路径成立，因此父级机理为 medium，子项可根据直接证据保持 high。
+          en: >-
+            Sysinternals directly explains the API versus kernel string difference and provides RegHide and RegDelNull, while CrowdStrike's Kovter analysis directly demonstrates different results across tools for a null or unreadable value plus actual persistence. Raw-hive or native differential, transaction events, raw name bytes, and consumer outcomes can recover the chain. Ordinary Registry state under the parent does not inherently have this mechanism; it holds only for the NJS-0094-001 view-differential path, so parent confidence is medium while the child can remain high on direct evidence.
+    evidence_refs:
+      - REF-000188
+      - REF-000308
+      - REF-000309
+      - REF-000310
+    confidence: medium
+subtechnique_taxonomy:
+  narrative:
+    paragraphs:
+      - zh: >-
+          本技术只正式化 API 差分伪隐藏注册表键。其稳定变量是同一 Registry 对象在 kernel/native 或 raw hive 状态中存在并可被 consumer 使用，但在等价权限的标准 Win32 视图中报错、截断或缺失；检测必须比较视图并恢复 consumer。普通 Registry 驻留、路径冷僻、随机名称、ACL 限制、编码内容和远程写入没有同一独立观察因果，保留为父级、邻接技术或实现因素。
+        en: >-
+          This technique formalizes only API-Differential Pseudo-Hidden Registry Key. Its stable variable is one Registry object that exists and remains consumable in kernel or native or raw-hive state but errors, truncates, or disappears in an equivalent-privilege standard Win32 view. Detection must compare views and recover the consumer. Ordinary Registry residence, obscure path, random name, ACL restriction, encoded content, and remote writing lack the same independent observation causality and remain parent behavior, adjacent technique, or implementation factors.
+      - zh: >-
+          ATT&CK T1112 在固定版本无子技术，但开放检索覆盖了名称、内容、来源、ACL、WOW64/virtualization、事务和 API 可见性。只有 null/counted-string 路径同时具有攻击者可控性、跨工具稳定差异、直接案例和独立恢复动作。WOW64 与 virtualization 多为正常平台分区，ACL 需要不同权限而不是等价视图，加密内容归数据遮蔽；证据不足的其他轴不为增加数量而正式化。
+        en: >-
+          Fixed-version ATT&CK T1112 has no children, but open search covered naming, content, origin, ACL, WOW64 or virtualization, transactions, and API visibility. Only the null or counted-string path has adversary control, stable cross-tool difference, a direct case, and an independent recovery action. WOW64 and virtualization are ordinarily platform partitions, ACL requires different privilege rather than an equivalent view, and encrypted content belongs to data obscuration. Other under-supported axes are not formalized to increase count.
+  coverage: established
+  subtechnique_refs:
+    - NJS-0094-001
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+      - DET-000074
+  mitigations:
+    coverage: available
+    mitigation_refs:
+      - MIT-000074
+evidence:
+  claim_refs:
+    - CLM-000380
+    - CLM-000381
+  case_refs:
+    - CASE-000113
+    - CASE-000114
+  reference_refs:
+    - REF-000188
+    - REF-000230
+    - REF-000308
+    - REF-000309
+    - REF-000310
+    - REF-000311
+research:
+  limitations:
+    paragraphs:
+      - zh: >-
+          证据层级必须区分。FIN7 直接证明 Registry payload 被启动 loader 消费并形成进程结果，但没有 null/API 差分，只支持父级；Kovter 和 Sysinternals 直接支持 null/unreadable 名称、跨工具差异和专用清除，支持子项。ATT&CK 汇总还包含大量只证明 Registry 修改的过程，不自动证明状态跨会话消费或攻击者利用视图差匿迹。
+        en: >-
+          Evidence levels must remain separate. FIN7 directly establishes a Registry payload consumed by a startup loader to produce a process outcome but contains no null or API differential and supports only the parent. Kovter and Sysinternals directly support null or unreadable names, cross-tool differences, and specialized removal and support the child. ATT&CK also aggregates many procedures proving only Registry modification and does not automatically establish cross-session consumption or adversary use of a view differential for stealth.
+      - zh: >-
+          kernel、Win32 工具、Sysmon 和 raw parser 的行为随 Windows 与工具版本变化；并非所有 consumer 都能重新打开含 null 对象。在线两次扫描会受到值变化竞争，离线 hive 采集与专用清除又可能影响业务或遗漏未装载用户 hive。具体事件必须验证同一快照、等价权限、原始名称和 consumer 结果；未知键或查询错误本身只能维持异常结论。
+        en: >-
+          Kernel, Win32 tool, Sysmon, and raw-parser behavior changes across Windows and tool versions, and not every consumer can reopen a null-bearing object. Two live serial scans are exposed to value-change races, while offline hive acquisition and specialized removal can affect business or miss unloaded user hives. A specific event must validate the same snapshot, equivalent privilege, raw name, and consumer outcome. An unknown key or query error alone remains only an anomaly.
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: "2026-09-11"
+  modified: "2026-09-12"
+  contributors:
+    - Niji Matrix Research
+  reviewers: []

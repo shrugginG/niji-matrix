@@ -1,0 +1,184 @@
+schema_version: 2.0.0
+type: technique
+id: NJT-0120
+name:
+  zh: 网络信号门控功能暴露
+  en: Network-Signal-Gated Function Exposure
+summary:
+  zh: 攻击者让端口、后门或隐藏动作只在预定义网络信号匹配后激活，使普通探测看到关闭或无响应状态。
+  en: Adversaries activate a port, backdoor, or hidden action only after a predefined network signal matches, causing
+    ordinary probing to see a closed or unresponsive state.
+aliases:
+- Traffic Signaling
+- T1205
+classification:
+  tactic_refs:
+  - TA0003
+  - TA0005
+  - TA0011
+  origin:
+    kind: attack-adapted
+    source_attack_id: T1205
+    source_attack_version: '19.1'
+  decision_ref: DEC-TA0005-T1205
+definition_and_concept:
+  paragraphs:
+  - zh: 网络信号门控功能暴露是攻击者在主机、网络设备或植入中部署被动信号处理逻辑，使功能只在预定义端口/数据包序列达到匹配状态，或单个数据包的头字段、魔数、载荷模式命中时开放监听、重定向流量、执行任务或建立反向控制通道。直接目的在于让隐藏功能平时不呈现可持续扫描的服务面。
+    en: Network-Signal-Gated Function Exposure is adversary deployment of passive signal-processing logic in a host,
+      network device, or implant so functionality opens a listener, diverts traffic, executes a task, or establishes
+      a reverse control channel only when a predefined port or packet sequence reaches a matched state or one packet
+      matches a header field, magic value, or payload pattern. Its immediate purpose is to keep hidden functionality
+      from presenting a continuously scannable service surface.
+  - zh: 概念锚是信号输入、匹配状态、功能从隐藏到可用的转变以及后继会话，而不是 TCP、UDP、ICMP、端口号或认证密码。普通协议握手对公开服务进行身份确认；本技术在信号前不暴露真实服务或端口，信号本身可能通过关闭端口、任意正常端口或被动
+      socket filter 进入。
+    en: The conceptual anchor is signal input, match state, the transition of functionality from hidden to available,
+      and the successor session rather than TCP, UDP, ICMP, port number, or an authentication password. Ordinary protocol
+      handshakes authenticate to an exposed service. Before the signal, this technique does not expose the real service
+      or port, and the signal can arrive through closed ports, any ordinary port, or a passive socket filter.
+  - zh: 本技术服务于入侵维持的条件不是信号本身长期存在，而是目标侧 matcher 和隐藏功能由改写映像、启动脚本、systemd/RC 状态、驱动或其他持久载体在中断后继续保存或重新加载，并由后续信号实际恢复入口。载体保留其相邻技术归属，NJT-0120 只拥有信号匹配到隐藏功能激活的关系。
+    en: The technique serves Persistence not because the signal itself is durable but because a modified image startup script systemd or RC state driver or another durable carrier preserves or reloads the target-side matcher and hidden function after interruption and a later signal actually restores the entry. The carrier retains adjacent-technique ownership while NJT-0120 owns only the signal-match-to-hidden-function-activation relation.
+stealth_characteristics:
+  paragraphs:
+  - zh: 网络信号门控功能暴露使未掌握信号的扫描只看到关闭端口、丢弃流量或正常业务响应。有状态序列把若干看似失败的连接分散在多个端口或时间点，只有完整顺序才产生状态转变；内容模式触发则让任意正常端口承载特殊字段并把流量转入隐藏
+      socket，真实后门端口不出现在外部目的地中。
+    en: Network-Signal-Gated Function Exposure causes scanning without the signal to see only closed ports, dropped traffic,
+      or normal business responses. A stateful sequence distributes apparently failed connections across ports or time
+      and transitions only after the full order. Content-pattern activation lets any ordinary port carry special fields
+      and diverts matching traffic into a hidden socket, leaving the real backdoor port absent from the external destination.
+  - zh: 原始与丢弃包、序列状态、包内容与响应异常、socket/WFP/BPF 过滤器、主机防火墙或 ACL 变化、监听和进程、反向连接与后继命令仍留痕。完整流量和主机状态关联会限制匿迹；NAT、丢包、加密、边界预过滤和高权限内核植入会破坏来源或内容可见性。
+    en: Raw and dropped packets, sequence state, packet content and response anomalies, socket, WFP, or BPF filters,
+      host firewall or ACL changes, listeners and processes, reverse connections, and successor commands remain observable.
+      Full-traffic-to-host-state correlation constrains stealth. NAT, packet loss, encryption, edge prefiltering, and
+      privileged kernel implants can break source or content visibility.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 纳入攻击者控制的被动网络信号匹配、可验证的隐藏→激活状态转变以及后继监听、重定向、进程或控制会话。判定需要把信号与同一目标上的状态变化和实际功能连接；一个稀有包、端口扫描或短暂连接单独不足以成立。
+    en: Scope includes adversary-controlled passive network-signal matching, a verifiable hidden-to-active state transition,
+      and a successor listener, diversion, process, or control session. Classification requires the signal to join to
+      a state change and real function on the same target. One rare packet, port scan, or transient connection alone
+      is insufficient.
+  - zh: 正常认证、协议协商、服务发现、健康检查、负载均衡、合法端口敲击管理、动态防火墙自动化和始终可访问服务是反例。需要累积有序事件归 NJS-0120-001，单包字段/内容匹配归 NJS-0120-002；普通 C2 握手、漏洞触发包和仅隐藏端口而无信号激活的根套件分别保留相邻边界。
+    en: Ordinary authentication, protocol negotiation, service discovery, health checks, load balancing, legitimate port-knocking
+      administration, dynamic-firewall automation, and continuously accessible services are counterexamples. Ordered
+      events that must accumulate belong to NJS-0120-001, while a single packet field or content match belongs to NJS-0120-002.
+      Ordinary C2 handshakes, exploit trigger packets, and a rootkit that only hides a port without signal activation
+      retain adjacent boundaries.
+  - zh: TA0003 还要求 matcher 与被门控入口跨越重启、原始会话结束、配置变化或其他中断仍存续或可重载，并由中断后的新信号恢复访问。Wake-on-LAN 只恢复电源，一次本地任务只证明执行，只有恶意映像、启动项或服务定义只证明载体；它们都不能替代 carrier→reload→signal→access 的闭合链。
+    en: TA0003 additionally requires the matcher and gated entry to survive or reload across reboot original-session termination configuration change or another interruption and a new post-interruption signal to restore access. Wake-on-LAN restores power only a local task establishes execution only and a malicious image startup item or service definition establishes a carrier only. None replaces a closed carrier-to-reload-to-signal-to-access chain.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: 后门可维护按来源隔离的端口敲击状态，在正确序列完成后短暂写入防火墙规则或回连操作者；路由器或内核植入也可被动检查发往常用端口的 TCP 序列/确认号、ICMP 载荷或固定魔数，并把匹配流量重定向至隐藏随机端口。SYNful
+        Knock 与 SprySOCKS 分别展示非标准 TCP 字段和 WFP 内容过滤激活。
+      en: A backdoor may maintain source-scoped port-knock state and briefly write a firewall rule or connect back to
+        the operator after the correct sequence. A router or kernel implant can instead passively inspect TCP sequence
+        and acknowledgment values, ICMP payloads, or fixed magic values sent to ordinary ports and divert matching traffic
+        to a hidden random port. SYNful Knock and SprySOCKS respectively demonstrate nonstandard TCP fields and WFP content-filter
+        activation.
+    - zh: 在 Persistence 场景中，SYNful Knock 的改写 IOS 映像让基础 matcher 与入口跨重启存续，而附加运行时模块仍可能丢失；UNC3886 则以 RC 脚本或 systemd 状态重新加载 REPTILE 内核组件，再由专用 TCP、UDP、ICMP 包或端口敲击恢复后门。两个案例都要求把载体、重载、信号和访问分开保留。
+      en: In a Persistence scenario the modified IOS image in SYNful Knock keeps the base matcher and entry across reboot while additional runtime modules may be lost. UNC3886 reloads REPTILE kernel components through RC scripts or systemd state and restores the backdoor through specialized TCP UDP or ICMP packets or port knocking. Both cases require carrier reload signal and access to be retained separately.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者需要在目标上安装能看到预服务流量的处理逻辑，保存序列状态或解析包内容，并安全地把命中连接到隐藏功能。其操作者必须知道顺序、字段、魔数、时间窗口和可能的响应挑战。网络中间件、NAT、乱序与丢包会破坏状态序列，内容规范化和加密会影响单包匹配；稳定信号一旦泄露即可被重放、扫描或写入签名。
+        en: The adversary needs signal-processing logic on the target that can observe pre-service traffic, retain sequence
+          state or parse packet content, and safely connect a match to hidden functionality. Operators must know the
+          order, fields, magic value, timing window, and possible response challenge. Middleboxes, NAT, reordering, and
+          loss disrupt stateful sequences, while content normalization and encryption affect single-packet matching.
+          Once disclosed, a stable signal can be replayed, scanned, or converted into a signature.
+      - zh: 若主张 Persistence，攻击者还必须把 matcher 与隐藏功能绑定到可跨中断恢复的载体，并理解启动顺序、驱动或模块兼容性、防火墙状态和后继会话条件。仅在当前进程内保存匹配状态的实现不能满足该结果门；升级或修复破坏重载链也会终止入口。
+        en: A Persistence claim additionally requires the adversary to bind matcher and hidden function to a carrier recoverable across interruption and understand boot order driver or module compatibility firewall state and successor-session conditions. An implementation whose match state exists only in the current process fails the outcome gate and upgrades or repair that break reload lineage can terminate the entry.
+    defender_model:
+      paragraphs:
+      - zh: 防守方可观察全包或高保真流量、关闭端口尝试、顺序与载荷摘要、异常 TCP 响应、过滤器命中与配置、ACL/防火墙变化、socket/监听、进程和后继会话，并用来源—目标—时间—进程稳定键关联。只保留已建立连接、边界设备先行丢弃信号、NAT
+          合并来源、加密内容不可见或内核过滤器未清点时形成盲区；合法敲击和网络自动化需 owner 与用途基线。
+        en: Defenders can observe full packets or high-fidelity flow, closed-port attempts, ordering and payload digests,
+          anomalous TCP responses, filter matches and configuration, ACL or firewall changes, sockets or listeners, processes,
+          and successor sessions and correlate them through stable source, target, time, and process keys. Blind spots
+          arise when only established connections are retained, edge devices discard the signal first, NAT merges sources,
+          encrypted content is unavailable, or kernel filters are not inventoried. Legitimate knocking and network automation
+          require owner and purpose baselines.
+      - zh: TA0003 观察还需把映像、启动项、module 或 filter load 状态与 boot ID、配置变化、首次后继信号和恢复会话连接。单一流量窗口可以识别 T1205，却不能证明跨中断入口；缺少 carrier 或 boot telemetry 时应保持 Persistence 未决。
+        en: TA0003 observation additionally joins image startup-item module or filter-load state to boot identity configuration changes first successor signal and restored session. One traffic window can identify T1205 but cannot establish a post-interruption entry and missing carrier or boot telemetry keeps Persistence unresolved.
+stealth_mechanisms:
+- mechanism_ref: NM-BT
+  role: primary
+  summary:
+    zh: 信号匹配边界把隐藏功能隔离在普通探测之外
+    en: The signal-match boundary isolates hidden functionality from ordinary probing
+  analysis:
+    paragraphs:
+    - zh: 攻击者让功能在非匹配时不存在于可见服务面，痕迹从持续监听变为短暂信号与激活结果；普通探测无法跨越信令边界，形成行为透明。
+      en: The adversary makes functionality absent from the visible service surface when no match occurs, changing traces
+        from continuous listening to a brief signal and activation outcome. Ordinary probing cannot cross the signaling
+        boundary, producing Behavioral Transparency.
+  evidence_refs:
+  - REF-000408
+  - REF-000440
+  - REF-000441
+  confidence: high
+subtechnique_taxonomy:
+  narrative:
+    paragraphs:
+    - zh: 子技术按匹配器的状态模型与所需遥测划分。NJS-0120-001“有状态信号序列激活”必须按来源累计多个有序端口或数据包事件，需要跨包状态机、顺序与超时关联；NJS-0120-002“内容模式数据包激活”由单个包中的特殊头字段、魔数或载荷模式触发，需要内容解析、过滤器命中和目标
+        socket/重定向关联。
+      en: Children are divided by matcher state model and required telemetry. NJS-0120-001 Stateful Signal-Sequence Activation
+        accumulates several ordered port or packet events by source and requires a cross-packet state machine, ordering,
+        and timeout correlation. NJS-0120-002 Content-Pattern Packet Activation is triggered by a special header field,
+        magic value, or payload pattern in one packet and requires content parsing, filter-match, and target-socket or
+        diversion correlation.
+    - zh: TCP/UDP/ICMP、端口号、magic value 和 WFP/BPF 产品只是实现。一次复杂触发可能先用单包字段建立挑战再交换命令，但分类以初始隐藏→激活所需的匹配状态为准；两项可组合而不互相替代。
+      en: TCP, UDP, ICMP, port number, magic value, and WFP or BPF product are implementations. A complex trigger can
+        use one packet field to establish a challenge before exchanging commands, but classification follows the match
+        state required for the initial hidden-to-active transition. Both children can combine without replacing one another.
+  coverage: established
+  subtechnique_refs:
+  - NJS-0120-001
+  - NJS-0120-002
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000117
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000118
+evidence:
+  claim_refs:
+  - CLM-000615
+  - CLM-000616
+  - CLM-000651
+  - CLM-000652
+  - CLM-001135
+  case_refs:
+  - CASE-000162
+  - CASE-000163
+  - CASE-000318
+  - CASE-000171
+  reference_refs:
+  - REF-000408
+  - REF-000440
+  - REF-000441
+  - REF-001060
+  - REF-000453
+  - REF-000179
+research:
+  limitations:
+    paragraphs:
+    - zh: ATT&CK 直接支持端口序列与 socket filter，SYNful Knock 和 SprySOCKS 进一步直接证明特殊 TCP 字段与内核内容过滤激活，因此父行为和二分边界为高置信。有状态序列的具体窗口依赖实现，单包内容在加密或中间件规范化后可能不可见；归因必须连续连接信号、主机状态转变和后继会话，不能从稀有包或未知过滤器单独推断。
+      en: ATT&CK directly supports port sequences and socket filters, while SYNful Knock and SprySOCKS directly establish
+        special TCP fields and kernel content-filter activation, giving high confidence to the parent behavior and two-way
+        boundary. Concrete windows for stateful sequences depend on implementation, and single-packet content can become
+        invisible after encryption or middlebox normalization. Attribution must continuously join signal, host-state
+        transition, and successor session and cannot be inferred from a rare packet or unknown filter alone.
+    - zh: 公开 Persistence 证据对内容模式入口最强：SYNful Knock 明确跨重启，REPTILE 明确具有启动加载与专用包激活。有状态序列的 cd00r 资料只直接证明顺序打开 root shell，没有证明 matcher 跨重启存续；因此 NJS-0120-001 的 TA0003 使用必须另证持久载体、重载和后继恢复，不能由 Port Knocking 名称自动推断。
+      en: Public Persistence evidence is strongest for content-pattern entry. SYNful Knock explicitly survives reboot and REPTILE has explicit startup loading plus specialized-packet activation. Existing cd00r material directly establishes an ordered sequence opening a root shell but not survival of its matcher across reboot. TA0003 use of NJS-0120-001 therefore requires separate durable-carrier reload and successor-restoration evidence and cannot be inferred from the Port Knocking label.
+lifecycle:
+  status: review
+  version: 0.3.0
+  created: '2026-09-20'
+  modified: '2026-10-22'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

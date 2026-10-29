@@ -1,0 +1,178 @@
+handoff_schema_version: 2.0.0
+type: technique-research-handoff
+batch_ref: BATCH-TA0004-002
+work_item_ref: WORK-TA0004-T1134
+temporary_key_prefix: B4-002-T1134
+candidate:
+  source_type: attack
+  source_attack_id: T1134
+  name: {zh: 访问令牌操纵, en: Access Token Manipulation}
+recommendation:
+  decision: adapt
+  confidence: high
+  rationale:
+    paragraphs:
+    - zh: ATT&CK 19.1 与 Windows 官方安全模型共同证明，访问令牌决定进程或线程的有效安全上下文，攻击者可复制、创建、绑定或改变令牌来取得更高权限。该父行为与 TA0004 直接相关，但 ATT&CK 子技术混合了令牌来源、承载体、进程谱系和持久目录状态；Niji 因而适配为三个能独立改变痕迹与防守关联的变量，而不导入五项 ATT&CK 子技术。
+      en: ATT&CK 19.1 and the official Windows security model jointly establish that access tokens determine the effective security context of a process or thread and that adversaries can duplicate, create, bind, or modify tokens to obtain greater privilege. The parent behavior is directly relevant to TA0004, but ATT&CK children mix token source, carrier, process lineage, and durable directory state. Niji therefore adapts the behavior into three variables that independently change traces and defender correlation rather than importing the five ATT&CK children.
+proposed_content:
+  name: {zh: 访问令牌安全上下文置换, en: Access-Token Security-Context Substitution}
+  summary:
+    zh: 攻击者把外来身份绑定到线程或新进程，或激活同一令牌中的休眠权限，使可见进程身份、创建谱系或静态令牌状态与实际高权限操作分离。
+    en: Adversaries bind foreign identity to a thread or new process or activate dormant privileges in the same token, separating visible process identity, creation lineage, or static token state from the actual privileged operation.
+  definition_and_concept:
+    paragraphs:
+    - zh: 访问令牌安全上下文置换是攻击者有意改变 Windows 在某次资源访问或系统操作中采用的有效令牌状态，使受控线程或进程以不同身份、组或已启用权限完成原上下文不能完成的动作。直接对象是令牌与线程/进程承载体的绑定、令牌所代表的身份来源和权限属性，而不是 API 名称、凭据本身、进程映像或目标资源。技术成立需要可识别的令牌取得、创建、赋值或权限状态变化，以及由该变化产生的更高有效权限结果。
+      en: Access-Token Security-Context Substitution is the deliberate alteration of the effective token state Windows applies to a resource access or system operation, allowing a controlled thread or process to act with a different identity, group set, or enabled privilege than its original context. Its direct objects are token binding to a thread or process, token identity provenance, and privilege attributes—not API names, the credential itself, process image, or target resource. The technique requires an identifiable token acquisition, creation, assignment, or privilege-state change and a higher-effective-authority outcome caused by that change.
+    - zh: Windows 为每个进程提供主令牌，线程还可在模拟期间采用第二个模拟令牌；访问令牌包含用户与组 SID、登录会话、权限、来源、类型和模拟级别。创建新进程时，外来主令牌可以决定新进程的安全上下文；在同一令牌内，AdjustTokenPrivileges 只能启用、禁用或删除已有权限，不能授予原本不存在的权限。因此“换身份”“换承载体”和“改变已有权限位”是不同状态转换，必须保留各自前态、变更者和后继操作。
+      en: Windows gives every process a primary token while a thread can use a second impersonation token during impersonation; access tokens carry user and group SIDs, logon session, privileges, source, type, and impersonation level. For new-process creation, a foreign primary token can determine the new process security context. Within one token, AdjustTokenPrivileges can enable, disable, or remove existing privileges but cannot grant a privilege that was absent. Identity substitution, carrier substitution, and mutation of existing privilege bits are therefore different state transitions whose prior state, changer, and successor operation must remain distinct.
+  stealth_characteristics:
+    paragraphs:
+    - zh: 核心匿迹矛盾是攻击者必须留下足以让 Windows 授予访问的真实令牌状态，却希望防守方依据进程映像、PID、显示父级、创建主体或静态用户 SID 得出错误归因。线程模拟让进程主令牌与操作时有效令牌不一致；外来令牌或选定父级创建进程让调用者、显示父级、目标主体和令牌来源不再形成单一谱系；选择性权限激活则在身份、登录会话和进程均不变化时改变操作能力。
+      en: The central stealth tension is that the adversary must leave genuine token state sufficient for Windows to authorize access while hoping defenders misattribute the action from process image, PID, displayed parent, creator subject, or static user SID. Thread impersonation makes the process primary token differ from the operation-time effective token. Creating a process with a foreign token or selected parent prevents caller, displayed parent, target subject, and token source from forming one lineage. Selective privilege activation changes capability even while identity, logon session, and process remain unchanged.
+    - zh: 这种匿迹不消除令牌痕迹，而是把令牌取得、绑定或变化与高权限结果分散到进程访问、登录、线程、创建事件和资源审计中。正常服务模拟、runas、运维代理、计划任务、安装器和安全产品也会产生相似令牌转换，单个 API、SYSTEM 身份或父子异常不能单独定性。能够保留 token identifier/AuthenticationId、线程 ID、主/模拟类型、来源进程或登录、创建者/目标主体、真实与显示父级、权限前后态和首个敏感操作的防守方，可以重新恢复因果链。
+      en: This stealth does not erase token evidence; it distributes acquisition, assignment, or mutation and privileged outcome across process access, logon, thread, creation, and resource audit. Legitimate service impersonation, runas, management agents, scheduled tasks, installers, and security products can produce similar transitions, so one API, SYSTEM identity, or parent-child anomaly is not dispositive. Defenders retaining token identifier or AuthenticationId, thread ID, primary or impersonation type, source process or logon, creator and target subjects, actual and displayed parent, privilege before and after state, and first sensitive action can reconstruct causality.
+  scope_boundary_definition:
+    paragraphs:
+    - zh: 纳入范围包括取得或创建外来令牌后把它赋给现有线程、使用外来主令牌创建新进程、在获得足够父进程句柄访问时让新进程继承更高上下文，以及启用当前令牌中原已存在但禁用的特权后执行受保护操作。只有令牌变化造成 TA0004 高权限结果时，本对象才承担 Privilege Escalation 语义；同一行为可能同时具有 Stealth 效果，但不能仅凭伪装父进程或正常身份外观推断已经提权。
+      en: Scope includes assigning an obtained or created foreign token to an existing thread, creating a process with a foreign primary token, inheriting higher context through sufficient access to a selected parent, and enabling an existing but disabled privilege in the current token before a protected operation. This object owns Privilege Escalation semantics only when the token transition causes the higher-authority outcome. The same behavior may also serve Stealth, but a spoofed parent or familiar identity appearance alone does not establish elevation.
+    - zh: 对既有账户写入 SID-History、组、角色、凭据或其他持久授权边，直接归 NJT-0083/NJS-0083-002 及后续 TA0004 的 T1098 决议；由软件漏洞直接获得令牌或内核权限归 T1068；向另一进程写入或执行代码归 T1055；绕过 UAC、sudo、TCC 或临时云提权控制归 NJT-0098。只使用已经有效的高权限账户、普通 CreateProcess、合法服务模拟或没有权限结果的 PPID 断树均不足以归入本技术。
+      en: Writing SID-History, group, role, credential, or another durable authorization edge on an existing account belongs directly to NJT-0083 and NJS-0083-002 and the later TA0004 T1098 decision. Obtaining a token or kernel authority directly through a software flaw belongs to T1068; writing or executing code inside another process belongs to T1055; bypassing UAC, sudo, TCC, or temporary cloud elevation controls belongs to NJT-0098. Mere use of an already-privileged account, ordinary CreateProcess, legitimate service impersonation, or PPID tree breaking without a privilege outcome is insufficient.
+  application_scenarios_and_threat_model:
+    application_scenarios:
+      paragraphs:
+      - zh: 常见场景始于已能在 Windows 主机执行的攻击者寻找更高权限进程、登录会话或当前令牌中的可用特权。攻击者可能复制 SYSTEM 或另一用户的令牌并临配到受控线程，使原进程继续承载网络、文件或注册表操作；也可能把令牌转换为主令牌后启动新进程，选择看似正常或更高权限的父体；或者只在读取高权限进程、加载驱动、备份文件等动作前启用 SeDebug、SeLoadDriver、SeBackup 等已有权限。
+        en: A common scenario begins with an adversary already executing on a Windows host and searching for a higher-privileged process, logon session, or usable privilege in the current token. The adversary may duplicate a SYSTEM or other-user token and assign it to a controlled thread so the original process continues carrying network, file, or registry operations; convert a token to a primary token and start a new process while selecting a plausible or higher-privileged parent; or enable an existing privilege such as SeDebug, SeLoadDriver, or SeBackup only before reading privileged processes, loading a driver, or accessing protected files.
+    threat_model:
+      attacker_model:
+        paragraphs:
+        - zh: 攻击者需要控制能够调用令牌与进程 API 的代码，并拥有获得目标令牌句柄、复制或查询令牌、模拟客户端、创建带令牌进程、访问选定父进程或调整权限所需的访问权和 Windows 用户权限。窃取管理员或 SYSTEM 令牌通常要求已处于管理员上下文，但凭据创建的模拟令牌不一定要求管理员；选择性权限激活则要求该权限已存在于令牌。攻击者还必须知道目标令牌的身份、完整性、会话、类型和模拟能力，并在令牌或句柄有效时完成操作。
+          en: The adversary needs controlled code able to call token and process interfaces plus the access rights and Windows user rights required to obtain a target token handle, duplicate or query a token, impersonate a client, create a process with a token, access a selected parent, or adjust privileges. Stealing an administrator or SYSTEM token generally requires an existing administrative context, whereas credential-created impersonation tokens need not; selective privilege activation requires the privilege to be present already. The adversary must also understand the token identity, integrity, session, type, and impersonation capability and act while the token or handle remains usable.
+      defender_model:
+        paragraphs:
+        - zh: 防守方模型假定至少能取得进程/线程与令牌遥测、登录会话、Security 4688 或等价创建主体/目标主体、ETW 或内核实际调用者、Sysmon/EDR 父进程 GUID 与进程访问、权限使用和高价值资源结果，并能用设备、时间、PID/TID、token ID、AuthenticationId/LogonId 和进程 GUID 连接。缺少线程有效令牌、令牌来源或权限前态时，只能形成不完整推断，不能从 SYSTEM 子进程或 AdjustTokenPrivileges 名称直接断言恶意。
+          en: The defender model assumes at least process or thread and token telemetry, logon sessions, Security 4688 or equivalent creator and target subjects, ETW or kernel actual caller, Sysmon or EDR parent process GUID and process access, privilege use, and high-value resource outcome, joined through device, time, PID or TID, token ID, AuthenticationId or LogonId, and process GUID. Without thread effective token, token origin, or privilege prior state, the result is an incomplete inference; a SYSTEM child or AdjustTokenPrivileges name alone cannot prove maliciousness.
+        - zh: 反例基线必须覆盖 IIS/SQL 等服务代理的客户端模拟、备份和调试工具、runas、软件部署、EDR/反病毒、自助服务、计划任务及受控运维。允许项必须绑定服务身份、二进制签名与哈希、调用链、目标身份或权限、资产角色、维护窗口和预期资源结果，不能永久允许某个 API、父进程或 SYSTEM。内核级攻击者可能直接改写令牌结构或破坏传感器，跨设备令牌使用也会超出单主机关联范围。
+          en: Counterexample baselines must cover client impersonation by services such as IIS or SQL, backup and debugging tools, runas, software deployment, EDR or antivirus, self-service components, scheduled tasks, and controlled administration. Allow logic must bind service identity, binary signer and hash, call chain, target identity or privilege, asset role, maintenance window, and expected resource outcome rather than permanently trusting an API, parent process, or SYSTEM. A kernel-level adversary may directly alter token structures or impair sensors, and cross-device token use can exceed a single-host join.
+  stealth_mechanisms:
+  - mechanism_ref: NM-BT
+    role: primary
+    summary: {zh: 令牌来源、承载体与高权限结果跨越线程和进程观察边界, en: Token origin carrier and privileged outcome cross thread and process observation boundaries}
+    analysis:
+      paragraphs:
+      - zh: 攻击者复制或创建一个更高权限令牌，再把它放入现有线程或以其创建新进程；可进一步选择一个正常或 SYSTEM 父体。该行为设计把权威来源从原始取得事件搬到另一个承载体。痕迹因此从单一进程身份变成来源进程/登录、令牌对象、线程或新进程、显示父级与资源结果的离散事件。只读取进程主令牌或显示树的防守观察会把操作归给载体或伪装父体，真实提权路径在边界处中断，产生边界穿越匿迹。用 token ID/AuthenticationId、TID、实际调用者、显示父级和首个高权限结果恢复端到端谱系，才能抵消效果。
+        en: The adversary duplicates or creates a higher-authority token and places it on an existing thread or uses it to create a process, optionally selecting a plausible or SYSTEM parent. The design moves authority provenance from the acquisition event into another carrier. The trace changes from one process identity into discrete source-process or logon, token object, thread or new process, displayed parent, and resource-outcome events. A defender observing only the process primary token or displayed tree attributes the action to the carrier or spoofed parent, breaking the real elevation path at the boundary and producing Boundary Traversal. Reconstructing end-to-end lineage with token ID or AuthenticationId, TID, actual caller, displayed parent, and first privileged outcome counters the effect.
+    evidence_keys: [B4-002-T1134-REF-01, B4-002-T1134-REF-02, B4-002-T1134-REF-03, B4-002-T1134-REF-04, B4-002-T1134-REF-05, B4-002-T1134-REF-07, B4-002-T1134-REF-08]
+    confidence: high
+  - mechanism_ref: NM-ST
+    role: secondary
+    summary: {zh: 同一令牌的权限位突变隐藏在稳定身份与进程外观之内, en: A privilege-bit transition inside one token hides behind stable identity and process appearance}
+    analysis:
+      paragraphs:
+      - zh: 攻击者保持进程、用户 SID、登录会话和令牌来源不变，只在敏感动作前启用令牌中已有但禁用的权限。行为设计避免创建新身份或新授权边；痕迹变化集中为短时 privilege attributes 差异和随后权限消费。若防守方把令牌视为登录时生成的静态清单，稳定身份与进程外观会掩盖能力转折，权限结果看似来自原上下文，产生时序操纵。记录前后态并在短窗口内连接变更者、目标令牌、权限名称与实际受保护操作，可恢复转折；SUNSPOT 的 SeDebugPrivilege 激活与后继进程内存读取直接证明该链。
+        en: The adversary preserves process, user SID, logon session, and token origin while enabling an existing but disabled token privilege immediately before a sensitive action. The design avoids a new identity or authorization edge; the trace changes primarily through a short privilege-attribute delta followed by privilege consumption. If defenders treat a token as a static inventory created at logon, stable identity and process appearance conceal the capability transition and make the outcome look native to the original context, producing Temporal Manipulation. Recording before and after state and joining adjuster, target token, privilege name, and protected operation in a short window restores the transition. SUNSPOT's SeDebugPrivilege activation followed by process-memory access directly establishes the chain.
+    evidence_keys: [B4-002-T1134-REF-02, B4-002-T1134-REF-06, B4-002-T1134-REF-09]
+    confidence: high
+proposed_subtechniques:
+- temporary_key: B4-002-T1134-SUB-01
+  name_zh: 进程驻留式有效身份替换
+  name_en: Process-Resident Effective-Identity Substitution
+  disposition: formal
+- temporary_key: B4-002-T1134-SUB-02
+  name_zh: 新进程权威谱系解耦
+  name_en: New-Process Authority-Lineage Decoupling
+  disposition: formal
+- temporary_key: B4-002-T1134-SUB-03
+  name_zh: 休眠令牌权限选择性激活
+  name_en: Dormant-Token Privilege Selective Activation
+  disposition: formal
+defense_candidates:
+  detection_strategies: [B4-002-T1134-DET-01]
+  detection_analytics: [B4-002-T1134-NJA-01, B4-002-T1134-NJA-02, B4-002-T1134-NJA-03]
+  mitigations: [B4-002-T1134-MIT-01]
+existing_library_reuse:
+  reference_refs: [REF-000252, REF-000281]
+  claim_refs: []
+  case_refs: []
+  strategy_refs: []
+  analytic_refs: []
+  mitigation_refs: []
+  relationship_refs: []
+library_candidates:
+  references: [B4-002-T1134-REF-01, B4-002-T1134-REF-02, B4-002-T1134-REF-03, B4-002-T1134-REF-04, B4-002-T1134-REF-05, B4-002-T1134-REF-06, B4-002-T1134-REF-07, B4-002-T1134-REF-08, B4-002-T1134-REF-09, B4-002-T1134-REF-10]
+  claims: [B4-002-T1134-CLM-01, B4-002-T1134-CLM-02, B4-002-T1134-CLM-03, B4-002-T1134-CLM-04, B4-002-T1134-CLM-05, B4-002-T1134-CLM-06, B4-002-T1134-CLM-07]
+  cases: [B4-002-T1134-CASE-01, B4-002-T1134-CASE-02, B4-002-T1134-CASE-03]
+  detection_strategies: [B4-002-T1134-DET-01]
+  detection_analytics: [B4-002-T1134-NJA-01, B4-002-T1134-NJA-02, B4-002-T1134-NJA-03]
+  mitigations: [B4-002-T1134-MIT-01]
+  relationships: []
+shared_library_resolutions:
+- library: references
+  decision: extend-and-create
+  rationale_zh: 现有 REF-000252 和 REF-000281 分别覆盖 SUNSPOT 与 PipeMon，本批扩展其 locator 与令牌相关 notes 并复用；T1134 19.1、Windows 令牌/线程赋值/带令牌创建进程/显式父进程/权限调整语义以及 Lotus Blossom、DarkGate 和 4688 仍需新记录 REF-000326 至 REF-000335。未复制既有来源。
+  rationale_en: Existing REF-000252 and REF-000281 cover SUNSPOT and PipeMon respectively and are reused after extending locator and token-specific notes. New records REF-000326 through REF-000335 are still required for T1134 19.1, Windows token, thread assignment, token-based process creation, explicit-parent and privilege-adjustment semantics, Lotus Blossom, DarkGate, and Event 4688. No existing source is duplicated.
+- library: claims
+  decision: create
+  rationale_zh: 父级准入、与 SID-History 持久状态的边界、三个正式轴、检测和缓解均需要候选特定的原子结论。
+  rationale_en: Parent admission, the boundary with durable SID-History state, all three formal axes, detection, and mitigation require candidate-specific atomic conclusions.
+- library: cases
+  decision: create
+  rationale_zh: 三份原始威胁研究分别观察到另一进程令牌/权限用于启动、PPID 隐匿和同一进程令牌启用 SeDebugPrivilege；它们的事实范围不同，不合并成通用令牌案例。
+  rationale_en: Three original threat studies separately observe another-process token or privilege use for launch, PPID concealment, and SeDebugPrivilege enablement in the same process token. Their factual scopes differ and are not collapsed into a generic token case.
+- library: detections
+  decision: split
+  compared_refs: [DET-000064, DET-000083, DET-000095]
+  rationale_zh: DET-000064 面向持久身份状态，DET-000083 面向一般 IPC broker，DET-000095 面向提权控制事务；T1134 需要专门连接令牌来源、承载体/创建谱系、权限状态和高权限结果。
+  rationale_en: DET-000064 covers durable identity state, DET-000083 general IPC brokers, and DET-000095 elevation-control transactions. T1134 needs a dedicated join across token origin, carrier or creation lineage, privilege state, and privileged outcome.
+- library: analytics
+  decision: split
+  compared_refs: [NJA-000043, NJA-000062, NJA-000072]
+  rationale_zh: 既有分析没有线程有效令牌差异、创建者/目标主体/显示父级交叉校验或权限位前后态字段，因此建立三个不可互换的可实施分析。
+  rationale_en: Existing analytics lack thread effective-token divergence, cross-validation of creator, target subject, and displayed parent, or privilege-bit before and after state, so three non-interchangeable implementable analytics are created.
+- library: mitigations
+  decision: split
+  compared_refs: [MIT-000063, MIT-000083, MIT-000096]
+  rationale_zh: 持久身份、IPC 与提权控制治理都不能独立覆盖 Windows 令牌句柄访问、模拟/替换用户权限、线程有效身份和权限位消费；建立专用令牌权威与谱系治理。
+  rationale_en: Durable identity, IPC, and elevation-control governance do not independently cover Windows token-handle access, impersonation or replace-token user rights, thread effective identity, and privilege consumption. A dedicated token-authority and lineage mitigation is needed.
+- library: relationships
+  decision: defer
+  rationale_zh: 与 NJT-0083、NJT-0098、T1055 和 T1068 的边界在决议和正文中已明确；本批没有证据支持新增具有方向和额外语义的 REL。
+  rationale_en: Boundaries with NJT-0083, NJT-0098, T1055, and T1068 are explicit in the decision and prose; this batch has no evidence for a new directional REL with additional semantics.
+research:
+  taxonomy_breadth_review:
+    attack_subtechnique_count: 5
+    attack_subtechnique_ids: [T1134.002, T1134.003, T1134.004, T1134.005, T1134.001]
+    represented_dimensions: [new process with token, make and impersonate token, explicit parent selection, durable SID-History authorization, token duplication and assignment]
+    breadth_trigger: two-axis-minimum
+    coverage_resolutions: [niji-variable-candidate, adjacent-technique]
+    candidate_stealth_axes_examined: [process-resident effective identity, new-process authority lineage, dormant privilege activation, token source, token type, impersonation level, delayed use, minimum activation set, SID-History, PPID-only tree break, API partition]
+    second_pass_required: false
+    second_pass_completed: true
+    proposed_niji_child_count: 3
+    breadth_gap_explained: true
+    reviewer_notes: {zh: 三项正式轴分别要求线程有效令牌、进程创建多源谱系和权限前后态；增减都会破坏直接对象或防御边界。, en: The three formal axes respectively require thread effective token, multi-source process-creation lineage, and privilege before and after state; adding or removing a child would break direct-object or defense boundaries.}
+  evidence_coverage:
+    parent_behavior_keys: [B4-002-T1134-REF-01, B4-002-T1134-REF-02]
+    boundary_keys: [B4-002-T1134-REF-01, B4-002-T1134-REF-10]
+    mechanism_support: [B4-002-T1134-REF-02, B4-002-T1134-REF-03, B4-002-T1134-REF-04, B4-002-T1134-REF-05, B4-002-T1134-REF-06, B4-002-T1134-REF-07, B4-002-T1134-REF-08, B4-002-T1134-REF-09]
+    child_existence_support: [B4-002-T1134-REF-02, B4-002-T1134-REF-03, B4-002-T1134-REF-04, B4-002-T1134-REF-05, B4-002-T1134-REF-06, B4-002-T1134-REF-07, B4-002-T1134-REF-08, B4-002-T1134-REF-09]
+    unsupported_or_deferred: [delayed stored-token use, adversarial minimum privilege-set selection, impersonation-level stealth]
+  content_depth_review:
+    compared_with_njt_0001: true
+    field_responsibilities_complete: true
+    candidate_specific_prose: true
+    repeated_prose_reviewed: true
+    notes: {zh: 令牌状态、承载体、来源、创建谱系、权限位、持久身份边和 TA0004 权限结果分别审查。, en: Token state carrier origin creation lineage privilege bits durable identity edges and TA0004 privilege outcome were reviewed separately.}
+  automation_review:
+    canonical_prose_bulk_generated: false
+    mechanical_uses: [ID allocation, schema validation, bundle build, reference lookup]
+  limitations:
+    paragraphs:
+    - zh: Windows 提供稳定的令牌安全模型，但不同传感器并不一致暴露线程有效令牌、token ID、AuthenticationId、实际调用者、显示父级和权限前态。案例分别证明三种行为及其观察影响，却不能证明每次合法令牌 API 调用都具有匿迹意图；正式对象因此要求高权限结果与多源因果关联。
+      en: Windows provides a stable token security model, but sensors do not consistently expose thread effective token, token ID, AuthenticationId, actual caller, displayed parent, and privilege prior state. The cases establish the three behaviors and observation effects separately but cannot show stealth intent for every legitimate token API call, so the formal object requires a privileged outcome and multi-source causal linkage.
+    - zh: SID-History 在 ATT&CK 中属于 T1134，但其目录属性写入、寿命和恢复动作与已有 NJS-0083-002 相同；本批按直接对象把它标为 adjacent，而不是否认后续令牌影响。纯 PPID 欺骗同样只有在继承或获得更高上下文时才进入 TA0004 范围。
+      en: ATT&CK places SID-History under T1134, but its directory-attribute write, lifetime, and recovery action are identical to existing NJS-0083-002; this batch marks it adjacent by direct object rather than denying its downstream token effect. PPID spoofing alone likewise enters TA0004 scope only when it inherits or obtains a higher context.
+  rejected_mechanisms: [token-type partition, impersonation-level partition, API or tool partition]
+  open_questions: [Whether future incident evidence can establish delayed stored-token use as a lifecycle variable independent of source-token lineage, Whether minimum privilege-set activation can be shown as an adversarial stealth choice distinct from privilege activation]
+integration:
+  status: integrated-review
+  resolutions: [extend and reuse REF-000252 and REF-000281, create ten candidate-specific references and seven claims, create three scoped cases, split to one DET and three NJAs, split to one MIT, defer relationship]

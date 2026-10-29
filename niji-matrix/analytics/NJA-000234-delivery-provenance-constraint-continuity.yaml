@@ -1,0 +1,49 @@
+schema_version: "2.0.0"
+type: detection-analytic
+id: NJA-000234
+strategy_ref: DET-000200
+name: {zh: 投递—容器—子对象来源约束连续性分析, en: Delivery–Container–Child Provenance-Constraint Continuity Analytic}
+summary: {zh: 识别外部投递对象的 MOTW/quarantine 来源约束在提取、挂载、复制或显式移除后未传递给被消费子对象，并导致保护路径下降。, en: "Identify external-delivery MOTW or quarantine constraints failing to reach a consumed child after extraction, mounting, copying, or explicit removal and causing a reduced protection path."}
+domains: [enterprise]
+platforms: [Windows, macOS]
+logic:
+  paragraphs:
+    - zh: 为 browser/mail/chat/download/remote-share delivery 建立 delivery_id，记录 URL/domain/message/share、source zone、downloader process、outer object path/digest/type、Zone.Identifier ADS 或 com.apple.quarantine value、download time 与 user/session。跟踪 archive/image/package extraction、mount、copy、rename、xattr/ADS change，生成 parent_child_lineage，保存 container digest、mount ID、child path/digest 和 child provenance old-new。
+      en: Create a delivery ID for browser, mail, chat, download, or remote-share delivery and retain URL, domain, message or share, source zone, downloader process, outer-object path, digest, and type, Zone.Identifier ADS or com.apple.quarantine value, download time, and user or session. Track archive, image, or package extraction, mounting, copying, renaming, and xattr or ADS changes into parent_child_lineage with container digest, mount ID, child path and digest, and child provenance old and new.
+    - zh: 从 SmartScreen、Office Protected View/macro blocking、Attachment Manager、Gatekeeper/XProtect/quarantine database 或其他 consumer 取得 consumer/version、expected constraint、observed provenance、decision/prompt/result。若外层明确 external/quarantined，child provenance 因 explicit removal/suppression/non-inheritance 为空/本地，consumer baseline 应 warn/block/restrict 而 effective path allow/no-warning/unrestricted，且 child execution/content/connection 产生恶意结果，则输出 provenance_constraint_removal。
+      en: Obtain consumer and version, expected constraint, observed provenance, decision, prompt, and result from SmartScreen, Office Protected View or macro blocking, Attachment Manager, Gatekeeper, XProtect or quarantine databases, or another consumer. Emit provenance_constraint_removal when the outer object is clearly external or quarantined, child provenance becomes absent or local through explicit removal, suppression, or non-inheritance, the consumer baseline should warn, block, or restrict while the effective path allows, produces no warning, or is unrestricted, and child execution, content, or connection produces a malicious outcome.
+    - zh: 外层 provenance 不存在且无法证明 external source 输出 unknown_origin；child 无标记但 consumer 仍限制输出 protected_despite_gap；只移除 metadata 未消费输出 provenance_exposure。批准的 Unblock、企业签名包、软件分发/同步、sandbox/repack、跨文件系统复制和用户确认按 delivery owner、ticket、signer、destination 与 decision 排除。一般 forensic evidence 删除可并记 NJT-0112，但本项完成必须改变 consumer route。
+      en: An outer object without provenance and no proof of external source produces unknown_origin. An unmarked child that the consumer still restricts produces protected_despite_gap, and removed metadata without consumption produces provenance_exposure. Approved Unblock, enterprise-signed packages, software distribution or synchronization, sandboxing or repacking, cross-filesystem copying, and user confirmation are excluded through delivery owner, ticket, signer, destination, and decision. Generic forensic-evidence deletion can also map to NJT-0112, while completion here requires a changed consumer route.
+data_requirements:
+  - source_type: external-delivery-provenance
+    name: {zh: 外部投递来源与外层对象 Metadata, en: External Delivery Source and Outer-Object Metadata}
+    channel: Browser email gateway chat download proxy remote-share and endpoint file telemetry
+    required_fields: [timestamp, host_id, user_id, session_id, delivery_id, source_type, source_uri_or_message, source_zone, downloader_process_id, outer_object_path, outer_object_digest, outer_object_type, motw_zone_id, quarantine_value, download_time]
+  - source_type: container-child-file-lineage
+    name: {zh: 容器/挂载/提取与 Child Metadata 连续性, en: Container Mount Extraction and Child-Metadata Continuity}
+    channel: File system ADS xattr archive image mount package and process telemetry
+    required_fields: [timestamp, host_id, user_id, delivery_id, operation, process_id, parent_process_id, container_digest, container_type, mount_id, parent_path, child_path, child_digest, child_type, provenance_before, provenance_after, ads_or_xattr_operation, parent_child_lineage_id]
+  - source_type: provenance-consumer-decision
+    name: {zh: SmartScreen/Office/Gatekeeper 来源裁决与结果, en: SmartScreen Office or Gatekeeper Provenance Decision and Outcome}
+    channel: SmartScreen Office Attachment Manager Gatekeeper unified log XProtect process and application telemetry
+    required_fields: [timestamp, host_id, user_id, child_digest, consumer_id, consumer_version, policy_id, expected_constraint, observed_provenance, baseline_decision, effective_decision, decision_code, prompt_result, protected_mode, process_id, parent_process_id, first_outcome_id, outcome]
+observables:
+  - {zh: Internet/Restricted 外层对象含 MOTW/quarantine，而提取或挂载 child 缺少对应来源约束, en: An Internet or Restricted outer object has MOTW or quarantine while an extracted or mounted child lacks the corresponding provenance constraint}
+  - {zh: xattr/ADS 被显式删除、置零或 downloader/container 路径抑制继承，随后 consumer 无警告允许, en: An xattr or ADS is explicitly deleted or zeroed or a downloader or container path suppresses inheritance followed by a no-warning allow decision}
+  - {zh: Child 在低保护路径执行 script/macro/payload 并产生恶意 first outcome, en: The child executes a script macro or payload through a reduced-protection path and produces a malicious first outcome}
+correlation:
+  window: {zh: 从外部 delivery 前一小时到最后一个 child outcome 后三十日，并以 digest/lineage 跨 rename、copy、mount 保留。, en: "Correlate one hour before external delivery through thirty days after the final child outcome and preserve digest or lineage across rename copy and mount."}
+  dimensions: [host_id, user_id, session_id, delivery_id, outer_object_digest, container_digest, mount_id, child_digest, parent_child_lineage_id, consumer_id, policy_id, process_id, parent_process_id, first_outcome_id, time]
+false_positives:
+  - {zh: 用户/管理员批准 Unblock、可信企业包分发、软件更新或内部 repack, en: User or administrator approved Unblock trusted enterprise-package distribution software update or internal repack}
+  - {zh: 文件复制到不支持 ADS/xattr 的文件系统、合法 archive/image 工具或同步服务导致 metadata 丢失, en: Copying to a filesystem without ADS or xattr support or a legitimate archive image tool or synchronization service loses metadata}
+  - {zh: Consumer 版本/策略本就不消费该 provenance，baseline 假设错误, en: The consumer version or policy does not consume that provenance and the baseline assumption is wrong}
+blind_spots:
+  - {zh: 邮件/browser/download 事件与 child digest 没有 lineage，外部来源无法证明, en: Mail browser or download events and child digests lack lineage so external origin cannot be proven}
+  - {zh: 内存/streaming payload 不落盘、加密容器不可解析或攻击者控制 endpoint file telemetry, en: An in-memory or streaming payload never lands on disk an encrypted container cannot be parsed or the adversary controls endpoint file telemetry}
+tuning_guidance:
+  paragraphs:
+    - zh: 按 consumer/version 实测哪些 container/filesystem/transfer 会继承 MOTW/quarantine，并以 source-to-child lineage 判定而不是封禁 ISO/VHD/ZIP 扩展名。高置信要求外部 source、provenance discontinuity、baseline-different consumer decision 与恶意 outcome 四者闭合。批准 Unblock 必须记录 user、reason、digest 和期限。
+      en: Test which containers, filesystems, and transfers inherit MOTW or quarantine for each consumer and version and decide from source-to-child lineage rather than blocking ISO, VHD, or ZIP extensions. High confidence requires closure across external source, provenance discontinuity, a baseline-different consumer decision, and malicious outcome. Approved Unblock records user, reason, digest, and expiry.
+evidence_refs: [REF-000594, REF-000762, REF-000766, REF-000768, REF-000775]
+lifecycle: {status: review, version: "1.0.0", created: "2026-09-23", modified: "2026-09-23", contributors: [Niji Matrix Research], reviewers: []}

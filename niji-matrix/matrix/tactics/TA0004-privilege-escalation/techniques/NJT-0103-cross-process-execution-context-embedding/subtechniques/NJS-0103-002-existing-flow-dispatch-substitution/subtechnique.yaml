@@ -1,0 +1,178 @@
+schema_version: 2.0.0
+type: evasion-subtechnique
+id: NJS-0103-002
+parent_ref: NJT-0103
+name:
+  zh: 既有执行流调度替换
+  en: Existing-Flow Dispatch Substitution
+summary:
+  zh: 攻击者让 target 的既有或初始化线程、callback、APC 或消息 consumer 转入注入代码，避免 conventional remote-thread 入口或让名义入口与真实首指令分离。
+  en: Adversaries redirect an existing or initializing target thread, callback, APC, or message consumer into injected code,
+    avoiding a conventional remote-thread entry or separating the nominal entry from the true first instruction.
+aliases: []
+lineage:
+  attck_subtechnique_inherited: false
+definition_and_concept:
+  paragraphs:
+  - zh: 既有执行流调度替换固定“target 通过哪一个已经存在或生命周期预期的执行 carrier 到达 payload”。source 修改 suspended/running thread context、向 alertable
+      thread 排入 APC、改变 initialization/TLS/vDSO callback、或操纵 GUI/message consumer，使 target 自己的线程在正常/预期调度点调用攻击者地址。它不要求没有 thread
+      event，而要求 conventional new remote thread at payload start 被 existing flow 或合法 trampoline 取代。
+    en: Existing-Flow Dispatch Substitution fixes which already existing or lifecycle-expected execution carrier reaches the
+      payload. A source changes suspended or running thread context, queues an APC to an alertable thread, alters an initialization,
+      TLS, or vDSO callback, or manipulates a GUI or message consumer so a target-owned thread invokes an adversary address
+      at an ordinary or expected dispatch point. It does not require absence of every thread event; it requires an existing
+      flow or legitimate trampoline to replace a conventional new remote thread at the payload start.
+  - zh: 证明对象包括 target TID/start time、pre/post instruction pointer/registers、suspend/alertable/initialization/message state、queue
+      or callback writer、expected entry/call stack、actual executing region 和结果。Thread hijacking、APC、TLS、Extra Window、vDSO
+      与 ListPlanting 只是实现例，不按 structure 名称拆分。若 source 创建一个 remote thread 且 start address 直接指向 payload，本子项不成立；parent 仍可成立。
+    en: Proof includes target TID and start time, instruction pointer and registers before and after, suspended, alertable,
+      initialization, or message state, queue or callback writer, expected entry or call stack, actual executed region, and
+      result. Thread hijacking, APC, TLS, Extra Window, vDSO, and ListPlanting are implementations only and are not split
+      by structure name. If the source creates a remote thread whose start address directly points at the payload, this child
+      does not qualify although the parent can.
+stealth_characteristics:
+  paragraphs:
+  - zh: 既有执行流调度替换把高信号 new-thread-at-unknown-address 变成 target thread 的 resume、alertable wake、initialization callback、window
+      message 或 shared runtime transition。thread creation 监控可能没有事件，或看到 start address 位于 `ntdll`/runtime 等正常 trampoline；静态
+      PE entrypoint/debug breakpoint 也可能晚于真实 callback。只按 CreateRemoteThread 或 nominal entry 的防守方丢失开始点、source 与 payload 因果。
+    en: Existing-Flow Dispatch Substitution changes a high-signal new thread at an unknown address into target-thread resume,
+      alertable wake, initialization callback, window message, or shared-runtime transition. Thread-creation monitoring can
+      see no event or a start address inside a normal trampoline such as `ntdll` or a runtime, while a static PE-entry breakpoint
+      can occur after the real callback. Defenders keyed only to CreateRemoteThread or the nominal entry lose the start point
+      and source-to-payload causality.
+  - zh: 残余位于 state transition：unexpected SetThreadContext/register change、queueing source、APC target、TLS/callback table diff、message
+      writer/consumer、suspend/resume order、stack base 与 return chain、instruction pointer 落入未批准 region。Ursnif 证明 TLS callback
+      可先于 PE entry 并破坏 generic unpacker；Microsoft 证明 SetThreadContext/APC 与 remote thread 是不同 execution primitive。完整 before/after
+      state 能反证“正常线程继续运行”。
+    en: 'Residuals live in state transition: unexpected SetThreadContext or register change, queueing source, APC target,
+      TLS or callback-table diff, message writer and consumer, suspend and resume order, stack base and return chain, and
+      instruction pointer entering an unapproved region. Ursnif proves a TLS callback can precede the PE entry and break generic
+      unpackers, while Microsoft shows SetThreadContext or APC and remote thread as different execution primitives. Complete
+      before-and-after state disproves ordinary thread continuation.'
+scope_boundary_definition:
+  paragraphs:
+  - zh: 必须证明 attacker-controlled source 改写/排队一个 target flow，flow 随后进入 injected code；只有 `ResumeThread`、APC API、window message、TLS
+      directory、thread suspend 或异常 stack 不足。合法 async I/O、GUI dispatch、runtime callback、debugger、profiler、hot patch 和 crash
+      handling 是反例，需要 writer、callback target、content provenance 与 owner/window 区分。
+    en: Proof requires an adversary-controlled source to alter or queue a target flow that subsequently enters injected code.
+      ResumeThread, an APC API, window message, TLS directory, thread suspension, or anomalous stack alone is insufficient.
+      Legitimate asynchronous I/O, GUI dispatch, runtime callbacks, debuggers, profilers, hot patching, and crash handling
+      are counterexamples distinguished through writer, callback target, content provenance, owner, and window.
+  - zh: 若 dispatch 由 target 正常处理一个应用 IPC request 且没有 memory/callback mutation，归 NJT-0072；若只改变 loader search/candidate，归 NJT-0070；若
+      callback 是持久注册对象以后激活，可与 Event Triggered Execution 共映射，但本子项只负责这次 cross-process dispatch 到 payload。Direct syscall 是否隐藏
+      API 归 T1106。
+    en: If the target normally handles an application IPC request without memory or callback mutation, it belongs to NJT-0072.
+      Changing only loader search or candidate belongs to NJT-0070. A durably registered callback activated later can co-map
+      Event Triggered Execution, but this child owns only the current cross-process dispatch into payload. T1106 owns whether
+      a direct syscall hides the API path.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: malware 创建 suspended child、写入 payload 和 crafted TLS callback 后恢复 initial thread；系统按预期 lifecycle 调用 callback，但 first
+        malicious instruction 早于 header entry。另一个 operator 可 suspend existing target TID、改变 instruction pointer 后 resume，或选择
+        alertable thread 排入 APC。三者共享 before/after thread/callback state 而非 API 名称。
+      en: Malware creates a suspended child, writes a payload and crafted TLS callback, then resumes the initial thread. The
+        system invokes the callback through expected lifecycle, but the first malicious instruction precedes the header entry.
+        Another operator can suspend an existing target TID, change its instruction pointer and resume, or select an alertable
+        thread and queue an APC. The three share before-and-after thread or callback state rather than API names.
+    - zh: 图形界面或共享运行时进程接收看似正常的消息或回调，但源进程已经改变额外窗口内存、回调指针或运行时入口。局部日志只记录目标进程消费消息，只有状态写入者与实际函数目标能够恢复注入来源。目标权限若不高于源进程，该行为仍属于既有执行流调度替换，但不会增加权限。
+      en: A graphical or shared-runtime process receives an ordinary-looking message or callback after the source has altered
+        extra window memory, a callback pointer, or a runtime entry. Local logs record only the target consuming the message,
+        and provenance is recovered through the state writer and actual function target. If target authority does not exceed
+        the source, the behavior remains Existing-Flow Dispatch Substitution without adding privilege.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者需枚举可控 TID/callback、等待 suspended/alertable/initialization/message 状态，避免破坏 register、stack 与 target 工作，并确保 payload
+          生命周期覆盖 dispatch。状态选择比 new remote thread 更脆弱，错误线程、ABI 或 callback layout 可能 deadlock/crash；thread protection、CFG/ACG、callback
+          integrity 和 message isolation 会限制。
+        en: The adversary must enumerate a controllable TID or callback, wait for suspended, alertable, initialization, or
+          message state, preserve registers, stack, and target work, and keep the payload alive through dispatch. State selection
+          is more fragile than a new remote thread; wrong thread, ABI, or callback layout can deadlock or crash. Thread protection,
+          CFG or ACG, callback integrity, and message isolation constrain it.
+      - zh: 为避开 entrypoint 或 new-thread 检测，攻击者可使用正常 trampoline 并在更深 stack 跳到 payload，或短暂修改后恢复 context。两者仍会在 stack/context
+          timeline、callback writer 和 target region 留下矛盾；采样缺口降低置信度而不是证明无痕。
+        en: To evade entrypoint or new-thread detection, the adversary can use a normal trampoline and jump to the payload
+          deeper in the stack or briefly modify and restore context. Both retain contradictions in stack and context timeline,
+          callback writer, and target region. Sampling gaps lower confidence rather than prove tracelessness.
+    defender_model:
+      paragraphs:
+      - zh: 防守方为敏感 process/threads 保存 start address、creation stack、周期/事件驱动 call stack、context changes、APC queues、callback
+          table hashes、message origin 与 suspend/resume sequence，并把每个 target address 解析到 approved module/region。只采 remote thread
+          会把本子项全留在盲区；只采 stack snapshot 又可能错过短驻 callback。
+        en: Defenders preserve start address, creation stack, periodic or event-driven call stack, context changes, APC queues,
+          callback-table hashes, message origin, and suspend or resume sequence for sensitive processes and threads and resolve
+          every target address to an approved module or region. Remote-thread collection alone leaves this child blind, while
+          stack snapshots alone can miss a transient callback.
+      - zh: 调优按合法 debugger/profiler/runtime 的 exact writer-target-method/version 与 maintenance window，而不是忽略所有 APC、TLS 或 window
+          message。对 nominal entry 和 actual first executed address 不一致、callback target 无 backing、非批准 source 改写 sensitive target
+          的组合提高风险，并在响应前保存 thread context 和 stack。
+        en: Tuning binds legitimate debugger, profiler, and runtime to exact writer, target, method, version, and maintenance
+          window rather than ignoring every APC, TLS, or window message. Raise risk for nominal entry disagreeing with actual
+          first executed address, callback target lacking backing, or an unapproved source changing a sensitive target, and
+          preserve thread context and stack before response.
+stealth_mechanisms:
+- mechanism_ref: NM-BT
+  role: primary
+  summary:
+    zh: 既有线程或生命周期回调替代显式远程线程入口，使真实开始点落在常规调度表面之下
+    en: An existing thread or lifecycle callback replaces an explicit remote-thread entry hiding the true start beneath ordinary
+      dispatch
+  analysis:
+    paragraphs:
+    - zh: 攻击者选择/改写 target 现有 flow 并让其经 resume、APC、callback 或 message 到达 payload。痕迹从 new remote thread with payload start 变成普通
+        target-owned thread、正常 trampoline 或 nominal entry，加上一段短驻 context/callback difference。只监控 thread creation 或 header
+        entry 的防守方观察不到/误定位恶意开始并丢失 source，形成 Behavioral Transparency。Ursnif 现场链与 Microsoft primitive 分析直接支持 high；pre/post context、queue
+        writer、stack、callback target 与 executed region 可揭示。
+      en: The adversary selects or alters an existing target flow and reaches payload through resume, APC, callback, or message.
+        Traces shift from a new remote thread with a payload start into an ordinary target-owned thread, normal trampoline,
+        or nominal entry plus a transient context or callback difference. Defenders monitoring only thread creation or header
+        entry do not observe or misplace the malicious start and lose the source, producing Behavioral Transparency. The field
+        Ursnif chain and Microsoft's primitive analysis directly support high confidence; pre-state and post-state context,
+        queue writer, stack, callback target, and executed region expose it.
+  evidence_refs:
+  - REF-000363
+  - REF-000365
+  confidence: high
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000100
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000102
+evidence:
+  claim_refs:
+  - CLM-000567
+  - CLM-000570
+  - CLM-000571
+  case_refs:
+  - CASE-000131
+  reference_refs:
+  - REF-000243
+  - REF-000363
+  - REF-000365
+  - REF-000367
+research:
+  limitations:
+    paragraphs:
+    - zh: 最高强度现场证据是 Windows Ursnif TLS callback；APC/thread hijack 由 Microsoft 技术与受控研究支持。vDSO、ListPlanting 和其他 message/callback
+        实现只有在同一 control key 与 trace chain 被本地证明时收敛，不能由 ATT&CK 名称自动纳入。
+      en: The strongest field evidence is the Windows Ursnif TLS callback, while APC and thread hijacking rely on Microsoft
+        technical and controlled research. vDSO, ListPlanting, and other message or callback implementations converge only
+        when the same control key and trace chain are locally proved and never from an ATT&CK name alone.
+    - zh: 完整的异步回调队列、寄存器时间线或首段指令遥测很少默认采集，调用栈采样也可能发生在载荷返回之后。缺少这些字段时只能看到可疑的线程或回调状态；没有创建远程线程并不能反向证明攻击者一定复用了既有执行流。
+      en: Complete asynchronous-callback queues, register timelines, or first-instruction telemetry are rarely collected by
+        default, and stack sampling can occur after the payload returns. Without those fields only suspicious thread or callback
+        state may be visible. Absence of remote-thread creation does not prove that the adversary reused an existing execution
+        flow.
+lifecycle:
+  status: review
+  version: 0.2.0
+  created: '2026-09-13'
+  modified: '2026-09-19'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

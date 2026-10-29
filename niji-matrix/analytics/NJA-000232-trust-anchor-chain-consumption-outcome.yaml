@@ -1,0 +1,49 @@
+schema_version: "2.0.0"
+type: detection-analytic
+id: NJA-000232
+strategy_ref: DET-000200
+name: {zh: 信任锚—证书链消费—结果分析, en: Trust Anchor–Certificate Chain Consumption–Outcome Analytic}
+summary: {zh: 识别未批准 root/anchor 被加入或提升后，后继攻击者控制证书链在 named consumer 中由不受信变为允许的结果。, en: "Identify a later attacker-controlled certificate chain changing from untrusted to allowed in a named consumer after an unapproved root or anchor is added or promoted."}
+domains: [enterprise]
+platforms: [Windows, macOS, Linux]
+logic:
+  paragraphs:
+    - zh: 版本化 system/user/application trust stores 与 keychains，保存 store scope、anchor fingerprint/subject/issuer/public key、old/new/trust setting、writer principal/process/session/source、install method、approval、validity 与 first/last seen，生成 anchor_change_id。与 OS/vendor/enterprise approved_anchor_inventory、MDM/GPO/package transaction 和 host role 比较，识别新增 root、从 partial/deny 提升为 trustRoot、跨 scope 复制或 clone chain。
+      en: Version system, user, and application trust stores and keychains, retaining store scope, anchor fingerprint, subject, issuer, public key, old and new trust setting, writer principal, process, session, and source, install method, approval, validity, and first and last seen, and create anchor_change_id. Compare with OS, vendor, and enterprise approved-anchor inventory, MDM, GPO, or package transactions, and host role to identify a new root, promotion from partial or deny to trustRoot, cross-scope copying, or a cloned chain.
+    - zh: 对后继 TLS/code/package/driver decision 保存 leaf/intermediate/root fingerprints、SNI/hostname 或 artifact digest、EKU/name constraints、consumer/version、baseline result、effective result、warning/prompt 与 session。若 chain 终止于未批准 anchor，baseline without anchor 为 untrusted/warn/block，而变更后 consumer allow/trusted/no-warning 且连接/对象产生恶意 first outcome，则输出 trust_anchor_expansion。
+      en: For later TLS, code, package, or driver decisions, retain leaf, intermediate, and root fingerprints, SNI or hostname or artifact digest, EKU and name constraints, consumer and version, baseline result, effective result, warning or prompt, and session. Emit trust_anchor_expansion when the chain terminates at an unapproved anchor, baseline without that anchor is untrusted, warn, or block, the changed consumer returns allow, trusted, or no-warning, and the connection or object produces a malicious first outcome.
+    - zh: 单纯 root 安装输出 anchor_exposure，未被任何 chain 消费输出 dormant_anchor，consumer 仍拒绝输出 blocked_chain。企业 TLS inspection、开发 CA、设备管理、代理/安全产品 root 与灾备恢复按 owner/scope/purpose/expiry 排除；实际中间介入和数据读取由 network/Collection 共同判断。
+      en: Root installation alone produces anchor_exposure, an anchor consumed by no chain produces dormant_anchor, and continued consumer rejection produces blocked_chain. Enterprise TLS inspection, development CAs, device management, proxy or security-product roots, and recovery are excluded by owner, scope, purpose, and expiry. Actual interposition and data reading are evaluated jointly with network and Collection objects.
+data_requirements:
+  - source_type: trust-store-anchor-version
+    name: {zh: Trust Store/Keychain Anchor 版本与 Writer, en: Trust Store or Keychain Anchor Versions and Writer}
+    channel: Windows certificate store macOS keychain Linux CA store MDM GPO and file integrity
+    required_fields: [timestamp, host_id, user_id, store_id, store_scope, anchor_fingerprint, anchor_subject, anchor_issuer, public_key_hash, old_trust_setting, new_trust_setting, change_type, writer_principal, writer_process_id, writer_process_path, source_host, session_id, install_method, approval_id, first_seen, last_seen, anchor_change_id]
+  - source_type: certificate-chain-decision
+    name: {zh: 证书链、Consumer 裁决与 Baseline 差, en: Certificate Chain Consumer Decision and Baseline Difference}
+    channel: TLS browser proxy WinVerifyTrust Code Integrity package and driver verification
+    required_fields: [timestamp, host_id, user_id, consumer_id, consumer_version, chain_id, leaf_fingerprint, intermediate_fingerprints, root_fingerprint, eku, name_constraints, sni_or_hostname, artifact_id, artifact_digest, baseline_result, effective_result, warning_result, policy_id, session_id]
+  - source_type: trust-chain-first-outcome
+    name: {zh: Trusted Chain 的首个连接或对象结果, en: First Connection or Object Outcome Under the Trusted Chain}
+    channel: Network proxy browser process file authentication or application telemetry
+    required_fields: [timestamp, host_id, user_id, session_id, chain_id, destination, process_id, artifact_id, operation, credential_prompt_id, network_bytes, first_outcome_id, outcome_type, outcome]
+observables:
+  - {zh: 未批准 root/anchor 被高权进程加入 system/user/application trust scope, en: A privileged process adds an unapproved root or anchor to a system user or application trust scope}
+  - {zh: 后继证书链首次终止于该 anchor，baseline 为不受信而 effective decision 为 trusted/allow, en: A later chain first terminates at that anchor with an untrusted baseline and a trusted or allow effective decision}
+  - {zh: 同一 chain/session 后出现恶意连接、假站凭据提示或 attacker-signed object 执行, en: A malicious connection fake-site credential prompt or attacker-signed object execution follows in the same chain or session}
+correlation:
+  window: {zh: 从 anchor 首次出现前七日到删除/撤销后九十日，并长期保留批准 root inventory 与 chain consumption。, en: "Correlate seven days before anchor first appearance through ninety days after removal or revocation and retain approved-root inventory and chain consumption long term."}
+  dimensions: [host_id, user_id, store_id, store_scope, anchor_fingerprint, anchor_change_id, chain_id, leaf_fingerprint, consumer_id, policy_id, sni_or_hostname, artifact_id, writer_principal, session_id, first_outcome_id, approval_id, time]
+false_positives:
+  - {zh: 经批准的企业 TLS inspection、私有 PKI、MDM、VPN/代理或安全产品 root 部署, en: Approved enterprise TLS inspection private PKI MDM VPN or proxy or security-product root deployment}
+  - {zh: 开发/测试、实验室和离线设备按限定 scope 使用 private CA, en: Development test laboratory or offline devices use a private CA in a bounded scope}
+  - {zh: OS/vendor root program 正常更新、证书 rollover 或恢复重建, en: Normal OS or vendor root-program update certificate rollover or recovery rebuild}
+blind_spots:
+  - {zh: Application 使用私有内置 trust store、pinning/cache 或用户 scope 且中央 inventory 不可见, en: An application uses a private embedded trust store pinning or cache or a user scope invisible to central inventory}
+  - {zh: Trust store old-new 和 consumer chain 没有共同 ID，或攻击者控制代理/浏览器日志, en: Trust-store versions and consumer chains lack a common ID or the adversary controls proxy or browser logs}
+tuning_guidance:
+  paragraphs:
+    - zh: Anchor allowlist 必须绑定 fingerprint、store scope、owner、purpose、host role 与期限，不能只按 subject/CN。高置信要求未经批准的 anchor change、实际 chain consumption、baseline-to-effective decision 差和恶意结果；证书安装命令或 root 存在只用于 exposure。企业 inspection 必须核对 destination/scope 与 privacy policy。
+      en: Anchor allowlists bind fingerprint, store scope, owner, purpose, host role, and expiry rather than only subject or CN. High confidence requires an unapproved anchor change, actual chain consumption, a baseline-to-effective decision difference, and malicious outcome. A certificate-install command or root presence is exposure only. Enterprise inspection must match destination or scope and privacy policy.
+evidence_refs: [REF-000765, REF-000770, REF-000774]
+lifecycle: {status: review, version: "1.0.0", created: "2026-09-23", modified: "2026-09-23", contributors: [Niji Matrix Research], reviewers: []}

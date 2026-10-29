@@ -1,0 +1,110 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000177
+strategy_ref: DET-000165
+name:
+  zh: Web 失败至 DNS 控制序列
+  en: Web Failure to DNS Control Sequence
+summary:
+  zh: 以同一植入为键验证失败 Web 请求之后 DNS 承载后继控制。
+  en: Verify DNS carrying subsequent control after failed web requests using the same implant identity.
+domains:
+- enterprise
+platforms:
+- Windows
+- Linux
+- macOS
+logic:
+  paragraphs:
+  - zh: 将代理或 HTTP 日志中的 HTTPS/HTTP 失败、状态码或阻断决策与同一设备进程的 DNS 事件关联。按进程启动键和时间对后继 DNS 查询分组，保留 qtype、rcode、答案、名称标签长度与变化、查询方向及结果；比较普通解析后连接模式与持续查询响应、编码载荷和命令后端点动作。QUADAGENT
+      式 HTTPS→HTTP→DNS 序列与 ISMAgent 式 HTTP→DNS 序列可作为可复核形态，但分析不写死家族字符串。
+    en: Join HTTPS or HTTP failure, status, or block decisions from proxy or HTTP logs to DNS events of the same
+      device process. Group successor DNS queries by process-start key and time; retain qtype, rcode, answers, label
+      lengths and changes, direction, and result. Compare ordinary lookup-then-connect behavior with sustained query-response
+      exchange, encoded payload, and endpoint action after a command. QUADAGENT's HTTPS to HTTP to DNS and ISMAgent's
+      HTTP to DNS sequences are reproducible forms, but the analytic does not hardcode family strings.
+  - zh: 输出分别标记 web_failed_dns_started、sustained_dns_control_candidate 与 control_confirmed。最后一级要求可解释的任务响应或同进程后继结果；没有
+      DNS 进程键时只报设备级关联，并标明递归器或加密 DNS 的可见性边界。
+    en: Emit separate states for web_failed_dns_started, sustained_dns_control_candidate, and control_confirmed.
+      The last requires interpretable task response or a successor action by the same process. Without a DNS process
+      key, report only device-level correlation and state resolver or encrypted-DNS visibility limits.
+data_requirements:
+- source_type: web-proxy
+  name:
+    zh: Web 请求与阻断
+    en: Web requests and blocks
+  channel: proxy or Zeek http.log
+  required_fields:
+  - event_time
+  - device_id
+  - source_ip
+  - destination
+  - method
+  - status_code
+  - action
+- source_type: dns-resolution
+  name:
+    zh: DNS 请求与响应
+    en: DNS queries and responses
+  channel: Zeek dns.log
+  required_fields:
+  - ts
+  - uid
+  - query
+  - qtype_name
+  - rcode_name
+  - answers
+- source_type: endpoint-process-network
+  name:
+    zh: 端点进程网络与 DNS 事件
+    en: Endpoint process network and DNS events
+  channel: Sysmon Events 3 and 22 or EDR
+  required_fields:
+  - event_time
+  - device_id
+  - process_guid
+  - process_path
+  - destination_ip
+  - query_name
+observables:
+- zh: Web 失败后同进程开始持续 DNS 请求响应
+  en: The same process begins sustained DNS query-response exchange after web failure
+- zh: DNS 名称或响应承载数据且随后出现控制样式端点结果
+  en: DNS names or answers carry data followed by control-like endpoint outcome
+correlation:
+  window:
+    zh: Web 失败前十五分钟至后两小时，并覆盖至少一个正常回连周期。
+    en: Fifteen minutes before web failure through two hours after and at least one normal callback period.
+  dimensions:
+  - device_id
+  - process_guid
+  - source_ip
+  - query
+  - destination
+  - time
+false_positives:
+- zh: 合法服务发现、CDN 查询、代理故障后的解析器恢复
+  en: Legitimate service discovery, CDN lookups, and resolver recovery after a proxy fault
+blind_spots:
+- zh: 加密 DNS、递归器隐藏原主机、缺少失败 HTTP 或端点进程事件
+  en: Encrypted DNS, a resolver hiding the originating host, or absent failed HTTP or endpoint process events
+tuning_guidance:
+  paragraphs:
+  - zh: 按软件和角色建立 DNS 查询体量、标签形态和失败后行为基线，检查批准的 Web 至 DNS 故障切换设计。不要凭长域名或 NXDOMAIN 比例单独告警；在 DNS 内容不可恢复时保留候选级结论。
+    en: Build DNS volume, label-shape, and postfailure baselines by software and role and check approved web-to-DNS
+      recovery designs. Do not alert solely on long names or NXDOMAIN share; retain candidate-level conclusions
+      when DNS content cannot be recovered.
+evidence_refs:
+- REF-000630
+- REF-000631
+- REF-000632
+- REF-000635
+- REF-000230
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-09-22'
+  modified: '2026-09-22'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

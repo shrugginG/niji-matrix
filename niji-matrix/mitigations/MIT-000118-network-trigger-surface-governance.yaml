@@ -1,0 +1,111 @@
+schema_version: 2.0.0
+type: mitigation
+id: MIT-000118
+name:
+  zh: 网络触发面治理
+  en: Network Trigger-Surface Governance
+summary:
+  zh: 限制 socket filter、主机防火墙和隐藏监听修改，并保留全流量到进程的关联。
+  en: Restrict socket-filter, host-firewall, and hidden-listener modification and preserve full-network-to-process correlation.
+description:
+  paragraphs:
+  - zh: 本缓解最小化修改网络过滤与监听状态的权限，保护配置和内核扩展，集中记录丢弃包、过滤器与防火墙变化，并将网络会话映射到进程。未批准的短暂规则与监听立即隔离。
+    en: This mitigation minimizes authority to modify network filtering and listener state, protects configuration and
+      kernel extensions, centrally records dropped packets and filter and firewall changes, and maps network sessions
+      to processes. Unapproved transient rules and listeners are isolated immediately.
+  - zh: 对 Persistence，还要把 matcher/filter 绑定的映像、启动项、RC/systemd、driver 或 module 纳入版本和重载治理，按 boot ID 验证首次后继信号与恢复会话。载体控制由相邻缓解补充，但不得只删除当前 socket 或规则而保留会在下次启动重建它的状态。
+    en: For Persistence bring images startup items RC or systemd drivers or modules carrying matcher or filter under version and reload governance and verify first successor signal and restored session by boot identity. Adjacent mitigations complement carrier control but response cannot delete only the current socket or rule while leaving state that recreates it at next start.
+domains:
+- enterprise
+measures:
+- key: filter-and-listener-integrity
+  name:
+    zh: 过滤器与监听完整性
+    en: Filter and Listener Integrity
+  description:
+    paragraphs:
+    - zh: 限制 socket filter、防火墙与监听配置写入，验证模块与规则来源，并审计短暂变化。
+      en: Restrict writes to socket filters, firewalls, and listener configuration, validate module and rule provenance,
+        and audit transient changes.
+  control_type: preventive
+- key: full-traffic-process-lineage
+  name:
+    zh: 全流量—进程谱系
+    en: Full-Traffic–Process Lineage
+  description:
+    paragraphs:
+    - zh: 保存丢弃与未建立连接包、过滤器命中、规则变化、监听和进程，并使用稳定键关联。
+      en: Preserve dropped and non-established packets, filter matches, rule changes, listeners, and processes and correlate
+        them with stable keys.
+  control_type: detective-support
+applications:
+- target_ref: NJT-0120
+  use:
+    paragraphs:
+    - zh: 限制隐藏触发逻辑的安装与配置，关联稀有信号到短暂网络状态和控制会话，并阻止未批准规则。
+      en: Restrict installation and configuration of hidden trigger logic, correlate rare signals to transient network
+        state and control sessions, and block unapproved rules.
+    - zh: 对 TA0003 同时清点并锁定承载 matcher 的映像、启动项、driver/module 与服务状态，重启或配置变化后关联 reload、首次信号和恢复访问；处置先保全载体和 filter 再移除，验证下一 boot 不再重建入口。
+      en: For TA0003 also inventory and lock images startup items drivers or modules and service state carrying matchers and after reboot or configuration change join reload first signal and restored access. Preserve carrier and filter before removal and verify the next boot does not recreate the entry.
+  expected_effect:
+    paragraphs:
+    - zh: 攻击者难以保持功能在普通扫描下隐藏，信号与激活会留下完整网络—主机链。
+      en: Attackers have greater difficulty keeping functionality hidden from ordinary scanning, and signal and activation
+        leave a complete network-to-host chain.
+    - zh: 载体与重载治理把跨中断入口从单一网络异常提升为可撤销状态；删除 matcher、启动绑定和后继 socket 后，旧信号不能重新恢复访问。
+      en: Carrier and reload governance turns a post-interruption entry from one network anomaly into revocable state. After matcher startup binding and successor socket are removed an old signal cannot restore access again.
+  limitations:
+    paragraphs:
+    - zh: 高权限内核攻击者可隐藏过滤器，完整包保留成本高，边界设备可能在主机前丢弃信号。
+      en: A privileged kernel adversary can hide filters, full packet retention is expensive, and edge devices may drop
+        a signal before the host.
+    - zh: 设备映像、kernel module 与启动服务升级依赖同类载体，严格阻断会影响业务；受陷签名/管理根可让恶意载体通过批准。缺少 boot 与 reload telemetry 时只能降低暴露面，不能证明 Persistence 已关闭。
+      en: Device images kernel modules and startup services rely on equivalent carriers and strict blocking can disrupt operations. Compromised signing or management roots can make malicious carriers pass approval. Without boot and reload telemetry controls reduce exposure but cannot prove Persistence closure.
+- target_ref: NJS-0120-001
+  use:
+    paragraphs:
+    - zh: 限制 knockd、防火墙与 ACL 自动化写入，集中保留关闭端口和丢弃包，并按来源重建有序状态；未批准序列完成后立即阻断规则和会话。
+      en: Restrict writes by knockd, firewall, and ACL automation, centrally retain closed-port and dropped packets,
+        and reconstruct ordered state by source. Block rules and sessions immediately after an unapproved sequence completes.
+  expected_effect:
+    paragraphs:
+    - zh: 隐藏服务无法仅凭分散失败包跨越防火墙，序列与短暂激活进入同一审计链。
+      en: A hidden service cannot cross the firewall using only distributed failed packets, and sequence plus transient
+        activation enters one audit chain.
+  limitations:
+    paragraphs:
+    - zh: 全量丢弃包保留成本高，NAT 和丢包破坏顺序，组织若合法使用端口敲击需要严格例外。
+      en: Full dropped-packet retention is expensive, NAT and loss break ordering, and organizations using legitimate
+        port knocking need strict exceptions.
+- target_ref: NJS-0120-002
+  use:
+    paragraphs:
+    - zh: 限制内核与用户态包过滤器安装，验证 WFP/BPF/raw-socket 规则来源，关联内容命中到重定向 socket，并对固定魔数和非标准响应实施网络阻断。
+      en: Restrict installation of kernel and user-space packet filters, validate WFP, BPF, and raw-socket rule provenance,
+        join content matches to diverted sockets, and block fixed magic values and nonstandard responses in the network.
+  expected_effect:
+    paragraphs:
+    - zh: 攻击者难以在正常端口之后隐藏真实监听，触发内容、过滤器和目标进程均被显式暴露或阻断。
+      en: Attackers have greater difficulty hiding a real listener behind an ordinary port, and trigger content, filter,
+        and target process are explicitly exposed or blocked.
+  limitations:
+    paragraphs:
+    - zh: 加密和硬件卸载可能隐藏内容，高权限驱动可规避清单，深度包检查带来性能和隐私成本。
+      en: Encryption and hardware offload can hide content, privileged drivers can evade inventory, and deep packet inspection
+        carries performance and privacy costs.
+evidence_refs:
+- REF-000408
+- REF-000440
+- REF-000441
+- REF-001060
+- REF-000453
+- REF-001061
+- REF-000179
+lifecycle:
+  status: review
+  version: 0.3.0
+  created: '2026-09-20'
+  modified: '2026-10-22'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

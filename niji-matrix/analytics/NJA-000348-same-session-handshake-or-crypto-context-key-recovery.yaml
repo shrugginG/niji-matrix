@@ -1,0 +1,153 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000348
+strategy_ref: DET-000259
+name:
+  zh: 同会话握手/crypto context 密钥恢复
+  en: Same-Session Handshake or Crypto-Context Key Recovery
+summary:
+  zh: 将短时密钥协商或封套、端点密码上下文与同一消息的控制结果相连。
+  en: Join transient key agreement or envelopes, endpoint cryptographic context, and control outcomes for the same message.
+domains:
+- enterprise
+platforms:
+- Network
+- Windows
+- Linux
+logic:
+  paragraphs:
+  - zh: 对已知 implant 在授权环境记录 key agreement/wrap/generation API 或 memory object 的 process_start_key、api/provider、operation、key_handle/token、scope、public/wrapped
+      material digest、IV/nonce digest、input/output length/digest 和 timestamp；与同 process/flow 的 handshake/message ID 配对，在隔离域恢复
+      session/message secret 并 decrypt。仅当 material scope 与 flow/message 一致、receiver path 可复现、plaintext command/result 和 endpoint
+      outcome 匹配时确认。API 文档证明参数语义，不表示系统默认产生日志；无 instrumentation 时只输出 handshake_candidate。
+    en: For a known implant in an authorized environment, record process_start_key, API or provider, operation, key handle
+      or token, scope, public or wrapped-material digest, IV or nonce digest, input and output lengths or digests, and time
+      for key agreement, wrapping, generation, or memory objects. Pair these with handshake or message IDs from the same process
+      and flow, recover the session or message secret in an isolated workspace, and decrypt. Confirm only when material scope
+      matches the flow or message, the receiver path is reproducible, plaintext command or result and endpoint outcome agree.
+      API documentation establishes parameter semantics, not default system logging; without instrumentation report handshake_candidate
+      only.
+data_requirements:
+- source_type: crypto-context
+  name:
+    zh: 端点密码上下文
+    en: Endpoint Cryptographic Context
+  channel: authorized eBPF/ETW/API hook or memory acquisition
+  required_fields:
+  - timestamp
+  - device_id
+  - process_start_key
+  - module
+  - api_provider
+  - api_name
+  - operation
+  - key_handle_token
+  - key_scope
+  - public_material_digest
+  - wrapped_key_digest
+  - iv_nonce_digest
+  - input_length
+  - input_digest
+  - output_length
+  - output_digest
+- source_type: handshake-packet
+  name:
+    zh: 握手与封装密钥报文
+    en: Handshake and Wrapped-Key Packets
+  channel: PCAP
+  required_fields:
+  - timestamp
+  - flow_id
+  - direction
+  - handshake_step
+  - public_value_digest
+  - wrapped_key_digest
+  - message_id
+  - payload_length
+  - raw_packet_ref
+- source_type: endpoint-process-network
+  name:
+    zh: 端点进程与网络关系
+    en: Endpoint Process and Network Lineage
+  channel: EDR
+  required_fields:
+  - timestamp
+  - device_id
+  - process_start_key
+  - executable
+  - module_hash
+  - remote_ip
+  - remote_port
+  - protocol
+  - child_or_file_outcome
+- source_type: controlled-decrypt
+  name:
+    zh: 授权受控解密结果
+    en: Authorized Controlled Decryption
+  channel: isolated analysis workspace
+  required_fields:
+  - analysis_id
+  - flow_id
+  - message_id
+  - secret_digest
+  - recovery_source
+  - validation_method
+  - plaintext_digest
+  - command_id
+  - success
+observables:
+- zh: 非承载协议的多步密钥协商
+  en: A custom multistep key agreement outside the carrier protocol
+- zh: 每消息独立封装的秘密
+  en: A separately wrapped secret for each message
+- zh: 密码上下文与 C2 流量标识关联
+  en: Cryptographic context bound to a C2 flow identifier
+- zh: 恢复的明文与端点命令结果一致
+  en: Recovered plaintext agrees with endpoint command outcomes
+correlation:
+  window:
+    zh: 覆盖准确会话或消息生命周期，从密钥创建至销毁捕获内存和 API 状态，并延伸一个任务周期。
+    en: Cover the exact session or message lifetime, capturing memory and API state from key creation to destruction and extending
+      one task cycle.
+  dimensions:
+  - device_id
+  - process_start_key
+  - flow_id
+  - message_id
+  - key_handle_token
+  - wrapped_key_digest
+  - secret_digest
+  - time
+false_positives:
+- zh: 合法端到端加密或企业自定义协议
+  en: Legitimate end-to-end encryption or a custom enterprise protocol
+- zh: TLS SSH IPsec QUIC 的原生密钥流程及批准备份代理
+  en: Native TLS, SSH, IPsec, or QUIC key schedules and approved backup agents
+blind_spots:
+- zh: 无端点插桩或密钥销毁早于采集
+  en: No endpoint instrumentation or key erasure before capture
+- zh: 内核或硬件密码卸载及控制端独占私钥
+  en: Kernel or hardware cryptographic offload and controller-only private keys
+- zh: 进程注入或异步 API 使密钥句柄映射断裂
+  en: Process injection or asynchronous APIs breaking key-handle mapping
+tuning_guidance:
+  paragraphs:
+  - zh: 先排除 OS/protocol native TLS/SSH/VPN providers 和批准 app；instrumentation 仅针对高风险 process/sample 并记录 digest/handle 而非长期
+      key 明文。一个 API call 不告警，必须闭合 material→message→plaintext→outcome。
+    en: Exclude OS and protocol-native TLS, SSH, and VPN providers and approved applications first. Instrument only high-risk
+      processes or samples and retain digests or handles rather than long-lived plaintext keys. One API call does not alert;
+      close material to message to plaintext to outcome.
+evidence_refs:
+- REF-001147
+- REF-001148
+- REF-001152
+- REF-001153
+- REF-001151
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-10-05'
+  modified: '2026-10-05'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

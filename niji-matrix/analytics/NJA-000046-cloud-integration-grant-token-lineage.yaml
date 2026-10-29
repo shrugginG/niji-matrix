@@ -1,0 +1,223 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000046
+strategy_ref: DET-000067
+name:
+  zh: 云集成注册—同意—Token—资源谱系分析
+  en: Cloud-Integration Registration-Consent-Token-Resource Lineage Analytic
+summary:
+  zh: 规范应用、同意、权限、凭据与资源日志，按 app/service principal/token 识别未批准持续集成和受信应用拟态。
+  en: Normalize application, consent, permission, credential, and resource logs to identify unapproved durable integrations and trusted-app impersonation
+    by app, service principal, and token.
+domains:
+- enterprise
+platforms:
+- Identity Provider
+- Office Suite
+- SaaS
+logic:
+  paragraphs:
+  - zh: 分析建立应用注册、service principal、connected app、同意、scope/role grant、owner、凭据与 token 的有向图，保留 tenant、app/client ID、publisher 与验证状态、redirect URI、创建者、consenter、grant
+      ID、权限、credential ID、寿命和审批。新增、修改或重新同意后，按 app、service principal、token issuer、subject、audience 与资源关联 API、邮件、文件或 CRM 活动；缺少 credential ID 时降为应用级关联。
+    en: The analytic builds a directed graph of application registration, service principal, connected app, consent, scope or role grant, owner,
+      credential, and token, retaining tenant, app or client ID, publisher and verification, redirect URI, creator, consenter, grant ID, permission,
+      credential ID, lifetime, and approval. After addition, mutation, or renewed consent, it joins API, mail, file, or CRM activity by app, service
+      principal, token issuer, subject, audience, and resource. Missing credential ID downgrades correlation to application level.
+  - zh: 评分检查权限是否超出业务用途、consenter 是否异常、凭据是否长寿、应用是否在原账户禁用或密码重置后继续活动，以及调用是否批量读取、导出或跨资源扇出。受信拟态要求名称或用途类似批准应用，但 client ID、publisher、tenant、redirect
+      URI、scope 或行为至少两项不一致。Microsoft 报告的数周/月延迟要求关联窗口覆盖 token 与 grant 寿命。
+    en: Scoring tests whether permission exceeds business purpose, consenter is anomalous, credential is long-lived, activity continues after
+      original-account disablement or password reset, and calls bulk-read, export, or fan out across resources. Trusted impersonation requires
+      a name or purpose resembling an approved app but inconsistency in at least two of client ID, publisher, tenant, redirect URI, scope, or
+      behavior. Microsoft-observed delays of weeks or months require the window to cover token and grant lifetime.
+  - zh: 延迟分支计算 app/service_principal 的 created_at、grant_at、credential_added_at、last_used 与 first_resource_use，按同类计划生成静默阈值并要求延迟后成功活动；挪用分支以 existing
+      client_id、token/session ID、vendor tenant、来源和资源序列构建客户集合，若没有新 consent 但同一 vendor client 在多个租户同步异常或与 vendor incident 相符则提高风险。一次 access token
+      且无持续/跨连接证据不标 NJS-0086-003。
+    en: The delay branch calculates created at, grant at, credential added at, last used, and first resource use for an application or service
+      principal, deriving a silence threshold from peer schedules and requiring successful activity after delay. The co-option branch builds a
+      customer set from existing client ID, token or session ID, vendor tenant, origin, and resource sequence. Risk rises when no new consent
+      exists but the same vendor client behaves anomalously across tenants or matches a vendor incident. One access token without durable or cross-connection
+      evidence is not labeled NJS-0086-003.
+data_requirements:
+- source_type: cloud-application-control-plane
+  name:
+    zh: 应用注册、修改与所有者审计
+    en: Application registration, mutation, and owner audit
+  channel: null
+  required_fields:
+  - timestamp
+  - tenant_id
+  - app_id
+  - service_principal_id
+  - display_name
+  - publisher
+  - publisher_verification
+  - redirect_uri
+  - creator_id
+  - owner_id
+  - operation
+  - outcome
+- source_type: oauth-consent-permission-credential
+  name:
+    zh: OAuth 同意、权限与凭据审计
+    en: OAuth consent, permission, and credential audit
+  channel: null
+  required_fields:
+  - timestamp
+  - tenant_id
+  - app_id
+  - consenter_id
+  - grant_id
+  - scope_or_role
+  - credential_id
+  - valid_from
+  - valid_until
+  - operation
+  - outcome
+- source_type: application-token-activity
+  name:
+    zh: 应用 Token 与资源活动
+    en: Application token and resource activity
+  channel: null
+  required_fields:
+  - timestamp
+  - tenant_id
+  - app_id
+  - service_principal_id
+  - token_id
+  - issuer
+  - subject
+  - audience
+  - source
+  - resource
+  - action
+  - outcome
+- source_type: approved-integration-inventory
+  name:
+    zh: 批准集成身份与业务用途清单
+    en: Approved integration identity and business-purpose inventory
+  channel: null
+  required_fields:
+  - app_id
+  - publisher
+  - tenant_id
+  - redirect_uri
+  - approved_scope
+  - owner
+  - purpose
+  - validity_window
+  - change_id
+- source_type: integration-hygiene-and-vendor-incident
+  name:
+    zh: 应用使用年龄、凭据卫生与供应商事件
+    en: Application Use Age, Credential Hygiene, and Vendor Incident
+  channel: null
+  required_fields:
+  - snapshot_time
+  - app_or_client_id
+  - created_at
+  - grant_at
+  - credential_added_at
+  - last_used_at
+  - credential_unused_since
+  - owner
+  - vendor_id
+  - vendor_incident_id
+  - affected_connection_ids
+  - revocation_status
+observables:
+- zh: 高权限或异常用户同意新应用并授予宽 scope、role 或长寿凭据
+  en: A privileged or unusual user consents a new app and grants broad scope, role, or long-lived credential
+- zh: 应用在原 consenting account 禁用、密码重置或会话撤销后继续取得 token 和访问资源
+  en: An app continues obtaining tokens and accessing resources after the original consenting account is disabled, password-reset, or session-revoked
+- zh: 熟悉应用名称与 client ID、publisher、tenant、redirect URI、scope 或调用行为不一致
+  en: A familiar app name conflicts with client ID, publisher, tenant, redirect URI, scope, or calling behavior
+- zh: 新集成在延迟数周或数月后首次批量查询、导出或扇出到多个资源
+  en: A new integration first bulk-queries, exports, or fans out to resources after a delay of weeks or months
+- zh: 高权限应用在创建、凭据或授权后跨过同类基线静默期，首次从异常来源取得 token 并访问新资源。
+  en: A privileged application crosses a peer-baseline silent interval after creation, credential, or grant and first obtains a token from an
+    anomalous origin to access a new resource.
+- zh: 没有新应用或 consent 的既有第三方 client 从异常 IP/ASN 执行跨客户相似查询，并与供应商 token 事件或集成撤销相符。
+  en: An existing third-party client with no new application or consent performs similar queries across customers from an anomalous IP or ASN
+    and aligns with a vendor token incident or integration revocation.
+correlation:
+  window:
+    zh: 从注册、同意或修改持续到 grant/credential/token 到期或撤销，默认九十日；高权限长期 grant 覆盖其完整寿命并使用至少九十日应用基线。
+    en: Extend from registration, consent, or mutation until grant, credential, or token expiry or revocation, ninety days by default. High-privilege
+      long-lived grants cover their complete lifetime and use at least ninety days of application baseline.
+  dimensions:
+  - tenant
+  - app
+  - service_principal
+  - publisher
+  - consenter
+  - grant
+  - scope_or_role
+  - credential
+  - token
+  - source
+  - resource
+  - owner
+  - change
+  - time
+  - app_age
+  - grant_age
+  - credential_unused_age
+  - first_resource_use
+  - vendor
+  - connection
+  - customer_cohort
+  - token_origin
+false_positives:
+- zh: 批准 SaaS 上线、迁移、管理员同意和应用凭据轮换会产生新注册、权限与首次使用
+  en: Approved SaaS onboarding, migration, administrator consent, and application-credential rotation create new registration, permission, and
+    first use
+- zh: 数据导入导出、备份、审计和营销自动化会合法产生批量资源调用
+  en: Data import or export, backup, audit, and marketing automation legitimately produce bulk resource calls
+- zh: 季节性作业、灾备演练、季度报表或重新启用项目会让合法应用在长静默后首次或恢复使用。
+  en: Seasonal jobs, disaster-recovery exercises, quarterly reports, or resumed projects cause legitimate applications to first or resume use
+    after long silence.
+- zh: 供应商基础设施迁移、共享出口、批量支持或计划数据导出可能使既有 client 同时跨客户改变来源与访问量。
+  en: Vendor infrastructure migration, shared egress, bulk support, or scheduled data export can change origin and volume across customers for
+    an existing client.
+blind_spots:
+- zh: SaaS 不记录 consent actor、client ID、credential ID、token 或对象级资源活动时只能做弱关联
+  en: SaaS that omits consent actor, client ID, credential ID, token, or object-level resource activity permits only weak correlation
+- zh: 攻击者挪用完全批准的集成且不改变配置，或控制 publisher 与批准清单时，身份一致性分支可能失效
+  en: Identity-consistency checks can fail when an adversary co-opts a fully approved integration without mutation or controls publisher and approved
+    inventory
+- zh: 控制面日志短于静默期或资源日志缺少 app/client ID 时，延迟使用无法连接到建立状态。
+  en: When control-plane retention is shorter than the silent interval or resource logs omit app or client ID, delayed use cannot be joined to
+    establishment state.
+- zh: 供应商不共享 token 存储、认证和客户影响事件，且 token 无稳定标识时，既有集成控制转移可能看似合法 API 使用。
+  en: When a vendor does not share token-store, authentication, and customer-impact events and tokens lack stable identifiers, control transfer
+    of an existing integration may appear as legitimate API use.
+tuning_guidance:
+  paragraphs:
+  - zh: 按业务所有者、app/client ID、publisher、tenant、redirect URI、scope、资源和正常调用量维护清单；允许项必须绑定不可仅靠名称。分别输出未批准 grant、持续 token 使用和拟态冲突，只有应用身份至少两项不一致且存在资源活动时标记
+      NJS-0086-001。
+    en: Maintain inventory by business owner, app or client ID, publisher, tenant, redirect URI, scope, resource, and normal call volume. Allow
+      entries are bound to those identities rather than name alone. Output unapproved grant, continuing token use, and impersonation conflict
+      separately, marking NJS-0086-001 only when at least two application-identity elements conflict and resource activity exists.
+  - zh: 按应用用途和计划分别建立静默阈值，不使用统一天数；对高权限且无 owner 的长期未用应用先禁用/复核。为第三方集成维护 vendor、client ID、连接租户、正常 ASN、查询模式与事件联系人；允许列表绑定来源和范围而非只绑定应用名。收到 vendor 事件时回溯所有连接，并在每个系统验证
+      token 撤销。
+    en: Build separate silence thresholds by application purpose and schedule rather than one day count, disabling or reviewing long-unused privileged
+      apps without owners. Maintain vendor, client ID, connected tenants, normal ASN, query pattern, and incident contact for third-party integrations.
+      Allowlists bind origin and scope rather than application name alone. On vendor incident, look back across every connection and verify token
+      revocation in each system.
+evidence_refs:
+- REF-000145
+- REF-000158
+- REF-000159
+- REF-000160
+- REF-000161
+- REF-000162
+- REF-000177
+- REF-000178
+lifecycle:
+  status: review
+  version: 1.1.0
+  created: '2026-09-11'
+  modified: '2026-09-11'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

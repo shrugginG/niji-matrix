@@ -1,0 +1,171 @@
+schema_version: 2.0.0
+type: technique
+id: NJT-0200
+name:
+  zh: 系统关机或重启
+  en: System Shutdown/Reboot
+summary:
+  zh: 攻击者触发主机、VM 或设备生命周期转换造成访问中断，并通过延迟委托或目标外控制面分离决定与结果。
+  en: Adversaries trigger host, VM, or device lifecycle transitions causing access interruption and separate decision
+    from outcome through deferred delegation or an out-of-target control plane.
+aliases:
+- T1529
+classification:
+  tactic_refs:
+  - TA0040
+  origin:
+    kind: attack-adapted
+    source_attack_id: T1529
+    source_attack_version: '19.1'
+  decision_ref: DEC-TA0040-T1529
+definition_and_concept:
+  paragraphs:
+  - zh: 系统关机或重启是攻击者让主机、虚拟机或网络设备进入关机、重启或等价生命周期转换，使合法用户、服务和会话在转换期间不可访问。直接对象是整个系统实例的生命周期与可用性，不是一个服务状态、崩溃副作用或重启后加载的其他技术。
+    en: System Shutdown or Reboot makes a host, virtual machine, or network device enter shutdown, reboot, or an equivalent
+      lifecycle transition so legitimate users, services, and sessions become unavailable during it. The direct object
+      is whole-system lifecycle and availability, not one service state, a crash side effect, or another technique
+      loaded after reboot.
+  - zh: Niji 关注发起决定与最终转换如何分离：计划任务可让调度器稍后执行，外部 hypervisor/云控制面可在 guest 之外完成。系统接受的正常路径和 reason 也与维护共享，因此状态结果 alone 不含恶意意图。
+    en: Niji focuses on separation between the initiating decision and final transition. A scheduled task can execute
+      later through the scheduler, and an external hypervisor or cloud plane can act outside the guest. Accepted lifecycle
+      paths and reason codes are also shared with maintenance, so the state outcome alone contains no malicious intent.
+stealth_characteristics:
+  paragraphs:
+  - zh: 正常关机/重启会产生 familiar requester、reason、shutdown 和 boot 序列，恶意事件可呈现为补丁或维护。延迟任务把 writer、task、scheduler child 和
+      boot 分散到不同窗口；外层控制让 guest 只见突然失联，actor 留在 hypervisor。
+    en: Normal shutdown or reboot produces familiar requester, reason, shutdown, and boot sequences, allowing a malicious
+      event to resemble patching or maintenance. Deferred tasks distribute writer, task, scheduler child, and boot
+      across windows; outer-plane control leaves the guest seeing disappearance while the actor remains in the hypervisor.
+  - zh: 残余包括本地 caller/privilege/reason、Event 1074/6008/boot ID、任务定义/creator/run instance、WMI correlation、vSphere chainId/user/VM/host、审批和外部健康。跨平面和跨时间关联恢复链。
+    en: Residue includes local caller, privilege and reason, Event 1074 or 6008 and boot ID, task definition, creator
+      and run instance, WMI correlation, vSphere chainId, user, VM and host, approval, and external health. Cross-plane
+      and cross-time correlation restores the chain.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 纳入攻击者控制的关机/重启请求被系统或管理面接受并完成，且造成合法访问中断。命令失败、仅写配置、正常补丁/维护/灾备/故障恢复是企图或反例；意外电源、panic 和 watchdog 无恶意生命周期请求时不直接归入。
+    en: Include an attacker-controlled shutdown or reboot request accepted and completed by the system or management
+      plane with legitimate-access interruption. Failed commands, configuration-only writes, normal patching, maintenance,
+      DR, or fault recovery are attempts or counterexamples; power loss, panic, and watchdog without a malicious lifecycle
+      request do not directly qualify.
+  - zh: 单服务停止归 NJT-0185；阻止状态转换延长易失立足点归 NJT-0096；Safe Mode 防御缺失归 NJT-0172；资源/漏洞造成的 crash 首先归 NJT-0199。重启只作为后继载荷前提时，本技术仍需独立
+      availability 结果。
+    en: Single-service stop belongs to NJT-0185, inhibited transition preserving a volatile foothold to NJT-0096,
+      Safe Mode defensive omission to NJT-0172, and resource or exploit crash first to NJT-0199. When reboot is only
+      a precursor to another payload, this technique still requires an independent availability outcome.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: 恶意软件可注册一次性任务延迟执行 shutdown/reboot，或在 ESXi/云控制面关闭多台 VM 再操作虚拟磁盘。也可本地调用 ExitWindowsEx、shutdown 或 WMI 完成立即转换。
+      en: Malware can register a one-time task for delayed shutdown or reboot, or power off many VMs from ESXi or
+        cloud control before operating on virtual disks. It can also call ExitWindowsEx, shutdown, or WMI locally
+        for an immediate transition.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者需要本地关机权限、任务 writer，或 hypervisor/cloud power authority，并容忍控制通道与业务中断。最小权限、审批、任务治理、不同权管理面、HA 和快速恢复限制效果。
+        en: The attacker needs local shutdown privilege, task-writer authority, or hypervisor or cloud power rights
+          and tolerates control-channel and business interruption. Least privilege, approval, task governance, differently
+          authorized management, HA, and rapid recovery constrain it.
+    defender_model:
+      paragraphs:
+      - zh: 防守方保存本地生命周期事件、进程/WMI 调用、任务前后态、boot/uptime、hypervisor events、VM/host inventory、审批和外部健康。只有 guest agent 时，外层
+          power-off 恰会切断观察。
+        en: Defenders retain local lifecycle events, process or WMI calls, task before and after state, boot and uptime,
+          hypervisor events, VM and host inventory, approvals, and external health. A guest-only agent loses observation
+          precisely on outer-plane power-off.
+stealth_mechanisms:
+- mechanism_ref: NM-FD
+  role: primary
+  summary:
+    zh: 系统接受的生命周期路径呈现常规维护终态
+    en: A system-accepted lifecycle path presents an ordinary maintenance terminal state
+  analysis:
+    paragraphs:
+    - zh: 攻击者使用正常关机/重启路径，OS 或管理面按标准序列停止并记录 reason。状态和理由也由维护生成，难以从终态判断恶意；caller、权限、审批与结果揭示。
+      en: The attacker uses a normal shutdown or reboot path, and the OS or management plane stops through a standard
+        sequence and records a reason. Maintenance produces the same state and reason, making terminal-state classification
+        difficult; caller, authority, approval, and outcome reveal it.
+  evidence_refs:
+  - REF-000870
+  - REF-000977
+  - REF-000978
+  confidence: medium
+- mechanism_ref: NM-ST
+  role: secondary
+  summary:
+    zh: 调度委托把生命周期决定与结果分散到不同时间和主体
+    en: Scheduler delegation disperses lifecycle decision and outcome across time and actors
+  analysis:
+    paragraphs:
+    - zh: writer 登记未来任务后退出，调度器稍后以自身/SYSTEM 启动转换。临近结果只见委托主体，短窗口丢失原决定；task ID、definition digest 和 boot 关联恢复。
+      en: The writer registers a future task and exits, and the scheduler later starts the transition as itself or
+        SYSTEM. Near the outcome only the delegate is visible and short windows lose the original decision; task ID,
+        definition digest, and boot correlation restore it.
+  evidence_refs:
+  - REF-000601
+  confidence: medium
+subtechnique_taxonomy:
+  narrative:
+    paragraphs:
+    - zh: 延迟委托式生命周期转换按 writer 与未来调度执行分离划分，需 task-to-boot 长窗口；目标外控制面生命周期转换按 actor/action 位于 guest 外划分，需 management-plane-to-target
+        关联。两者可共现但时间与观察域变量不同。
+      en: Deferred-Delegated Lifecycle Transition is divided by separation of writer and future scheduled execution
+        and needs long task-to-boot correlation. Out-of-Target Control-Plane Lifecycle Transition is divided by actor
+        and action residing outside the guest and needs management-plane-to-target joins. They can co-occur but time
+        and observation-domain variables differ.
+    - zh: ATT&CK 无子项。reason camouflage 与维护窗口对齐证据不足而 defer；本地立即转换留父级，平台和命令不形成 NJS。
+      en: ATT&CK has no children. Reason camouflage and maintenance-window alignment lack evidence and remain deferred;
+        immediate local transitions remain parent core, and platform or command does not define NJS.
+  coverage: established
+  subtechnique_refs:
+  - NJS-0200-001
+  - NJS-0200-002
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000232
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000207
+evidence:
+  claim_refs:
+  - CLM-000983
+  - CLM-000984
+  - CLM-000985
+  - CLM-000986
+  - CLM-000987
+  - CLM-000988
+  case_refs:
+  - CASE-000283
+  - CASE-000284
+  reference_refs:
+  - REF-000870
+  - REF-000601
+  - REF-000294
+  - REF-000977
+  - REF-000978
+  - REF-000979
+  - REF-000980
+  - REF-000981
+  - REF-000982
+  - REF-000983
+research:
+  limitations:
+    paragraphs:
+    - zh: Petya 直接支持计划重启，Play/CISA 支持 ESXi 外层关机；正常维护使用相同路径，必须连接审批和 availability。原因码可被任意填写，不能独立证明伪装。
+      en: Petya directly supports scheduled reboot and Play or CISA supports outer ESXi power-off. Normal maintenance
+        uses the same paths, requiring approval and availability joins. Reason codes can be arbitrary and do not independently
+        prove camouflage.
+    - zh: 不同平台生命周期字段不可互换；guest 失联也可由网络/故障造成，需管理面事件确认。
+      en: Lifecycle fields are not interchangeable across platforms; guest disappearance can also result from network
+        or faults and needs management-plane confirmation.
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-10-04'
+  modified: '2026-10-04'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

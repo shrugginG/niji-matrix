@@ -1,0 +1,115 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000297
+strategy_ref: DET-000234
+name:
+  zh: 擦除可恢复性话术与介质现实差分
+  en: Wipe Recoverability-Pretext and Media-Reality Differential
+summary:
+  zh: 输出勒索呈现、无可用 key/恢复路径和真实块/结构毁坏之间的矛盾。
+  en: Emit the contradiction among ransomware presentation, absent usable key or recovery path, and real block or
+    structure destruction.
+domains:
+- enterprise
+platforms:
+- Windows
+logic:
+  paragraphs:
+  - zh: 采集 DeviceFileEvents/process lineage 中 ransom note、扩展名、安装 ID、重启/锁屏工件和样本 hash，静态/动态分析 key/IV/ID 生成、保存/传输、恢复函数与目标盘。与此同时接入
+      raw block analytic 的 device、critical metadata、partition/mount/boot result。
+    en: Collect ransom note, extension, installation ID, reboot or lock-screen artifacts, sample hash, and process
+      lineage from file or process telemetry, and statically or dynamically analyze key, IV, or ID generation, retention
+      or transmission, recovery functions, and target disks. In parallel ingest device, critical metadata, partition,
+      mount, and boot results from the raw-block analytic.
+  - zh: 在事件首 30 分钟判断呈现是否声称可支付/解密，在隔离副本上验证恢复材料可导出且函数能作用；缺 key/随机 ID/结构毁坏与可恢复承诺共同成立才输出。不得在原盘运行未验证 decryptor。
+    en: Within the first thirty minutes classify whether presentation claims payable decryption and validate on an
+      isolated copy whether recovery material is derivable and the function works. Emit only when absent key or random
+      ID or structural destruction conflicts with a recoverability promise. Never run unverified decryptors on original
+      media.
+data_requirements:
+- source_type: ransom-artifact-lineage
+  name:
+    zh: 勒索工件与进程谱系
+    en: Ransom artifacts and process lineage
+  channel: DeviceFileEvents and process telemetry
+  required_fields:
+  - event.time
+  - asset.id
+  - process.id
+  - file.path
+  - file.hash
+  - artifact.type
+  - installation.id
+  - extension
+  - message.hash
+  - sample.hash
+- source_type: recovery-material-analysis
+  name:
+    zh: 恢复材料与代码分析
+    en: Recovery material and code analysis
+  channel: null
+  required_fields:
+  - sample.hash
+  - key.generated
+  - key.persisted
+  - key.transmitted
+  - iv.persisted
+  - id.derivable
+  - recovery.function.present
+  - target.device
+- source_type: disk-reality
+  name:
+    zh: 磁盘结构与恢复结果
+    en: Disk structure and recovery outcome
+  channel: null
+  required_fields:
+  - asset.id
+  - device.id
+  - metadata.hash.before
+  - metadata.hash.after
+  - partition.result
+  - mount.result
+  - boot.result
+  - isolated.restore.result
+observables:
+- zh: 勒索/解密承诺存在但 key/ID 无法导出恢复材料
+  en: Ransom or decryption promise exists but key or ID cannot yield recovery material
+- zh: 块/结构毁坏使安全恢复函数不可作用
+  en: Block or structure destruction makes safe recovery functions unusable
+correlation:
+  window:
+    zh: 工件、样本和磁盘状态首 30 分钟关联；安全恢复验证按事件响应时限记录。
+    en: Join artifacts, sample, and disk state in the first thirty minutes; record safe recovery validation under
+      incident-response timing.
+  dimensions:
+  - asset.id
+  - sample.hash
+  - process.id
+  - device.id
+  - installation.id
+  - event.time
+false_positives:
+- zh: 合法演练 wiper、测试 ransomware、损坏样本、错误 key escrow 或暂时无法取得密钥
+  en: Authorized wiper exercise, ransomware test, broken sample, key-escrow error, or temporarily unavailable key
+blind_spots:
+- zh: 样本未取得、混淆阻止分析、key 在外部 C2、磁盘无法镜像或恢复函数有破坏副作用
+  en: Missing sample, obfuscation blocking analysis, key held by external C2, disk cannot be imaged, or recovery function
+    has destructive side effects
+tuning_guidance:
+  paragraphs:
+  - zh: 按证据等级报告：ransomware-like、疑似不可恢复、已确认 wipe。恢复验证使用隔离副本，保全原始盘；不以扩展名、note 或零填充模式 alone 判定。
+    en: 'Report evidence levels: ransomware-like, suspected irrecoverable, confirmed wipe. Validate on an isolated
+      copy and preserve original media; never classify from extension, note, or zero-fill pattern alone.'
+evidence_refs:
+- REF-000989
+- REF-000990
+- REF-000991
+- REF-000475
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-10-04'
+  modified: '2026-10-04'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

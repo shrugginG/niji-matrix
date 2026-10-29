@@ -1,0 +1,193 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000047
+strategy_ref: DET-000068
+name:
+  zh: 二进制基线差异—写入者—执行结果分析
+  en: Binary Baseline-Difference-Writer-Execution Outcome Analytic
+summary:
+  zh: 对运行二进制与可信包做整体和分段比较，并关联写入来源和以后执行结果。
+  en: Compare runtime binaries with trusted packages at whole-file and segment levels and correlate mutation provenance with later execution outcomes.
+domains:
+- enterprise
+platforms:
+- ESXi
+- Linux
+- Windows
+- macOS
+- Network Devices
+logic:
+  paragraphs:
+  - zh: 为关键软件保存路径、包/映像版本、尺寸、哈希、签名、段表或代码页哈希、权限和发布者。文件变化时记录写入主体、进程/会话、旧新哈希和事务；从只读包或厂商映像恢复可信版本。低差异分支计算变化字节与段，只有路径和绝大多数内容保持、局部补丁改变控制流或功能时标记 NJS-0087-001。
+    en: Maintain path, package or image version, size, hash, signature, segment table or code-page hashes, permission, and publisher for critical
+      software. On file mutation, record writer principal, process or session, old and new hashes, and transaction and recover a trusted version
+      from a read-only package or vendor image. The low-difference branch computes changed bytes and segments and marks NJS-0087-001 only when
+      path and most content remain while a local patch changes control flow or function.
+  - zh: 把新版本以后由正常服务、用户或系统调用的进程/模块与文件版本连接，并检查新子进程、凭据记录、校验绕过、外联或更新阻断。未执行的差异保持完整性异常；无可信基线不声称低差异。合法更新必须匹配包事务、签名与版本。
+    en: Join later invocation of the new version by normal service, user, or system to process or module and test for new children, credential
+      logging, verification bypass, egress, or update blocking. An unexecuted difference remains an integrity anomaly, and no trusted baseline
+      means low difference cannot be claimed. Legitimate update must match package transaction, signature, and version.
+  - zh: 分析先按可信包/厂商版本计算 binary delta。若同路径差异局限于少量字节/段且改变入口、校验或关键函数，标 NJS-0087-001；若完整映像 hash/签名/包身份替换且原映像不再执行，标 NJS-0087-002；若感染体访问、解密或映射保留原代码/隐藏副本，并在恶意活动后跳转/启动它，标
+      NJS-0087-003。显式接力优先于 delta 规模，避免交叉归类。
+    en: The analytic first computes binary delta against a trusted package or vendor version. A same-path difference limited to a small byte set
+      or section that changes entry, check, or critical function is NJS-0087-001. Complete image hash, signature, or package-identity replacement
+      with no original image execution is NJS-0087-002. An infected body that accesses, decrypts, or maps preserved original code or hidden copy
+      and jumps to or launches it after malicious activity is NJS-0087-003. Explicit handoff takes precedence over delta scale to avoid cross-classification.
+data_requirements:
+- source_type: trusted-binary-baseline
+  name:
+    zh: 可信包、映像与二进制基线
+    en: Trusted package, image, and binary baseline
+  channel: null
+  required_fields:
+  - software_id
+  - version
+  - file_path
+  - file_size
+  - file_hash
+  - segment_hashes
+  - signature
+  - publisher
+  - package_id
+- source_type: binary-file-mutation
+  name:
+    zh: 二进制写入与文件元数据
+    en: Binary write and file metadata
+  channel: null
+  required_fields:
+  - timestamp
+  - device_id
+  - file_path
+  - old_hash
+  - new_hash
+  - writer_principal_id
+  - writer_process_or_session
+  - permissions
+  - event_id
+- source_type: binary-execution-outcome
+  name:
+    zh: 进程、模块与网络结果
+    en: Process, module, and network outcomes
+  channel: null
+  required_fields:
+  - timestamp
+  - device_id
+  - file_path
+  - file_hash
+  - process_id
+  - parent_process_id
+  - command_line
+  - loaded_module
+  - destination
+  - action
+- source_type: binary-package-and-structure-baseline
+  name:
+    zh: 厂商包、完整映像与二进制结构基线
+    en: Vendor Package, Complete Image, and Binary-Structure Baseline
+  channel: null
+  required_fields:
+  - path
+  - package_id
+  - package_version
+  - vendor_hash
+  - signature
+  - inode_or_file_id
+  - file_size
+  - entry_point
+  - sections
+  - original_filename
+  - install_source
+- source_type: runtime-binary-handoff
+  name:
+    zh: 感染入口、隐藏原始副本与运行时接力遥测
+    en: Infected Entry, Hidden Original Copy, and Runtime Handoff Telemetry
+  channel: null
+  required_fields:
+  - timestamp
+  - device_id
+  - process_id
+  - image_path
+  - entry_point
+  - file_or_mapping_access
+  - hidden_original_path
+  - loaded_region_or_child_image
+  - control_transfer_or_child_start
+  - network_or_file_effect
+  - outcome
+observables:
+- zh: 关键软件路径与尺寸近似不变但代码段或少量字节偏离可信版本
+  en: A critical software path and approximate size remain while a code segment or small byte set differs from the trusted version
+- zh: 非包管理写入后正常调用者执行新版本并出现校验绕过、凭据记录或异常外联
+  en: After a nonpackage write, a normal caller executes the new version and verification bypass, credential logging, or anomalous egress appears
+- zh: 标准软件路径的完整映像 hash、签名或包版本与厂商基线显著不同，且没有对应安装事务，随后由正常服务或用户调用。
+  en: A complete image hash, signature, or package version at a standard software path differs materially from vendor baseline without a matching
+    installation transaction and is later invoked by a normal service or user.
+- zh: 感染映像先产生网络/文件或内存恶意效果，再解密、映射或启动保留原代码/隐藏副本，最终呈现正常应用功能。
+  en: An infected image first produces malicious network, file, or memory effect and then decrypts, maps, or launches preserved original code
+    or hidden copy, ultimately presenting normal application function.
+correlation:
+  window:
+    zh: 从文件变化持续到恢复、更新或三次执行，默认三十日；按设备、路径、哈希、包版本和进程关联。
+    en: Extend from file change until restoration, update, or three executions, thirty days by default, correlating by device, path, hash, package
+      version, and process.
+  dimensions:
+  - device
+  - software
+  - file_path
+  - file_hash
+  - segment
+  - writer
+  - package
+  - process
+  - module
+  - destination
+  - time
+  - complete_image
+  - delta_size
+  - entry_point
+  - preserved_original
+  - runtime_handoff
+false_positives:
+- zh: 合法补丁、热修复、插件安装和厂商本地定制会改变二进制或段哈希
+  en: Legitimate patching, hotfix, plug-in installation, and vendor local customization change binary or segment hashes
+- zh: 批准的软件升级、原子包替换、紧急热修复和厂商自更新会整体改变标准路径映像。
+  en: Approved software upgrade, atomic package replacement, emergency hotfix, and vendor self-update wholly change an image at a standard path.
+- zh: 合法启动器、兼容 shim、安全/调试插桩和包装器会先执行代理逻辑再调用原始程序。
+  en: Legitimate launchers, compatibility shims, security or debugging instrumentation, and wrappers execute proxy logic before invoking the original
+    program.
+blind_spots:
+- zh: 无可信包、内存补丁不落盘、早期启动或设备无法导出文件时完整性比较受限
+  en: Integrity comparison is limited without a trusted package, when a memory patch never reaches disk, during early boot, or when an appliance
+    cannot export files
+- zh: 缺少厂商包、签名或完整 hash 基线时，整映像替换无法与合法本地构建或旧版本区分。
+  en: Without vendor package, signature, or complete-hash baseline, whole-image replacement cannot be distinguished from a legitimate local build
+    or old version.
+- zh: EDR 不记录入口点、内存映射、隐藏副本访问或短生命周期子进程时，恶意前奏到原始功能接力只表现为正常应用。
+  en: When EDR omits entry point, memory mapping, hidden-copy access, or short-lived child process, malicious-prelude-to-original-function handoff
+    appears only as a normal application.
+tuning_guidance:
+  paragraphs:
+  - zh: 按软件和版本固定基线，允许项绑定包 ID、签名、维护窗口和确切差异；关键安全/网络二进制优先分段哈希。低差异只描述变化比例，不降低严重度，且必须连接控制流或执行结果。
+    en: Pin baselines by software and version and bind allows to package ID, signature, maintenance window, and exact difference. Prioritize segment
+      hashes for critical security and network binaries. Low difference describes change ratio rather than severity and must join control-flow
+      or execution outcome.
+  - zh: 为关键软件保存厂商包、完整 hash/签名、entry point/sections、安装源与允许 wrapper 关系；分支优先级为显式原始接力、低差异补丁、整映像替换。升级窗口只允许由对应包管理进程产生的版本变化，路径允许列表不能覆盖内容；对隐藏副本和正常功能接力先审计合法启动器，再启用阻断。
+    en: Retain vendor package, complete hash or signature, entry point or sections, installation source, and allowed-wrapper relationship for
+      critical software. Branch precedence is explicit original handoff, low-difference patch, then whole-image replacement. Upgrade windows allow
+      version change only from matching package-management process, and path allowlists cannot override content. Audit legitimate launchers for
+      hidden-copy and normal-function handoff before enforcement.
+evidence_refs:
+- REF-000155
+- REF-000163
+- REF-000164
+- REF-000179
+- REF-000180
+- REF-000181
+lifecycle:
+  status: review
+  version: 1.1.0
+  created: '2026-09-11'
+  modified: '2026-09-11'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

@@ -1,0 +1,72 @@
+schema_version: "2.0.0"
+type: technique
+id: NJT-0070
+name: {zh: 劫持执行流, en: Hijack Execution Flow}
+summary: {zh: 攻击者改变受信程序或运行时选择代码、依赖、目标或激活回调的规则，使合法入口转而执行攻击者内容并保留熟悉进程、路径或生命周期外观。, en: Adversaries alter how a trusted program or runtime selects code dependencies targets or activation callbacks so a legitimate entry executes attacker content while retaining familiar process path or lifecycle appearance.}
+aliases: []
+classification:
+  tactic_refs: [TA0002]
+  origin: {kind: attack-adapted, source_attack_id: T1574, source_attack_version: '19.1'}
+  decision_ref: DEC-TA0002-T1574
+definition_and_concept:
+  paragraphs:
+  - zh: 劫持执行流是攻击者不直接以独立可执行入口启动载荷，而是修改操作系统、loader、服务管理或语言 runtime 已有的选择/激活状态，使一个原本合法的程序、服务或 CLR 在启动、加载依赖或生命周期回调时把控制权转移给攻击者文件、库、manager 或函数的技术。直接目标是以受信入口的身份和权限开始执行，同时让可见 launcher、服务名、路径或 runtime 保持熟悉。
+    en: Hijack Execution Flow avoids starting a payload through an independent executable entry and instead changes existing selection or activation state in the operating system loader service management or language runtime so a legitimate program service or CLR transfers control to an attacker file library manager or function during startup dependency loading or lifecycle callbacks. Its direct objective is execution under a trusted entry's identity and privilege while visible launcher service name path or runtime remains familiar.
+  - zh: 概念锚是“攻击者控制的前置状态—受信 consumer/loader—解析或激活决策—攻击者内容—执行结果”。该状态可以是搜索目录/环境、既有文件或服务目标、profiler/AppDomain/callback 槽位；工具、DLL/dylib 格式和平台不定义技术。直接 LoadLibrary 一个明确恶意库而未改变选择规则归共享模块加载；将代码写入已运行进程并直接操纵线程归进程注入；长期重复触发可以同时服务持久化，但本对象在当前控制转移并开始执行时完成。
+    en: The conceptual anchor is adversary-controlled prior state, trusted consumer or loader, resolution or activation decision, attacker content, and execution outcome. State can be a search directory or environment, existing file or service target, or profiler AppDomain or callback slot; tools library formats and platforms do not define the technique. Directly loading an explicitly named malicious library without changing selection rules belongs to shared-module loading. Writing code into a running process and directly manipulating a thread belongs to process injection. Repeated activation can also serve persistence, but this object completes when the current control transfer begins execution.
+stealth_characteristics:
+  paragraphs:
+  - zh: 核心匿迹矛盾是攻击者必须留下能让受信 consumer 找到恶意内容的状态和载荷，却希望防守方把结果归给合法 launcher、既有路径或正常 runtime 生命周期。搜索阴影保留签名 PE 与依赖名，只改变哪个候选首先被解析；完整性替换保留文件/服务路径和接口，只改变内容或目标；运行时激活重定向保留 .NET 应用/CLR，只改变 profiler、AppDomainManager 或回调槽。三者都使单点进程/签名/名称规则失去区分力。
+    en: The central stealth tension is that an adversary must leave state and content allowing a trusted consumer to find malicious code while defenders attribute the outcome to a legitimate launcher existing path or normal runtime lifecycle. Search shadowing preserves a signed PE and dependency name while changing which candidate resolves first. Integrity substitution preserves file or service path and interface while changing content or target. Runtime activation redirection preserves the .NET application or CLR while changing a profiler AppDomainManager or callback slot. All weaken point process signature or name rules.
+  - zh: 痕迹不会消失。写入者与权限、目录/环境/注册表/服务/profiler 状态、路径解析候选、文件 hash/签名、loader event、实际加载模块、CLR 激活、进程/内存结果和随后还原仍可形成谱系。FIN7 BOOSTWRITE、2013 侧加载、PRIVATELOG、Industroyer/ThiefQuest、Blue Mockingbird 与 AppDomainManager 定向活动覆盖三个变量。安全完整路径、内容基线、App Control、受管激活状态和 state-to-load 关联会削弱匿迹。
+    en: Traces remain. Writer and permissions directory environment registry service or profiler state candidate resolution file hash or signature loader event actual module CLR activation process or memory outcome and later restoration form a lineage. FIN7 BOOSTWRITE, a 2013 side-loading attack, PRIVATELOG, Industroyer or ThiefQuest, Blue Mockingbird, and targeted AppDomainManager activity cover the three variables. Safe fully qualified paths content baselines App Control governed activation state and state-to-load correlation reduce stealth.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 纳入攻击者有意修改执行入口消费的搜索、内容、目标或回调状态，并由受信 consumer 实际选择/激活攻击者代码的行为，要求识别前置状态变化、consumer 决策和执行结果。仅发现可写目录/服务权限是暴露，不证明执行；仅存在旁加载 DLL 而没有 launcher 加载结果是候选；只修改文件但从未被消费不属于本次 Execution。
+    en: Scope includes deliberate adversary modification of search content target or callback state consumed by an execution entry and actual selection or activation of attacker code by a trusted consumer, requiring prior state change consumer decision and execution outcome. A writable directory or service permission alone is exposure, not execution. A side-loadable DLL without launcher load is only a candidate. A modified file never consumed is outside the current Execution instance.
+  - zh: 模块扩展、软件更新、开发 profiler、插件、可写服务升级和路径配置会合法产生相似状态；判定必须结合 writer、审批、基线差分、consumer 和结果。NJT-0087 主机二进制内容破坏强调持久文件完整性，NJT-0070 强调该状态怎样重定向当前执行，两者可共现。NJT-0090 事件注册强调事件条件/后继 broker，不包含 loader/runtime 内建激活槽；NJT-0077 只描述明确模块加载而不要求选择规则被劫持。
+    en: Plug-ins software updates development profilers writable service upgrades and path configuration legitimately create similar state and require writer approval baseline difference consumer and outcome together. NJT-0087 Host Binary Content Compromise emphasizes durable file integrity while NJT-0070 emphasizes how state redirects current execution and both can coexist. NJT-0090 event registration centers on event predicates and successor brokers rather than loader or runtime built-in activation slots. NJT-0077 describes explicit module load without requiring hijacked selection rules.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: 攻击者已获得用户或管理员写权限后，调查签名程序缺失/相对依赖、PATH/loader 环境、可写服务/安装目录、服务注册目标或 CLR 激活接口，再放置/替换库、二进制或 manager 并触发正常程序、服务、升级或 runtime 启动。后续目的可以是载荷加载、权限提升、持久化恢复或安全控制绕过，但本技术直接目的始终是控制转移。
+      en: After gaining user or administrator write authority an adversary identifies missing or relative dependencies of signed programs PATH or loader environments writable service or installation directories service registry targets or CLR activation interfaces then places or replaces a library binary or manager and triggers ordinary program service upgrade or runtime startup. Follow-on goals can be payload loading privilege elevation persistence restoration or security-control bypass, but the direct objective remains control transfer.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 搜索阴影需要知道精确依赖名、导出、搜索顺序、架构和触发程序，并控制较早目录；完整性替换需要写入文件/注册表/服务目标并维持接口或原功能；激活重定向需要修改环境/注册表/config/内存槽并提供兼容 DLL/manager。签名、权限、SafeDllSearch/完整路径、App Control、CLR 版本、CFG/CET 与重启/触发条件限制可靠性，错误容易造成崩溃或服务失败。
+        en: Search shadowing needs exact dependency name exports search order architecture trigger and control of an earlier directory. Integrity substitution needs write access to a file registry or service target and preservation of interface or original function. Activation redirection needs environment registry config or memory-slot change plus a compatible DLL or manager. Signing permissions safe search or full paths App Control CLR version CFG or CET and restart or trigger conditions constrain reliability, and mistakes cause crashes or service failure.
+    defender_model:
+      paragraphs:
+      - zh: 防守方模型假定可取得 writer 进程/身份、文件/目录 ACL、环境和注册表/服务/config 变化、软件清单与批准基线、loader/CLR/module events、resolved path/hash、进程/内存结果和时间。可靠分析需把状态变化保留到下一次加载/激活，短窗口会漏掉延迟触发；只看进程签名、路径或当前文件无法知道先前候选和被替换内容。未保存旧 hash/配置时完整性替换置信度下降。
+        en: The defender model assumes writer process or identity file and directory ACL environment registry service or config changes software inventory and approval baseline loader CLR or module events resolved path and hash process or memory outcome and time. Reliable analysis retains state changes until the next load or activation; short windows miss delayed triggers. Process signature path or current file alone cannot reveal prior candidates or replaced content. Without old hashes or configuration integrity-substitution confidence falls.
+stealth_mechanisms:
+- mechanism_ref: NM-FD
+  role: primary
+  summary: {zh: 攻击者内容借用受信 launcher、稳定路径或正常 runtime 激活来源, en: Attacker content borrows trusted launcher stable-path or normal-runtime activation provenance}
+  analysis:
+    paragraphs:
+    - zh: 三类变量都让恶意代码在保留合法外壳特征的情况下执行：搜索阴影保留 launcher/依赖名，完整性替换保留 path/interface，激活重定向保留 runtime/lifecycle。恶意与合法对象共享进程、签名、名称或服务特征，形成特征伪装。多个现场案例分别支持三类变量，置信度 high；writer—state—resolver/load—outcome 的联合可恢复真实身份。
+      en: "All three variables execute malicious code while preserving legitimate shell features: search shadowing preserves launcher and dependency name, integrity substitution preserves path and interface, and activation redirection preserves runtime and lifecycle. Malicious and legitimate objects share process signature name or service features, producing Feature Disguise. Multiple field cases support each variable at high confidence; writer-state-resolution-or-load-outcome joins restore true identity."
+  evidence_refs: [REF-000180, REF-000233, REF-000234, REF-000235, REF-000236, REF-000237, REF-000238]
+  confidence: high
+subtechnique_taxonomy:
+  narrative:
+    paragraphs:
+    - zh: NJS-0070-001 固定“新增候选赢得解析”：受信对象不被覆盖，恶意同名代码因搜索/PATH/loader 优先级被选中。NJS-0070-002 固定“既有身份内容/目标改变”：稳定路径、服务目标或依赖被覆盖/重定向。NJS-0070-003 固定“运行时激活槽改变”：host 和依赖搜索可正常，但 profiler/AppDomain/callback 配置使 runtime 在生命周期事件调用攻击者代码。三者分别检测解析候选、内容完整性和激活状态，互不包含。
+      en: "NJS-0070-001 fixes a new candidate winning resolution: the trusted object is not overwritten and same-named attacker code is selected through search PATH or loader precedence. NJS-0070-002 fixes changed content or target under an existing identity: a stable path service target or dependency is overwritten or redirected. NJS-0070-003 fixes changed runtime activation slot: host and dependency search can be normal while profiler AppDomain or callback configuration causes a runtime lifecycle event to invoke attacker code. They respectively detect resolution candidates content integrity and activation state and do not contain one another."
+    - zh: 固定基线 12 个 ATT&CK 子项已在第二轮按三簇解析：DLL/dylib/dynamic linker/PATH/search/unquoted path 贡献第一轴；installer/service 文件与服务注册权限贡献第二轴；COR_PROFILER、KernelCallbackTable、AppDomainManager 贡献第三轴。平台、文件格式、权限来源和功能目的不导入 Niji，内存 IAT/函数 patch 依据实际对象归进程注入或第三轴而不另立子项。
+      en: The twelve fixed-baseline ATT&CK children were resolved in a second pass into three clusters. DLL dylib dynamic linker PATH search and unquoted path contribute to the first axis; installer or service files and service registry permissions to the second; COR_PROFILER KernelCallbackTable and AppDomainManager to the third. Platform file format permission origin and function purpose are not imported, and in-memory IAT or function patching belongs to process injection or the third axis according to the object rather than a separate child.
+  coverage: established
+  subtechnique_refs: [NJS-0070-001, NJS-0070-002, NJS-0070-003]
+defense: {detections: {coverage: available, strategy_refs: [DET-000084]}, mitigations: {coverage: available, mitigation_refs: [MIT-000085]}}
+evidence:
+  claim_refs: [CLM-000267, CLM-000268, CLM-000269, CLM-000430, CLM-000431, CLM-000432, CLM-000433, CLM-000434, CLM-000435, CLM-000436, CLM-000437]
+  case_refs: [CASE-000066, CASE-000081, CASE-000082]
+  reference_refs: [REF-000122, REF-000180, REF-000200, REF-000233, REF-000234, REF-000235, REF-000236, REF-000237, REF-000238, REF-000239, REF-000240]
+research:
+  limitations:
+    paragraphs:
+    - zh: 证据最强地覆盖 Windows DLL/服务/.NET，固定基线中的 macOS dylib 和 Linux dynamic linker/PATH 只按等价解析/完整性变量覆盖，不假定相同日志字段。第三子项由 Blue Mockingbird 与 2026 AppDomainManager 定向活动直接支持，但 KernelCallbackTable 只作为同类 activation/callback 簇而未单独案例化。合法更新、插件和 profiler 与攻击同形；high 表示变量存在证据强，归因仍要求写入者、批准、加载与结果。
+      en: Evidence is strongest for Windows DLL service and .NET. macOS dylib and Linux dynamic linker or PATH in the fixed baseline are covered only through equivalent resolution or integrity variables without assuming the same log fields. Blue Mockingbird and targeted 2026 AppDomainManager activity directly support the third child, while KernelCallbackTable remains in the same activation or callback cluster without its own case. Legitimate updates plug-ins and profilers share the shape. High confidence establishes the variables; attribution still requires writer approval load and outcome.
+lifecycle: {status: review, version: 1.1.0, created: '2026-09-10', modified: '2026-09-12', contributors: [Niji Matrix Research], reviewers: []}

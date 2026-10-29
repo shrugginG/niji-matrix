@@ -1,0 +1,232 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000052
+strategy_ref: DET-000073
+name:
+  zh: 认证组件/信任—策略—异常允许谱系分析
+  en: Authentication Component or Trust-Policy-Anomalous-Allow Lineage Analytic
+summary:
+  zh: 版本化验证器、联合信任与认证策略，分别恢复额外可信证明和窄例外，再以请求与会话键连接异常允许及资源结果。
+  en: Version validators, federation trust, and authentication policy; separately recover added trusted proofs and narrow exceptions; and join anomalous allow plus resource outcomes through request and session keys.
+domains:
+  - enterprise
+platforms:
+  - Windows
+  - Linux
+  - macOS
+  - Network Devices
+  - Identity Provider
+  - IaaS
+  - SaaS
+logic:
+  paragraphs:
+    - zh: >-
+        分析首先建立认证决策面的可信状态。对域控制器、PAM/SSO 主机、VPN 与网络设备保存组件 ID、软件/固件版本、进程或内存映像、文件和页/段 hash、签名、加载模块、启动/重启、更新事务、writer 与结果；对联合身份保存域、issuer、metadata endpoint、signing certificate 指纹、有效期、修改者、来源和批准。把实时状态与同版本黄金映像、离线度量、供应者签名或前一可信快照比较，分别输出未批准组件差异和额外信任证明。
+      en: >-
+        The analytic first establishes trusted state for the authentication-decision plane. For domain controllers, PAM or SSO hosts, VPNs, and network devices it retains component ID, software or firmware version, process or memory image, file and page or section hashes, signatures, loaded modules, start or restart, update transaction, writer, and outcome. For federation it retains domain, issuer, metadata endpoint, signing-certificate fingerprint, validity, modifier, origin, and approval. It compares current state with a same-version golden image, offline measurement, vendor signature, or prior trusted snapshot and emits separate unapproved-component-difference and added-trust-proof states.
+    - zh: >-
+        策略路径把 Conditional Access、MFA、风险认证与等价 IAM 变更规范为 policy ID、版本、enabled 状态、include/exclude、主体/组、设备、位置、客户端、认证流、应用/资源、grant/session controls、old/new 值、writer、来源、批准和到期。解析组嵌套、策略组合与优先级，计算变更前后每个候选会话的有效作用域；只显示“策略已启用”而无法取得排除集合时标记可见性降级。未经批准的窄排除、受信位置扩张或控制放宽先输出策略风险状态。
+      en: >-
+        The policy path normalizes Conditional Access, MFA, risk-authentication, and equivalent IAM changes into policy ID, version, enabled state, include and exclude assignments, principals or groups, device, location, client, authentication flow, application or resource, grant and session controls, old and new values, writer, origin, approval, and expiry. It resolves group nesting, policy combination, and precedence to compute effective scope before and after the change for candidate sessions. If only policy enabled is visible and exclusion sets are unavailable, it records degraded visibility. An unapproved narrow exclusion, trusted-location expansion, or control weakening first produces a policy-risk state.
+    - zh: >-
+        分析随后规范每个认证请求的时间、系统/租户、主体、客户端、资源、来源、设备、认证方法序列、输入或证明类别、令牌签名/声明、应用或未应用的策略及原因、MFA/风险结果、最终 decision、request/correlation/token/session ID。选择性证明分支使用隔离账户和不具生产能力的 canary 输入比较生产与黄金结果，或寻找同一异常证明跨多个主体成功；策略分支把请求情境代入变更前后策略，确认只有新例外使该请求从拒绝/强认证变为允许或较弱要求。
+      en: >-
+        The analytic then normalizes each authentication request with time, system or tenant, principal, client, resource, origin, device, authentication-method sequence, input or proof class, token signature or claims, applied or unapplied policies and reasons, MFA or risk result, final decision, and request, correlation, token, or session ID. The selective-proof branch compares production and golden outcomes using an isolated account and canary input with no production capability, or looks for one anomalous proof succeeding across multiple principals. The policy branch evaluates request context against policy before and after the mutation and confirms that only the new exception changed the request from deny or strong authentication to allow or a weaker requirement.
+    - zh: >-
+        最后把异常允许连接到令牌签发、会话建立和高价值资源操作，并根据证据分级。只有状态差异输出“认证决策面异常”；状态差异与生产独有成功输出“异常允许路径”；再连接后续资源结果且状态在使用时仍有效，才输出“认证路径持久化链”。已确认攻击者 writer、Skeleton Key 类跨主体主密码、异常联合签名者或 UNC3944 式排除可以提高置信度；仅有主体成功、IP 异常或当前策略快照不能越级。
+      en: >-
+        Finally, the analytic joins anomalous allow to token issuance, session establishment, and high-value resource action and tiers the evidence. State difference alone produces authentication-decision-plane anomaly. State difference plus production-only success produces anomalous allow path. Only a downstream resource outcome while the state remained valid produces an authentication-path persistence chain. A confirmed adversary writer, Skeleton Key-style cross-principal master password, unexpected federation signer, or UNC3944-style exclusion can raise confidence. Principal success, anomalous IP, or current policy snapshot alone cannot be promoted.
+data_requirements:
+  - source_type: authentication-component-integrity
+    name:
+      zh: 认证组件、进程、内存与加载完整性
+      en: Authentication component, process, memory, and load integrity
+    channel: null
+    required_fields:
+      - timestamp
+      - system_id
+      - component_id
+      - software_or_firmware_version
+      - path_or_memory_region
+      - file_or_page_hash
+      - signature_or_signer
+      - loaded_module_id
+      - writer_id
+      - update_transaction_id
+      - boot_or_restart_id
+      - outcome
+  - source_type: federation-trust-change
+    name:
+      zh: 联合域、issuer 与签名证书信任变更
+      en: Federation domain, issuer, and signing-certificate trust changes
+    channel: null
+    required_fields:
+      - timestamp
+      - tenant_id
+      - federation_domain
+      - issuer
+      - metadata_endpoint
+      - signing_certificate_fingerprint
+      - valid_from
+      - valid_until
+      - initiating_principal_id
+      - source_ip
+      - old_value
+      - new_value
+      - approval_id
+      - outcome
+  - source_type: authentication-policy-version
+    name:
+      zh: MFA、Conditional Access 与 IAM 策略版本
+      en: MFA, Conditional Access, and IAM policy versions
+    channel: null
+    required_fields:
+      - timestamp
+      - tenant_or_system_id
+      - policy_id
+      - version
+      - enabled_state
+      - include_assignments
+      - exclude_assignments
+      - conditions
+      - grant_or_session_controls
+      - old_value
+      - new_value
+      - initiating_principal_id
+      - source
+      - approval_id
+      - valid_until
+  - source_type: authentication-decision
+    name:
+      zh: 认证请求、方法、逐策略评估与最终决策
+      en: Authentication request, method, per-policy evaluation, and final decision
+    channel: null
+    required_fields:
+      - timestamp
+      - system_or_tenant_id
+      - principal_id
+      - client_id
+      - resource_id
+      - source
+      - device_id
+      - authentication_methods
+      - input_or_proof_class
+      - token_signer_or_claims
+      - applied_policy_ids
+      - policy_evaluation_results
+      - mfa_or_risk_result
+      - final_decision
+      - request_id
+      - correlation_id
+      - token_or_session_id
+  - source_type: authentication-resource-use
+    name:
+      zh: 令牌、会话与后续资源使用
+      en: Token, session, and downstream resource use
+    channel: null
+    required_fields:
+      - timestamp
+      - tenant_or_system_id
+      - principal_id
+      - token_or_session_id
+      - request_or_correlation_id
+      - source
+      - device_id
+      - target_resource
+      - action
+      - authorization_result
+  - source_type: authentication-change-approval
+    name:
+      zh: 认证组件、信任和策略变更审批
+      en: Authentication component, trust, and policy change approval
+    channel: null
+    required_fields:
+      - change_id
+      - requested_at
+      - requester_id
+      - approver_id
+      - target_object_id
+      - approved_change
+      - validity_window
+      - status
+observables:
+  - zh: 同版本认证组件出现未批准 hash、内存页、函数或加载模块差异，随后生产实例接受可信实例拒绝的 canary 或非正常证明。
+    en: A same-version authentication component has an unapproved hash, memory-page, function, or loaded-module difference, followed by production accepting a canary or nonstandard proof rejected by the trusted instance.
+  - zh: 同一非正常密码或等价证明对多个主体成功，而各主体原密码继续有效并且成功集中在相同验证器版本或域控制器。
+    en: The same nonstandard password or equivalent proof succeeds for multiple principals while original passwords remain valid and the successes concentrate on one validator version or domain controller.
+  - zh: 联合域新增或替换异常签名证书，随后由该 signer 产生的令牌被接受并访问资源，发起者、证书与 request/correlation ID 形成链条。
+    en: A federation domain gains or replaces an unexpected signing certificate, after which tokens from that signer are accepted and access resources, linking initiator, certificate, and request or correlation ID.
+  - zh: 强制 MFA 或风险策略仍为 enabled，但受信位置或 exclude 集合加入被攻陷主体/设备，匹配会话得到 not-applied、单因素或等价弱化结果。
+    en: An MFA-enforcing or risk policy remains enabled, but a trusted location or exclude set gains a compromised principal or device and the matching session receives not-applied, single-factor, or equivalently weakened outcome.
+  - zh: 策略变更没有匹配审批或所有者，例外寿命异常长，并在变更后首次被非常见来源、设备、客户端或高价值资源请求命中。
+    en: A policy change has no matching approval or owner, the exception lifetime is unusually long, and it is first matched by an uncommon origin, device, client, or high-value-resource request after the change.
+  - zh: 认证决策面差异、异常允许、令牌/会话及后续资源操作在状态有效期内形成完整谱系。
+    en: Authentication-decision-plane difference, anomalous allow, token or session, and downstream resource action form complete lineage while the changed state remains valid.
+correlation:
+  window:
+    zh: >-
+      组件、联合信任或策略变更从前一可信快照开始，持续到组件被可信替换、证书/例外撤销且相关令牌与会话失效；默认保留九十日，但使用精确组件、证书、policy version 或 token/session 键时应覆盖对象完整寿命。认证 decision 到令牌、会话或资源结果使用一小时内的直接窗口，并允许延迟首次使用。
+    en: >-
+      Begin with the trusted snapshot preceding a component, federation-trust, or policy mutation and continue until the component is replaced by a trusted version, the certificate or exception is revoked, and related tokens and sessions expire. Retain ninety days by default, but cover the object's full lifetime when exact component, certificate, policy-version, or token or session keys are available. Use a direct one-hour window from authentication decision to token, session, or resource outcome while allowing delayed first use.
+  dimensions:
+    - system_or_tenant
+    - component_or_federation_domain
+    - component_or_policy_version
+    - certificate_fingerprint
+    - writer
+    - principal
+    - client
+    - resource
+    - input_or_proof_class
+    - source
+    - device
+    - matched_policy_or_condition
+    - request_or_correlation
+    - token_or_session
+    - approval
+    - time
+false_positives:
+  - zh: 认证软件、固件或 PAM/SSO 集成的批准升级、热补丁与故障恢复会产生组件或内存差异，并可能暂时改变验证结果。
+    en: Approved authentication software, firmware, or PAM or SSO integration upgrades, hot patches, and failure recovery create component or memory differences and can temporarily change validation outcomes.
+  - zh: 联合域证书轮换、issuer 迁移和灾难恢复会改变信任证明，并在重叠期同时保留旧、新证书。
+    en: Federation-domain certificate rotation, issuer migration, and disaster recovery change trusted proofs and can retain old and new certificates during an overlap.
+  - zh: break-glass、服务主体、设备注册 bootstrap、受信网络和分阶段 Conditional Access 部署会创建窄例外或 not-applied 结果。
+    en: Break-glass access, service principals, device-registration bootstrap, trusted networks, and phased Conditional Access deployment create narrow exceptions or not-applied outcomes.
+blind_spots:
+  - zh: 认证平台不记录输入/证明类别、逐策略结果、实际认证方法或 request/correlation ID 时，只能做主体级或时间级弱关联。
+    en: When an authentication platform omits input or proof class, per-policy results, actual authentication method, or request or correlation ID, only weak principal- or time-level joins are possible.
+  - zh: 纯内存补丁在重启或采集前消失，或者主机自报度量已经受验证器下层控制时，文件完整性不能证明运行状态。
+    en: A purely in-memory patch can disappear before restart or acquisition, and file integrity cannot establish runtime state when host-reported measurement is controlled below the validator.
+  - zh: 策略审计仅保留当前状态或短于例外/令牌寿命，old/new 差异和延迟首次使用会丢失。
+    en: Policy audit retaining only current state or less than the exception or token lifetime loses old and new differences and delayed first use.
+  - zh: 攻击者同时控制 builder、签名者、联合信任、审批工作流、日志出口和黄金测试环境时，多项证据可能被伪造为一致。
+    en: An adversary controlling builder, signer, federation trust, approval workflow, log export, and the golden test environment can make multiple evidence sources appear consistent.
+tuning_guidance:
+  paragraphs:
+    - zh: >-
+        为每个平台建立组件、联合信任和策略的独立基线，白名单必须绑定具体版本/hash 或证书指纹、owner、批准、部署窗口和到期，不能永久放行认证服务进程、域管理员或所有策略例外。Microsoft 环境应延长 Conditional Access 审计保留并保留 modified properties old/new；其他 IdP 使用等价版本差分，而不是机械复制字段名。
+      en: >-
+        Build independent component, federation-trust, and policy baselines per platform. Allowances must bind to a concrete version or hash or certificate fingerprint, owner, approval, deployment window, and expiry rather than permanently allowing authentication-service processes, domain administrators, or all policy exceptions. Microsoft environments should extend Conditional Access audit retention and preserve modified-properties old and new values; other identity providers should use equivalent version differential rather than copying field names mechanically.
+    - zh: >-
+        隔离差分测试不得使用真实用户秘密，也不能让 canary 具备生产访问能力。组件路径同时覆盖正确、错误和 canary 输入以及重启前后状态；联合路径验证 signer、issuer 和声明；策略路径用代表性主体、设备、位置、应用和认证流重放变更前后结果。任何测试异常先隔离验证，避免锁定全部用户或触发业务中断。
+      en: >-
+        Isolated differential testing must not use real user secrets or give a canary production access. The component path covers correct, incorrect, and canary input plus state before and after restart; the federation path validates signer, issuer, and claims; the policy path replays representative principals, devices, locations, applications, and authentication flows against before and after state. Validate anomalies in isolation first to avoid locking out users or disrupting business.
+    - zh: >-
+        输出分为“组件/信任差异”“策略例外”“异常允许”和“已使用持久路径”。字段缺失、只有主体级匹配或正常变更窗口时降低置信度；确认攻击者 writer、同一主密码跨主体成功、异常 signer 或未经批准例外命中时提高。误报抑制必须引用可验证工单与预期寿命，不能仅凭操作者属于管理员组。
+      en: >-
+        Tier outputs as component or trust difference, policy exception, anomalous allow, and used durable path. Lower confidence for missing fields, principal-level-only matching, or normal change windows. Raise it for a confirmed adversary writer, one master password succeeding across principals, an unexpected signer, or an unapproved exception match. False-positive suppression must reference a verifiable change record and intended lifetime rather than merely an operator's administrator-group membership.
+evidence_refs:
+  - REF-000187
+  - REF-000303
+  - REF-000304
+  - REF-000305
+  - REF-000306
+  - REF-000307
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: "2026-09-11"
+  modified: "2026-09-12"
+  contributors:
+    - Niji Matrix Research
+  reviewers: []

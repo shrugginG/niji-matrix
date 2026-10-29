@@ -1,0 +1,108 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000197
+strategy_ref: DET-000180
+name:
+  zh: DNS 答案至同进程后果关联
+  en: DNS Answer to Same-Process Outcome Join
+summary:
+  zh: 将 TXT 等 DNS 应答与发起进程及后继动作连接，区分解析与命令交换。
+  en: Join DNS answers including TXT to the initiating process and later action to distinguish resolution from task
+    exchange.
+domains:
+- enterprise
+platforms:
+- Windows
+logic:
+  paragraphs:
+  - zh: 从受管解析器或 Zeek dns.log 规范化问题、类型、答案、结果码、时间和客户端地址；Zeek 的 id.orig_h、qtype_name、rcode_name 分别映射为 client_ip、qtype、result_code，uid
+      在可用时连接 conn.log。若网络传感器只看见递归器，必须从解析器客户端查询记录恢复设备。用 Sysmon Event 22 或同等端点日志的 ProcessGuid、QueryName 与时间映射发起进程，再连接
+      Event 1 的同进程或子进程动作和随后向同域的结果查询。把 TXT 或长子域名仅列为候选，只有可重复答案—动作关系、可解释任务内容或独立响应后果才升级为控制。
+    en: Normalize question, type, answers, result code, time, and client address from a managed resolver or Zeek
+      dns.log. Map Zeek id.orig_h, qtype_name, and rcode_name to client_ip, qtype, and result_code respectively;
+      use uid to join conn.log when available. If a network sensor sees only the recursive resolver, recover the
+      device from resolver client-query logs. Use ProcessGuid, QueryName, and time from Sysmon Event 22 or equivalent
+      endpoint telemetry to map the initiator, then join Event 1 same-process or child-process action and a later
+      result query to the same domain. Treat TXT and long labels as leads only; upgrade to control only with a repeatable
+      answer-to-action relationship, interpretable task content, or independent post-response outcome.
+  - zh: 按结果分层为异常解析、可疑双向事务和已证控制。Wekby 样本支持 TXT 解析逻辑，但公开 drive/open 命令回合来自模拟 DNS 服务端；规则的 1–10 分钟初始窗口须依目标正常回连和解析缓存校准。
+    en: Keep outcomes separate as anomalous resolution, suspicious bidirectional transaction, and established control.
+      The Wekby sample supports TXT parsing logic, but its published drive/open exchanges came from a mock DNS server.
+      Calibrate the initial one-to-ten-minute window to normal callback behavior and resolver caching.
+data_requirements:
+- source_type: normalized-dns-transaction
+  name:
+    zh: 规范化 DNS 问题与答案
+    en: Normalized DNS questions and answers
+  channel: null
+  required_fields:
+  - event_time
+  - client_ip
+  - query
+  - qtype
+  - result_code
+  - answers
+- source_type: endpoint-dns
+  name:
+    zh: 端点进程 DNS 事件
+    en: Endpoint process DNS event
+  channel: Sysmon Event 22 or equivalent EDR
+  required_fields:
+  - utc_time
+  - device_id
+  - process_guid
+  - image
+  - query_name
+- source_type: endpoint-process
+  name:
+    zh: 端点进程结果
+    en: Endpoint process outcome
+  channel: Sysmon Event 1 or equivalent EDR
+  required_fields:
+  - utc_time
+  - device_id
+  - process_guid
+  - parent_process_guid
+  - image
+observables:
+- zh: 同一进程在特定答案后重复出现控制样式执行或结果查询
+  en: The same process repeatedly performs control-like action or result queries after specific answers
+- zh: 解析器客户端与端点进程键共同将递归器流量还原到主机
+  en: Resolver-client and endpoint-process keys together map recursive traffic back to a host
+correlation:
+  window:
+    zh: 先关联应答后 1–10 分钟的动作，再保留至少一个本地正常回连周期用于重复性判断。
+    en: Initially join action within one to ten minutes after an answer, then retain at least one local normal callback
+      period to assess recurrence.
+  dimensions:
+  - device_id
+  - process_guid
+  - client_ip
+  - query
+  - time
+false_positives:
+- zh: 软件更新的 TXT 查询、SPF/DKIM/DMARC 与服务发现
+  en: Software-update TXT lookups, SPF/DKIM/DMARC, and service discovery
+blind_spots:
+- zh: 外部 DoH 绕开受管解析器、缓存复用答案、缺失进程 DNS 事件或进程内执行
+  en: External DoH bypasses the managed resolver, cached answers are reused, process DNS events are absent, or execution
+    remains in-process
+tuning_guidance:
+  paragraphs:
+  - zh: 按获批进程、设备角色、域名用途和解析器路径建基线；不要全局豁免 TXT 或受管解析器。缺少答案内容或后继动作时只保留低置信调查线索，不从高熵自动推断命令。
+    en: Baseline approved processes, device roles, domain purpose, and resolver path; do not exempt all TXT traffic
+      or managed resolvers. With missing answer content or successor action, retain a low-confidence lead rather
+      than inferring a command from entropy.
+evidence_refs:
+- REF-000678
+- REF-000682
+- REF-000635
+- REF-000230
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-09-22'
+  modified: '2026-09-22'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

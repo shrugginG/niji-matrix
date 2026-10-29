@@ -1,0 +1,160 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000334
+strategy_ref: DET-000253
+name:
+  zh: Azure Blob 成功读取与共享授权载体谱系
+  en: Azure Blob Successful Read and Shared Authorization-Carrier Lineage
+summary:
+  zh: 按对象、主体、会话与结果字段实现“Azure Blob 成功读取与共享授权载体谱系”。
+  en: Implement Azure Blob Successful Read and Shared Authorization-Carrier Lineage with object, principal, session, and outcome
+    fields.
+domains:
+- enterprise
+platforms:
+- IaaS
+logic:
+  paragraphs:
+  - zh: '对高价值 storage account 的 Blob 服务配置 diagnostic setting，将 StorageRead 资源日志送到独立 Log Analytics/Event Hub。筛选 OperationName=GetBlob
+      或等价正文读取，要求 StatusCode 为 200/206、StatusText 表示成功且 ResponseBodySize 大于零；以 AccountName、ObjectKey/Uri、RequestIdHeader/CorrelationId、TimeGenerated、CallerIpAddress
+      和 UserAgentHeader 形成 provider_delivered_blob。只见容器列举、GetBlobProperties、失败请求或控制面 listKeys 时分别保持 discovery、metadata、attempt
+      或 credential_capability。
+
+      按 AuthenticationType 将 OAuth 与 AccountKey、SAS、Anonymous 分层。OAuth 路径连接 RequesterTenantId/ObjectId/AppId/Upn 与 Entra sign-in、RBAC
+      和批准工作负载；AccountKey/SAS/Anonymous 若缺 RequesterObjectId，则连接最近的 Microsoft.Storage/storageAccounts/listkeys/action、SAS/公开访问或
+      allowSharedKeyAccess/publicNetworkAccess 变化、来源网络与对象范围。对 Storm-0501 型序列，在一小时内出现 storageAccounts/write 或 listkeys 后从新公网来源以
+      AccountKey/SAS 大量读取敏感对象时提高优先级。正常 AzCopy、备份、迁移、恢复和 CDN 流量必须按 owner、job、目的地和时段排除。'
+    en: 'Configure a diagnostic setting for the Blob service on high-value storage accounts and route StorageRead resource
+      logs to independent Log Analytics or Event Hub. Select OperationName=GetBlob or an equivalent body read and require
+      StatusCode 200 or 206, successful StatusText, and ResponseBodySize greater than zero. Build provider_delivered_blob
+      from AccountName, ObjectKey or Uri, RequestIdHeader or CorrelationId, TimeGenerated, CallerIpAddress, and UserAgentHeader.
+      Container listing, GetBlobProperties, a failed request, or control-plane listKeys remains discovery, metadata, attempt,
+      or credential_capability respectively.
+
+      Separate OAuth from AccountKey, SAS, and Anonymous through AuthenticationType. Join OAuth to RequesterTenantId, RequesterObjectId,
+      RequesterAppId, RequesterUpn, Entra sign-in, RBAC, and approved workload. When AccountKey, SAS, or Anonymous lacks RequesterObjectId,
+      join recent Microsoft.Storage/storageAccounts/listkeys/action, SAS or public-access state, allowSharedKeyAccess or publicNetworkAccess
+      changes, source network, and object scope. For a Storm-0501-like chain, raise priority when storageAccounts/write or
+      listkeys is followed within one hour by high-volume sensitive-object reads through AccountKey or SAS from a new public
+      origin. Exclude normal AzCopy, backup, migration, restore, and CDN traffic by owner, job, destination, and window.'
+data_requirements:
+- source_type: azure-storagebloblogs
+  name:
+    zh: 经验证的Azure Storagebloblogs数据
+    en: Azure Storagebloblogs
+  channel: Azure Monitor resource logs, StorageBlobLogs via diagnostic setting
+  required_fields:
+  - time_generated
+  - account_name
+  - operation_name
+  - authentication_type
+  - requester_tenant_id
+  - requester_object_id
+  - requester_app_id
+  - requester_upn
+  - authorization_details
+  - caller_ip_address
+  - user_agent_header
+  - object_key
+  - uri
+  - status_code
+  - status_text
+  - response_body_size
+  - request_id_header
+  - correlation_id
+  - sas_expiry_status
+- source_type: azure-storage-control-and-identity
+  name:
+    zh: 经验证的Azure Storage Control And Identity数据
+    en: Azure Storage Control And Identity
+  channel: Azure Activity and Entra audit/sign-in logs plus storage configuration history
+  required_fields:
+  - timestamp
+  - operation_name
+  - result
+  - actor_object_id
+  - actor_tenant_id
+  - subscription_id
+  - storage_account_id
+  - old_value
+  - new_value
+  - source_ip
+  - correlation_id
+  - role_assignment
+  - allow_shared_key_access
+  - public_network_access
+- source_type: azure-approved-storage-work
+  name:
+    zh: 经验证的Azure Approved Storage Work数据
+    en: Azure Approved Storage Work
+  channel: CMDB, backup/migration/sync registry, sensitivity catalog
+  required_fields:
+  - storage_account_id
+  - container_or_prefix
+  - object_sensitivity
+  - principal_or_key_owner
+  - client_or_job_id
+  - user_agent
+  - source_network
+  - destination
+  - schedule
+  - valid_from
+  - valid_to
+observables:
+- zh: 需人工核实的正常活动。
+  en: getblob_success_with_bytes
+- zh: 需人工核实的正常活动。
+  en: accountkey_sas_or_anonymous_auth
+- zh: 需人工核实的正常活动。
+  en: missing_requester_object
+- zh: 需人工核实的正常活动。
+  en: recent_listkeys_or_public_exposure
+- zh: 需人工核实的正常活动。
+  en: new_origin_sensitive_fanout
+correlation:
+  window:
+    zh: 控制或密钥事件到读取默认一小时，读取片段三十分钟，批准作业基线保留三十天。
+    en: control or key event to reads 1h; read episode 30m; approved-work baseline 30d
+  dimensions:
+  - tenant_id
+  - subscription_id
+  - storage_account_id
+  - requester_object_or_app_id
+  - authentication_type
+  - caller_ip
+  - object_key
+  - request_or_correlation_id
+  - job_id
+  - time
+false_positives:
+- zh: AzCopy 数据迁移、备份/恢复、媒体分发、静态网站、客户 SAS 下载、合法跨租户数据处理和应急取证均可形成相同成功读取；部分旧应用只能使用 Shared Key。
+  en: AzCopy migration, backup or restore, media distribution, static websites, customer SAS downloads, legitimate cross-tenant
+    processing, and incident-response forensics can produce the same successful reads. Some legacy applications can use only
+    Shared Key.
+blind_spots:
+- zh: Azure Blob 资源日志在 diagnostic setting 创建并路由前不被收集；Activity Log 不能替代数据面。日志把不同 SAS 都归为 SAS，AccountKey/SAS/Anonymous 可能没有实际人身份；ResponseBodySize
+    表示服务写出响应字节，不证明攻击者完整保留。
+  en: Azure Blob resource logs are not collected until a diagnostic setting routes them, and Activity Log is not a data-plane
+    substitute. Logs group different SAS types under SAS, AccountKey, SAS, or Anonymous can lack a human identity, and ResponseBodySize
+    shows response bytes written by the service rather than complete adversary retention.
+tuning_guidance:
+  paragraphs:
+  - zh: 用测试 OAuth、AccountKey、user-delegation SAS、service/account SAS、Range GetBlob 和匿名读验证 AuthenticationType、RequesterObjectId
+      与响应字段；例外必须绑定精确 storage account、container、source、client/job、有效期和 SAS policy，不按 AzCopy 名称全局放行。
+    en: Validate AuthenticationType, RequesterObjectId, and response fields with controlled OAuth, AccountKey, user-delegation
+      SAS, service or account SAS, Range GetBlob, and anonymous reads. Bind exceptions to exact storage account, container,
+      origin, client or job, lifetime, and SAS policy rather than globally allowing AzCopy.
+evidence_refs:
+- REF-000539
+- REF-001112
+- REF-000530
+- REF-001113
+- REF-001114
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-10-05'
+  modified: '2026-10-05'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

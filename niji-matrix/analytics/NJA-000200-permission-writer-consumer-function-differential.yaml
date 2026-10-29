@@ -1,0 +1,46 @@
+schema_version: "2.0.0"
+type: detection-analytic
+id: NJA-000200
+strategy_ref: DET-000182
+name: {zh: 权限写入者—消费者功能差分, en: Permission Writer to Consumer-Function Differential}
+summary: {zh: 证明安全工件的权限变化是否实际拒绝其防御消费者并降低对应保护功能。, en: Prove whether a permission change on a security artifact actually denies its defensive consumer and reduces the corresponding protection function.}
+domains: [enterprise]
+platforms: [Windows]
+logic:
+  paragraphs:
+    - zh: 建立安全产品二进制、驱动、规则、配置和本地审计工件清单，保存稳定 object_id、规范路径、文件 hash、批准 owner、DACL/继承来源、消费者服务或进程 SID、所需 access mask 及保护职责。对 Windows 4670 或等效高完整性权限审计，连接 subject SID、logon ID、process、old/new security descriptor 与对象身份；先规范化 ACE 顺序和继承，再以消费者 token 计算新旧有效执行、读取、写入与更新权，避免仅从命令行猜测结果。
+      en: Build an inventory of security-product binaries, drivers, rules, configuration, and local audit artifacts with stable object_id, canonical path, file hash, approved owner, DACL and inheritance source, consumer service or process SID, required access mask, and defensive responsibility. For Windows 4670 or equivalent high-integrity permission audit, join subject SID, logon ID, process, old and new security descriptors, and object identity. Normalize ACE order and inheritance before calculating old and new effective execute, read, write, and update access for the consumer token rather than inferring the result from a command line.
+    - zh: 权限写入且消费者有效权不变时输出 mutation_only；有效权被拒绝但尚无产品消费机会时输出 consumer_denied_pending；只有在同一版本对象上出现可重复的加载/访问拒绝、组件未启动、规则无法读取或独立 canary 失败，并排除批准升级后，才输出 effective_impairment。恶意 writer、广泛 deny ACE、后继恶意活动与工具失效同窗可提高置信度，但不能取代消费者结果。
+      en: Emit mutation_only when a permission write leaves consumer effective access unchanged, and consumer_denied_pending when access is denied but the product has not yet attempted consumption. Emit effective_impairment only after repeatable load or access denial, component launch failure, unreadable rules, or an independent canary failure on the same versioned object, with approved upgrades excluded. A malicious writer, broad deny ACE, follow-on activity, and tool failure in the same interval raise confidence but do not replace the consumer outcome.
+data_requirements:
+  - source_type: protected-file-inventory
+    name: {zh: 安全工件与消费者身份清单, en: Security Artifact and Consumer Identity Inventory}
+    channel: null
+    required_fields: [timestamp, device_id, object_id, canonical_path, file_hash, approved_owner, approved_security_descriptor, inheritance_source, consumer_sid, required_access_mask, control_id]
+  - source_type: object-permission-audit
+    name: {zh: 对象权限和所有权变更审计, en: Object Permission and Ownership Change Audit}
+    channel: Windows Security 4670
+    required_fields: [timestamp, device_id, object_id, object_name, subject_sid, logon_id, process_id, old_security_descriptor, new_security_descriptor, operation_type]
+  - source_type: consumer-access-and-health
+    name: {zh: 防御消费者访问与功能状态, en: Defensive Consumer Access and Function State}
+    channel: Windows object access and product health
+    required_fields: [timestamp, device_id, object_id, consumer_sid, consumer_process_guid, requested_access, access_result, error_code, control_id, canary_result]
+observables:
+  - {zh: 非批准 writer 向安全产品二进制或配置加入匹配消费者的拒绝 ACE, en: An unapproved writer adds a denial ACE matching the consumer of a security-product binary or configuration}
+  - {zh: 权限变化后同一消费者对同一 object_id 的执行或读取被拒, en: The same consumer is denied execution or read access to the same object_id after the permission change}
+  - {zh: 对应安全控制的独立 canary 失败而文件内容 hash 未改变, en: An independent canary for the control fails while the file-content hash remains unchanged}
+correlation:
+  window: {zh: 从权限写入前十五分钟至消费者下一次启动、规则刷新或最多二十四小时，并保留七日的回滚验证。, en: "Correlate fifteen minutes before the permission write through the consumer's next launch or rule refresh, capped at twenty-four hours, and retain seven days of rollback verification."}
+  dimensions: [device_id, object_id, canonical_path, file_hash, consumer_sid, subject_sid, logon_id, control_id, time]
+false_positives:
+  - {zh: 安全产品经批准升级时重置 owner 或 DACL 并随后正常启动, en: An approved security-product upgrade resets owner or DACL and the product subsequently starts normally}
+  - {zh: 隔离、取证或事故响应程序有意拒绝高风险组件访问, en: "Quarantine, forensics, or incident response intentionally denies access to a high-risk component"}
+blind_spots:
+  - {zh: 目标对象未配置权限变更 SACL 时不会生成 4670, en: Event 4670 is absent when the target object lacks a permission-change SACL}
+  - {zh: 防御消费者身份动态变化或权限由同权内核代理代为检查时，有效权计算可能不完整, en: Effective-access calculation may be incomplete when consumer identity changes dynamically or a co-authorized kernel agent performs the check}
+tuning_guidance:
+  paragraphs:
+    - zh: 仅对有明确防御职责和消费者身份的对象建立高保真基线，按产品版本更新批准 owner、SDDL 与继承源。维护窗口白名单绑定设备、object_id、writer、版本和到期，不永久放行 ProgramData 或产品目录。必须保留 consumer_denied_pending，避免因尚未刷新就丢弃真实风险，也不得把所有 4670 升格为失防。
+      en: Create high-fidelity baselines only for objects with a defined defensive responsibility and consumer identity, updating approved owner, SDDL, and inheritance source by product version. Maintenance allowlists bind device, object_id, writer, version, and expiry rather than permanently allowing ProgramData or product directories. Preserve consumer_denied_pending so risk is not discarded before refresh, while never promoting every 4670 event to impairment.
+evidence_refs: [REF-000687, REF-000688, REF-000689, REF-000690]
+lifecycle: {status: review, version: "1.0.0", created: "2026-09-23", modified: "2026-09-23", contributors: [Niji Matrix Research], reviewers: []}

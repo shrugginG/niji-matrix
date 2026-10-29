@@ -1,0 +1,137 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000248
+strategy_ref: DET-000206
+name:
+  zh: Token Family 撤销传播与残余接受验证
+  en: Token-Family Revocation Propagation and Residual Acceptance Verification
+summary:
+  zh: 验证 token family、grant、client/workload 和各 audience 的撤销传播与实际拒绝。
+  en: Verify revocation propagation and actual denial across token family, grant, client or workload, and every audience.
+domains:
+- enterprise
+platforms: []
+logic:
+  paragraphs:
+  - zh: 从已确认取得的 token reference/family、subject、client/workload、grant、audience 和有效期建立处置集合，连接 revoke/disable/rotate/delete 请求、provider
+      confirmation、expected effect time 与各 resource server 的实际拒绝。区分旧 access token 仍在 TTL 内、refresh family 仍能换新 token、第三方 integration
+      未同步撤销、resource cache 延迟和攻击者取得全新合法 token。一次控制面成功不关闭事件；所有已知 audience 拒绝或材料过期且不能刷新后才标 containment_verified。
+    en: Build a containment set from the confirmed acquired token reference or family, subject, client or workload, grant,
+      audiences, and validity. Join revoke, disable, rotate, or delete requests, provider confirmation, expected effect time,
+      and actual denial at each resource server. Separate an old access token still within TTL, a refresh family still minting
+      tokens, an unsynchronized third-party integration, resource-cache delay, and the adversary obtaining a new legitimate
+      token. One control-plane success does not close the incident. Mark containment_verified only after every known audience
+      rejects the old material or it expires without refresh capability.
+data_requirements:
+- source_type: token-revocation-control
+  name:
+    zh: Token、grant、client/workload 撤销控制
+    en: Token, grant, client or workload revocation control
+  channel: identity, application, Kubernetes, CI/CD, and vendor control plane
+  required_fields:
+  - timestamp
+  - response_action_id
+  - tenant_or_issuer
+  - subject_id
+  - token_reference_or_family
+  - grant_or_consent_id
+  - client_or_workload_id
+  - operation
+  - expected_effect_time
+  - provider_confirmation
+  - outcome
+- source_type: resource-token-decision
+  name:
+    zh: Resource server Token 接受/拒绝结果
+    en: Resource-server token acceptance or rejection result
+  channel: API gateway, SaaS, cloud, container, or application authorization log
+  required_fields:
+  - timestamp
+  - audience_or_resource
+  - request_id
+  - token_reference_or_family
+  - subject_id
+  - client_or_workload_id
+  - authorization_decision
+  - error_or_reason
+  - cache_or_node_id
+- source_type: token-lifecycle-inventory
+  name:
+    zh: Token family、有效期、刷新与绑定清单
+    en: Token family, validity, refresh, and binding inventory
+  channel: issuer and incident evidence store
+  required_fields:
+  - token_reference_or_family
+  - issued_at
+  - expires_at
+  - refresh_capable
+  - sender_constrained
+  - bound_key_status
+  - known_audiences
+  - associated_sessions
+- source_type: containment-validation-plan
+  name:
+    zh: 撤销传播验证计划
+    en: Revocation-propagation validation plan
+  channel: incident response
+  required_fields:
+  - case_id
+  - token_reference_or_family
+  - audience_or_resource
+  - validation_method
+  - safe_test_identity
+  - expected_denial
+  - deadline
+  - owner
+  - result
+observables:
+- zh: Refresh token revoke 后同一 family 仍成功换取新 access token，或某 resource 在 expected effect time 后仍接受旧 token
+  en: The same family still exchanges for a new access token after refresh-token revocation, or a resource accepts an old
+    token after expected effect time
+- zh: 供应商称已撤销 integration token，但部分连接 tenant 或 audience 继续接受同一 token family
+  en: A vendor reports integration-token revocation while some connected tenant or audience continues accepting the same token
+    family
+correlation:
+  window:
+    zh: 从最早 revoke 前十五分钟覆盖最大 access-token TTL、refresh/grant 生命周期或 provider SLA，并继续观察二十四小时；长期集成按所有连接确认完成。
+    en: Start fifteen minutes before the earliest revoke and span the maximum access-token TTL, refresh or grant lifetime,
+      or provider SLA, then observe for twenty-four hours. Long-lived integrations remain open until every connection confirms.
+  dimensions:
+  - case_id
+  - tenant_or_issuer
+  - subject_id
+  - token_family
+  - grant_or_consent_id
+  - client_or_workload_id
+  - audience_or_resource
+  - cache_or_node_id
+  - response_action_id
+  - time
+false_positives:
+- zh: 最终一致性、时钟偏差、离线客户端、合法新签发 token、token ID 复用和资源不支持即时 introspection
+  en: Eventual consistency, clock skew, offline clients, legitimately newly issued tokens, token-ID reuse, and resources without
+    immediate introspection
+blind_spots:
+- zh: 第三方不返回 stable token ID、无法安全重放真实被盗 token、opaque token 缺乏 family、资源不记录拒绝、攻击者同时取得新的 grant/client secret
+  en: Third parties omitting stable token IDs, inability to safely test a real stolen token, opaque tokens without family,
+    resources not logging denials, and adversary possession of a new grant or client secret
+tuning_guidance:
+  paragraphs:
+  - zh: 优先使用 provider-supported introspection、synthetic/canary token 或资源审计验证，避免把真实被盗 token 广泛重放。把新签发 token 与旧 family 分开，并记录每个
+      audience 的能力和 SLA。无法主动验证时，以无 refresh、到期和完整资源日志组成较低置信关闭条件。
+    en: Prefer provider-supported introspection, synthetic or canary tokens, or resource audit and avoid replaying a real
+      stolen token broadly. Separate newly issued tokens from the old family and record each audience's capability and SLA.
+      When active validation is impossible, use absence of refresh, expiry, and complete resource logs as a lower-confidence
+      closure condition.
+evidence_refs:
+- REF-000070
+- REF-000178
+- REF-000816
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-09-27'
+  modified: '2026-09-27'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

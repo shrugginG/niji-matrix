@@ -1,0 +1,103 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000111
+strategy_ref: DET-000125
+name:
+  zh: 管理接口到底层执行上下文差分
+  en: Management-Interface to Underlying-Execution Context Differential
+summary:
+  zh: 输出认证接口请求与无法由正常命令模型解释的底层执行结果之间的跨越。
+  en: Produce crossings between authenticated interface requests and underlying execution outcomes not explained by the normal
+    command model.
+domains:
+- enterprise
+platforms:
+- Network Devices
+- Linux
+- IaaS
+- SaaS
+logic:
+  paragraphs:
+  - zh: 按设备与认证会话采集接口命令、API 参数、accounting、版本和补丁状态，同时采集底层进程、命令、文件、模块、监听套接字与出站连接。将接口输入规范为允许命令模型；若构造输入后出现模型外的底层主体或持久结果，且受影响版本与漏洞条件匹配，则输出 trusted_interface_context_escape。厂商正式 shell 或获批 break-glass 会话单独标记。
+    en: By device and authenticated session, collect interface commands, API parameters, accounting, version, and patch state
+      together with underlying process, command, file, module, listening socket, and outbound connection. Normalize interface
+      input into the permitted command model. Emit trusted_interface_context_escape when crafted input is followed by an underlying
+      subject or durable result outside that model and the affected version and vulnerability conditions match. Mark vendor-supported
+      shells and approved break-glass sessions separately.
+data_requirements:
+- source_type: trusted-management-interface
+  name:
+    zh: 受信管理接口与 accounting
+    en: Trusted management interface and accounting
+  channel: null
+  required_fields:
+  - event.timestamp
+  - device.id
+  - session.id
+  - principal.id
+  - interface.type
+  - command.raw_hash
+  - command.normalized
+  - service.version
+  - patch.state
+  - result
+- source_type: underlying-execution-plane
+  name:
+    zh: 底层执行面
+    en: Underlying execution plane
+  channel: null
+  required_fields:
+  - event.timestamp
+  - device.id
+  - process.start_key
+  - process.parent_start_key
+  - executable.path
+  - file.path
+  - file.hash
+  - module.path
+  - network.destination
+  - socket.listen_port
+observables:
+- zh: 管理接口中的编码或异常参数后出现命令模型外的底层进程
+  en: An underlying process outside the command model follows encoded or anomalous management-interface parameters
+- zh: 接口 accounting 无法解释设备新文件、监听端口或代理流量
+  en: Interface accounting cannot explain a new device file, listening port, or proxy traffic
+correlation:
+  window:
+    zh: 覆盖同一认证会话中的接口请求与首个底层结果；后继植入按进程、文件摘要和套接字谱系延伸到首次使用，具体上限依据设备 accounting 与网络流保留策略记录。
+    en: Cover interface request and first underlying outcome in the same authenticated session. Extend a successor implant
+      through first use by process, file digest, and socket lineage and record the concrete upper bound from device-accounting
+      and network-flow retention.
+  dimensions:
+  - device.id
+  - session.id
+  - principal.id
+  - interface.type
+  - command.raw_hash
+  - process.start_key
+  - file.hash
+false_positives:
+- zh: 厂商支持的 bash-shell、获批 break-glass 维护、升级脚本和技术支持诊断
+  en: Vendor-supported bash shells, approved break-glass maintenance, upgrade scripts, and technical-support diagnostics
+blind_spots:
+- zh: 黑盒设备不暴露底层进程、accounting 被本地删除、时钟不一致或网络流无法映射设备
+  en: Black-box device exposes no underlying process, accounting is deleted locally, clocks are inconsistent, or network
+    flow cannot be mapped to the device
+tuning_guidance:
+  paragraphs:
+  - zh: 按设备型号、软件版本、接口角色和批准维护主体建立命令模型，break-glass 例外必须绑定工单与时限。异常参数、受影响版本、模型外执行和新网络服务组合决定严重度，不按管理员身份或设备类型全局放行。
+    en: Baseline the command model by device model, software version, interface role, and approved maintenance principal and
+      bind break-glass exceptions to work records and time limits. Severity depends on the combination of anomalous parameters,
+      affected version, out-of-model execution, and new network service rather than globally allowing administrator identity
+      or device class.
+evidence_refs:
+- REF-000391
+- REF-000423
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-09-21'
+  modified: '2026-09-21'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

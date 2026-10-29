@@ -1,0 +1,119 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000294
+strategy_ref: DET-000233
+name:
+  zh: 认证器置换到 owner 登录失败分析
+  en: Authenticator Displacement to Owner Sign-In Failure Analytic
+summary:
+  zh: 输出账户仍存在但 owner 方法被移除/替换并在后续登录失败的身份谱系。
+  en: Emit identity lineage where an account remains but owner methods are removed or replaced and later sign-in fails.
+domains:
+- enterprise
+platforms:
+- SaaS
+logic:
+  paragraphs:
+  - zh: 从 Graph directoryAudit 识别密码重置、认证方法/SSPR/恢复属性移除与新增，保存 activityDateTime、initiatedBy、targetResources、category、operationType、result、correlationId、modifiedProperties
+      old/new 和 approval。按 user/object 与 correlation 在 15 分钟聚合完整 method 差。
+    en: Identify password resets and authentication-method, SSPR, or recovery-property removals and additions from
+      Graph directoryAudit, preserving time, initiator, targets, category, operation, result, correlation, modifiedProperties
+      old and new, and approval. Aggregate the complete method differential by user or object and correlation over
+      fifteen minutes.
+  - zh: 在三十分钟连接合法 owner signIn failure 的 user/resource/device/IP/status/error/risk/CA，与攻击者 method 登录/恢复结果；24 小时确认持续
+      lockout，90 天保留关键方法 lineage。方法 ID 缺失时降为主体级推断。
+    en: Within thirty minutes join legitimate-owner sign-in failure user, resource, device, IP, status, error, risk,
+      and CA with attacker-method sign-in or recovery; confirm persistent lockout over 24 hours and retain critical
+      method lineage for 90 days. Fall back to principal-level inference when method IDs are absent.
+data_requirements:
+- source_type: directory-audit
+  name:
+    zh: 目录身份状态审计
+    en: Directory identity-state audit
+  channel: Microsoft Graph directoryAudit
+  required_fields:
+  - event.time
+  - initiator.id
+  - target.id
+  - activity.name
+  - category
+  - operation.type
+  - result
+  - correlation.id
+  - property.name
+  - value.old
+  - value.new
+  - approval.id
+- source_type: identity-signin
+  name:
+    zh: 合法主体登录结果
+    en: Legitimate-principal sign-in outcomes
+  channel: Microsoft Graph signIn
+  required_fields:
+  - event.time
+  - user.id
+  - resource.id
+  - device.id
+  - source.ip
+  - status.code
+  - failure.reason
+  - risk.level
+  - conditional.access.status
+  - correlation.id
+- source_type: identity-owner-method
+  name:
+    zh: 身份 owner 与方法清单
+    en: Identity owner and method inventory
+  channel: null
+  required_fields:
+  - user.id
+  - owner.id
+  - method.id
+  - method.type
+  - recovery.path
+  - snapshot.time
+  - breakglass.id
+observables:
+- zh: 账户保持启用但 owner 方法被移除/替换且 owner 登录失败
+  en: The account remains enabled while owner methods are removed or replaced and owner sign-in fails
+- zh: 攻击者控制方法被新增并成功使用
+  en: An attacker-controlled method is added and successfully used
+correlation:
+  window:
+    zh: mutation 聚合 15 分钟，owner failure 30 分钟，持续 lockout 24 小时，关键 lineage 90 天。
+    en: Aggregate mutations over 15 minutes, owner failure over 30, persistent lockout over 24 hours, and critical
+      lineage over 90 days.
+  dimensions:
+  - user.id
+  - initiator.id
+  - method.id
+  - correlation.id
+  - resource.id
+  - event.time
+false_positives:
+- zh: 合法账户恢复、MFA 迁移、密码重置、fraud response、helpdesk 和设备更换
+  en: Legitimate account recovery, MFA migration, password reset, fraud response, helpdesk, and device replacement
+blind_spots:
+- zh: signIn 无 method ID、审批系统被控制、owner 未尝试登录、离线/联合认证或日志留存短
+  en: Sign-in lacks method ID, compromised approval, owner makes no attempt, offline or federated authentication,
+    or short retention
+tuning_guidance:
+  paragraphs:
+  - zh: 要求 owner/工单/发起来源/方法寿命匹配，不对 helpdesk 或管理员全局放行。只有 mutation+owner failure 才确认，未测试保持风险。定期测试独立 break-glass。
+    en: Require matching owner, ticket, initiating origin, and method lifetime without globally allowing helpdesk
+      or administrators. Confirm only mutation plus owner failure and keep untested cases as risk. Regularly test
+      independent break-glass.
+evidence_refs:
+- REF-000167
+- REF-000985
+- REF-000986
+- REF-000987
+- REF-000376
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-10-04'
+  modified: '2026-10-04'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

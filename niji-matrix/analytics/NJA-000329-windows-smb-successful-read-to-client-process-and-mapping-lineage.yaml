@@ -1,0 +1,204 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000329
+strategy_ref: DET-000250
+name:
+  zh: Windows SMB 成功读取与客户端进程/映射谱系
+  en: Windows SMB Successful Read to Client Process and Mapping Lineage
+summary:
+  zh: 按对象、主体、会话与结果字段实现“Windows SMB 成功读取与客户端进程/映射谱系”。
+  en: Implement Windows SMB Successful Read to Client Process and Mapping Lineage with object, principal, session, and outcome
+    fields.
+domains:
+- enterprise
+platforms:
+- Windows
+logic:
+  paragraphs:
+  - zh: '在重点文件服务器启用 Audit Detailed File Share，并只把 5145 中请求 ReadData、带 SubjectLogonId、IpAddress、ShareName、RelativeTargetName
+      和 AccessCheckResult 的事件作为共享权限检查候选；拒绝项用于暴露探测，允许项仍不能证明字节返回。对已配置 ReadData SACL 的敏感对象，在同一服务器按 SubjectLogonId、规范化共享/对象路径和短时间窗寻找
+      4663 ReadData；若网络传感器能解析 SMB，再以 status=success 且 response data length 大于零的 READ 响应补强。4663 或成功 READ 可把结论提升为服务器提供内容，但仍不证明攻击者完整保存文件。
+
+      把服务器 SubjectLogonId 接到 4624 Type 3 的用户和源 IP，再解析为稳定客户端资产。客户端侧用进程唯一 ID、用户 SID/LUID、SMB 网络连接和已验证的远端文件读取事件恢复发起进程；映射清单或 GPO/登录脚本清单把盘符规范化到
+      UNC，并标记映射是否属于同一登录上下文。按三十分钟读取窗口聚合敏感对象数、路径扇出及服务器读取结果，与身份职责、获批准备份/索引/杀毒/迁移作业和维护窗口比较。只在成功读与未经批准来源闭合时输出 confirmed_share_content_read；只有
+      5145 时输出 access_check_only。后续暂存或外联可提高优先级但不是确认读取的必需条件。'
+    en: 'Enable Audit Detailed File Share on priority file servers and treat event 5145 requests containing ReadData, SubjectLogonId,
+      IpAddress, ShareName, RelativeTargetName, and AccessCheckResult only as share authorization candidates. Denials expose
+      probing; allowed checks still do not prove returned bytes. For sensitive objects with a ReadData SACL, find event 4663
+      ReadData on the same server by SubjectLogonId, normalized share and object path, and a short window. If a network sensor
+      parses SMB, strengthen the result with a READ response having success status and nonzero response data length. Event
+      4663 or a successful READ raises the finding to server-provided content but still does not prove the adversary retained
+      the complete file.
+
+      Join server SubjectLogonId to type-3 event 4624 for principal and source IP, then resolve a stable client asset. On
+      the client, recover the initiating process through process unique ID, user SID or LUID, SMB network connection, and
+      a validated remote-file read event. Mapping inventory or Group Policy and logon-script inventory normalizes drive letters
+      to UNC and identifies whether the mapping belongs to the same logon context. Aggregate sensitive object count, path
+      fan-out, and server read results over thirty minutes and compare them with principal duty, approved backup, indexing,
+      antimalware, or migration jobs, and maintenance windows. Emit confirmed_share_content_read only when a successful read
+      closes with an unapproved source; emit access_check_only for 5145 alone. Later staging or egress can raise priority
+      but is not required to confirm the read.'
+data_requirements:
+- source_type: windows-detailed-file-share
+  name:
+    zh: 经验证的Windows Detailed File Share数据
+    en: Windows Detailed File Share
+  channel: Security/5145 on the file server
+  required_fields:
+  - timestamp
+  - server_id
+  - subject_user_sid
+  - subject_logon_id
+  - source_ip
+  - source_port
+  - share_name
+  - share_path
+  - relative_target_name
+  - access_mask
+  - accesses
+  - access_check_result
+- source_type: windows-file-object-access
+  name:
+    zh: 经验证的Windows File Object Access数据
+    en: Windows File Object Access
+  channel: Security/4663 with matching ReadData SACL on the file server
+  required_fields:
+  - timestamp
+  - server_id
+  - subject_user_sid
+  - subject_logon_id
+  - object_name
+  - object_type
+  - access_mask
+  - accesses
+  - process_id
+  - process_name
+- source_type: windows-network-logon
+  name:
+    zh: 经验证的Windows Network Logon数据
+    en: Windows Network Logon
+  channel: Security/4624 on the file server
+  required_fields:
+  - timestamp
+  - server_id
+  - target_logon_id
+  - target_user_sid
+  - logon_type
+  - source_ip
+  - authentication_package
+- source_type: endpoint-process-and-network-lineage
+  name:
+    zh: 经验证的Endpoint Process And Network Lineage数据
+    en: Endpoint Process And Network Lineage
+  channel: validated EDR or Sysmon process plus network telemetry
+  required_fields:
+  - timestamp
+  - client_id
+  - process_unique_id
+  - process_id
+  - parent_process_id
+  - image
+  - signer
+  - command_line
+  - user_sid
+  - logon_luid
+  - remote_ip
+  - remote_port
+- source_type: share-mapping-and-authorized-job-inventory
+  name:
+    zh: 经验证的Share Mapping And Authorized Job Inventory数据
+    en: Share Mapping And Authorized Job Inventory
+  channel: configuration management, GPO/logon scripts, approved jobs, and current mapping state
+  required_fields:
+  - client_id
+  - user_sid
+  - logon_luid
+  - local_path
+  - remote_unc
+  - mapping_source
+  - first_seen
+  - job_id
+  - owner
+  - process_path
+  - principal_id
+  - approved_paths
+  - valid_from
+  - valid_to
+- source_type: sensitive-share-object-registry
+  name:
+    zh: 经验证的Sensitive Share Object Registry数据
+    en: Sensitive Share Object Registry
+  channel: null
+  required_fields:
+  - server_id
+  - normalized_object_path
+  - sensitivity
+  - business_owner
+  - authorized_roles
+observables:
+- zh: 需人工核实的正常活动。
+  en: permission_check_only
+- zh: 需人工核实的正常活动。
+  en: server_exercised_readdata
+- zh: 需人工核实的正常活动。
+  en: smb_success_response_with_bytes
+- zh: 需人工核实的正常活动。
+  en: client_process_and_logon_context
+- zh: 需人工核实的正常活动。
+  en: preexisting_mapping_context
+- zh: 需人工核实的正常活动。
+  en: sensitive_path_fanout
+correlation:
+  window:
+    zh: 5145 到 4663 或 SMB 成功响应默认六十秒，读取按三十分钟分组，并保留用户、共享和进程三十天基线。
+    en: 5145 to 4663 or SMB response within 60s; reads grouped for 30m; user/share/process baseline 30d
+  dimensions:
+  - server_id
+  - subject_logon_id
+  - subject_user_sid
+  - source_ip
+  - client_id
+  - process_unique_id
+  - logon_luid
+  - share_name
+  - normalized_object_path
+  - mapping_id
+  - job_id
+  - time
+false_positives:
+- zh: 文件服务器备份与恢复、反恶意软件或 DLP/分类扫描、Windows Search 或企业索引、Storage Migration Service/RoboCopy、软件发布、电子发现、合法批量分析和用户复制都会产生成功 ReadData。进程签名、服务账户或夜间时间本身都不能永久放行，必须核对
+    owner、具体路径、源主机、目标、任务 ID 和有效窗口。
+  en: File-server backup and restore, antimalware or DLP and classification scans, Windows Search or enterprise indexing,
+    Storage Migration Service or RoboCopy, software distribution, e-discovery, authorized analytics, and user copying all
+    produce successful ReadData. A process signature, service account, or nighttime schedule must never become a permanent
+    allow rule; verify owner, exact paths, source host, destination, job ID, and validity window.
+blind_spots:
+- zh: 5145 事件量高且只表达共享访问检查；4663 需要预先配置对象 SACL，服务器记录的 process 通常不是客户端原始进程。客户端 EDR 可能不记录远端文件读取，SMB 加密会阻止网络解析，NAT/跳板会弱化源映射，映射首次出现时间也可能不可得。成功读取事件仍不证明完整文件已保存或随后外传。
+  en: Event 5145 is high volume and expresses only share authorization. Event 4663 requires an object SACL in advance, and
+    the server-side process is generally not the original client process. Client EDR may omit remote-file reads, SMB encryption
+    prevents network parsing, NAT or jump hosts weaken source mapping, and mapping first-seen time may be unavailable. A successful
+    read event still does not prove complete retention or later exfiltration.
+tuning_guidance:
+  paragraphs:
+  - zh: 先在少量高价值共享按敏感路径和主体启用成功读取审计，验证 5145、4663、4624 的 LogonId 与路径规范化，再扩大覆盖。把 5145-only、server-read-confirmed 和 client-process-attributed
+      分成不同结论等级；按职责和批准作业建立三十日基线，例外必须绑定 owner、源/目标、路径、进程、身份及到期时间。对复用映射子项不要把“未观察到 net use”当正证据，必须有同一 LUID 的映射状态与成功读取。
+    en: Pilot successful-read auditing on a small set of high-value paths and principals, validate LogonId and path normalization
+      across 5145, 4663, and 4624, then expand. Keep 5145-only, server-read-confirmed, and client-process-attributed as separate
+      conclusion levels. Build a thirty-day duty and approved-job baseline, and bind each exception to owner, source and destination,
+      path, process, identity, and expiry. For the mapping-reuse child, absence of net use is not positive evidence; require
+      mapping state in the same LUID plus a successful read.
+evidence_refs:
+- REF-000474
+- REF-000379
+- REF-000906
+- REF-001088
+- REF-001089
+- REF-001087
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-10-05'
+  modified: '2026-10-05'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

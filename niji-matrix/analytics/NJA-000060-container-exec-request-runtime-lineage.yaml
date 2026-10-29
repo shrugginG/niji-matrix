@@ -1,0 +1,51 @@
+schema_version: "2.0.0"
+type: detection-analytic
+id: NJA-000060
+strategy_ref: DET-000081
+name: {zh: 既有容器 Exec 身份与后置行为分析, en: Existing-Container Exec Identity and Post-Action Analytic}
+summary: {zh: 关联 exec 子资源与 runtime 进程，并区分既有 workload 上下文借用、自动化身份一致性和合法调试。, en: Correlate exec subresources to runtime processes and distinguish existing-workload borrowing automation-identity conformity and legitimate debugging.}
+domains: [enterprise]
+platforms: [Containers]
+logic:
+  paragraphs:
+  - zh: 规范化 Kubernetes `pods/exec`、kubelet exec 与 Docker `exec_create/start/die`，生成 exec_execution_id；保存 cluster、user/groups/extra、token issuer/audience/session、source workload/IP、namespace、pod UID、owner、container name/ID、image digest、service account、subresource、TTY、command/args 或 hash、request/response stage 和结果。把同一 ID 连接到 runtime process start、parent、files、network 和 resource usage。
+    en: Normalize Kubernetes `pods/exec`, kubelet exec, and Docker `exec_create`, `exec_start`, and `exec_die` and generate an exec execution ID. Retain cluster, user groups and extra, token issuer audience or session, source workload or IP, namespace, pod UID, owner, container name or ID, image digest, service account, subresource, TTY, command or args or hash, request or response stage, and result. Join the same ID to runtime process start parent files network and resource use.
+  - zh: 将 runtime 进程与 image/SBOM 声明入口和过去 workload 行为比较；未变 workload 中新 shell、下载器、包管理、凭据读取或持续网络属于上下文借用候选。再把主体—来源—namespace/pod—时间与批准调试/自动化矩阵比较；身份关系正常但内容/结果异常属于自动化一致性候选。只有 API 成功而无 runtime 时报告失败/不完整，不推断执行。
+    en: Compare runtime process to image or SBOM-declared entrypoint and historical workload behavior. A new shell downloader package manager credential read or persistent network in an unchanged workload is a context-borrowing candidate. Then compare principal origin namespace or pod and time to approved debugging or automation matrices; a normal identity relation with anomalous content or outcome is an automation-conformity candidate. API success without runtime is reported as failed or incomplete rather than inferred execution.
+data_requirements:
+- source_type: kubernetes-api-audit
+  name: {zh: Kubernetes exec 审计, en: Kubernetes exec audit}
+  channel: null
+  required_fields: [timestamp, cluster_id, audit_id, user, groups, extra_or_session, source_ip, verb, resource, subresource, namespace, pod_name_or_uid, request_uri, stage, response_status]
+- source_type: kubelet-docker-exec
+  name: {zh: kubelet 与 Docker exec 生命周期, en: Kubelet and Docker exec lifecycle}
+  channel: null
+  required_fields: [timestamp, node_id, pod_uid, container_id, exec_or_session_id, event_type, tty, command_or_hash, status]
+- source_type: container-runtime-outcome
+  name: {zh: 容器进程、文件、网络与资源结果, en: Container process file network and resource outcomes}
+  channel: null
+  required_fields: [timestamp, container_id, process_start_key, parent_process, executable, command_line_or_hash, file_path_or_hash, network_destination, resource_usage, outcome]
+- source_type: exec-approval-and-workload-baseline
+  name: {zh: Exec 审批、自动化身份和 workload 行为基线, en: Exec approval automation identity and workload behavior baseline}
+  channel: null
+  required_fields: [principal_id, token_issuer_or_audience, source_scope, allowed_namespace_or_workload, allowed_command_or_purpose, ticket_or_approval, validity_window, expected_process_or_network]
+observables:
+- {zh: 未变 Pod/image 中在 exec 请求后出现镜像未声明 shell、下载器、包管理器或凭据访问, en: An unchanged Pod or image produces an undeclared shell downloader package manager or credential access after an exec request}
+- {zh: 服务账户或 kubelet 从非常见 source workload/IP 对历史允许 Pod exec，但命令和结果不符合批准自动化, en: A service account or kubelet execs a historically allowed Pod from an uncommon source workload or IP with command and outcome outside approved automation}
+- {zh: Docker exec_create/start 后容器产生新外联或文件，exec_die 前后没有工单且容器随后销毁, en: Docker exec create or start is followed by new network or file activity without a ticket before exec die and container destruction}
+correlation:
+  window: {zh: 从 exec 请求前五分钟到 session 结束后两小时；长调试和离线审计按 exec ID 延长二十四小时。, en: From five minutes before exec request through two hours after session end with long debugging and delayed audit extended twenty-four hours by exec ID.}
+  dimensions: [cluster, principal, token_session, source, namespace, pod_uid, owner, container_id, image_digest, exec_session, process, file, network, approval, time]
+false_positives:
+- {zh: SRE/开发调试、健康与故障诊断、备份、安全响应、运维脚本和受控渗透测试, en: SRE or developer debugging health and failure diagnostics backup security response operations scripts and authorized penetration testing}
+blind_spots:
+- {zh: audit policy 排除 exec、只记录 Metadata、kubelet/Docker event 轮转或容器销毁前未采集 runtime, en: Audit policy excludes exec records Metadata only kubelet or Docker event rotation or runtime not captured before container destruction}
+- {zh: 被攻陷自动化身份从正常来源执行正常外观命令且结果落在应用进程内, en: Compromised automation identity acts from normal origin with normal-looking commands and outcomes remain in the application process}
+tuning_guidance:
+  paragraphs:
+  - zh: 按团队、主体、token issuer/audience、source workload/IP、namespace、Pod owner、命令目的和工作时段建立调试矩阵；允许项必须有到期工单和目标，不能按 cluster-admin、service account、bash 或 tty 永久放行。将“API 无 runtime”“上下文借用”“自动化身份差分”“确认恶意结果”分级。
+    en: Build a debugging matrix by team principal token issuer or audience source workload or IP namespace Pod owner command purpose and time. Allowances require an expiring ticket and target and never permanently allow cluster-admin service accounts bash or TTY. Tier API-without-runtime context borrowing automation-identity differential and confirmed malicious outcome.
+  - zh: 用良性 kubectl、kubelet 和 Docker exec 测试 audit stage、request URI、session ID 与 runtime process 的实际字段；容器销毁后至少保留 pod UID、container ID 和进程摘要。内容可能含秘密，使用 hash/受控明文并限制访问。
+    en: Test benign kubectl kubelet and Docker exec to validate actual audit stage request URI session ID and runtime-process fields. Retain pod UID container ID and process summary after destruction. Content may contain secrets and needs hashes or controlled plaintext with restricted access.
+evidence_refs: [REF-000211, REF-000212, REF-000214, REF-000217, REF-000218, REF-000219]
+lifecycle: {status: review, version: 0.1.0, created: '2026-09-12', modified: '2026-09-12', contributors: [Niji Matrix Research], reviewers: []}

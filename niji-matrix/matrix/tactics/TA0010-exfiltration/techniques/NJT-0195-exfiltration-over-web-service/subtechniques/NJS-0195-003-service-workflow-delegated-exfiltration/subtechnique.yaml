@@ -1,0 +1,148 @@
+schema_version: 2.0.0
+type: evasion-subtechnique
+id: NJS-0195-003
+parent_ref: NJT-0195
+name:
+  zh: 服务工作流转交外传
+  en: Service-Workflow Delegated Exfiltration
+summary:
+  zh: 攻击者配置 Webhook 或集成，使受害租户的 SaaS 在事件发生时代表攻击者把数据推送到外部端点。
+  en: An adversary configures a webhook or integration so victim-tenant SaaS pushes data to an outside endpoint
+    on the adversary's behalf when events occur.
+aliases: []
+lineage:
+  attck_subtechnique_inherited: false
+definition_and_concept:
+  paragraphs:
+  - zh: 服务工作流转交外传是经 Web 服务渗出的一种实现：攻击者在受害 SaaS、仓库、邮件、聊天或自动化平台中创建/修改 Webhook、订阅或集成，选择数据事件和回调端点，之后由服务进程持续发送。稳定变量是“服务端工作流成为外传主体”，不是
+      Webhook 产品名，也不是端点脚本手工 POST 到一个 Webhook URL。
+    en: Service-Workflow Delegated Exfiltration is an implementation of Exfiltration Over Web Service in which the
+      adversary creates or modifies a webhook, subscription, or integration in victim SaaS, a repository, mail,
+      chat, or automation platform, selects data events and a callback endpoint, and then lets the service process
+      send continuously. The stable variable is the server-side workflow becoming the exfiltration principal, not
+      a webhook product name or an endpoint script manually posting to a webhook URL.
+stealth_characteristics:
+  paragraphs:
+  - zh: 服务工作流转交外传使新邮件、文件、聊天或仓库事件从 SaaS 提供方直接到攻击者端点；受害端 EDR、代理和设备网络日志没有对应上传进程。服务端请求继承集成/应用身份及提供方地址，可能被视为正常自动化。残余痕迹包括
+      webhook/integration create/update/enable、actor/service principal、授权 scopes、触发器、source scope、callback 域、secret/token、delivery
+      request ID、状态和字节。
+    en: Service-Workflow Delegated Exfiltration sends new mail, files, chat, or repository events directly from
+      the SaaS provider to an attacker endpoint. Victim EDR, proxy, and device-network logs contain no corresponding
+      uploader process. The service-side request inherits integration or application identity and provider addresses
+      and may look like ordinary automation. Residual traces include webhook or integration create, update, and
+      enable; actor or service principal; authorization scopes; trigger; source scope; callback domain; secret or
+      token; delivery request ID; status; and bytes.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 纳入要求受害租户中存在攻击者控制的服务工作流配置、敏感事件/对象范围及向外部接收端的实际或可验证交付。只有 Webhook URL、一次端点 POST、合法 CI/CD 通知或无后继请求的配置不足。自动重复可同时标注
+      T1020，但本子项由服务主体和控制面痕迹定义；同服务内复制到账户/租户归 T1537；同一 Web 服务关系作为 C2 控制回路归 T1041。
+    en: Inclusion requires attacker-controlled service-workflow configuration in a victim tenant, sensitive event
+      or object scope, and actual or verifiable delivery to an outside receiver. A webhook URL, one endpoint POST,
+      legitimate CI/CD notification, or configuration without a successor request is insufficient. Automated repetition
+      may also map to T1020, but this child is defined by the service principal and control-plane traces. Same-service
+      copying into another account or tenant belongs to T1537, and the same web-service relationship functioning
+      as a C2 control loop belongs to T1041.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: Push Security 记录 SaaS 可在新邮件、文件或聊天事件发生时执行 Webhook 回调，攻击者可用其持续提取新数据；请求由 SaaS 向攻击者应用发出，而不是请求进入 SaaS，因此面向入站用户操作的检测可能不记录完整链。Shai-Hulud
+        又把恶意 GitHub Actions 工作流提交到仓库并使其将仓库秘密发送到 webhook.site，真实事件支持工作流—外部端点链，但服务因免费配额停用了端点，交付结果并非始终成功。
+      en: Push Security documents SaaS webhook callbacks on new mail, file, or chat events and explains how an adversary
+        can use them for continual extraction. Requests leave SaaS for the adversary application rather than entering
+        SaaS, so detection centered on inbound user actions may miss the complete chain. Shai-Hulud also committed
+        a malicious GitHub Actions workflow that sent repository secrets to webhook.site, supporting a real workflow-to-outside-endpoint
+        chain. The service later disabled the endpoint due to free-tier limits, so delivery was not always successful.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者需要足以创建/修改集成的租户权限、可接收回调的端点、所需 OAuth scopes 或 webhook secret，并能选择包含敏感数据的触发事件。工作流可以长期运行但依赖服务配额、目标可达性、集成健康检查和管理员变更。过宽
+          scope、外部 callback 和新 service principal 会增加暴露。
+        en: The attacker needs tenant permission to create or modify an integration, an endpoint able to receive
+          callbacks, necessary OAuth scopes or webhook secret, and trigger events containing sensitive data. A workflow
+          can run for a long time but depends on service quota, receiver reachability, integration health checks,
+          and administrator changes. Broad scope, external callbacks, and a new service principal increase exposure.
+    defender_model:
+      paragraphs:
+      - zh: 防守方能导出 SaaS/身份控制面的 integration、connector、webhook、app consent 与 delivery 事件，并维护批准 callback、scope、owner
+          和到期时间。若服务不审计 Webhook 配置、只记录创建不记录投递、外部应用隐藏最终接收或攻击者滥用既有批准集成，覆盖降低。检测需要长期保存配置版本，而非只看当前状态。
+        en: The defender can export integration, connector, webhook, application-consent, and delivery events from
+          SaaS and identity control planes and maintains approved callback, scope, owner, and expiry. Coverage falls
+          when a service does not audit webhook configuration, records creation but not delivery, hides the final
+          receiver behind an outside application, or when the adversary abuses an existing approved integration.
+          Detection needs configuration-version history rather than current state alone.
+stealth_mechanisms:
+- mechanism_ref: NM-BT
+  role: primary
+  summary:
+    zh: 由 SaaS 工作流在端点网络观察之外持续发送敏感事件
+    en: Have a SaaS workflow continuously send sensitive events outside endpoint network observation
+  analysis:
+    paragraphs:
+    - zh: 攻击者把外传条件固化在服务端，触发后由 SaaS 代表租户向外部应用发送。端点没有读取—连接链，网络传感器只在提供方侧看到第二段；关键痕迹移动到 Webhook/集成控制面。Push Security 直接说明这种请求方向会避开只记录进入
+        SaaS 请求的检测，Shai-Hulud 提供恶意 GitHub Actions 到 webhook.site 的实例；配置与 delivery 审计仍可恢复。
+      en: The adversary persists exfiltration conditions in the service, which sends from SaaS to an outside application
+        on the tenant's behalf after a trigger. The endpoint has no read-to-connection chain, and the second leg
+        is visible only provider-side; critical traces move into webhook and integration control planes. Push Security
+        directly explains how this request direction evades detection limited to requests entering SaaS, while Shai-Hulud
+        provides a malicious GitHub Actions to webhook.site example. Configuration and delivery audit remain recoverable.
+  evidence_refs:
+  - REF-000941
+  - REF-000940
+  - REF-000944
+  confidence: medium
+- mechanism_ref: NM-FD
+  role: secondary
+  summary:
+    zh: 让恶意转交继承已批准集成和自动化任务的服务身份
+    en: Make malicious relay inherit the service identity of an approved integration and automation job
+  analysis:
+    paragraphs:
+    - zh: Webhook 或集成以服务账号、应用或工作流身份发送，外观与 CI/CD、通知、Zapier、SIEM 和工单自动化相同；只验证提供方地址或已批准应用名称难以区分恶意 scope 和 callback。actor、owner
+        tenant、权限、目标 URL、配置时间与事件范围仍能揭示差异。现有证据支持服务身份借用，但没有量化生产误报或漏报。
+      en: A webhook or integration sends as a service account, application, or workflow and resembles CI/CD, notifications,
+        Zapier, SIEM, or ticket automation. Provider address or an approved application name alone cannot distinguish
+        malicious scope and callback. Actor, owner tenant, permissions, target URL, configuration time, and event
+        scope remain differentiators. Available evidence supports borrowed service identity but does not quantify
+        production false negatives or positives.
+  evidence_refs:
+  - REF-000941
+  - REF-000944
+  confidence: medium
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000227
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000203
+evidence:
+  claim_refs:
+  - CLM-000958
+  - CLM-000961
+  case_refs:
+  - CASE-000281
+  reference_refs:
+  - REF-000941
+  - REF-000940
+  - REF-000944
+research:
+  limitations:
+    paragraphs:
+    - zh: Push Security 为行为、请求方向与观察差异提供明确研究结论，但不是逐事件入侵报告。Shai-Hulud 证明恶意工作流向 webhook.site 发送秘密，Wiz 同时说明免费配额导致端点被停用、部分
+        Webhook 外传失效；因此工作流存在和尝试为 high，稳定交付和实测匿迹效果保持 medium。不同 SaaS 对 Webhook scope、投递日志和回调身份的字段差异需要产品级映射。
+      en: Push Security provides explicit research conclusions about behavior, request direction, and observation
+        difference but is not a per-event incident report. Shai-Hulud establishes a malicious workflow sending secrets
+        to webhook.site, while Wiz also reports that free-tier limits disabled the endpoint and made some webhook
+        exfiltration nonfunctional. Workflow presence and attempt are high-confidence; reliable delivery and measured
+        stealth effect remain medium. SaaS products require product-level mapping for webhook scope, delivery logs,
+        and callback identity.
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-10-04'
+  modified: '2026-10-04'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

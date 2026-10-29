@@ -1,0 +1,1243 @@
+handoff_schema_version: 2.0.0
+type: technique-research-handoff
+batch_ref: BATCH-TA0006-002
+work_item_ref: WORK-TA0006-T1555
+temporary_key_prefix: TA0006-002-T1555
+candidate:
+  source_type: attack
+  source_attack_id: T1555
+  name:
+    zh: 受管理凭据保管库取用
+    en: Managed Credential-Store Retrieval
+recommendation:
+  decision: adapt
+  confidence: high
+  original_attack_subtechniques_imported: false
+  rationale:
+    paragraphs:
+    - zh: ATT&CK Enterprise 19.1 的 T1555 以凭据保管库为对象，确实属于 Credential Access；但原父页把操作系统钥匙串、浏览器、专用密码管理器和云秘密服务放在同一行为下，不能仅凭产品名称说明匿迹。建议保留从受管理存储边界取得可用凭据材料的直接目标，把
+        Niji 范围改写为攻击者利用受信消费身份、密文副本与运行态读取位置之间的观察差，使取用难以同正常读取区分或脱离保管库审计。仅定位文件、列出条目或复制仍受保护的库不证明秘密已返回，更不证明后续身份使用。
+      en: ATT&CK Enterprise 19.1 anchors T1555 in Credential Access and targets credential stores, but its parent groups operating-system
+        keychains, browsers, dedicated password managers, and cloud secret services without defining a stealth variable. Retain
+        the direct objective of obtaining usable credential material across a managed store boundary, while adapting the Niji
+        scope to attacker-controlled differences in trusted consumer identity, encrypted-copy location, and unlocked runtime
+        retrieval. These differences can make retrieval resemble normal consumption or move it outside store audit. Locating
+        a file, listing entries, or copying a still-protected vault does not by itself establish secret return, much less
+        later identity use.
+    - zh: 六个 ATT&CK 子项只用作覆盖广度线索。下文提出的三个 Niji 子项按消费权威、材料状态和观测平面划分，可跨多个平台出现；云秘密 API 中有身份与资源级审计，端点中的读取或内存访问则需不同传感器。第二轮搜索也检查了低频窄范围读取和跨设备控制面分离，但没有足够原始证据证明独立且稳定的攻击者操纵，故保留研究假设而不为数量补子项。
+      en: The six ATT&CK children are breadth evidence only. The three proposed Niji children partition consumer authority,
+        material state, and observation plane across products, while cloud secret APIs and endpoint stores demand different
+        sensors. A second open search also tested low-rate narrow retrieval and cross-device control-plane separation; current
+        primary evidence does not establish stable independent attacker manipulation for either, so they remain research hypotheses
+        rather than count-filling children.
+proposed_content:
+  summary:
+    zh: 攻击者从受管理的凭据保管库取出秘密，并利用合法读取外观、密文副本转移或运行态旁路改变防守方看到的取用轨迹。
+    en: Adversaries retrieve secrets from managed credential stores and alter defender-visible retrieval traces through authorized-read
+      appearance, encrypted-copy displacement, or unlocked-runtime bypass.
+  definition_and_concept:
+    paragraphs:
+    - zh: 受管理凭据保管库取用是攻击者针对操作系统、浏览器、密码管理器或云服务所维护的受保护秘密条目，跨越其授权或解锁边界取得可用于认证的口令、密钥或同类材料。直接目的在于获得存储时未公开的秘密，而不是寻找散落的明文，也不是测试未知秘密。保管库可把材料保存在本机密文文件、进程内存或远端服务中；媒介只决定实现和遥测，不决定技术身份。
+      en: Managed Credential-Store Retrieval targets protected secret items maintained by an operating system, browser, password
+        manager, or cloud service. The adversary crosses an authorization or unlock boundary to obtain a password, key, or
+        comparable material usable for authentication. Its immediate purpose is to acquire a secret withheld at rest, not
+        to find loose plaintext or test an unknown candidate. A vault may hold encrypted files locally, material in process
+        memory, or a remote service; medium changes implementation and telemetry, not the technique's identity.
+    - zh: 本技术需要把保管对象发现、条目或文件访问、秘密实际返回、攻击者保存以及后续使用分为不同证据阶段。Apple 的钥匙串 API 明确区分属性或引用与请求 `kSecReturnData` 后返回的秘密数据；AWS 的 GetSecretValue
+        与 Google 的 AccessSecretVersion 才是云库内容读取调用，List 或 Describe 仅是目录或元数据。即便读取成功，服务日志通常也不证明攻击者已保留明文，身份登录和资源访问须独立验证。
+      en: This technique separates store discovery, item or file access, actual secret return, adversary retention, and later
+        use into distinct evidentiary stages. Apple's keychain APIs distinguish attributes or references from secret data
+        returned with `kSecReturnData`; AWS GetSecretValue and Google AccessSecretVersion are content-read operations, whereas
+        listing and description expose only inventory or metadata. Even a successful read log does not alone prove the adversary
+        retained plaintext; sign-in and resource access require independent verification.
+  stealth_characteristics:
+    paragraphs:
+    - zh: 保管库通常以身份、应用或工作负载权限决定可否返回秘密。攻击者若借用已有消费身份、等待用户解锁后驱动导出，保管库侧的成功取用可能与业务调用具有相同主体或进程外观，短窗口的异常失败也可能不存在。防守方须关联授权变化、调用来源、消费用途和输出，而不能把“授权成功”当成合法目的。Mandiant
+        的 KeePass 红队实验展示了配置触发器在用户下一次打开库时导出明文，说明读出发生在正常解锁工作流内。
+      en: Stores normally decide whether to return secrets by identity, application, or workload authority. An adversary who
+        borrows an existing consumer identity or waits for a user unlock before triggering export may produce a store-side
+        success resembling business access, without anomalous unlock failures. Defenders must join authorization changes,
+        call origin, consumption purpose, and output rather than equate an authorized result with legitimate intent. Mandiant's
+        KeePass red-team experiment shows a configuration trigger exporting plaintext when the user next opened the vault,
+        placing extraction inside an ordinary unlock workflow.
+    - zh: 另两种观察迁移分别把密文保管对象从在线审计域移到副本，以及绕过保管库 API 去读取运行态材料。前者保留文件复制、归档与外传，且密文副本可能无法解锁；后者保留进程访问、特权或异常输出，且现代产品可能只在短瞬间出现明文。Mandiant
+        对 UNC1069 记录了钥匙串和浏览器数据库的复制与外传，却没有公开证明每项已解密；ESET 对旧版 Keydnap 的分析直接记录了读取 securityd 内存寻找解密密钥，不能泛化到现代 macOS。
+      en: Two other observation shifts move an encrypted vault object beyond the live audit domain or read runtime material
+        outside the vault API. The former leaves file copy, staging, and exfiltration traces and may still yield an unopenable
+        ciphertext; the latter leaves process-access, privilege, or output traces, while modern products may expose plaintext
+        only transiently. Mandiant records UNC1069 copying and exfiltrating keychain and browser databases without publicly
+        proving decryption of each item. ESET directly observed older Keydnap reading securityd memory for a decryption key,
+        a finding that cannot be generalized to modern macOS.
+  scope_boundary_definition:
+    paragraphs:
+    - zh: 纳入必须同时有受管理保管库对象、攻击者驱动的越界取用，以及可说明匿迹收益的可控观察变量。普通备份、用户发起的导出、同步、迁移、批准的管理员调查或受信工作负载定期读取可产生同类事件；必须核对任务单、所有者、调用身份、来源、目标条目、输出和时间。仅凭文件名、`security`
+        命令、GetSecretValue 或可疑进程访问不足以断言已获可用凭据。
+      en: Inclusion requires a managed-store object, attacker-driven access across its protection boundary, and a controllable
+        observation variable with a defensible stealth effect. Backups, user-initiated exports, synchronization, migration,
+        approved administration, and scheduled workload reads can create similar events. Assessment must compare ticket, owner,
+        caller, origin, target item, output, and timing. A filename, `security` invocation, GetSecretValue call, or suspicious
+        process access alone is insufficient to claim a usable credential was obtained.
+    - zh: T1552 处理未受保护的散落秘密；T1003 处理操作系统认证材料转储，而非普通应用密码库的运行态；NJT-0137/NJS-0137-003 处理取得可比对材料后的候选验证；T1056 处理秘密输入时的截获；T1528
+        处理应用令牌本身。若原始卷或影子副本绕过活动文件路径，介质层归 NJT-0108，本技术仅在证据继续指向保管库材料及其解锁或返回时并列成立。偷到令牌后直接重放、或使用已得口令登录，是后继行为，不把凭据获取改写成身份使用。
+      en: T1552 covers loose unprotected secrets; T1003 covers operating-system authentication-material dumping rather than
+        ordinary application-vault runtime; NJT-0137/NJS-0137-003 covers candidate validation after comparable material is
+        acquired; T1056 covers interception as a secret is entered; and T1528 owns application tokens as the target material.
+        If raw-volume or shadow-copy access bypasses the live file path, NJT-0108 owns that access medium; this technique
+        coexists only when evidence continues to vault material and its unlock or return. Replaying a stolen token or signing
+        in with an acquired password is a successor behavior, not a redefinition of acquisition.
+  application_scenarios_and_threat_model:
+    application_scenarios:
+      paragraphs:
+      - zh: 在已控用户工作站上，攻击者可寻找已解锁的钥匙串、浏览器或密码管理器，借助受信进程、配置触发器或进程内存取得秘密；在服务器上可复制受保护数据库并寻找解锁材料；在云环境中可用已有 workload role 对少数高价值 secret
+          version 发起内容读取。相应后继目标可能是横向移动、访问管理入口或取得应用数据，但各后继结果必须单独记录。
+        en: On a compromised workstation, an adversary may seek an unlocked keychain, browser, or password manager and use
+          a trusted process, configuration trigger, or process memory to obtain secrets. On a server, the adversary may copy
+          a protected database and seek unlock material. In cloud environments, an existing workload role may read selected
+          high-value secret versions. Later aims can include lateral movement, administrative access, or application data
+          access, but each successor outcome must be recorded separately.
+    threat_model:
+      attacker_model:
+        paragraphs:
+        - zh: 攻击者至少需要能接触保管库文件、使用已获授权的会话或角色、或接近已解锁进程；不同分支分别要求用户上下文、足够文件权限、配置修改、进程访问或云 `GetSecretValue` 等权限。攻击者未必知道主口令，也未必能读取所有条目。设备绑定、额外解锁因子、Keychain
+            访问控制、最小权限 IAM 和进程保护会限制可得范围；复制密文库还需另证密钥或解锁成果。
+          en: The adversary needs access to store files, an authorized session or role, or an unlocked process. Different
+            branches require user context, file authority, configuration modification, process access, or cloud content-read
+            permission such as `GetSecretValue`. The adversary need not know the master password and may be unable to read
+            every item. Device binding, extra unlock factors, keychain access control, least-privilege IAM, and process protection
+            limit reach; copied ciphertext also requires separate evidence of a key or successful unlock.
+      defender_model:
+        paragraphs:
+        - zh: 防守方假定能集中保留端点进程、文件访问或导出事件与云库数据访问日志，并维护正常消费者到秘密资源的映射。AWS CloudTrail 能记录 Secrets Manager API，Google 的 AccessSecretVersion
+            属 DATA_READ 但日志默认需要启用，Azure Key Vault 日志具有操作、调用者和来源字段；端点上的 API 级读取日志并非普遍默认存在。若只留应用登录而没有本机保管库/内存遥测，或只有库调用而没有工作负载来源与后继认证，防守方就只能判定访问而不能判定恶意保留和使用。
+          en: The defender is assumed to retain endpoint process, file-access or export events and cloud vault data-access
+            logs centrally, with a baseline mapping normal consumers to secret resources. AWS CloudTrail records Secrets Manager
+            APIs; Google's AccessSecretVersion is DATA_READ but Data Access logging generally must be enabled; Azure Key Vault
+            logs expose operation, caller, and source fields. API-level local-vault reads are not universally logged by default.
+            With only application sign-ins and no local store or memory telemetry, or only vault calls without workload origin
+            and successor authentication, defenders can establish access but not malicious retention and use.
+  stealth_mechanisms:
+  - mechanism_ref: NM-FD
+    role: primary
+    summary:
+      zh: 受信消费外观掩盖异常秘密取用
+      en: Trusted-consumer appearance masks abnormal secret retrieval
+    analysis:
+      paragraphs:
+      - zh: 攻击者把取用嵌入已有授权的应用、用户会话或 workload role，使保管库先看到可通过的主体和正常 API，再在配置、来源、条目范围或输出目的上偏离业务基线。结果不是审计事件消失，而是事件的合法外观降低单一字段的判别力；Mandiant
+          的 KeePass 触发器实验直接显示用户解锁后的合法应用导出可被预置动作利用，Apple 和云厂商文档解释为何授权路径会返回秘密。
+        en: The adversary embeds retrieval in an already authorized application, user session, or workload role. The store
+          sees a permitted principal and normal API, while configuration, origin, item scope, or output purpose departs from
+          the business baseline. Audit events need not disappear; a legitimate-looking event weakens single-field discrimination.
+          Mandiant's KeePass trigger experiment directly demonstrates abuse of a legitimate app export after user unlock,
+          while Apple and cloud provider documentation explain why authorized paths can return secrets.
+    evidence_keys:
+    - TA0006-002-T1555-REF-MANDIANT-REDTEAM
+    - TA0006-002-T1555-REF-APPLE-RETURN
+    - TA0006-002-T1555-REF-AWS-CLOUDTRAIL
+    confidence: medium
+  - mechanism_ref: NM-BT
+    role: secondary
+    summary:
+      zh: 材料副本或内存读取跨越保管库审计边界
+      en: Copy or memory access crosses the vault audit boundary
+    analysis:
+      paragraphs:
+      - zh: 复制保管库数据库或在解锁进程中寻找材料，把关键阶段从受管理条目 API 转移到文件、传输或进程内存观察面；只搜库 API 的检测会缺失复制、异地解锁或运行态抽取。UNC1069 的库文件外传及 Keydnap 的 securityd
+          内存读取分别支持这两种路径，但前者不证明明文，后者有明确旧版系统限制。因此正式对象需把各自残余痕迹和证据强度分开。
+        en: Copying a vault database or seeking material in an unlocked process moves a critical stage from managed item APIs
+          to file, transfer, or process-memory observation. Detection limited to vault APIs can miss the copy, off-host unlock,
+          or runtime extraction. UNC1069 vault-file exfiltration and Keydnap securityd memory reads support these paths respectively,
+          but the former does not prove plaintext and the latter has an explicit legacy-system constraint. Formal objects
+          must keep their residual traces and evidentiary strengths separate.
+    evidence_keys:
+    - TA0006-002-T1555-REF-UNC1069
+    - TA0006-002-T1555-REF-KEYDNAP
+    - TA0006-002-T1555-REF-KEEPASS-SECURITY
+    confidence: medium
+proposed_subtechniques:
+- temporary_key: TA0006-002-T1555-CHILD-CONSUMER
+  name:
+    zh: 受信消费身份转用
+    en: Trusted-Consumer Identity Repurposing
+  summary:
+    zh: 攻击者利用本已获准读取的应用、会话或工作负载取出秘密，使保管库侧的成功调用带有正常身份外观。
+    en: The adversary uses an already permitted app, session, or workload to retrieve secrets, giving successful vault calls
+      a normal consumer identity.
+  taxonomy_variable:
+    zh: 秘密读取请求所呈现的消费身份与真实控制者是否一致
+    en: Alignment of the secret-read consumer identity with its true controller
+  counterfactual_trace:
+    zh: 直接由未授权进程或身份读取会被拒绝、提示或形成新来源异常；转用后保管库可能仅记录已许可主体，异常留在配置和调用上下文。
+    en: Direct reads by an untrusted caller can be denied, prompt, or show a novel source; repurposed reads present a permitted
+      principal and move the anomaly to configuration and call context.
+  definition_and_concept:
+    paragraphs:
+    - zh: 受信消费身份转用是攻击者控制或预置一个已经有权取得保管库秘密的应用、会话、插件或云工作负载，使其在正常取用权限内返回与攻击目标有关的条目。对象按“调用者名义与真实控制者分离”划界，而不是按 Keychain、KeePass
+        或云厂商命名。保管库返回数据是本项的关键结果；仅获得角色或修改触发器而未发生取用仍是前提。
+      en: Trusted-Consumer Identity Repurposing occurs when an adversary controls or prepositions an application, session,
+        plugin, or cloud workload already entitled to receive vault secrets, causing it to return target items under its ordinary
+        access authority. The boundary is separation of presented caller identity from actual controller, not Keychain, KeePass,
+        or a cloud vendor. Secret return is the key outcome; gaining a role or altering a trigger without a subsequent read
+        remains a prerequisite.
+  stealth_characteristics:
+    paragraphs:
+    - zh: 受信消费身份转用把未授权主体的失败或新程序读取，替换为允许的消费者对受保护条目的成功取用，因而简单的“成功且主体在白名单”规则会漏判。残余差异包括调用来源、工作负载实例、读取的 secret 集合、配置变更、导出文件及后继通信；云库还会保留
+        API 操作与资源标识，前提是相应日志确已启用。
+      en: Trusted-Consumer Identity Repurposing replaces denied or novel-caller reads with successful accesses by a permitted
+        consumer, defeating rules that equate an allowlisted successful principal with benign intent. Residual differences
+        include origin, workload instance, secret set, configuration change, export artifact, and later communications. Cloud
+        vaults may retain API operation and resource identifiers when the relevant audit logs are enabled.
+  scope_boundary_definition:
+    paragraphs:
+    - zh: 纳入要有现成消费权限遭攻击者转用并实际产生异常条目返回的链条。用户主动导出、轮换服务定期读取、批准的迁移与同一角色在业务范围内的调用是反例；仅伪装进程名但无真实权限不属于本项。若攻击者没有借用消费身份而直接复制加密数据库，则归密文副本子项；若绕过
+        API 从内存读取则归运行态旁路。
+      en: Inclusion requires an existing consumer entitlement repurposed by an adversary and a supported chain to abnormal
+        item return. User-initiated export, scheduled rotation reads, approved migration, and in-scope business calls by the
+        same role are counterexamples. Merely spoofing a process name without real authority does not qualify. Direct copying
+        of encrypted databases belongs to the copy child; API-bypassing memory reads belong to the runtime child.
+  application_scenarios_and_threat_model:
+    application_scenarios:
+      paragraphs:
+      - zh: 在已控用户下修改密码管理器事件配置并等待下一次解锁，或在已控云工作负载中调用其获准访问的少数 secret version，均可使取得秘密的动作出现在平常消费者路径。Mandiant 的红队实验明确观察到 KeePass
+          下次开启时导出全部口令；云工作负载分支目前由厂商 API 文档支持可行性，不把它冒充已证实在野匿迹案例。
+        en: An attacker may alter a password manager's event configuration under a controlled user and await the next unlock,
+          or call selected secret versions from a controlled cloud workload with existing rights. Both place retrieval on
+          an ordinary consumer path. Mandiant directly observed all passwords exported when KeePass was next opened in a red-team
+          experiment. The cloud workload branch is feasible from vendor API documentation but is not presented as a proven
+          in-the-wild stealth case.
+    threat_model:
+      attacker_model:
+        paragraphs:
+        - zh: 攻击者需控制可修改配置的本地用户、已授权应用代码路径或获准调用秘密的 workload 身份，并知道目标条目与输出位置。其权限不自动覆盖所有库；额外确认、应用完整性、按 secret 收窄的策略和工作负载来源绑定可能阻止成功。
+          en: The adversary must control a local user able to alter configuration, an authorized application code path, or
+            a workload identity permitted to call the secret, and must know the target item and output path. Rights do not
+            automatically cover every vault. Additional confirmation, app integrity, per-secret policy, and workload-origin
+            binding may prevent success.
+      defender_model:
+        paragraphs:
+        - zh: 防守方可比较受信消费者的稳定二进制身份、配置与签名、用户会话、云角色会话来源、实际返回条目、导出产物和后继连接。仅有保管库成功记录而没有调用栈或工作负载映射时，恶意与正常读取往往无法直接区分；秘密值不得进入检测日志。
+          en: Defenders can compare the trusted consumer's stable binary identity, configuration and signature, user session,
+            cloud role-session origin, returned item, export artifact, and later connection. A vault success record without
+            call-path or workload mapping often cannot distinguish malicious from routine reads, and secret values must not
+            enter detection logs.
+  stealth_mechanisms:
+  - mechanism_ref: NM-FD
+    role: primary
+    summary:
+      zh: 合法消费身份遮蔽异常操控
+      en: Permitted consumer identity obscures abnormal control
+    analysis:
+      paragraphs:
+      - zh: 攻击者在调用前改变受信消费者的配置或运行上下文，令保管库按既有权限返回秘密。传感器看到的是熟悉主体与成功结果，真正差异转移到配置时间、来源、条目集合和输出链；Mandiant 的 KeePass 触发器实验支持此因果链，Apple
+          的允许访问机制和云 IAM 文档说明正常授权外观如何形成。
+        en: Before the read, the adversary changes a trusted consumer's configuration or runtime context, causing the vault
+          to return a secret under existing rights. A sensor sees a familiar principal and success, while the discriminating
+          evidence moves to configuration timing, origin, item set, and output chain. Mandiant's KeePass trigger experiment
+          supports the causal chain; Apple access controls and cloud IAM documentation explain the authorized appearance.
+    evidence_keys:
+    - TA0006-002-T1555-REF-MANDIANT-REDTEAM
+    - TA0006-002-T1555-REF-APPLE-ACCESS
+    - TA0006-002-T1555-REF-AWS-IAM
+    confidence: medium
+  evidence_keys:
+  - TA0006-002-T1555-REF-MANDIANT-REDTEAM
+  - TA0006-002-T1555-REF-APPLE-ACCESS
+  - TA0006-002-T1555-REF-AWS-IAM
+  - TA0006-002-T1555-REF-GCP-AUDIT
+  defense_keys:
+  - TA0006-002-T1555-DET-CONSUMER
+  - TA0006-002-T1555-NJA-LOCAL-CONSUMER
+  - TA0006-002-T1555-NJA-CLOUD-CONSUMER
+  - TA0006-002-T1555-MIT-AUTHORITY
+  limitations:
+    paragraphs:
+    - zh: 原始 KeePass 实验有明确明文导出，但不能证明所有保管库允许同类配置触发器；云库分支有 API 与审计可行性，缺少本批可直接归因的恶意小范围读取案例。受信调用的正常高频会降低身份字段的判别力，必须本地建立消费者到 secret
+        的用途基线。
+      en: The original KeePass experiment proves plaintext export in that product but not equivalent triggers in every vault.
+        Cloud documentation establishes API and audit feasibility, while this batch lacks a directly attributed malicious
+        narrow-read case. Frequent legitimate trusted calls weaken principal-only discrimination, requiring a local consumer-to-secret
+        purpose baseline.
+- temporary_key: TA0006-002-T1555-CHILD-COPY
+  name:
+    zh: 密文保管副本离线转移
+    en: Protected-Vault Copy Displacement
+  summary:
+    zh: 攻击者把受保护的保管库副本移出在线服务或端点审计域，尝试在另一观察面取得解锁材料与秘密。
+    en: The adversary moves a protected vault copy beyond live service or endpoint audit and seeks unlock material and secrets
+      in another observation domain.
+  taxonomy_variable:
+    zh: 保管库密文及解锁过程所在的观察域
+    en: Observation domain containing vault ciphertext and its unlock process
+  counterfactual_trace:
+    zh: 在线逐条读取会产生保管库调用与条目级事件；副本转移先呈现文件或数据库导出，后续解锁可在受害方视野外。
+    en: Online item reads produce vault calls and item-level events; copy displacement first appears as file or database export,
+      while later unlock may occur outside victim visibility.
+  definition_and_concept:
+    paragraphs:
+    - zh: 密文保管副本离线转移是攻击者取得一个仍由保管机制保护的数据库或文件副本，并把其解锁或解密阶段移到原保管库之外。该子项是取用路径而非“已经解密”的同义词；正式 T1555 结果还须有钥匙、主口令、已解锁副本或明文条目返回的证据。它可以涉及浏览器、钥匙串或专用管理器，划界依据是在线条目审计与副本处理的观察差。
+      en: Protected-Vault Copy Displacement obtains a database or file copy still protected by the vault and moves unlock
+        or decryption beyond the original store. The child is a retrieval path, not a synonym for successful decryption; a
+        completed T1555 outcome still needs evidence of a key, master password, unlocked copy, or returned plaintext item.
+        It can affect browsers, keychains, or dedicated managers. The boundary is the observation difference between live
+        item audit and copy processing.
+  stealth_characteristics:
+    paragraphs:
+    - zh: 密文保管副本离线转移减少了原保管库对逐条秘密读取的可见性，尤其是复制后才另行解锁时。防守方仍可看到异常文件打开、备份或数据库导出、临时归档和外传；若解锁在攻击者设备上完成，受害端无法计数尝试或确认哪项秘密返回。加密、设备绑定与独立
+        key file 会使复制无效，不能把“外传了库”直接写成“泄露了所有凭据”。
+      en: Protected-Vault Copy Displacement reduces original-store visibility into per-item reads, especially when unlocking
+        occurs after the copy leaves. Defenders may still see unusual file opens, backup or database export, staging archives,
+        and exfiltration. If unlocking occurs on attacker equipment, the victim cannot count attempts or identify returned
+        secrets. Encryption, device binding, and a separate key file can render the copy unusable, so exfiltrating a vault
+        is not evidence that every credential leaked.
+  scope_boundary_definition:
+    paragraphs:
+    - zh: 纳入需要攻击者有意复制受管理的受保护保管对象并把后续取用迁出在线条目审计，且完整成果另证解锁。普通浏览器同步、备份、取证镜像和用户迁移要按审批与目的排除；散落明文文件归 T1552。若使用原始卷或影子副本规避文件锁，同时满足
+        NJT-0108 的介质行为；离线猜测主口令若确有候选比较，则其验证阶段另归 NJS-0137-003。
+      en: Inclusion requires intentional copying of a managed protected vault and relocation of subsequent retrieval outside
+        live item audit, with unlock separately established for a completed outcome. Normal browser sync, backup, forensic
+        image, and user migration need purpose and approval checks; loose plaintext belongs to T1552. Raw-volume or shadow-copy
+        bypass can also satisfy NJT-0108 for the medium. Offline guessing of a master password, if candidates are actually
+        compared, is a separate NJS-0137-003 validation stage.
+  application_scenarios_and_threat_model:
+    application_scenarios:
+      paragraphs:
+      - zh: Mandiant 对 UNC1069 的调查记录了恶意软件复制 macOS 钥匙串和多浏览器 Login Data 后压缩外传，直接证明副本迁移而不证明每项秘密解密；GTIG 对 UNC2465 记录了自托管 Bitwarden
+          vault 数据库导出和外传，也没有公开后续解锁结果。此项适合已控主机或管理服务器有文件/数据库导出权限、但逐项取用会留下更明确审计的环境。
+        en: Mandiant observed UNC1069 malware copy macOS keychain and multiple browser Login Data stores, then archive and
+          exfiltrate them. That proves copy displacement, not decryption of every item. GTIG also reported UNC2465 exporting
+          and exfiltrating a self-hosted Bitwarden vault database without publishing subsequent unlock results. The path suits
+          a controlled host or management server where file or database export is possible but item-by-item access would leave
+          clearer audit.
+    threat_model:
+      attacker_model:
+        paragraphs:
+        - zh: 攻击者需要可读取受保护文件或导出数据库的权限、暂存与传输能力，若要取得明文还需要解锁密钥、用户口令、同设备解密上下文或实现缺陷。UNC1069 的 Finder Full Disk Access 操控属于取得文件权限的前置条件，不等于已破解钥匙串；强主口令和独立
+            key file 会提高后续成本。
+          en: The attacker needs authority to read protected files or export a database, plus staging and transport. Plaintext
+            additionally requires an unlock key, user password, same-device decryption context, or implementation weakness.
+            UNC1069's manipulation of Finder Full Disk Access is a prerequisite for file access, not proof of keychain cracking.
+            A strong master password and separate key file raise later cost.
+      defender_model:
+        paragraphs:
+        - zh: 防守方可对已登记的保管库路径或数据库导出接口采集进程、用户、文件对象、输出路径、字节量和目的地，并与备份计划比对。离线解锁如在外部设备上发生则不可直观观测，因此事件分级应区分“副本暴露”“解锁证实”和“凭据后继使用”；缺少后两项时仍需按潜在大规模暴露响应。
+          en: Defenders can collect process, user, vault path or database export interface, output path, byte count, and destination,
+            then compare with backup schedules. Off-host unlock may be invisible, so incident grading must separate copy exposure,
+            confirmed unlock, and successor credential use. Missing the latter stages does not remove the need to respond
+            to possible broad exposure.
+  stealth_mechanisms:
+  - mechanism_ref: NM-BT
+    role: primary
+    summary:
+      zh: 副本处理离开原保管库逐项审计
+      en: Copy processing leaves original per-item vault audit
+    analysis:
+      paragraphs:
+      - zh: 攻击者先复制保管库整体，再在原应用或服务之外寻找解锁办法，逐项读取不再经过原保管库的条目 API。防守证据由 item read 转为文件访问、数据库导出、归档和传输；UNC1069 与 UNC2465 的原始调查支持这种迁移，但都不能单独证明后继明文。因此该机理的匿迹效果只针对原保管库审计，不能宣称整体不可见。
+        en: The adversary copies the vault first and seeks to unlock it outside the original app or service, so per-item reads
+          no longer pass through its item API. Evidence shifts from item reads to file access, database export, archive, and
+          transfer. Original investigations of UNC1069 and UNC2465 support the migration but neither alone proves later plaintext.
+          The stealth effect is limited to original-vault audit, not total invisibility.
+    evidence_keys:
+    - TA0006-002-T1555-REF-UNC1069
+    - TA0006-002-T1555-REF-GTIG-RANSOM
+    - TA0006-002-T1555-REF-KEEPASS-KEYS
+    confidence: medium
+  evidence_keys:
+  - TA0006-002-T1555-REF-UNC1069
+  - TA0006-002-T1555-REF-GTIG-RANSOM
+  - TA0006-002-T1555-REF-KEEPASS-KEYS
+  defense_keys:
+  - TA0006-002-T1555-DET-COPY
+  - TA0006-002-T1555-NJA-COPY
+  - TA0006-002-T1555-MIT-COPY
+  limitations:
+    paragraphs:
+    - zh: 两份原始调查证实保管库副本被外传，却不公开每种产品的密钥保护状态、攻击者解锁尝试或成功条目数；本子项可作为取用途径候选，但是否进入正式矩阵应由主 Agent 裁定它与“实际获得可用材料”的父定义能否在证据上同时满足。若只能证明副本暴露，建议保留研究记录而不把它作为完成凭据获取的正式
+        NJS。
+      en: The two original investigations establish vault-copy exfiltration but do not publish each product's key state, attacker
+        unlock attempts, or number of recovered entries. This is a candidate retrieval path; the primary agent should decide
+        whether its evidence can satisfy the parent's usable-material outcome. If only copy exposure is established, retain
+        it as research rather than a formal child representing completed credential acquisition.
+- temporary_key: TA0006-002-T1555-CHILD-RUNTIME
+  name:
+    zh: 解锁运行态旁路取密
+    en: Unlocked-Runtime Secret Bypass
+  summary:
+    zh: 攻击者从正在处理保管库秘密的进程状态取得材料，避开逐项读取 API 和相应授权提示。
+    en: The adversary obtains material from a process handling unlocked vault secrets, bypassing per-item read APIs and their
+      authorization prompts.
+  taxonomy_variable:
+    zh: 明文或解密密钥的读取位置相对保管库 API 的关系
+    en: Location of plaintext or decryption-key reads relative to the vault API
+  counterfactual_trace:
+    zh: 常规读取留下 API 或用户提示；运行态旁路留下进程访问和内存/输出痕迹，却可能没有对应条目 API 事件。
+    en: Ordinary reads leave API or user-prompt traces; runtime bypass leaves process-access and memory/output traces with
+      potentially no corresponding item API event.
+  definition_and_concept:
+    paragraphs:
+    - zh: 解锁运行态旁路取密是在保管应用或代理已经持有解密密钥或短暂明文的时段，攻击者读取其运行状态或转储进程以恢复秘密，而不向每个条目发起正常保管库请求。它按取用位置划分，可发生在系统钥匙串服务或应用密码管理器；“内存”不是充分条件，还要证明目标进程持有保管库材料及取得了可用秘密。
+      en: Unlocked-Runtime Secret Bypass reads or dumps the runtime state of a vault app or agent while it holds decryption
+        keys or transient plaintext, recovering secrets without ordinary per-item vault requests. The partition concerns retrieval
+        location and can occur in a system keychain service or application password manager. Memory access alone is insufficient;
+        the target must handle vault material and usable secret recovery must be supported.
+  stealth_characteristics:
+    paragraphs:
+    - zh: 解锁运行态旁路取密把条目读取从保管库 API、提示和成功日志迁到高权进程访问；只看 API 的防守方可能漏掉秘密返回。异常句柄、调试或任务端口、转储文件、权限提升与后继外传仍可被观察。KeePass 官方说明敏感值大多在内存中再加密，但展示、剪贴板、自动输入、导出等操作会短暂产生明文，因此“进程转储必得全部密码”是错误推断。
+      en: Unlocked-Runtime Secret Bypass moves item retrieval from vault APIs, prompts, and success records to privileged
+        process access, which API-only defenders may miss. Anomalous handles, debugger or task ports, dump files, privilege
+        changes, and later exfiltration remain visible. KeePass documents that sensitive values are generally re-encrypted
+        in memory, with transient plaintext during display, clipboard, auto-type, or export. Thus a process dump does not
+        necessarily yield every password.
+  scope_boundary_definition:
+    paragraphs:
+    - zh: 纳入要求攻击者访问处理保管秘密的运行态，并有密钥或明文恢复证据。合法故障转储、取证采集、辅助功能以及普通调试可能相似；应核对授权与结果。LSASS、SAM 或 NTDS 的系统认证材料按 T1003；键盘输入截获按 T1056；只从库文件离线猜测主口令按
+        NJS-0137-003 的验证阶段，而不是本运行态旁路。
+      en: Inclusion requires adversarial access to runtime state handling vault secrets and evidence of recovered keys or
+        plaintext. Authorized crash dumps, forensics, accessibility tools, and debugging can resemble this path and need authorization
+        and outcome checks. LSASS, SAM, or NTDS operating-system authentication material belongs to T1003; keystroke interception
+        to T1056; and offline guesses against a copied vault's master password to the NJS-0137-003 validation stage.
+  application_scenarios_and_threat_model:
+    application_scenarios:
+      paragraphs:
+      - zh: 在旧版 macOS 已控 root 环境，Keydnap 读取 securityd 内存以寻找用户钥匙串解密密钥；在密码管理器客户端已解锁且正进行展示或导出时，攻击者也可能试图读取短暂明文。前者有原始恶意软件分析，后者由厂商运行态说明支持机制可行性，但不能未经实验宣称每个产品均可复制。
+        en: On legacy macOS with root control, Keydnap read securityd memory to find a user's keychain decryption key. On
+          an unlocked password-manager client during display or export, an adversary may also seek transient plaintext. The
+          former has original malware analysis; the latter is mechanistically possible from vendor runtime documentation but
+          cannot be generalized to every product without testing.
+    threat_model:
+      attacker_model:
+        paragraphs:
+        - zh: 攻击者需要足够权限打开目标进程、识别正确的运行时窗口与材料布局，并在明文被擦除前取得结果。现代硬化、进程访问限制、内存保护、密钥隔离和用户锁库会降低或阻断效果；root 也不保证所有平台上能直接读取保管秘密。
+          en: The attacker needs sufficient privilege to open the target process, identify the relevant runtime window and
+            material layout, and recover data before plaintext is erased. Modern hardening, process access restrictions, memory
+            protection, key isolation, and vault lock can reduce or block the path; root does not guarantee direct access
+            to every platform's secrets.
+      defender_model:
+        paragraphs:
+        - zh: 防守方可重点观察被保护的保管进程遭外部打开、调试或转储，并结合发起者父进程、签名、权限提升、输出文件和外联。Windows Sysmon Event 10 可报告进程访问但不证明内存读取内容；macOS 需具备任务端口或进程访问遥测；若监控只覆盖应用日志，则该旁路可能没有逐项读取记录。
+          en: Defenders can watch external opens, debugging, or dumps of protected vault processes and join initiator lineage,
+            signature, privilege changes, output files, and egress. Windows Sysmon Event 10 reports process access but does
+            not prove memory contents were read. macOS requires task-port or process-access telemetry. Application logs alone
+            may contain no per-item record for the bypass.
+  stealth_mechanisms:
+  - mechanism_ref: NM-BT
+    role: primary
+    summary:
+      zh: 运行态读取绕开保管库逐项记录
+      en: Runtime read bypasses per-item vault records
+    analysis:
+      paragraphs:
+      - zh: 攻击者从保管服务或应用的已解锁状态提取密钥或短暂明文，而不向条目 API 发送对应请求。保管库审计因而不能直接列出被读取项；痕迹转移到进程访问和输出链。ESET 对 Keydnap 的反向分析直接支持旧版 securityd
+          路径，KeePass 官方资料则限制了可泛化程度：明文通常只在特定操作时短暂出现。
+        en: The adversary extracts keys or transient plaintext from an unlocked vault service or app without making corresponding
+          item-API requests. Vault audit therefore cannot directly enumerate accessed items; evidence moves to process access
+          and output. ESET's reverse analysis directly supports the older securityd path, while KeePass documentation limits
+          generalization because plaintext ordinarily appears only transiently during particular operations.
+    evidence_keys:
+    - TA0006-002-T1555-REF-KEYDNAP
+    - TA0006-002-T1555-REF-KEEPASS-SECURITY
+    - REF-000366
+    confidence: medium
+  evidence_keys:
+  - TA0006-002-T1555-REF-KEYDNAP
+  - TA0006-002-T1555-REF-KEEPASS-SECURITY
+  - REF-000366
+  defense_keys:
+  - TA0006-002-T1555-DET-RUNTIME
+  - TA0006-002-T1555-NJA-RUNTIME
+  - TA0006-002-T1555-MIT-RUNTIME
+  limitations:
+    paragraphs:
+    - zh: Keydnap 证据聚焦旧版 macOS 的 securityd，不能推断新系统仍保留相同密钥布局。Sysmon ProcessAccess 表示打开进程，不表示成功读取可用秘密；合法诊断与响应也可访问密码管理器进程。正式检测必须按目标进程和权限收窄，秘密返回需另由转储内容或后继结果证实。
+      en: Keydnap evidence concerns legacy macOS securityd and does not establish the same key layout in modern releases.
+        Sysmon ProcessAccess means a process was opened, not that a usable secret was read. Authorized diagnostics and response
+        can also access password-manager processes. Detection must narrow by target process and rights, while secret return
+        needs separate dump-content or successor evidence.
+defense_candidates:
+  detection_strategies:
+  - temporary_key: TA0006-002-T1555-DET-CONSUMER
+    name:
+      zh: 受信消费者秘密取用偏差
+      en: Trusted Consumer Secret Retrieval Deviation
+    objective:
+      zh: 将获准应用或工作负载的秘密读取与配置、来源、条目及业务用途基线关联。
+      en: Join permitted app or workload secret reads to configuration, origin, item, and purpose baselines.
+    detects_keys:
+    - TA0006-002-T1555-CHILD-CONSUMER
+    analytic_keys:
+    - TA0006-002-T1555-NJA-LOCAL-CONSUMER
+    - TA0006-002-T1555-NJA-CLOUD-CONSUMER
+  - temporary_key: TA0006-002-T1555-DET-COPY
+    name:
+      zh: 受保护保管副本异常导出
+      en: Protected Vault Copy Export
+    objective:
+      zh: 重建受保护库读取、导出、暂存及外传，另标记是否证实解锁。
+      en: Reconstruct protected-vault read, export, staging, and egress, separately marking proven unlock.
+    detects_keys:
+    - TA0006-002-T1555-CHILD-COPY
+    analytic_keys:
+    - TA0006-002-T1555-NJA-COPY
+  - temporary_key: TA0006-002-T1555-DET-RUNTIME
+    name:
+      zh: 保管进程运行态读取
+      en: Vault Process Runtime Access
+    objective:
+      zh: 识别非批准内存访问并关联输出，不把进程句柄等同秘密泄露。
+      en: Identify unapproved memory access and join output without equating a process handle with leaked secrets.
+    detects_keys:
+    - TA0006-002-T1555-CHILD-RUNTIME
+    analytic_keys:
+    - TA0006-002-T1555-NJA-RUNTIME
+  detection_analytics:
+  - temporary_key: TA0006-002-T1555-NJA-LOCAL-CONSUMER
+    strategy_key: TA0006-002-T1555-DET-CONSUMER
+    name:
+      zh: 解锁工作流与导出配置联查
+      en: Unlock Workflow and Export Configuration Join
+    logic:
+      zh: 按用户和进程关联密码管理器配置、插件或二进制写入与后续解锁、明文导出文件及外联；未批准变更后首次导出告警，仅见配置变更则报告预置。
+      en: Join vault configuration, plugin, or binary writes to subsequent unlock, plaintext export file, and egress by user
+        and process; alert on first export after an unapproved change, while configuration alone is preparation.
+    data_requirements:
+    - source_type: endpoint_file_process
+      channel: EDR file/process telemetry
+      required_fields:
+      - timestamp
+      - host_id
+      - user_id
+      - process_guid
+      - parent_process_guid
+      - image_path
+      - signer
+      - file_path
+      - operation
+    - source_type: vault_application_audit
+      channel: product-specific export audit
+      required_fields:
+      - timestamp
+      - vault_id
+      - user_id
+      - action
+      - result
+      - output_path
+    - source_type: network_egress
+      channel: endpoint network telemetry
+      required_fields:
+      - timestamp
+      - host_id
+      - process_guid
+      - destination
+      - bytes_out
+    observables:
+    - vault_configuration_change
+    - user_unlock
+    - plaintext_export
+    - export_followed_by_egress
+    correlation:
+      window: 24h-after-change
+      dimensions:
+      - host_id
+      - user_id
+      - vault_id
+      - process_guid
+      - output_path
+    false_positives:
+      zh: 获批迁移、格式转换、应急恢复及软件升级会改变配置并导出，须核对工单、签名和目的地。
+      en: Approved migration, format conversion, recovery, and upgrades can alter configuration and export; check ticket,
+        signature, and destination.
+    blind_spots:
+      zh: 多数产品不默认提供逐项或解锁审计，内存内复制不会产生导出文件，预置可能早于保留期。
+      en: Many products lack per-item or unlock audit, in-memory copying lacks an export file, and prepositioning may predate
+        retention.
+    tuning_guidance:
+      zh: 对精确版本、签名和有工单时段降权但保留配置与导出事件；新目的地与无用户活动提高权重。
+      en: Down-weight exact versions, signatures, and ticketed windows while retaining change and export events; raise weight
+        for new destinations and absent user activity.
+    evidence_keys:
+    - TA0006-002-T1555-REF-MANDIANT-REDTEAM
+    - TA0006-002-T1555-REF-APPLE-ACCESS
+    - TA0006-002-T1555-REF-BITWARDEN-EXPORT
+  - temporary_key: TA0006-002-T1555-NJA-CLOUD-CONSUMER
+    strategy_key: TA0006-002-T1555-DET-CONSUMER
+    name:
+      zh: 云秘密内容读取资源来源差分
+      en: Cloud Secret Content-Read Resource-Origin Differential
+    logic:
+      zh: 对 AWS GetSecretValue/BatchGetSecretValue、GCP AccessSecretVersion、Azure SecretGet 建立消费者到 secret、版本、来源、工作负载和时间的允许图；区分
+        List/Describe 与内容读取，标记首次敏感条目读取或不相干资源扩展，成功请求不等于攻击者保留秘密。
+      en: Build consumer-to-secret, version, origin, workload, and time graph for AWS GetSecretValue/BatchGetSecretValue,
+        GCP AccessSecretVersion, and Azure SecretGet; separate List/Describe from content reads, flag first sensitive reads
+        or unrelated-resource expansion, and avoid treating success as proof of attacker retention.
+    data_requirements:
+    - source_type: cloud_secret_data_access
+      channel: AWS CloudTrail or GCP DATA_READ or Azure Key Vault diagnostic
+      required_fields:
+      - timestamp
+      - account_id
+      - principal_id
+      - session_id
+      - source_ip
+      - operation
+      - secret_id
+      - result
+    - source_type: workload_inventory
+      channel: CMDB or cloud workload inventory
+      required_fields:
+      - principal_id
+      - workload_id
+      - allowed_secret_id
+      - expected_origin
+      - owner
+    observables:
+    - content_read_api
+    - first_secret_access
+    - source_change
+    - unrelated_secret_fanout
+    correlation:
+      window: 24h-with-30d-baseline
+      dimensions:
+      - account_id
+      - principal_id
+      - session_id
+      - secret_id
+      - source_ip
+      - workload_id
+    false_positives:
+      zh: 轮换、故障转移、新部署与应急操作可造成首次读取，须核对部署和变更记录。
+      en: Rotation, failover, deployment, and emergency operations cause first reads; check deployment and change records.
+    blind_spots:
+      zh: GCP Data Access 未启用就无该读取日志；共享 NAT、跨账号及服务代理削弱来源归因，日志不显示是否复制秘密。
+      en: Disabled GCP Data Access removes reads; shared NAT, cross-account boundaries, and service proxies weaken origin
+        attribution, while logs do not show whether a secret was copied.
+    tuning_guidance:
+      zh: 按每个 workload 的必要 secret 建图，对批准轮换降权而不把服务角色整体白名单化，保留首次资源读取。
+      en: Map each workload's required secrets; down-weight approved rotation without blanket allowlisting roles, and retain
+        first-resource reads.
+    evidence_keys:
+    - TA0006-002-T1555-REF-AWS-CLOUDTRAIL
+    - TA0006-002-T1555-REF-GCP-AUDIT
+    - TA0006-002-T1555-REF-GCP-ENABLE
+    - TA0006-002-T1555-REF-AZURE-LOGGING
+  - temporary_key: TA0006-002-T1555-NJA-COPY
+    strategy_key: TA0006-002-T1555-DET-COPY
+    name:
+      zh: 保管库副本暂存外传链
+      en: Vault Copy Staging and Egress Chain
+    logic:
+      zh: 对已登记库路径或服务端导出检测非批准进程读取、复制与数据库导出，关联六小时内归档、临时目录和外传；同取浏览器 Local State 与 Login Data 提高优先级。仅见副本输出 exposure 状态，密钥或明文另证。
+      en: Detect unapproved reads, copies, or server exports of inventoried vaults and join archive, temporary path, and egress
+        within six hours; prioritize paired browser Local State and Login Data. Copy alone emits exposure state; keys or plaintext
+        need separate proof.
+    data_requirements:
+    - source_type: endpoint_file_access
+      channel: configured EDR file open/copy or OS audit
+      required_fields:
+      - timestamp
+      - host_id
+      - user_id
+      - process_guid
+      - file_path
+      - operation
+      - bytes_read
+    - source_type: vault_export_audit
+      channel: self-hosted vault export log
+      required_fields:
+      - timestamp
+      - vault_id
+      - principal_id
+      - export_operation
+      - output_path
+      - result
+    - source_type: archive_egress
+      channel: EDR file/process/network telemetry
+      required_fields:
+      - timestamp
+      - host_id
+      - process_guid
+      - output_path
+      - destination
+      - bytes_out
+    observables:
+    - protected_vault_read
+    - paired_key_material_read
+    - database_export
+    - archive_stage
+    - outbound_copy
+    correlation:
+      window: 6h
+      dimensions:
+      - host_id
+      - user_id
+      - process_guid
+      - vault_id
+      - output_path
+      - destination
+    false_positives:
+      zh: 受管备份、设备迁移、取证和升级也会复制库，须核对作业、账号、目的地和计划。
+      en: Managed backup, migration, forensics, and upgrades copy vaults; check job, account, destination, and schedule.
+    blind_spots:
+      zh: 默认 Sysmon FileCreate 不证明源读取；缺少文件打开或服务端导出日志则不可实施，外部解锁不可见。
+      en: Default Sysmon FileCreate does not prove source reads; without file-open or server-export logs this is not implementable,
+        and external unlock is invisible.
+    tuning_guidance:
+      zh: 仅对白名单代理签名加作业 ID 加目的地的精确组合降权，按库大小调字节阈值，保留新进程和计划外时间。
+      en: Down-weight only exact backup-agent signature plus job ID plus destination, calibrate bytes to vault size, and retain
+        novel processes and unscheduled times.
+    evidence_keys:
+    - TA0006-002-T1555-REF-UNC1069
+    - TA0006-002-T1555-REF-GTIG-RANSOM
+    - TA0006-002-T1555-REF-BITWARDEN-EXPORT
+  - temporary_key: TA0006-002-T1555-NJA-RUNTIME
+    strategy_key: TA0006-002-T1555-DET-RUNTIME
+    name:
+      zh: 保管进程异常句柄转储链
+      en: Vault Process Anomalous Handle and Dump Chain
+    logic:
+      zh: 对已登记保管进程筛选非批准的高权句柄、调试或任务端口，按发起进程、目标 PID 与权限聚合，再查短窗内转储文件或外联；进程访问但无有效输出只报告可疑访问。Windows 用已启用的 Sysmon Event 10 或等效 EDR，macOS
+        需任务端口遥测。
+      en: Filter unapproved high-rights handles, debugger, or task ports for inventoried vault processes; aggregate initiator,
+        target PID, and rights, then seek dump artifact or egress in a short window. Access without output is suspicious access
+        only. Windows needs enabled Sysmon Event 10 or EDR; macOS needs task-port telemetry.
+    data_requirements:
+    - source_type: process_access
+      channel: configured Sysmon Event 10 or EDR or macOS task-port sensor
+      required_fields:
+      - timestamp
+      - host_id
+      - source_process_guid
+      - target_process_id
+      - source_image
+      - target_image
+      - access_rights
+      - user_id
+    - source_type: process_file_network
+      channel: EDR file/process/network telemetry
+      required_fields:
+      - timestamp
+      - host_id
+      - process_guid
+      - file_path
+      - destination
+      - operation
+    observables:
+    - vault_process_open
+    - memory_read_or_dump_capability
+    - dump_artifact
+    - abnormal_egress
+    correlation:
+      window: 30m
+      dimensions:
+      - host_id
+      - source_process_guid
+      - target_process_id
+      - user_id
+    false_positives:
+      zh: 合法崩溃诊断、性能分析、取证和辅助功能可访问保管进程，须核对批准主体及输出。
+      en: Legitimate crash diagnostics, profiling, forensics, and accessibility may touch vault apps; check approved initiator
+        and output.
+    blind_spots:
+      zh: Event 10 高噪声且可能被过滤，同进程恶意代码或内核路径可能没有外部句柄，转储也未必含可用明文。
+      en: Event 10 is noisy and may be filtered; in-process malicious code or kernel paths can lack external handles, and
+        dumps need not contain usable plaintext.
+    tuning_guidance:
+      zh: 对精确目标和危险权限过滤，保留新签名或异常父链，对有工单诊断限时降权并定期实测传感器。
+      en: Filter exact targets and risky rights, retain new signatures or abnormal parent chains, down-weight ticketed diagnostics
+        for bounded periods, and test the sensor regularly.
+    evidence_keys:
+    - TA0006-002-T1555-REF-KEYDNAP
+    - TA0006-002-T1555-REF-KEEPASS-SECURITY
+    - REF-000366
+  mitigations:
+  - temporary_key: TA0006-002-T1555-MIT-AUTHORITY
+    name:
+      zh: 保管库消费权限与导出治理
+      en: Vault Consumer Authority and Export Governance
+    measures:
+    - key: per-secret-scope
+      control_type: preventive
+      zh: 按应用或 workload 及具体 secret 最小化读取授权，避免共享角色读取全部条目。
+      en: Limit reads by app or workload and specific secret; avoid shared roles with blanket vault reads.
+    - key: export-integrity
+      control_type: exposure-reduction
+      zh: 管理客户端插件、触发器、配置及二进制写权限，明文导出单独审批并留日志。
+      en: Govern client plugin, trigger, configuration, and binary write rights; separately approve and log plaintext export.
+    - key: content-audit
+      control_type: detective-support
+      zh: 启用云库内容读取审计并远程保留身份、资源、来源和结果，日志不存秘密值。
+      en: Enable and remotely retain cloud content-read audit for identity, resource, origin, and result without secret values.
+    applications:
+    - target_key: TA0006-002-T1555-CHILD-CONSUMER
+      use:
+        zh: 建立受信消费者到条目的允许图并锁定 KeePass 类配置触发器写入，审查新增导出位置。
+        en: Build a trusted consumer-to-item allow graph, control KeePass-like trigger writes, and review new export destinations.
+      expected_effect:
+        zh: 缩小借用身份可返回的秘密范围并使配置或来源偏差可追查。
+        en: Reduce secrets a borrowed identity can return and make configuration or origin deviations traceable.
+      limitations:
+        zh: 已被接管且在许可范围内的真实消费者仍能读取；审计不证明攻击者是否保存了秘密。
+        en: A compromised true consumer can read within its scope; audit does not prove attacker retention.
+    evidence_keys:
+    - TA0006-002-T1555-REF-APPLE-ACCESS
+    - TA0006-002-T1555-REF-AWS-IAM
+    - TA0006-002-T1555-REF-GCP-ENABLE
+  - temporary_key: TA0006-002-T1555-MIT-COPY
+    name:
+      zh: 保管库副本保护与暴露后轮换
+      en: Vault Copy Protection and Post-Exposure Rotation
+    measures:
+    - key: copy-authority
+      control_type: preventive
+      zh: 只允许受管保管应用和备份代理读取库文件或执行数据库导出，限定备份去向。
+      en: Allow only managed vault apps and backup agents to read store files or export databases, with constrained backup
+        destinations.
+    - key: independent-unlock
+      control_type: cost-increasing
+      zh: 对可复制库使用强主口令或独立 key file，避免同地保存解锁材料。
+      en: Use strong master passwords or independent key files for copyable vaults and avoid colocated unlock material.
+    - key: scoped-rotation
+      control_type: containment
+      zh: 副本暴露后清点库版本、钥匙及条目，按风险轮换秘密和撤销会话。
+      en: After copy exposure inventory vault versions, keys, and items, then rotate secrets and revoke sessions by risk.
+    applications:
+    - target_key: TA0006-002-T1555-CHILD-COPY
+      use:
+        zh: 将钥匙串、浏览器库、专用管理器和自托管数据库列入敏感路径与导出清单，异常外传触发暴露响应。
+        en: Inventory keychain, browser, dedicated-manager, and self-hosted databases as sensitive paths or exports; anomalous
+          egress triggers exposure response.
+      expected_effect:
+        zh: 限制可复制面和解锁条件，缩短潜在已获秘密的有效期。
+        en: Narrow copy opportunities and unlock conditions, shortening the useful lifetime of potentially recovered secrets.
+      limitations:
+        zh: 高权攻击者仍可能复制；密文副本不等于明文，但不应拖延高价值条目处置。
+        en: Privileged attackers can still copy; ciphertext is not plaintext, but high-value item response should not be delayed.
+    evidence_keys:
+    - TA0006-002-T1555-REF-KEEPASS-KEYS
+    - TA0006-002-T1555-REF-UNC1069
+    - TA0006-002-T1555-REF-GTIG-RANSOM
+  - temporary_key: TA0006-002-T1555-MIT-RUNTIME
+    name:
+      zh: 保管进程隔离与短时明文控制
+      en: Vault Process Isolation and Transient Plaintext Control
+    measures:
+    - key: process-rights
+      control_type: preventive
+      zh: 调试、转储和任务端口权限仅授予少数受审计维护主体。
+      en: Restrict debugger, dump, and task-port rights to a few audited maintenance actors.
+    - key: plaintext-window
+      control_type: exposure-reduction
+      zh: 使用受支持的进程硬化与自动锁库，减少不必要的明文展示、剪贴板及导出。
+      en: Use supported process hardening and auto-lock, reducing unnecessary plaintext display, clipboard, and export.
+    applications:
+    - target_key: TA0006-002-T1555-CHILD-RUNTIME
+      use:
+        zh: 清点实际承载秘密的进程，收窄高权句柄来源，非批准转储后隔离设备并轮换受影响条目。
+        en: Inventory actual secret-bearing processes, narrow high-rights handle origins, isolate after unapproved dumps,
+          and rotate affected items.
+      expected_effect:
+        zh: 提高跨进程取密门槛，缩短明文窗口并留下可调查访问记录。
+        en: Raise cross-process retrieval cost, shorten plaintext windows, and preserve investigable access traces.
+      limitations:
+        zh: 内核控制或同进程恶意代码可绕过外部句柄控制，合法诊断需要限时例外。
+        en: Kernel control or malicious code inside the process can bypass external-handle controls; legitimate diagnostics
+          need bounded exceptions.
+    evidence_keys:
+    - TA0006-002-T1555-REF-KEEPASS-SECURITY
+    - REF-000366
+    - TA0006-002-T1555-REF-KEYDNAP
+existing_library_reuse:
+  reference_refs:
+  - ref: REF-000366
+    resolution: reuse
+    note: Exact Microsoft Sysmon Events URL; Event 10 process-access semantics and noise limit
+  - ref: REF-000382
+    resolution: reuse-and-extend-locator
+    note: Exact Microsoft Storm-0501 URL; source also reports Find-KeePassConfig.ps1 and launching KeePass, absent from current
+      locator
+  claim_refs: []
+  case_refs: []
+  strategy_refs: []
+  analytic_refs: []
+  mitigation_refs: []
+  relationship_refs: []
+library_candidates:
+  references:
+  - temporary_key: TA0006-002-T1555-REF-ATTACK
+    resolution: create
+    url: https://attack.mitre.org/techniques/T1555/
+    locator: Parent behavior and six ATT&CK child IDs at fixed Enterprise 19.1 baseline
+    limit: Does not prove Niji stealth axes
+  - temporary_key: TA0006-002-T1555-REF-APPLE-ACCESS
+    resolution: create
+    url: https://support.apple.com/en-ph/guide/keychain-access/kyca1243/mac
+    locator: Allow Once, Always Allow, Deny
+    limit: Authorization behavior, not malicious case
+  - temporary_key: TA0006-002-T1555-REF-APPLE-RETURN
+    resolution: create
+    url: https://developer.apple.com/documentation/security/item-return-result-keys
+    locator: kSecReturnData decrypts and returns password data; references and attributes differ
+    limit: No default audit guarantee
+  - temporary_key: TA0006-002-T1555-REF-MICROSOFT-CREDREAD
+    resolution: create
+    url: https://learn.microsoft.com/en-us/windows/win32/api/wincred/nf-wincred-credreadw
+    locator: Current token logon session credential set and single credential return
+    limit: No default read-event guarantee
+  - temporary_key: TA0006-002-T1555-REF-AWS-CLOUDTRAIL
+    resolution: create
+    url: https://docs.aws.amazon.com/secretsmanager/latest/userguide/monitoring-cloudtrail.html
+    locator: CloudTrail records Secrets Manager API calls
+    limit: Success does not prove attacker retention
+  - temporary_key: TA0006-002-T1555-REF-AWS-IAM
+    resolution: create
+    url: https://docs.aws.amazon.com/secretsmanager/latest/userguide/auth-and-access_iam-policies.html
+    locator: Resource-scoped GetSecretValue IAM examples
+    limit: Compromised authorized role may still read
+  - temporary_key: TA0006-002-T1555-REF-GCP-AUDIT
+    resolution: create
+    url: https://docs.cloud.google.com/secret-manager/docs/audit-logging
+    locator: AccessSecretVersion DATA_READ versus list/get metadata
+    limit: Enablement and plaintext retention separate
+  - temporary_key: TA0006-002-T1555-REF-GCP-ENABLE
+    resolution: create
+    url: https://docs.cloud.google.com/logging/docs/audit/configure-data-access
+    locator: Data Access generally disabled by default
+    limit: Verify actual organization configuration
+  - temporary_key: TA0006-002-T1555-REF-AZURE-LOGGING
+    resolution: create
+    url: https://learn.microsoft.com/en-us/azure/key-vault/general/logging
+    locator: Operation, caller, callerIpAddress, resource URI
+    limit: Field availability depends on configured diagnostic logging
+  - temporary_key: TA0006-002-T1555-REF-KEEPASS-SECURITY
+    resolution: create
+    url: https://keepass.info/help/base/security.html
+    locator: Encrypted database, in-memory protection, transient plaintext operations
+    limit: Product-specific
+  - temporary_key: TA0006-002-T1555-REF-KEEPASS-KEYS
+    resolution: create
+    url: https://keepass.info/help/base/keys.html
+    locator: Master key components and independent key-file requirement
+    limit: Copy alone does not imply unlock
+  - temporary_key: TA0006-002-T1555-REF-MANDIANT-REDTEAM
+    resolution: create
+    url: https://cloud.google.com/blog/topics/threat-intelligence/finding-weaknesses-attackers-do/
+    locator: Red team set KeePass trigger; user opening vault created plaintext CSV and revealed app password plus PIN
+    limit: Authorized exercise, not external adversary prevalence
+  - temporary_key: TA0006-002-T1555-REF-UNC1069
+    resolution: create
+    url: https://cloud.google.com/blog/topics/threat-intelligence/unc1069-targets-cryptocurrency-ai-social-engineering
+    locator: 2026-02-09 DEEPBREATH TCC/Finder Full Disk Access, keychain and browser store copy, ZIP exfiltration
+    limit: No per-item decryption proof
+  - temporary_key: TA0006-002-T1555-REF-GTIG-RANSOM
+    resolution: create
+    url: https://cloud.google.com/blog/topics/threat-intelligence/ransomware-ttps-shifting-threat-landscape
+    locator: 2026-03-16 UNC2165 browser key recovery and UNC2465 Bitwarden database export
+    limit: Two distinct incidents; UNC2465 unlock not proved
+  - temporary_key: TA0006-002-T1555-REF-KEYDNAP
+    resolution: create
+    url: https://www.welivesecurity.com/2016/07/06/new-osxkeydnap-malware-hungry-credentials/
+    locator: Original Keydnap analysis reading securityd memory for keychain key
+    limit: Legacy macOS-specific
+  - temporary_key: TA0006-002-T1555-REF-BITWARDEN-EXPORT
+    resolution: create
+    url: https://bitwarden.com/help/export-organization-items/
+    locator: Organization export event, client-side decryption and output format
+    limit: Client event transmission can be delayed or suppressed; cross-check endpoint output
+  - temporary_key: TA0006-002-T1555-REF-BITWARDEN-EVENTS
+    resolution: create
+    url: https://bitwarden.com/help/event-logs/
+    locator: Client/server event timing and limitations
+    limit: Client-generated logs can be modified or suppressed
+  claims:
+  - temporary_key: TA0006-002-T1555-CLM-STAGES
+    resolution: create
+    proposition_zh: 受管理库访问、秘密返回、攻击者保留及后继使用是不同证据阶段
+    proposition_en: Vault access, secret return, attacker retention, and later use are distinct evidentiary stages
+    evidence_keys:
+    - TA0006-002-T1555-REF-APPLE-RETURN
+    - TA0006-002-T1555-REF-GCP-AUDIT
+  - temporary_key: TA0006-002-T1555-CLM-CONSUMER
+    resolution: create
+    proposition_zh: 已授权消费路径可被预置触发器转用而在用户解锁后输出明文
+    proposition_en: A prepositioned trigger can repurpose authorized consumption to output plaintext after unlock
+    evidence_keys:
+    - TA0006-002-T1555-REF-MANDIANT-REDTEAM
+  - temporary_key: TA0006-002-T1555-CLM-COPY
+    resolution: create
+    proposition_zh: 保管副本外传改变逐项读取观察面但不自动证明密文已解锁
+    proposition_en: Vault-copy exfiltration changes per-item observation but does not prove ciphertext unlock
+    evidence_keys:
+    - TA0006-002-T1555-REF-UNC1069
+    - TA0006-002-T1555-REF-GTIG-RANSOM
+    - TA0006-002-T1555-REF-KEEPASS-KEYS
+  - temporary_key: TA0006-002-T1555-CLM-RUNTIME
+    resolution: create
+    proposition_zh: Keydnap 曾读取旧版 securityd 内存寻找钥匙串密钥，现代管理器明文可用性依实现而异
+    proposition_en: Keydnap read legacy securityd memory for keychain keys while modern manager plaintext availability varies
+      by implementation
+    evidence_keys:
+    - TA0006-002-T1555-REF-KEYDNAP
+    - TA0006-002-T1555-REF-KEEPASS-SECURITY
+  - temporary_key: TA0006-002-T1555-CLM-CLOUD
+    resolution: create
+    proposition_zh: 云库内容读取可留 API 审计但需核实数据访问启用和服务特定字段
+    proposition_en: Cloud content reads can leave API audit but data-access enablement and service-specific fields require
+      verification
+    evidence_keys:
+    - TA0006-002-T1555-REF-AWS-CLOUDTRAIL
+    - TA0006-002-T1555-REF-GCP-AUDIT
+    - TA0006-002-T1555-REF-GCP-ENABLE
+    - TA0006-002-T1555-REF-AZURE-LOGGING
+  cases:
+  - temporary_key: TA0006-002-T1555-CASE-REDTEAM
+    resolution: create
+    event: Mandiant red-team KeePass trigger caused plaintext CSV export after user unlock
+    evidence_keys:
+    - TA0006-002-T1555-REF-MANDIANT-REDTEAM
+    limit: Authorized exercise
+  - temporary_key: TA0006-002-T1555-CASE-UNC1069
+    resolution: create
+    event: UNC1069 DEEPBREATH copied keychain and browser stores and exfiltrated archive
+    evidence_keys:
+    - TA0006-002-T1555-REF-UNC1069
+    limit: No published per-item decryption
+  - temporary_key: TA0006-002-T1555-CASE-KEYDNAP
+    resolution: create
+    event: Keydnap sought keychain decryption keys in securityd memory
+    evidence_keys:
+    - TA0006-002-T1555-REF-KEYDNAP
+    limit: Legacy macOS
+  - temporary_key: TA0006-002-T1555-CASE-UNC2465
+    resolution: create
+    event: UNC2465 exported and exfiltrated self-hosted Bitwarden vault database
+    evidence_keys:
+    - TA0006-002-T1555-REF-GTIG-RANSOM
+    limit: No published unlock
+  detection_strategies:
+  - temporary_key: TA0006-002-T1555-DET-CONSUMER
+    resolution: create
+    distinction: Permitted consumer baseline with separate endpoint and cloud analytics
+  - temporary_key: TA0006-002-T1555-DET-COPY
+    resolution: create
+    distinction: Protected vault copy to staging and egress, not NJT-0108 raw-volume view
+  - temporary_key: TA0006-002-T1555-DET-RUNTIME
+    resolution: create
+    distinction: Vault-process access excluding LSASS-centered T1003
+  detection_analytics:
+  - temporary_key: TA0006-002-T1555-NJA-LOCAL-CONSUMER
+    resolution: create
+    distinction: Configuration-to-unlock-to-export chain
+  - temporary_key: TA0006-002-T1555-NJA-CLOUD-CONSUMER
+    resolution: create
+    distinction: Per-secret cloud content read and workload-origin graph
+  - temporary_key: TA0006-002-T1555-NJA-COPY
+    resolution: create
+    distinction: Vault-file/database export, archive, and egress chain
+  - temporary_key: TA0006-002-T1555-NJA-RUNTIME
+    resolution: create
+    distinction: Process rights and dump artifact without automatic secret inference
+  mitigations:
+  - temporary_key: TA0006-002-T1555-MIT-AUTHORITY
+    resolution: create
+    distinction: Per-secret consumer scope, export integrity, data-read retention
+  - temporary_key: TA0006-002-T1555-MIT-COPY
+    resolution: create
+    distinction: Vault-copy restriction, independent unlock factor, exposure-driven rotation
+  - temporary_key: TA0006-002-T1555-MIT-RUNTIME
+    resolution: create
+    distinction: Vault-process isolation and transient plaintext windows
+  relationships: []
+research:
+  taxonomy_breadth_review:
+    attack_subtechnique_count: 6
+    attack_subtechnique_ids:
+    - T1555.001
+    - T1555.002
+    - T1555.003
+    - T1555.004
+    - T1555.005
+    - T1555.006
+    represented_dimensions:
+    - zh: 本机系统钥匙串与 Windows 凭据集的授权边界
+      en: Local keychain and Windows credential-set authorization
+    - zh: 浏览器及第三方管理器的密文文件和解锁运行态
+      en: Encrypted files and unlocked runtime of browsers and third-party managers
+    - zh: 云秘密服务的身份、资源权限和数据访问审计
+      en: Cloud secret-service identity, resource rights, and data-access audit
+    breadth_trigger: six-plus-second-pass
+    coverage_resolutions:
+    - attack_id: T1555.001
+      resolution: niji-variable-candidate
+      mapped_keys:
+      - TA0006-002-T1555-CHILD-CONSUMER
+      - TA0006-002-T1555-CHILD-COPY
+      note_zh: Keychain 授权读取与受保护库复制是不同变量，平台名不是子项。
+      note_en: Keychain authorized reads and protected-copy movement are different variables, not platform children.
+    - attack_id: T1555.002
+      resolution: niji-variable-candidate
+      mapped_keys:
+      - TA0006-002-T1555-CHILD-RUNTIME
+      note_zh: securityd 只提供旧版内存路径证据，不成为平台子项。
+      note_en: securityd provides legacy memory-path evidence, not a platform child.
+    - attack_id: T1555.003
+      resolution: niji-variable-candidate
+      mapped_keys:
+      - TA0006-002-T1555-CHILD-COPY
+      - TA0006-002-T1555-CHILD-RUNTIME
+      note_zh: 浏览器数据库复制与运行态取用也可跨其他保管库发生。
+      note_en: Browser database copy and runtime retrieval can occur across other stores.
+    - attack_id: T1555.004
+      resolution: parent-core
+      mapped_keys:
+      - TA0006-002-T1555-REF-MICROSOFT-CREDREAD
+      note_zh: CredRead 描述会话令牌下返回一个凭据，但不独立证明匿迹变量。
+      note_en: CredRead explains a single credential return under a logon token but does not independently prove a stealth
+        variable.
+    - attack_id: T1555.005
+      resolution: niji-variable-candidate
+      mapped_keys:
+      - TA0006-002-T1555-CHILD-CONSUMER
+      - TA0006-002-T1555-CHILD-COPY
+      - TA0006-002-T1555-CHILD-RUNTIME
+      note_zh: 密文库、事件触发器与短暂明文分别为跨产品变量提供证据。
+      note_en: Encrypted vaults, event triggers, and transient plaintext inform cross-product variables.
+    - attack_id: T1555.006
+      resolution: niji-variable-candidate
+      mapped_keys:
+      - TA0006-002-T1555-CHILD-CONSUMER
+      note_zh: 云库角色可以呈现受信调用，但需要实际内容读取审计。
+      note_en: A cloud role can present a trusted call, subject to actual content-read audit.
+    candidate_stealth_axes_examined:
+    - axis: trusted_consumer_authority
+      disposition: formal
+      why_zh: 可控消费身份改变合法外观，需配置和来源差分。
+      why_en: Controllable consumer identity changes legitimate appearance and requires configuration and origin differentials.
+    - axis: protected_copy_displacement
+      disposition: conditional-defer
+      why_zh: 副本改变逐项审计，但只有密文外传时尚不足以宣称可用凭据已获。
+      why_en: Copy changes per-item audit, but ciphertext exfiltration alone does not prove a usable credential was acquired.
+    - axis: unlocked_runtime_bypass
+      disposition: formal-with-legacy-limit
+      why_zh: 内存取用改变传感器和提示路径；旧版 macOS 证据不得泛化。
+      why_en: Memory retrieval changes sensor and prompt path; legacy macOS evidence cannot be generalized.
+    - axis: narrow_low_rate_api_reads
+      disposition: deferred
+      why_zh: 按条目 API 可用，却缺少攻击者刻意稀释及阈值失效的原始证据；并与受信身份轴交叉。
+      why_en: Per-item APIs exist, but primary evidence lacks intentional dilution and threshold defeat; the axis overlaps
+        trusted identity.
+    - axis: cross_device_control_plane_separation
+      disposition: deferred
+      why_zh: 同步和跨云来源可改变归因，但没有足以固定兄弟边界与独立防御的结论级证据。
+      why_en: Sync and cross-cloud origin can alter attribution, but conclusion-level evidence does not fix a sibling boundary
+        or distinct defense.
+    - axis: product_platform_partition
+      disposition: rejected
+      why_zh: Keychain、浏览器、Windows、第三方及云产品本身不是稳定匿迹变量。
+      why_en: Keychain, browser, Windows, third-party, and cloud product labels are not stable stealth variables.
+    second_pass_required: true
+    second_pass_completed: true
+    second_pass_method:
+      zh: 第一轮逐项映射六个 ATT&CK 子项的实现和存储维度；第二轮舍弃其名称，从调用主体、解锁时点、材料状态、观测域、读取节奏、资源范围及跨设备来源重新搜索，每项测试攻击者控制、前后痕迹、传感器差异、证据与防御价值。
+      en: Pass one mapped implementation and storage dimensions for all six ATT&CK children. Pass two discarded their names
+        and searched caller identity, unlock timing, material state, observation domain, pacing, resource scope, and cross-device
+        origin, testing control, before/after traces, sensor difference, evidence, and defense value.
+    proposed_niji_child_count: 3
+    breadth_gap_explained: true
+    reviewer_notes:
+      zh: 六项收敛为三条研究轴，原因是原子项的大部分差异为平台或实现，而非独立匿迹变量。密文副本轴仅条件建议：若主 Agent 无法把副本暴露与同一事件的成功解锁或秘密返回相连，应 defer，不为凑数正式化；这时正式子项可收敛为两项，广度缺口已由六项覆盖和第二轮搜索说明。
+      en: Six ATT&CK items converge to three research axes because much of their diversity concerns platforms or implementations
+        rather than independent stealth variables. Protected-copy displacement is conditional; absent same-incident successful
+        unlock or secret-return evidence, the primary agent should defer it rather than formalize it for count. Formal children
+        may then converge to two; the six-row coverage and second pass explain that breadth gap.
+  evidence_coverage:
+    parent_behavior_keys:
+    - TA0006-002-T1555-REF-ATTACK
+    - TA0006-002-T1555-REF-APPLE-RETURN
+    - TA0006-002-T1555-REF-MICROSOFT-CREDREAD
+    - TA0006-002-T1555-REF-AWS-CLOUDTRAIL
+    boundary_keys:
+    - TA0006-002-T1555-REF-KEEPASS-KEYS
+    - TA0006-002-T1555-REF-GTIG-RANSOM
+    - TA0006-002-T1555-REF-UNC1069
+    mechanism_support:
+    - mechanism: NM-FD
+      keys:
+      - TA0006-002-T1555-REF-MANDIANT-REDTEAM
+      - TA0006-002-T1555-REF-APPLE-ACCESS
+      - TA0006-002-T1555-REF-AWS-IAM
+      limit: Direct KeePass experiment; API feasibility elsewhere
+    - mechanism: NM-BT
+      keys:
+      - TA0006-002-T1555-REF-UNC1069
+      - TA0006-002-T1555-REF-KEYDNAP
+      - TA0006-002-T1555-REF-KEEPASS-SECURITY
+      limit: Different incidents and product generations; do not merge into one event
+    child_existence_support:
+    - child_key: TA0006-002-T1555-CHILD-CONSUMER
+      keys:
+      - TA0006-002-T1555-REF-MANDIANT-REDTEAM
+      - TA0006-002-T1555-REF-APPLE-ACCESS
+      - TA0006-002-T1555-REF-AWS-IAM
+    - child_key: TA0006-002-T1555-CHILD-COPY
+      keys:
+      - TA0006-002-T1555-REF-UNC1069
+      - TA0006-002-T1555-REF-GTIG-RANSOM
+      - TA0006-002-T1555-REF-KEEPASS-KEYS
+      status: conditional-defer-without-unlock-proof
+    - child_key: TA0006-002-T1555-CHILD-RUNTIME
+      keys:
+      - TA0006-002-T1555-REF-KEYDNAP
+      - TA0006-002-T1555-REF-KEEPASS-SECURITY
+    unsupported_or_deferred:
+    - zh: 云 API 低频取用一定降低告警概率缺少阈值或原始案例支持。
+      en: No threshold or original case shows low-rate cloud API reads necessarily reduce alerts.
+    - zh: UNC1069 和 UNC2465 的库副本外传不能自动证明全部秘密已返回。
+      en: UNC1069 and UNC2465 vault-copy exfiltration does not prove all secrets were returned.
+    - zh: Chrome 127 App-Bound Encryption 公告先覆盖 Cookie，不能证明所有浏览器密码已获此保护。
+      en: Chrome 127 App-Bound Encryption initially addressed cookies and does not prove all browser passwords gained it.
+    - zh: 未核到适于跨部署使用的 Windows Credential Manager 5379 官方字段规范，故不以此支撑检测。
+      en: No broadly usable official Windows Credential Manager 5379 field specification was verified, so detection does not
+        rely on it.
+  content_depth_review:
+    compared_with_njt_0001: true
+    field_responsibilities_complete: true
+    candidate_specific_prose: true
+    repeated_prose_reviewed: true
+    notes:
+      zh: 父稿分别论证直接行为、观察变化、邻接技术、威胁前提和残余痕迹；三个子稿各有独立变量及检测、缓解意义。密文副本子项故意保留准入裁决点，不以字段完整掩盖证据缺口。
+      en: The parent separately argues direct behavior, observation change, neighboring techniques, prerequisites, and residual
+        traces. Each child has its own variable and detection/mitigation value. The copy child deliberately retains an admission
+        decision point rather than hiding its evidence gap behind complete fields.
+  automation_review:
+    canonical_prose_bulk_generated: false
+    mechanical_uses:
+    - YAML serialization and recursive structural audit only
+  limitations:
+    paragraphs:
+    - zh: 一手资料的结论层级不同：厂商文档证明 API 与控制语义，Mandiant 红队实验证明一次 KeePass 明文导出，UNC1069 与 UNC2465 主要证明受保护副本外传，Keydnap 只证明旧版 securityd
+        内存路径。不能把跨事件、跨产品的阶段拼成一条已观察到的完整攻击链；云 API 成功也不证明后继使用。正式对象置信度应随可证实的返回、解锁和受害方遥测调整。
+      en: Primary sources support different conclusion levels. Vendor documents establish API and control semantics; Mandiant's
+        red-team experiment proves one KeePass plaintext export; UNC1069 and UNC2465 mainly prove protected-copy exfiltration;
+        and Keydnap proves a legacy securityd memory path. Stages from different incidents or products cannot be spliced into
+        one observed chain. Cloud API success does not prove successor use. Formal confidence should track verified return,
+        unlock, and victim telemetry.
+    - zh: 端点逐项审计、云 Data Access 启用状态和自托管导出日志随部署而变，Analytic 必须先检查字段可用性。合法备份、同步、轮换和故障处置经常与恶意操作同形；规则精度依赖本地用途基线和有期限审批。若只有正常运维事件而无攻击者操控变量，应降低置信度或排除。
+      en: Endpoint per-item audit, cloud Data Access enablement, and self-hosted export logs vary by deployment, so each analytic
+        must first verify fields. Legitimate backup, sync, rotation, and incident response can resemble malicious operations.
+        Precision depends on local purpose baselines and time-bounded approvals. If there is only ordinary operational activity
+        and no attacker-controlled variable, lower confidence or exclude.
+  rejected_mechanisms:
+  - mechanism: NM-ST
+    reason_zh: 无 T1555 原始资料证实刻意低频或多来源读取规避阈值。
+    reason_en: No T1555-specific primary source establishes deliberate low-rate or distributed reads evading thresholds.
+  - mechanism: NM-DO
+    reason_zh: 静态密文是防护属性，不等于攻击者主动改变数据可见性。
+    reason_en: Encryption at rest is a defense property, not necessarily attacker-controlled data obscuration.
+  open_questions:
+  - zh: 主 Agent 应裁定密文副本子项是否有足够同一事件的成功解锁证据，否则仅保留为研究或前置暴露阶段。
+    en: The primary agent should seek same-incident unlock evidence for the copy child or retain it only as research or a
+      precursor exposure stage.
+  - zh: 本地目标产品能否提供逐项读取、解锁和导出字段，需要逐部署实测。
+    en: Availability of per-item read, unlock, and export fields needs deployment-specific testing.
+integration:
+  status: pending
+  resolutions: []

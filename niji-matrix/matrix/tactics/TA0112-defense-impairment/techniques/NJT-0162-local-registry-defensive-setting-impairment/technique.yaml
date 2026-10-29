@@ -1,0 +1,76 @@
+schema_version: "2.0.0"
+type: technique
+id: NJT-0162
+name: {zh: 本地 Registry 防御设置削弱, en: Local Registry Defensive-Setting Impairment}
+summary: {zh: 攻击者改写本地 Registry 中由浏览器、安全工具或系统控制消费的防御设置，使实际安全能力下降。, en: "Adversaries rewrite local Registry defensive settings consumed by a browser, security tool, or system control so effective security capability declines."}
+aliases: [Modify Registry, T1112]
+classification:
+  tactic_refs: [TA0112]
+  origin: {kind: attack-adapted, source_attack_id: T1112, source_attack_version: "19.1"}
+  decision_ref: DEC-TA0112-T1112
+definition_and_concept:
+  paragraphs:
+    - zh: 本地 Registry 防御设置削弱是攻击者修改 Windows Registry 中承载浏览器安全区、实时保护、行为监控、审计、凭据处理或响应设置的值，使真实消费者在启动、刷新或请求处理时采用较弱状态。直接目标是消费后有效防御能力的下降，而不是 Registry 写入、键值存在或 reg.exe 使用本身；必须识别 writer、旧新值、消费者及其最终设置。
+      en: Local Registry Defensive-Setting Impairment is adversary modification of Windows Registry values carrying browser zones, real-time protection, behavior monitoring, audit, credential handling, or response settings so a real consumer adopts a weaker state at start, refresh, or request handling. The direct target is effective defensive decline after consumption, not a Registry write, value presence, or use of reg.exe itself. Writer, old and new state, consumer, and final setting must be identified.
+    - zh: Registry 在本对象中是本地信任状态介质。系统或产品通过正常 API 读取设置并按设计改变行为，writer 与最终失防可处于不同进程和时间窗；这与在 Registry 存放载荷或利用解析视图隐藏对象不同，也与域/租户策略把同一版本扇出到多目标不同。写入返回成功仍可能被集中策略或篡改保护拒绝，故“有效值”是概念门槛。
+      en: The Registry is a local trusted-state medium in this object. A system or product reads settings through ordinary APIs and changes behavior by design, placing the writer and final impairment in different processes and times. This differs from storing a payload or hiding an object through parser views and from a domain or tenant policy fanning one version out to many targets. A successful write can still be rejected by central policy or tamper protection, making effective value the conceptual gate.
+stealth_characteristics:
+  paragraphs:
+    - zh: 本地 Registry 防御设置削弱将恶意动作嵌入普通配置读取。消费者进程和服务可继续存在，Registry API 也返回规范值，外观类似合法排障或兼容设置；若防守只看服务存活或静态值而不追踪 writer 与来源优先级，就难以判断谁让控制进入弱状态。BlackEnergy 样本通过 Internet/IE 值下降后继续由 rundll32 和系统消费者执行，展示了配置写入与后继行为分离。
+      en: Local Registry Defensive-Setting Impairment embeds malicious action in ordinary configuration consumption. Consumer processes and services may remain present, and Registry APIs return syntactically normal values resembling legitimate troubleshooting or compatibility settings. Defenders that watch service liveness or a static value without following writer and source precedence struggle to identify who placed the control in a weak state. BlackEnergy samples lowered Internet and Internet Explorer values before rundll32 and system consumers continued the chain, illustrating separation of setting write and later behavior.
+    - zh: 残余包括 4657 或 Sysmon 写入事务、writer ProcessGuid/用户/session、旧新值、ACL/SACL、可信快照、消费者启动/刷新、集中策略来源、篡改裁决、有效设置与功能性 canary。关键键没有 SACL、产品不报告有效值或主机本身受侵时，会扩大盲区；集中篡改保护和不同权遥测可以保留“已写入但未失防”的相反证据。
+      en: Residue includes event 4657 or Sysmon transactions, writer ProcessGuid, user and session, old and new value, ACL and SACL, trusted snapshots, consumer start or refresh, central-policy source, tamper decision, effective setting, and functional canary. A missing SACL, product that does not report effective value, or compromised host expands the gap. Central tamper protection and separately authorized telemetry preserve the contrary evidence of written but not impaired.
+scope_boundary_definition:
+  paragraphs:
+    - zh: 纳入攻击者控制的本地 Registry 值写入，要求值具有明确防御语义、真实消费者采用它、有效设置相对批准基线下降，且浏览器、工具、审计或响应功能出现可验证差异。只见写入命令、4657/Sysmon 事件、值存在或后继恶意进程而不知道消费者结果时，分别保持 mutation_only 或 unresolved；被篡改保护拒绝时记录 adopted_but_blocked。
+      en: Include adversary-controlled local Registry value writes only when the value has defined defensive semantics, a real consumer adopts it, effective state declines relative to the approved baseline, and a browser, tool, audit, or response function shows a verifiable difference. A command, event 4657 or Sysmon record, value presence, or later malicious process without consumer outcome remains mutation_only or unresolved. A change rejected by tamper protection is adopted_but_blocked.
+    - zh: Registry 驻留载荷和伪隐藏对象归 NJT-0094，中心域/租户发布归 NJT-0125，认证、宏执行、凭据内存与防火墙等上层结果由相应 owner 负责，工具能力损伤可并记 NJT-0123。本对象不按 HKLM/HKCU、键类别、产品或设置名称拆子项。批准的排障、兼容性变更、安装与策略缓存同步需工单、writer、来源、范围、到期和功能验证。
+      en: Registry-resident payloads and pseudo-hidden objects belong to NJT-0094, central domain or tenant publication to NJT-0125, and upper-layer authentication, macro execution, credential memory, firewall, or other results to their owners. Tool-capability damage may also map to NJT-0123. This object is not divided by HKLM versus HKCU, key category, product, or setting name. Approved troubleshooting, compatibility change, installation, and policy-cache synchronization require a ticket, writer, source, scope, expiry, and functional validation.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+      - zh: 攻击者在已取得本地或远程 Registry 写权后，可在启动载荷或建立 C2 前降低浏览器安全区、钓鱼过滤、保护模式提示或安全工具设置，让后续动作由正常系统组件在较弱防御状态下执行。Booz Allen 对 BlackEnergy 3 的分析记录多个 Internet/IE 安全值被修改，随后 rundll32 加载 FONTCACHE.DAT 并继续通信；该链支持样本行为，但不能外推所有现代 Defender 环境。
+        en: After obtaining local or remote Registry write authority, an adversary can lower browser-zone, phishing-filter, Protected Mode notification, or security-tool settings before starting a payload or establishing C2, allowing normal system components to perform later actions under weaker defense. Booz Allen analysis of BlackEnergy 3 records multiple Internet and Internet Explorer security-value changes followed by rundll32 loading FONTCACHE.DAT and continued communication. The chain supports that sample behavior but cannot be generalized to every modern Defender environment.
+  threat_model:
+    attacker_model:
+      paragraphs:
+        - zh: 攻击者需有目标 hive/key 的 Set Value 权限，了解值类型、消费者刷新时机、集中与本地来源优先级以及篡改保护范围。它可用内置 reg、API、PowerShell、WMI 或远程 Registry 降低新增工具痕迹，却仍会留下 writer 与事务证据。现代受管产品可能忽略本地值、自动恢复安全默认或产生篡改事件，使写入不闭合为失防。
+          en: The adversary needs Set Value authority on the target hive and key plus knowledge of value type, consumer refresh time, central-versus-local source precedence, and tamper-protection scope. Built-in reg, API, PowerShell, WMI, or remote Registry paths can reduce new-tool residue but still leave writer and transaction evidence. Modern managed products may ignore the local value, restore secure defaults, or produce a tamper event, preventing the write from closing into impairment.
+    defender_model:
+      paragraphs:
+        - zh: 防守方维护有限的防御值清单和消费者映射，预配置 SACL，远程保存 4657/Sysmon、old/new、writer 和快照，并从产品或受控测试读取实际有效状态。Registry read 通常不可完全见，consumer 可用进程启动、策略刷新、有效设置来源与 canary 代替连接。只依赖本机同一安全产品的健康状态会在主机受侵时失去可信度。
+          en: Defenders maintain a bounded defensive-value inventory and consumer map, preconfigure SACLs, remotely retain 4657 or Sysmon, old and new value, writer, and snapshots, and read real effective state from the product or a controlled test. Registry reads are often incomplete, so process start, policy refresh, effective-setting source, and canary can substitute for consumer linkage. Relying only on the same on-host security product's health loses trust when the host is compromised.
+stealth_mechanisms:
+  - mechanism_ref: NM-BT
+    role: primary
+    summary: {zh: 受信消费者正常读取恶意本地设置并把防御下降呈现为配置状态, en: A trusted consumer normally reads a malicious local setting and presents defensive decline as configuration state}
+    analysis:
+      paragraphs:
+        - zh: 攻击者写入语法合法的防御设置，随后浏览器、安全工具或系统组件通过正常 Registry 路径消费它并按设计降低保护。痕迹从直接工具关停变成较早的普通 value set 和较后的合法消费者行为；防守方若不连接 writer、值来源和有效功能，会把失防归为管理员配置或产品状态。篡改裁决、不同权快照和功能性 canary 能揭示这条行为透明链。
+          en: The adversary writes a syntactically valid defensive setting, after which a browser, security tool, or system component consumes it through the ordinary Registry path and lowers protection by design. Traces shift from direct tool shutdown to an earlier ordinary value set and later legitimate consumer behavior. Without joining writer, value source, and effective function, defenders attribute impairment to administration or product state. Tamper decision, separately authorized snapshots, and a functional canary expose this behavioral-transparency chain.
+    evidence_refs: [REF-000188, REF-000450, REF-000691, REF-000692]
+    confidence: medium
+subtechnique_taxonomy:
+  narrative:
+    paragraphs:
+      - zh: 当前不建立 NJS。ATT&CK T1112 无子项，开放搜索覆盖保护设置压低、审计开关、凭据/认证设置、宏安全、隐藏键、启动状态与用后回退。隐藏与持久状态由 NJT-0094 拥有，认证、宏、凭据和防火墙结果由各自对象拥有；其余本地安全设置共享 writer—consumer—有效值观察链，键名或产品不足以形成稳定子项。
+        en: No NJS is established now. ATT&CK T1112 has no children, and open search covered reduced protection settings, audit switches, credential and authentication settings, macro security, hidden keys, startup state, and post-use reversion. NJT-0094 owns hidden and persistent state, while authentication, macro, credential, and firewall outcomes belong to their respective objects. Remaining local security settings share the writer-to-consumer-to-effective-value observation chain, and key name or product is not a stable child.
+      - zh: 选择性本地设置与短时回退可能改变范围或寿命，但现有直接案例没有证明独立的残余痕迹和防守方法，且这些维度容易与 NJT-0123 的工具范围及 NJT-0125 的中心策略重叠。零子项是开放搜索、证据和 sibling owner 收敛的结果；未来只有在不同变量具有结论级案例、互斥边界和目标化防御时才重开。
+        en: Selective local settings and brief reversion may change scope or lifetime, but current direct cases do not establish independent residue and defender methods, and those dimensions readily overlap NJT-0123 tool scope and NJT-0125 central policy. Zero children follows open search, evidence, and sibling-owner convergence. Taxonomy reopens only when different variables have conclusion-level cases, mutually exclusive boundaries, and target-specific defenses.
+  coverage: none-justified
+  subtechnique_refs: []
+defense:
+  detections: {coverage: available, strategy_refs: [DET-000183]}
+  mitigations: {coverage: available, mitigation_refs: [MIT-000165]}
+evidence:
+  claim_refs: [CLM-000799, CLM-000800, CLM-000801]
+  case_refs: [CASE-000224]
+  reference_refs: [REF-000188, REF-000230, REF-000450, REF-000691, REF-000692]
+research:
+  limitations:
+    paragraphs:
+      - zh: Booz Allen 的恢复样本分析直接支持特定 BlackEnergy 安装器写低 Internet/IE 安全值并连接后继执行，ATT&CK 提供战术映射；报告未给出每台受害端点的有效设置截图或功能 canary，也早于现代 Defender 篡改保护。Microsoft 文档证明 4657、Sysmon 和篡改保护的语义与前置条件，是检测/缓解依据而非新的在野案例。
+        en: Booz Allen recovered-sample analysis directly supports particular BlackEnergy installers lowering Internet and Internet Explorer security values and joining them to follow-on execution, while ATT&CK provides the tactic mapping. The report lacks effective-setting screenshots or functional canaries for every victim endpoint and predates modern Defender tamper protection. Microsoft documentation establishes semantics and prerequisites for 4657, Sysmon, and tamper protection as detection and mitigation support rather than another in-the-wild case.
+      - zh: 4657 依赖键 SACL，Sysmon 不记录所有读取或 old value，应用可能缓存设置、延迟刷新或由中心策略覆盖本地值。消费者健康来自同一受侵主机时也可能被伪造。缺少 old/new、consumer_id、有效值来源和控制结果时，只报告 mutation 或 unresolved；不得用任意 T1112 大量持久化案例填补 TA0112 证据。人工评审需特别检查与 NJT-0094、NJT-0123 和 NJT-0125 的边界。
+        en: Event 4657 depends on key SACLs, Sysmon does not record every read or old value, and applications may cache settings, refresh late, or have local values overridden by central policy. Consumer health from the same compromised host may also be forged. Without old and new state, consumer_id, effective-value source, and control outcome, report mutation or unresolved only. The many persistence cases under T1112 cannot fill TA0112 evidence. Human review should scrutinize boundaries with NJT-0094, NJT-0123, and NJT-0125.
+lifecycle: {status: review, version: "0.1.0", created: "2026-09-23", modified: "2026-09-23", contributors: [Niji Matrix Research], reviewers: []}

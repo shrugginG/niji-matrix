@@ -1,0 +1,119 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000154
+strategy_ref: DET-000147
+name:
+  zh: 共享写入—文件创建—外部取回关联
+  en: Share Write–File Create–External Retrieval Correlation
+summary:
+  zh: 将多个源主机的成功暂存写入与同一服务器的外部取回请求连接。
+  en: Join successful staging writes from multiple source hosts to external retrieval from the same server.
+domains:
+- enterprise
+platforms:
+- Windows
+logic:
+  paragraphs:
+  - zh: 在经授权的文件服务器和 Web 服务器上开启成功的 Detailed File Share 审计，并将 5145 的 IpAddress、SubjectUserSid、ShareName、RelativeTargetName、AccessMask
+      按目的主机和目录汇总。只把 WriteData 或 AddFile 权限请求视作写入候选，再用同主机 Sysmon 11 的 TargetFilename 和时间确认文件确实创建。若 24 小时内至少两个经资产映射区分的源主机向同一非批准暂存目录写入敏感导出物，且该服务器随后出现外部
+      HTTP GET（IIS c-ip、cs-uri-stem、sc-bytes）或异常外联，则输出包含每个来源、对象和取回请求的谱系图。阈值是环境初值，不能单靠 5145 权限检查断言写入成功。
+    en: Enable successful Detailed File Share auditing on authorized file and web servers and group event 5145 IpAddress,
+      SubjectUserSid, ShareName, RelativeTargetName, and AccessMask by destination host and directory. Treat WriteData or
+      AddFile access as a write candidate, then confirm actual creation with the same host's Sysmon 11 TargetFilename and
+      time. If at least two asset-mapped source hosts write sensitive exports to one unapproved staging directory within 24
+      hours and the server then shows an external HTTP GET (IIS c-ip, cs-uri-stem, sc-bytes) or anomalous outbound connection,
+      emit a lineage graph of origins, objects, and retrieval requests. The threshold is an environmental starting point,
+      and 5145 access checks alone cannot establish a successful write.
+data_requirements:
+- source_type: windows-share-access
+  name:
+    zh: Windows 详细文件共享访问
+    en: Windows detailed file-share access
+  channel: Security/5145
+  required_fields:
+  - timestamp
+  - server_id
+  - source_ip
+  - subject_sid
+  - share_name
+  - relative_path
+  - access_mask
+- source_type: server-file-create
+  name:
+    zh: 服务器文件创建
+    en: Server file creation
+  channel: Sysmon/11
+  required_fields:
+  - timestamp
+  - server_id
+  - writer_process_id
+  - target_path
+  - file_size
+- source_type: http-access-log
+  name:
+    zh: Web 服务器访问日志
+    en: Web server access log
+  channel: IIS W3C or equivalent
+  required_fields:
+  - timestamp
+  - server_id
+  - client_ip
+  - uri_path
+  - response_status
+  - response_bytes
+- source_type: source-asset-map
+  name:
+    zh: 来源主机资产映射
+    en: Source host asset map
+  channel: null
+  required_fields:
+  - source_ip
+  - asset_id
+  - owner_id
+observables:
+- zh: 多个源 IP 指向同一共享和目标目录、目标服务器新文件、随后相同路径的外部 HTTP 读取；若对象被重命名，需借助大小、摘要或进程链扩展关联。
+  en: Several source IPs target one share and directory, new files appear on the destination server, and external HTTP reads
+    follow for the same path; renaming requires size, digest, or process-lineage joins.
+correlation:
+  window:
+    zh: 以 24 小时为初始窗口连接多源写入和取回；按合法备份周期调整，同时保留先写后读顺序。
+    en: Use twenty-four hours as the initial window for many-source writes and retrieval, adapting to legitimate backup cycles
+      while preserving write-before-read order.
+  dimensions:
+  - server_id
+  - source_ip
+  - asset_id
+  - subject_sid
+  - share_name
+  - relative_path
+  - uri_path
+  - time
+false_positives:
+- zh: 备份代理、邮件迁移、集中 ETL 和软件分发也会形成多源到单点，但其授权账户、固定任务、目标目录和取用者通常有记录。
+  en: Backup agents, mailbox migration, central ETL, and software distribution can also form many-to-one paths; their authorized
+    accounts, scheduled jobs, destinations, and retrievers should be recorded.
+blind_spots:
+- zh: 5145 未开启、源 IP 经代理折叠、文件通过非 SMB 路径进入、IIS 不记录目标路径，或归档加密且文件名多次改变时，谱系会不完整。
+  en: The lineage is incomplete if 5145 is disabled, proxies collapse source IPs, files arrive without SMB, IIS omits the
+    target path, or encrypted archives are renamed repeatedly.
+tuning_guidance:
+  paragraphs:
+  - zh: 按服务器角色建立批准的备份和迁移源、目录、时段及取回者清单；保留对批准任务以外的新源、新路径和 Web 取回的检测，不把整台服务器永久排除。
+    en: Baseline approved backup and migration sources, directories, windows, and retrievers by server role; retain detection
+      for new sources, new paths, and web retrieval outside the approved job instead of exempting the whole server.
+evidence_refs:
+- REF-000508
+- REF-000426
+- REF-000509
+- REF-000510
+- REF-000474
+- REF-000230
+- REF-000514
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-09-22'
+  modified: '2026-09-22'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

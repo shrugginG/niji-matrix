@@ -1,0 +1,171 @@
+schema_version: 2.0.0
+type: technique
+id: NJT-0203
+name:
+  zh: 数据操纵
+  en: Data Manipulation
+summary:
+  zh: 攻击者改变仍可被业务消费的数据或结果，并通过业务合形外观或跨表示分歧降低完整性异常的可见性。
+  en: Adversaries change still-consumable business data or results and reduce integrity-anomaly visibility through
+    business-conforming appearance or cross-representation divergence.
+aliases:
+- T1565
+classification:
+  tactic_refs:
+  - TA0040
+  origin:
+    kind: attack-adapted
+    source_attack_id: T1565
+    source_attack_version: '19.1'
+  decision_ref: DEC-TA0040-T1565
+definition_and_concept:
+  paragraphs:
+  - zh: 数据操纵是攻击者未授权改变仍能被系统、人员或流程读取和消费的数据值、消息、记录或运行结果，使业务操作、理解或决策基于错误状态。直接对象是数据完整性与消费结果；数据是否 stored、in transit 或 runtime
+      只是变化位置。
+    en: Data Manipulation changes data values, messages, records, or runtime results without authorization while systems,
+      people, or processes can still read and consume them, causing business operations, understanding, or decisions
+      to use a false state. The direct object is data integrity and consumption outcome; stored, in-transit, or runtime
+      is only change location.
+  - zh: Niji 关注错误值如何保留业务合形特征，或同一对象如何在数据库、消息、文档、UI 与外部回执间形成不一致，使单一观察面无法识别真实状态。数据不可读/消失和直接展示篡改由相邻技术负责。
+    en: Niji focuses on false values preserving business-conforming features or one object diverging across database,
+      messages, documents, UI, and external receipts so one observation surface cannot establish truth. Unreadable
+      or missing data and direct display defacement have adjacent owners.
+stealth_characteristics:
+  paragraphs:
+  - zh: 业务合形操纵维持 schema、类型、范围、关系、供应商、金额分布或日常节奏，语法和单字段规则通过而语义错误；跨表示分歧让一面保存真实/攻击者目标，另一面向 operator 显示被修饰结果，单源审计各自自洽。
+    en: Business-conforming manipulation preserves schema, type, range, relationship, vendor, amount distribution,
+      or normal cadence, passing syntax and one-field rules while remaining semantically false. Cross-representation
+      divergence leaves one surface storing truth or attacker intent while another presents a modified result to operators,
+      with each single-source audit appearing internally consistent.
+  - zh: 残余包括 CDC before/after、writer/transaction/offset、DB span、business invariant、对象 ID/版本/digest、消息/文档/UI/回执差、下游
+      action 和独立对账。正常纠错、退款、调账、格式转换和 eventual consistency 是反例。
+    en: Residue includes CDC before and after, writer, transaction and offset, DB spans, business invariants, object
+      IDs, versions and digests, message, document, UI and receipt differences, downstream actions, and independent
+      reconciliation. Legitimate correction, refund, adjustment, transformation, and eventual consistency are counterexamples.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 纳入攻击者控制的数据变化、数据仍可消费、错误值或表示分歧，以及实际流程/决策/业务结果。仅写入尝试、schema invalid 被拒绝、无消费者采用或只修改显示外观不改变业务对象时不完成。
+    en: Include attacker-controlled data change, continued consumability, false value or representation divergence,
+      and actual process, decision, or business outcome. A rejected invalid write, no consumer adoption, or display-only
+      change without business-object mutation does not complete.
+  - zh: 删除/覆写到不可用归 NJT-0156，加密不可读归 NJT-0157，组织界面直接展示篡改归 NJT-0187，完成资金/资产转移归 NJT-0204。一个金融事件可同时有 T1565 指令/记录操纵与 T1657
+      结算结果，但各自证据独立。
+    en: Deletion or overwrite to unavailability belongs to NJT-0156, unreadable encryption to NJT-0157, direct organizational-display
+      defacement to NJT-0187, and completed funds or asset transfer to NJT-0204. A financial incident can contain
+      T1565 instruction or record manipulation and T1657 settlement, with independent evidence for each.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: 攻击者可在 ERP/支付系统中创建符合正常客户与金额模式的欺诈交易，渐进抽取价值；也可修改数据库记录、打印消息或 PDF/UI，使 operator 看到与实际 SWIFT 交易不同的表示。
+      en: An attacker can create fraudulent ERP or payment transactions matching normal customer and amount patterns
+        and siphon value incrementally, or modify database records, printer messages, or PDF or UI so operators see
+        a representation different from actual SWIFT transactions.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者需要业务数据写权、消息/转换/渲染路径控制及业务语义知识；越严格的不变量、双人审批、签名 provenance 和独立对账越限制效果。
+        en: The attacker needs business-data write authority, control of message, transformation, or rendering paths,
+          and business-semantic knowledge. Strong invariants, dual approval, signed provenance, and independent reconciliation
+          constrain it.
+    defender_model:
+      paragraphs:
+      - zh: 防守方保存 CDC、DB audit/span、对象版本和 provenance、业务规则、消息与文档 digest、UI/打印结果、外部回执和后继 action，并以稳定 business object
+          ID 对账。缺少 before state 或跨系统 ID 时只能异常推断。
+        en: Defenders retain CDC, DB audit or spans, object versions and provenance, business rules, message and document
+          digests, UI or print outcomes, external receipts, and successor actions and reconcile with stable business-object
+          IDs. Without prior state or cross-system IDs only anomaly inference is possible.
+stealth_mechanisms:
+- mechanism_ref: NM-FD
+  role: primary
+  summary:
+    zh: 业务合形值让错误数据保持正常 schema 与关系外观
+    en: Business-conforming values keep false data within normal schema and relationship appearance
+  analysis:
+    paragraphs:
+    - zh: 攻击者选择有效类型、范围、关系与节奏写入错误值，字段/语法检查和粗粒度行为基线仍通过，形成特征伪装；业务不变量、历史关系和累计结果揭示。
+      en: The attacker writes false values using valid types, ranges, relationships, and cadence, passing field and
+        syntax checks and coarse behavioral baselines and producing feature disguise; business invariants, historical
+        relationships, and cumulative outcomes reveal it.
+  evidence_refs:
+  - REF-000997
+  - REF-000999
+  - REF-001001
+  confidence: high
+- mechanism_ref: NM-BT
+  role: secondary
+  summary:
+    zh: 同一业务对象跨表示不一致使单一观察面无法确定真实状态
+    en: One business object diverges across representations so a single observation surface cannot establish truth
+  analysis:
+    paragraphs:
+    - zh: 攻击者在数据库、消息、打印/PDF/UI 或回执中的一部分改变值，使每个局部面自洽但对象版本不一致。真实因果跨表示边界，形成行为透明；稳定 ID、digest 与 provenance 对账恢复。
+      en: The attacker changes values in only part of database, messages, print or PDF or UI, or receipts, leaving
+        each local surface consistent while object versions diverge. Causality crosses representation boundaries,
+        producing behavioral transparency; stable IDs, digests, and provenance reconciliation restore it.
+  evidence_refs:
+  - REF-000998
+  - REF-000999
+  - REF-001001
+  confidence: high
+subtechnique_taxonomy:
+  narrative:
+    paragraphs:
+    - zh: 业务合形值操纵按错误值仍满足正常语义外观划分；跨表示完整性分歧按同一对象在多个表示间不一致划分。前者需要业务规则/累计关系，后者需要跨表示 provenance/digest，对应防御不同。
+      en: Business-Conforming Value Manipulation is divided by false values preserving a normal semantic appearance.
+        Cross-Representation Integrity Divergence is divided by one object becoming inconsistent across representations.
+        The former needs business rules and cumulative relations, while the latter needs cross-representation provenance
+        and digests.
+    - zh: T1565.001/.002/.003 只表示变化所在数据状态，不导入。平台、DB、消息协议、字段名和数据类型不形成 NJS；不可消费和直接展示结果由相邻技术负责。
+      en: T1565.001, .002, and .003 describe the data state where change occurs and are not imported. Platform, database,
+        message protocol, field name, and data type do not define NJS; non-consumability and direct display outcomes
+        have adjacent owners.
+  coverage: established
+  subtechnique_refs:
+  - NJS-0203-001
+  - NJS-0203-002
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000235
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000209
+evidence:
+  claim_refs:
+  - CLM-001001
+  - CLM-001002
+  - CLM-001003
+  - CLM-001004
+  - CLM-001005
+  - CLM-001006
+  case_refs:
+  - CASE-000290
+  - CASE-000291
+  reference_refs:
+  - REF-000883
+  - REF-000997
+  - REF-000998
+  - REF-000999
+  - REF-001000
+  - REF-001001
+  - REF-001002
+research:
+  limitations:
+    paragraphs:
+    - zh: FIN13 与 APT38 直接支持两个变量，但集中于金融流程；跨行业 business invariants 与表示必须本地定义。stored/transmitted/runtime 不能作为原生兄弟项。
+      en: FIN13 and APT38 directly support both variables but concentrate on financial workflows; business invariants
+        and representations require local definition in other sectors. Stored, transmitted, and runtime cannot become
+        native siblings.
+    - zh: CDC 和 span 不自动证明恶意，eventual consistency、合法调整和转换差可产生相似结果；需要 owner、审批与 outcome。
+      en: CDC and spans do not automatically prove malice; eventual consistency, legitimate adjustments, and transformation
+        differences create similar outcomes and need owner, approval, and outcome.
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-10-04'
+  modified: '2026-10-04'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

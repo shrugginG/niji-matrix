@@ -1,0 +1,50 @@
+schema_version: "2.0.0"
+type: detection-analytic
+id: NJA-000138
+strategy_ref: DET-000135
+name: {zh: 既有节点祖先变化—日志连续性分析, en: Existing-Node Ancestry Change–Log Continuity Analytic}
+summary: {zh: 对稳定云资源身份比较迁离前后父节点、继承控制、组织日志与后继活动，确认治理断点。, en: "Compare an existing cloud resource's parent, inherited controls, organization logs, and later activity before and after departure to confirm a governance break."}
+domains: [enterprise]
+platforms: [IaaS]
+logic:
+  paragraphs:
+    - zh: 为 account_id、subscription_id 或 project_id 保留不可变 parent_id/ancestor_path 历史及组织成员事件，记录发起 principal、request_id、source/target organization、departure_method、批准和时间。对每个版本计算从祖先继承的防御相关 SCP、组织策略、审计 trail、传感器注册与集中资产清单；把同一稳定资源 ID 在旧祖先下的 last_seen 与迁移后的新控制范围比较。AWS LeaveOrganization 的管理账户 AccountDepartedOrganization 事件是一个强锚，但不同云需使用各自层级事件。
+      en: Retain immutable parent_id and ancestor_path history and organization-membership events for account_id, subscription_id, or project_id, including initiating principal, request_id, source and target organization, departure_method, approval, and time. Compute defense-relevant inherited SCPs, organization policy, audit trails, sensor enrollment, and central inventory for each version. Compare last_seen for the same stable resource ID under the old ancestor with its new control scope after movement. The management-account AccountDepartedOrganization event for AWS LeaveOrganization is one strong anchor, while other clouds require their own hierarchy events.
+    - zh: 如果旧组织 trail 在该节点离开后停止产生新事件，而不同权的目标组织或资源侧记录显示同一 workload 继续活动，则输出 coverage_departure_confirmed；若只失去某项 guardrail 但日志仍完整，输出 guardrail_loss 而不称日志失明。只有成员事件或项目迁移但没有下游活动与控制差时输出 ancestry_change_only。迁移前历史日志仍存在，因此不能把新事件缺口误写成既有证据删除。
+      en: Emit coverage_departure_confirmed when the old organization trail stops receiving new events for the node after departure while differently authorized destination-organization or resource-side records show the same workload continuing. If one guardrail disappears while logs remain complete, emit guardrail_loss rather than log blindness. Membership or project movement without downstream activity and control difference is ancestry_change_only. Prior logs remain stored, so a new-event gap cannot be misreported as deletion of historical evidence.
+data_requirements:
+  - source_type: global-hierarchy-membership
+    name: {zh: 管理账户或租户全局成员与祖先历史, en: Management-account or tenant-wide membership and ancestor history}
+    channel: null
+    required_fields: [timestamp, resource_id, resource_type, old_parent_id, new_parent_id, old_ancestor_path, new_ancestor_path, actor_id, request_id, departure_method, approval_id]
+  - source_type: inherited-control-inventory
+    name: {zh: 继承策略、组织 trail 与传感器注册快照, en: "Inherited policy, organization trail, and sensor-enrollment snapshots"}
+    channel: null
+    required_fields: [timestamp, resource_id, ancestor_path, control_id, control_type, effective_state, trail_id, sensor_enrollment_state]
+  - source_type: central-log-ingestion
+    name: {zh: 集中日志到达与源账户标识, en: Central-log arrival and source-account identity}
+    channel: null
+    required_fields: [timestamp, resource_id, trail_id, event_id, event_time, ingest_time, last_seen, destination_store]
+  - source_type: cross-organization-resource-activity
+    name: {zh: 不同权来源的后继资源活动, en: Differently authorized subsequent resource activity}
+    channel: null
+    required_fields: [timestamp, resource_id, workload_id, action, actor_id, outcome, observation_authority]
+observables:
+  - {zh: 同一稳定账户或项目的 parent/organization 从受管祖先变为其他范围, en: The same stable account or project changes parent or organization away from a governed ancestor}
+  - {zh: 原组织 trail 停止新事件而资源活动继续, en: The former organization trail stops receiving new events while resource activity continues}
+  - {zh: 迁离后继承 guardrail 消失或审计出口改变, en: An inherited guardrail disappears or audit destination changes after departure}
+correlation:
+  window: {zh: 从迁离前七天基线到后十四天持续观察，重点比较离开事件后一小时和首个新资源操作。, en: "Observe from seven days of pre-departure baseline through fourteen days afterward, prioritizing the hour after membership departure and the first new resource action."}
+  dimensions: [resource_id, old_parent_id, new_parent_id, old_ancestor_path, new_ancestor_path, trail_id, control_id, workload_id, actor_id, time]
+false_positives:
+  - {zh: 经批准的组织拆分、项目迁移、合同到期或并购整合, en: "Approved organization split, project migration, contract end, or merger integration"}
+  - {zh: 目标组织已经提供等效或更强的日志与控制, en: The destination organization already provides equivalent or stronger logging and controls}
+blind_spots:
+  - {zh: 原组织不能读取目的组织的资源活动, en: The former organization cannot read destination-organization resource activity}
+  - {zh: 全局资源 ID 或时间同步丢失使同一节点前后态无法对齐, en: Lost global resource identity or time synchronization prevents aligning the same node across states}
+tuning_guidance:
+  paragraphs:
+    - zh: 用批准的迁移清单绑定 stable resource ID、目标祖先、预期继承策略、日志去向、切换窗口与验证人；以是否达到等效控制为核心，不因 LeaveOrganization 本身永久告警或自动认定失明。若目的组织不可观察，应保留 coverage_unverified 并触发外部核查，不能把旧组织无日志等同于攻击成功。
+      en: Bind approved migration inventory to stable resource ID, target ancestor, expected inherited policy, log destination, transition window, and verifier. Judge equivalent control rather than permanently alert on LeaveOrganization itself or automatically claim blindness. When the destination organization is not observable, retain coverage_unverified and seek external validation instead of equating no old-organization log with attack success.
+evidence_refs: [REF-000457, REF-000458, REF-000460]
+lifecycle: {status: review, version: "1.0.0", created: "2026-09-22", modified: "2026-09-22", contributors: [Niji Matrix Research], reviewers: []}

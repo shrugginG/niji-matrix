@@ -1,0 +1,135 @@
+schema_version: 2.0.0
+type: evasion-subtechnique
+id: NJS-0089-002
+parent_ref: NJT-0089
+name:
+  zh: 受限枚举服务注册
+  en: Enumeration-Restricted Service Registration
+summary:
+  zh: 攻击者改变服务对象查询权限，使普通管理视图无法枚举仍在底层注册并可由高权限服务控制器执行的对象。
+  en: Adversaries change service-object query permissions so ordinary management views cannot enumerate an object that remains
+    registered underneath and executable by the privileged service controller.
+aliases: []
+lineage:
+  attck_subtechnique_inherited: false
+definition_and_concept:
+  paragraphs:
+  - zh: 受限枚举服务注册是攻击者在保存持久服务定义的同时修改对象安全描述符或读取/查询权限，使普通管理员、标准 service API wrapper 或图形管理界面不能返回该对象，但 service controller/manager
+      仍具有读取和启动能力的匿迹子技术。其直接目标是制造管理清单中缺失、底层注册和运行中存在的稳定观察差。
+    en: Enumeration-Restricted Service Registration is an evasion sub-technique in which an adversary preserves a durable
+      service definition while changing its security descriptor or read and query permissions so an ordinary administrator,
+      standard service API wrapper, or graphical management view cannot return the object but the service controller or manager
+      can still read and start it. Its direct objective is a stable observation difference between absence from management
+      inventory and presence in underlying registration and runtime.
+stealth_characteristics:
+  paragraphs:
+  - zh: 受限枚举服务注册使 Get-Service、sc query、普通 service-management API 或低权限传感器得到不完整集合或 access denied，而 SCM/manager 仍按自身高权限读取定义并启动目标。盘点程序若把查询成功集合或静默跳过错误当作全集，服务状态不会进入检测；后继进程仍可能显示正常
+      manager 父级。
+    en: Enumeration-Restricted Service Registration causes Get-Service, sc query, an ordinary service-management API, or a
+      lower-privilege sensor to receive an incomplete set or access denied while SCM or a manager continues reading the definition
+      and starting the target under its own higher privilege. If inventory treats successful-query output or silently skipped
+      errors as complete, service state never enters detection and the downstream process can still show a normal manager
+      parent.
+  - zh: 安全描述符 old/new、ACL writer、底层 Registry/数据库或声明式状态、高权限枚举、access-denied error、service object ID、manager transaction 和后继进程/网络能够恢复。合法最小权限、租户隔离和托管服务边界也会形成不同视图；必须比较预期
+      reader、owner 与批准，且证明 object 实际执行，不能从一次拒绝访问归因。
+    en: Security-descriptor old and new state, ACL writer, underlying Registry, database, or declarative state, privileged
+      enumeration, access-denied error, service object ID, manager transaction, and downstream process or network can recover
+      the object. Legitimate least privilege, tenant isolation, and managed-service boundaries also create different views.
+      Expected reader, owner, and approval must be compared and actual execution established rather than attributing one access
+      denial.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 本子技术纳入攻击者为服务对象设置查询/读取限制并保留 manager 执行能力的行为，要求同一 object 在至少两个权限或数据路径产生可重复视图差、未经批准 ACL writer、底层状态和后继执行。若不同主体本来被治理设计为不同可见范围且没有恶意定义，应排除。
+    en: This child includes adversary query or read restrictions on a service object while preserving manager execution and
+      requires a repeatable view difference for the same object across at least two privilege or data paths, an unapproved
+      ACL writer, underlying state, and downstream execution. If governance intentionally gives different principals different
+      visibility and no malicious definition exists, the state is excluded.
+  - zh: 删除日志、禁用检测产品和 rootkit 隐藏进程归 Defense Impairment/其他隐匿对象；API null/counted-string 视图差归 Registry 对应子项；新服务或既有身份替换分别归父级/NJS-0089-001。权限过度收窄导致
+      manager 也无法启动是失败配置，不是成功子项。
+    en: Log deletion, disabling detection products, and rootkit process hiding belong to Defense Impairment or another concealment
+      object. API null or counted-string view differential belongs to the Registry child. A new service and established-identity
+      substitution belong to the parent and NJS-0089-001 respectively. Excessive restriction that also prevents the manager
+      from starting the service is a failed configuration, not a successful child.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: 攻击者建立或修改 Windows 服务后设置对象 SDDL，使 frontline administrator、Get-Service、sc query 或继承受限 token 的响应脚本无法列出服务，而 SCM 仍能启动；等价管理系统中也可能通过对象
+        ACL/namespace 权限制造普通视图与控制器视图差。攻击者随后依靠 service 在重启、故障恢复或管理器 reload 时恢复载荷。
+      en: After creating or modifying a Windows service, an adversary sets object SDDL so a frontline administrator, Get-Service,
+        sc query, or a response script inheriting a restricted token cannot list it while SCM can still start it. An equivalent
+        management system can use object ACL or namespace permission to create a difference between ordinary and controller
+        views. The adversary then relies on the service to restore a payload at reboot, failure recovery, or manager reload.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者需要 service-object ACL/SDDL 或等价权限管理能力，理解 manager 与管理员/传感器分别使用的 access mask 和安全上下文，并准确保留 manager 所需 query/start/read
+          权限。过度限制会阻止服务启动，错误 inheritance 会暴露到更多主体，明显 access-denied 也可能触发调查。
+        en: The adversary needs service-object ACL or SDDL or equivalent permission-management authority, knowledge of access
+          masks and security contexts used by manager versus administrator or sensor, and precision to preserve the manager's
+          required query, start, and read rights. Excessive restriction blocks service startup, wrong inheritance exposes
+          more principals, and conspicuous access denied can trigger investigation.
+    defender_model:
+      paragraphs:
+      - zh: 单一 service list、继承受限 token 的 EDR、缺失 ACL old/new 和 manager 不记录 object ID 都会形成盲区。防守方应把 query error 视为信号并转用独立只读主体/底层状态验证；合法
+          RBAC、托管边界与多租户服务必须有 owner 和策略基线，避免把最小权限误判。
+        en: One service list, EDR inheriting a restricted token, missing ACL old and new state, and a manager that omits object
+          IDs create blind spots. Defenders should treat query errors as signals and validate through an independent read-only
+          principal or underlying state. Legitimate RBAC, managed boundaries, and multitenant services need owner and policy
+          baselines to avoid misclassifying least privilege.
+stealth_mechanisms:
+- mechanism_ref: NM-BT
+  role: primary
+  summary:
+    zh: 对象权限差把可执行服务移出默认管理视图
+    en: Object-permission differential moves an executable service outside default management views
+  analysis:
+    paragraphs:
+    - zh: 攻击者改变普通查询主体对 service object 的读取/枚举权，SCM/manager 仍能读取并执行。默认 inventory 没有返回对象或静默跳过错误，关键状态未进入检测逻辑，形成行为透明；底层注册、高权限视图、ACL
+        diff 和执行结果仍可恢复。
+      en: The adversary changes read or enumeration rights for ordinary query principals while SCM or the manager continues
+        reading and executing the service object. Default inventory omits the object or silently skips an error, leaving critical
+        state outside detection logic and producing Behavioral Transparency. Underlying registration, privileged view, ACL
+        difference, and execution outcome can recover it.
+  evidence_refs:
+  - REF-000182
+  - REF-000336
+  - REF-000337
+  confidence: medium
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000063
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000060
+evidence:
+  claim_refs:
+  - CLM-000366
+  case_refs: []
+  reference_refs:
+  - REF-000182
+  - REF-000336
+  - REF-000337
+research:
+  limitations:
+    paragraphs:
+    - zh: 直接公开证据集中于 Windows service SDDL，尚无独立案例完整公开 ACL old/new、普通/高权限枚举和后继执行链，因此机理为 medium 且 case_refs 保持空。其他平台不能仅因 namespace/RBAC
+        不同就继承该结论，必须证明攻击者主动修改。
+      en: Direct public evidence centers on Windows service SDDL, and no independent case currently exposes complete ACL old
+        and new state, ordinary and privileged enumeration, and downstream execution lineage. Mechanism confidence is therefore
+        medium and case references remain empty. Another platform cannot inherit the conclusion merely because namespace or
+        RBAC differs and needs adversary-controlled change.
+    - zh: 合法最小权限、托管服务隔离、多租户边界与 EDR token 配置会产生相似视图差；在线查询时间差还可能遇到 service 创建/删除竞争。缺少同一 object、等价任务、ACL writer 和执行结果时只能报告可见性异常，不能确认子项。
+      en: Legitimate least privilege, managed-service isolation, multitenant boundaries, and EDR token configuration create
+        similar view differences, while live query timing can race service creation or removal. Without the same object, equivalent
+        task, ACL writer, and execution outcome, only a visibility anomaly can be reported rather than a confirmed child.
+lifecycle:
+  status: review
+  version: 1.2.0
+  created: '2026-09-11'
+  modified: '2026-09-19'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

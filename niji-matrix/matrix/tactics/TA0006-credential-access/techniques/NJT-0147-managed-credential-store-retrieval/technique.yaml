@@ -1,0 +1,210 @@
+schema_version: 2.0.0
+type: technique
+id: NJT-0147
+name:
+  zh: 受管理凭据保管库取用
+  en: Managed Credential-Store Retrieval
+summary:
+  zh: 攻击者从受管理凭据保管库取回秘密，借受信消费身份或解锁运行态改变防守方能关联的取用痕迹。
+  en: Adversaries retrieve secrets from managed credential stores through trusted-consumer identity or unlocked runtime state, changing the retrieval
+    traces defenders can connect.
+aliases:
+- Credentials from Password Stores
+- T1555
+classification:
+  tactic_refs:
+  - TA0006
+  origin:
+    kind: attack-adapted
+    source_attack_id: T1555
+    source_attack_version: '19.1'
+  decision_ref: DEC-TA0006-T1555
+definition_and_concept:
+  paragraphs:
+  - zh: 受管理凭据保管库取用是攻击者针对操作系统、浏览器、密码管理器或云服务所维护的受保护秘密条目，跨越其授权或解锁边界取得可用于认证的口令、密钥或同类材料。直接目的在于获得存储时未公开的秘密，而不是寻找散落的明文，也不是测试未知秘密。保管库可把材料保存在本机密文文件、进程内存或远端服务中；媒介只决定实现和遥测，不决定技术身份。
+    en: Managed Credential-Store Retrieval targets protected secret items maintained by an operating system, browser, password manager, or cloud
+      service. The adversary crosses an authorization or unlock boundary to obtain a password, key, or comparable material usable for authentication.
+      Its immediate purpose is to acquire a secret withheld at rest, not to find loose plaintext or test an unknown candidate. A vault may hold
+      encrypted files locally, material in process memory, or a remote service; medium changes implementation and telemetry, not the technique's
+      identity.
+  - zh: 本技术需要把保管对象发现、条目或文件访问、秘密实际返回、攻击者保存以及后续使用分为不同证据阶段。Apple 的钥匙串 API 明确区分属性或引用与请求 kSecReturnData 后返回的秘密数据；AWS 的 GetSecretValue 与 Google 的 AccessSecretVersion
+      才是云库内容读取调用，List 或 Describe 仅是目录或元数据。即便读取成功，服务日志通常也不证明攻击者已保留明文，身份登录和资源访问须独立验证。
+    en: This technique separates store discovery, item or file access, actual secret return, adversary retention, and later use into distinct
+      evidentiary stages. Apple's keychain APIs distinguish attributes or references from secret data returned with kSecReturnData; AWS GetSecretValue
+      and Google AccessSecretVersion are content-read operations, whereas listing and description expose only inventory or metadata. Even a successful
+      read log does not alone prove the adversary retained plaintext; sign-in and resource access require independent verification.
+stealth_characteristics:
+  paragraphs:
+  - zh: 保管库通常以身份、应用或工作负载权限决定可否返回秘密。攻击者若借用已有消费身份、等待用户解锁后驱动导出，保管库侧的成功取用可能与业务调用具有相同主体或进程外观，短窗口的异常失败也可能不存在。防守方须关联授权变化、调用来源、消费用途和输出，而不能把“授权成功”当成合法目的。Mandiant
+      的 KeePass 红队实验展示了配置触发器在用户下一次打开库时导出明文，说明读出发生在正常解锁工作流内。
+    en: Stores normally decide whether to return secrets by identity, application, or workload authority. An adversary who borrows an existing
+      consumer identity or waits for a user unlock before triggering export may produce a store-side success resembling business access, without
+      anomalous unlock failures. Defenders must join authorization changes, call origin, consumption purpose, and output rather than equate an
+      authorized result with legitimate intent. Mandiant's KeePass red-team experiment shows a configuration trigger exporting plaintext when
+      the user next opened the vault, placing extraction inside an ordinary unlock workflow.
+  - zh: 另一条已证实的观察迁移是解锁保管进程的运行态取密：逐项 API 与用户提示可能没有异常，取而代之的是高权进程访问、转储和输出。Keydnap 分析证实旧版 securityd 路径，KeePass 文档说明明文仅在某些操作中短暂出现。UNC1069 和 UNC2465
+      的密文副本外传也会移出逐项审计，但公开资料没有把同一副本连接到成功解锁；这一差异保留为边界和待证假设，不作为完成的取密子项。
+    en: 'A second supported observation shift retrieves material from an unlocked vault process: per-item API and user-prompt records may show
+      no anomaly, while high-rights process access, dumps, and output appear. Keydnap analysis establishes a legacy securityd path, and KeePass
+      documents plaintext existing only transiently for some operations. UNC1069 and UNC2465 ciphertext-copy exfiltration also moves outside per-item
+      audit, but public evidence does not link the same copy to successful unlock. That difference remains a boundary and open hypothesis, not
+      a completed retrieval child.'
+scope_boundary_definition:
+  paragraphs:
+  - zh: 纳入必须同时有受管理保管库对象、攻击者驱动的越界取用，以及可说明匿迹收益的可控观察变量。普通备份、用户发起的导出、同步、迁移、批准的管理员调查或受信工作负载定期读取可产生同类事件；必须核对任务单、所有者、调用身份、来源、目标条目、输出和时间。仅凭文件名、security
+      命令、GetSecretValue 或可疑进程访问不足以断言已获可用凭据。
+    en: Inclusion requires a managed-store object, attacker-driven access across its protection boundary, and a controllable observation variable
+      with a defensible stealth effect. Backups, user-initiated exports, synchronization, migration, approved administration, and scheduled workload
+      reads can create similar events. Assessment must compare ticket, owner, caller, origin, target item, output, and timing. A filename, security
+      invocation, GetSecretValue call, or suspicious process access alone is insufficient to claim a usable credential was obtained.
+  - zh: T1552 处理未受保护的散落秘密；T1003 处理操作系统认证材料转储，而非普通应用密码库的运行态；NJT-0137/NJS-0137-003 处理取得可比对材料后的候选验证；T1056 处理秘密输入时的截获；T1528 处理应用令牌本身。若原始卷或影子副本绕过活动文件路径，介质层归
+      NJT-0108，本技术仅在证据继续指向保管库材料及其解锁或返回时并列成立。偷到令牌后直接重放、或使用已得口令登录，是后继行为，不把凭据获取改写成身份使用。
+    en: T1552 covers loose unprotected secrets; T1003 covers operating-system authentication-material dumping rather than ordinary application-vault
+      runtime; NJT-0137/NJS-0137-003 covers candidate validation after comparable material is acquired; T1056 covers interception as a secret
+      is entered; and T1528 owns application tokens as the target material. If raw-volume or shadow-copy access bypasses the live file path, NJT-0108
+      owns that access medium; this technique coexists only when evidence continues to vault material and its unlock or return. Replaying a stolen
+      token or signing in with an acquired password is a successor behavior, not a redefinition of acquisition.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: 在已控用户工作站上，攻击者可寻找已解锁的钥匙串、浏览器或密码管理器，借受信进程、配置触发器或进程内存取得秘密；在云环境中，可借已有工作负载角色对高价值秘密版本作内容读取。复制服务器上的受保护保管库并寻找解锁材料只是可能的前期暴露，只有同一链条证明返回可用秘密才算完成本技术。后继的横向移动、管理入口访问或应用数据读取须分别记录。
+      en: On a compromised workstation, an adversary may seek an unlocked keychain, browser, or password manager and use a trusted process, configuration
+        trigger, or process memory to obtain secrets. In cloud environments, an existing workload role may read content of high-value secret versions.
+        Copying a protected server vault and seeking unlock material is only possible precursor exposure; completed retrieval requires evidence
+        that the same chain returned a usable secret. Later lateral movement, administrative access, or application data reads must be recorded
+        separately.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者至少需要能接触保管库文件、使用已获授权的会话或角色、或接近已解锁进程；不同分支分别要求用户上下文、足够文件权限、配置修改、进程访问或云 GetSecretValue 等权限。攻击者未必知道主口令，也未必能读取所有条目。设备绑定、额外解锁因子、Keychain
+          访问控制、最小权限 IAM 和进程保护会限制可得范围；复制密文库还需另证密钥或解锁成果。
+        en: The adversary needs access to store files, an authorized session or role, or an unlocked process. Different branches require user
+          context, file authority, configuration modification, process access, or cloud content-read permission such as GetSecretValue. The adversary
+          need not know the master password and may be unable to read every item. Device binding, extra unlock factors, keychain access control,
+          least-privilege IAM, and process protection limit reach; copied ciphertext also requires separate evidence of a key or successful unlock.
+    defender_model:
+      paragraphs:
+      - zh: 防守方假定能集中保留端点进程、文件访问或导出事件与云库数据访问日志，并维护正常消费者到秘密资源的映射。AWS CloudTrail 能记录 Secrets Manager API，Google 的 AccessSecretVersion 属 DATA_READ
+          但日志默认需要启用，Azure Key Vault 日志具有操作、调用者和来源字段；端点上的 API 级读取日志并非普遍默认存在。若只留应用登录而没有本机保管库/内存遥测，或只有库调用而没有工作负载来源与后继认证，防守方就只能判定访问而不能判定恶意保留和使用。
+        en: The defender is assumed to retain endpoint process, file-access or export events and cloud vault data-access logs centrally, with
+          a baseline mapping normal consumers to secret resources. AWS CloudTrail records Secrets Manager APIs; Google's AccessSecretVersion is
+          DATA_READ but Data Access logging generally must be enabled; Azure Key Vault logs expose operation, caller, and source fields. API-level
+          local-vault reads are not universally logged by default. With only application sign-ins and no local store or memory telemetry, or only
+          vault calls without workload origin and successor authentication, defenders can establish access but not malicious retention and use.
+stealth_mechanisms:
+- mechanism_ref: NM-FD
+  role: primary
+  summary:
+    zh: 受信消费外观掩盖异常秘密取用
+    en: Trusted-consumer appearance masks abnormal secret retrieval
+  analysis:
+    paragraphs:
+    - zh: 攻击者把取用嵌入已有授权的应用、用户会话或 workload role，使保管库先看到可通过的主体和正常 API，再在配置、来源、条目范围或输出目的上偏离业务基线。结果不是审计事件消失，而是事件的合法外观降低单一字段的判别力；Mandiant 的 KeePass
+        触发器实验直接显示用户解锁后的合法应用导出可被预置动作利用，Apple 和云厂商文档解释为何授权路径会返回秘密。
+      en: The adversary embeds retrieval in an already authorized application, user session, or workload role. The store sees a permitted principal
+        and normal API, while configuration, origin, item scope, or output purpose departs from the business baseline. Audit events need not disappear;
+        a legitimate-looking event weakens single-field discrimination. Mandiant's KeePass trigger experiment directly demonstrates abuse of a
+        legitimate app export after user unlock, while Apple and cloud provider documentation explain why authorized paths can return secrets.
+  confidence: medium
+  evidence_refs:
+  - REF-000552
+  - REF-000544
+  - REF-000546
+- mechanism_ref: NM-BT
+  role: secondary
+  summary:
+    zh: 运行态读取越过保管库逐项审计
+    en: Runtime reads cross per-item vault audit
+  analysis:
+    paragraphs:
+    - zh: 攻击者在保管应用已处理密钥或短时明文的窗口读取进程状态，把取密从逐项授权或 API 事件移到高权进程访问、转储和外联观察面。只监测保管库调用的防守方会漏掉这一阶段；ESET 的 Keydnap 样本证明旧版 securityd 内存路径，KeePass 文档解释现代管理器的明文窗口和再加密边界。跨进程权限、转储文件和可信恢复结果仍可揭示行为，不能把一次句柄打开等同全部秘密外流。
+      en: The adversary reads process state while a vault application handles keys or transient plaintext, moving retrieval from per-item authorization
+        or API records to high-rights process access, dumps, and egress. A defender watching only vault calls can miss the stage. ESET's Keydnap
+        sample establishes a legacy securityd memory path, while KeePass documentation explains plaintext windows and re-encryption limits in
+        a manager. Cross-process rights, dump files, and trusted recovery results remain observable; one handle open does not establish full secret
+        loss.
+  evidence_refs:
+  - REF-000553
+  - REF-000551
+  - REF-000366
+  confidence: medium
+subtechnique_taxonomy:
+  narrative:
+    paragraphs:
+    - zh: 正式子技术按两种可跨产品复现的观察变量划分。受信消费身份转用改变保管库记录的调用主体与实际控制者之间的关系，需把配置、消费身份、秘密返回和输出相连；解锁运行态旁路取密改变取用位置，逐项读取记录可能缺席，但高权进程访问和转储成为残余。两项可在同一入侵链先后发生，却有不同的前态、数据源、误报和控制动作。
+      en: 'The two formal children use observation variables that can recur across products. Trusted-consumer identity repurposing changes the
+        relation between the caller recorded by a vault and the actual controller, requiring joins among configuration, consumer, secret return,
+        and output. Unlocked-runtime bypass changes where retrieval occurs: per-item reads may be absent while high-rights process access and
+        dumps remain. The children can occur sequentially in one intrusion but differ in prior state, data, false positives, and controls.'
+    - zh: 钥匙串、浏览器、Windows 凭据集、密码管理器和云秘密服务是实现位置，不是子项名称。密文副本复制同样会改变审计视角，但已公开的 UNC1069 与 UNC2465 事件未证明同一副本被解锁或返回可用秘密，因此不建立第三子项。未来若有同一事件的副本、解锁和秘密结果证据，应重新审查；当前两项结果来自六项实现覆盖与第二轮原生变量搜索，而非数量配额。
+      en: Keychains, browsers, Windows credential sets, password managers, and cloud secret services are implementation locations, not child labels.
+        Copying ciphertext also shifts the audit view, but the published UNC1069 and UNC2465 events do not prove the same copy was unlocked or
+        returned a usable secret, so no third child is established. Same-incident evidence joining copy, unlock, and secret result would reopen
+        this decision. The two-child result follows coverage of all six implementations and a second native-variable search rather than a numeric
+        quota.
+  coverage: established
+  subtechnique_refs:
+  - NJS-0147-001
+  - NJS-0147-002
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000153
+    - DET-000154
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000142
+    - MIT-000143
+evidence:
+  claim_refs:
+  - CLM-000723
+  - CLM-000724
+  - CLM-000725
+  - CLM-000726
+  - CLM-000727
+  case_refs:
+  - CASE-000189
+  - CASE-000190
+  reference_refs:
+  - REF-000542
+  - REF-000543
+  - REF-000544
+  - REF-000545
+  - REF-000546
+  - REF-000547
+  - REF-000548
+  - REF-000549
+  - REF-000550
+  - REF-000551
+  - REF-000552
+  - REF-000553
+  - REF-000554
+  - REF-000555
+  - REF-000366
+  - REF-000382
+  - REF-000229
+  - REF-000473
+research:
+  limitations:
+    paragraphs:
+    - zh: 来源支持不同结论层级：Apple、AWS、Google、Azure 和保管库厂商文档证明调用与控制语义；Mandiant 红队实验直接证明一次 KeePass 用户解锁后的明文导出；Keydnap 样本证明旧版 securityd 内存查钥匙的路径。UNC1069
+        与 UNC2465 主要证明受保护副本外传，不能把不同事件和产品的解锁能力拼成一条已观察到的完整取密链。云 API 成功也不证明攻击者保存或使用了值。
+      en: Sources support different conclusion levels. Apple, AWS, Google, Azure, and vault-vendor documentation establish call and control semantics.
+        A Mandiant red-team exercise directly establishes one KeePass plaintext export after user unlock. A Keydnap sample establishes a legacy
+        securityd key-search path. UNC1069 and UNC2465 mainly establish protected-copy exfiltration; unlock capabilities from other incidents
+        or products cannot be spliced into one observed retrieval chain. Cloud API success does not prove attacker retention or use.
+    - zh: 端点逐项审计、Google Data Access 启用状态、Azure 诊断和自托管导出日志均随部署变化；没有这些记录时不能把零日志当作零取用。合法备份、同步、轮换、迁移和故障处置可与恶意活动同形，判断依赖有期限的审批、消费者到秘密的用途基线及输出目的。只有进程访问而没有恢复的密钥或明文时，应保留可疑访问而非确认秘密泄露。
+      en: Endpoint per-item audit, Google Data Access enablement, Azure diagnostics, and self-hosted export logs vary by deployment; absent logs
+        cannot be treated as absent reads. Legitimate backup, sync, rotation, migration, and recovery can resemble adversarial activity, so judgment
+        depends on time-bounded approval, consumer-to-secret purpose baselines, and output destination. Process access without a recovered key
+        or plaintext remains suspicious access rather than confirmed secret loss.
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-09-22'
+  modified: '2026-09-23'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

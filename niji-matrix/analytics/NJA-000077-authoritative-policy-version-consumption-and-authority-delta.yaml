@@ -1,0 +1,109 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000077
+strategy_ref: DET-000097
+name:
+  zh: 权威策略版本消费与权限差分析
+  en: Authoritative Policy-Version Consumption and Authority-Delta Analytic
+summary:
+  zh: 以 object/version 区间连接 GPO 或 trust 变更、实际 consumer、主体授权差和资源结果，并在恢复终态后继续追踪恶意版本留下的 token、会话与权限效果。
+  en: Join GPO or trust changes, actual consumers, principal authority differences, and resource outcomes by object and version interval, continuing to track tokens, sessions, and authority effects left by a malicious version after end-state restoration.
+domains: [enterprise]
+platforms: [Windows, Identity Provider, IaaS, SaaS]
+logic:
+  paragraphs:
+  - zh: >-
+      分析先建立权威对象历史。将每次 GPO、directory、tenant policy、domain trust 或 federation change 规范为 tenant/domain、object ID/type、commit/transaction、logical version、完整 old/new、writer/original caller、来源、API/tool、scope/link/precedence、ACL、issuer、signer fingerprint、claim/authentication mode、approval 和预期窗口。GPO 按 GUID 合并 AD container 与 SYSVOL template 的 hash/version 并保留 DC replica；trust 按 domain/tenant 和 trust object 合并目标实际认可的 issuer、certificate 与设置。attempted、committed、replicated 和 reverted 必须分开，缺失半个 GPO 或 old/new 时记录 coverage_degraded。
+    en: >-
+      The analytic first builds authoritative object history. It normalizes every GPO, directory, tenant-policy, domain-trust, or federation change into tenant or domain, object ID and type, commit or transaction, logical version, complete old and new state, writer or original caller, origin, API or tool, scope, link or precedence, ACL, issuer, signer fingerprint, claim or authentication mode, approval, and intended window. For a GPO it merges AD-container and SYSVOL-template hashes or versions by GUID and retains the domain-controller replica. For trust it merges issuer, certificate, and settings actually accepted by the target by domain or tenant and trust object. Attempted, committed, replicated, and reverted states remain separate, and a missing GPO half or old and new state produces coverage_degraded.
+  - zh: >-
+      对每个 committed version，分析计算 effective scope，并从复制/处理日志恢复 consumer ID、observed object/version、evaluation time、result 与错误。GPO consumer 可以是 client、Group Policy service 或应用该设置的本地安全组件；trust consumer 可以是 IdP、token service、relying party 或资源授权器。若没有精确 version 字段，用 commit、replica、refresh/request 时间、scope 与 content hash 形成降级候选连接；只凭正常系统进程、同域主体或近时间不视为采用。未批准敏感差异输出 policy_state_anomaly，确认 consumer 使用输出 consumer_adoption。
+    en: >-
+      For every committed version, the analytic computes effective scope and recovers consumer ID, observed object and version, evaluation time, result, and errors from replication or processing logs. A GPO consumer can be a client, Group Policy service, or local security component applying the setting, while a trust consumer can be an IdP, token service, relying party, or resource authorizer. If exact version is unavailable, commit, replica, refresh or request time, scope, and content hash form a degraded candidate join. A normal system process, same-domain principal, or temporal proximity alone is not adoption. An unapproved sensitive difference produces policy_state_anomaly and confirmed consumer use produces consumer_adoption.
+  - zh: >-
+      接着为被影响 principal/session/token 构造 pre-state 和 version-time effective authorization set。输入包括 original/effective principal、组/角色与 trust path、matched policy/claim、认证/授权 decision、token/session issue/expiry、目标资源与 operation。仅当恶意版本相对 pre-state 增加至少一个权限，并且同一主体或 session 在有效区间完成首个 pre-state 模拟为 deny、post-state 实际为 allow 的操作时输出 elevation_confirmed。无法取得 pre-state、实际 token context 或资源结果时输出 authority_unresolved；策略只改变防御或触发 execution 时保留相邻结果。
+    en: >-
+      The analytic next constructs pre-state and version-time effective authorization sets for an affected principal, session, or token. Inputs include original and effective principal, groups or roles and trust path, matched policy or claim, authentication and authorization decision, token or session issue and expiry, target resource, and operation. It emits elevation_confirmed only when the malicious version adds at least one permission relative to pre-state and the same principal or session completes the first operation during the interval that pre-state simulation marks deny and post-state observation records allow. Missing pre-state, actual token context, or resource outcome produces authority_unresolved, while a policy that only changes defenses or triggers execution retains an adjacent outcome.
+  - zh: >-
+      最后对同一 object 的后继版本做语义比较。若恶意 version 被 consumer 使用后，后继 commit 恢复到 pre-state 或受批准等价状态，则关闭恶意版本区间并输出 post_use_reversion；简单反向字段不够，必须排除自动 rollback、failed deployment、证书正常轮换与并发合法变更。分析从恶意区间反向索引所有 consumers，并向前追踪 issued token/session、endpoint-created authority 与资源变化到各自失效或回滚；current state 正常但 residual effect 未处理时标记 restored_state_with_residual_authority。
+    en: >-
+      Finally, the analytic compares later versions of the same object semantically. When a consumer used the malicious version and a later commit restores pre-state or an approved equivalent, it closes the malicious-version interval and emits post_use_reversion. Inverse fields alone are insufficient and automatic rollback, failed deployment, normal certificate rotation, and concurrent legitimate mutation must be excluded. The analytic reverse-indexes every consumer in the malicious interval and follows issued tokens or sessions, endpoint-created authority, and resource changes forward until their own invalidation or rollback. A normal current state with untreated residual effect is labeled restored_state_with_residual_authority.
+data_requirements:
+- source_type: authoritative-policy-trust-change
+  name: {zh: GPO、目录、租户策略与信任变更, en: GPO directory tenant-policy and trust changes}
+  channel: null
+  required_fields: [timestamp, tenant_or_domain_id, object_id, object_type, commit_or_transaction_id, logical_version, old_state, new_state, writer_or_original_caller, source, api_or_tool, scope_links_and_precedence, security_descriptor, issuer_or_signer, claims_or_authentication_mode, approval_id, intended_window, outcome]
+- source_type: gpo-dual-component-state
+  name: {zh: GPO AD container 与 SYSVOL template 状态, en: GPO AD-container and SYSVOL-template state}
+  channel: null
+  required_fields: [timestamp, domain_id, gpo_guid, domain_controller_id, container_version, container_attributes, template_version, template_path, template_hash, replication_state, writer_id, outcome]
+- source_type: policy-trust-consumer-evaluation
+  name: {zh: 策略传播、客户端消费与信任评估, en: Policy propagation client consumption and trust evaluation}
+  channel: null
+  required_fields: [timestamp, tenant_or_domain_id, consumer_id, consumer_type, object_id, observed_version_or_hash, effective_scope, principal_or_device_id, request_or_refresh_id, evaluation_result, error, replica_or_service_id]
+- source_type: identity-session-authorization
+  name: {zh: 身份、会话、令牌与授权决策, en: Identity session token and authorization decision}
+  channel: null
+  required_fields: [timestamp, tenant_or_system_id, original_principal_id, effective_principal_id, group_role_or_trust_path, matched_policy_or_claim, object_or_version_id, authentication_result, authorization_result, token_or_session_id, issued_at, expires_at, request_or_correlation_id]
+- source_type: privileged-resource-outcome
+  name: {zh: 权限集合与资源操作结果, en: Authorization set and resource-operation outcome}
+  channel: null
+  required_fields: [timestamp, tenant_or_system_id, principal_or_session_id, prestate_authorization_set, poststate_authorization_set, added_permission, target_resource, operation, previous_expected_result, actual_result, request_or_correlation_id, side_effect_id]
+- source_type: policy-change-approval-and-baseline
+  name: {zh: 策略基线、审批与恢复计划, en: Policy baseline approval and restoration plan}
+  channel: null
+  required_fields: [change_id, object_id, owner_id, requester_id, approver_id, approved_old_state, approved_new_state, intended_scope, validity_window, rollback_plan, consumer_validation, status]
+observables:
+- zh: 同一 GPO GUID 的 AD container 与 SYSVOL template 出现未经批准的语义或版本变化，并由目标 client 在变更后观察和应用。
+  en: The AD container and SYSVOL template of one GPO GUID have an unapproved semantic or version change that a target client observes and applies afterward.
+- zh: 域或租户新增/替换 issuer、signing certificate、claim 或 authentication mode，随后目标 trust evaluator 接受由该版本产生且 pre-state 会拒绝的 token。
+  en: A domain or tenant gains or replaces an issuer, signing certificate, claim, or authentication mode, after which a target trust evaluator accepts a token produced by that version that pre-state would reject.
+- zh: 同一主体的 effective authorization set 在特定 policy/trust version 下增加，并首次完成修改前被拒绝、修改后获准的资源操作。
+  en: The effective authorization set of one principal increases under a specific policy or trust version and the principal first completes a resource operation denied before and allowed after the mutation.
+- zh: 恶意 version 被至少一个 consumer 使用后，同一 object 被恢复到 pre-state 或批准等价状态，current inventory 正常但历史存在明确恶意区间。
+  en: After at least one consumer uses a malicious version, the same object is restored to pre-state or an approved equivalent, leaving current inventory normal but a defined malicious interval in history.
+- zh: restored version 后仍有恶意区间签发的 token/session、endpoint 权限或资源 side effect 有效，形成 restored_state_with_residual_authority。
+  en: A token or session, endpoint authority, or resource side effect created during the malicious interval remains valid after the restored version, producing restored_state_with_residual_authority.
+- zh: 控制面 writer、policy/trust version、consumer、principal/session、正向权限差和首个新获准操作构成完整谱系。
+  en: Control-plane writer, policy or trust version, consumer, principal or session, positive authority difference, and first newly authorized operation form complete lineage.
+correlation:
+  window:
+    zh: >-
+      从恶意变更前最后一个可信版本开始，覆盖复制、consumer refresh/evaluation、首个使用、后继回退，以及该版本产生的最长 token/session、endpoint 权限或资源效果寿命；默认保留九十日但不得短于组织最长策略刷新、联合会话和回滚验证窗口。精确 object/version、request/session 或 side-effect 键优先于固定时间邻近；缺少 version 时只输出降级关联。
+    en: >-
+      Begin at the last trusted version before malicious mutation and cover replication, consumer refresh or evaluation, first use, later reversion, and the longest lifetime of any token, session, endpoint authority, or resource effect produced by the version. Retain ninety days by default but never less than the organization's longest policy refresh, federation session, and rollback-validation window. Exact object and version, request or session, or side-effect keys take precedence over fixed temporal proximity; missing version permits only degraded correlation.
+  dimensions: [tenant_or_domain, object_id_and_type, logical_version_and_hash, writer_or_original_caller, scope_link_and_precedence, replica_or_consumer, principal_and_device, issuer_signer_or_claim, request_refresh_or_correlation, token_or_session, prestate_and_poststate_authorization, resource_and_operation, approval_and_owner, time]
+false_positives:
+- zh: 已批准 GPO 发布、security descriptor 调整和 SYSVOL 恢复会改变双组件并在复制期间形成短暂版本不一致。
+  en: Approved GPO releases, security-descriptor changes, and SYSVOL restoration change both components and can create temporary version mismatch during replication.
+- zh: 联合证书轮换、issuer 迁移、域恢复和高可用切换可能同时信任旧/新证明，随后恢复或淘汰一侧。
+  en: Federation-certificate rotation, issuer migration, domain recovery, and high-availability failover can trust old and new proofs simultaneously and later restore or retire one side.
+- zh: 自动配置纠偏、失败部署回滚、蓝绿发布和管理员误配修复会形成变更—反向变更，但通常没有恶意 consumer 与新增权限结果。
+  en: Automatic configuration correction, failed-deployment rollback, blue-green release, and administrator misconfiguration repair create mutation and inverse mutation but normally lack a malicious consumer and newly authorized outcome.
+- zh: break-glass、事故处置和临时业务例外可合法扩大权限并在使用后恢复，必须由明确 owner、双人批准、限定 scope/window、consumer 清单和残留会话撤销证明。
+  en: Break-glass access, incident response, and temporary business exceptions can legitimately expand authority and restore it after use and require a named owner, two-person approval, bounded scope and window, consumer inventory, and residual-session revocation.
+blind_spots:
+- zh: 未配置匹配 SACL 时，5136 不产生所需属性记录；仅采集 AD 或仅采集 SYSVOL 会遗漏 GPO 另一半及复制不一致。
+  en: Without a matching SACL, Event 5136 does not emit required attribute records. Collecting only AD or only SYSVOL misses the other GPO half and replication inconsistency.
+- zh: IdP 或资源不记录精确 matched trust/policy version、issuer fingerprint、original principal 或 request/session 键时，信任变更与资源结果只能弱关联。
+  en: When an IdP or resource omits exact matched trust or policy version, issuer fingerprint, original principal, or request or session key, trust mutation and resource outcome can only be weakly joined.
+- zh: 审计保留短于恶意区间到延迟消费或 token/session 寿命时，回退会让 current state 正常而原因事件已过期。
+  en: When audit retention is shorter than delayed consumption or token or session lifetime after a malicious interval, reversion leaves current state normal after causal events expire.
+- zh: 攻击者同时控制 policy writer、replica、approval、log export、golden baseline 和 revocation plane 时，可以使多源状态内部一致。
+  en: An adversary controlling policy writer, replica, approval, log export, golden baseline, and revocation plane can make multiple sources internally consistent.
+tuning_guidance:
+  paragraphs:
+  - zh: >-
+      为每类权威对象定义 stable ID、完整 canonical serialization 和语义 diff。GPO 同时覆盖 AD container、SYSVOL template、link、scope、ACL 与所有 DC replica；trust 覆盖 domain/tenant、issuer、signer fingerprint、claim/authentication mode 与 relying consumer。allowlist 必须绑定 owner、批准版本、完整 hash/指纹、scope、窗口和 consumer 验证，不得永久放行 Domain Admins、Global Administrators、Group Policy service 或 federation API。
+    en: >-
+      Define stable ID, complete canonical serialization, and semantic differences for each authoritative-object class. GPO coverage includes AD container, SYSVOL template, link, scope, ACL, and every domain-controller replica. Trust coverage includes domain or tenant, issuer, signer fingerprint, claim or authentication mode, and relying consumers. An allowance must bind owner, approved version, complete hash or fingerprint, scope, window, and consumer validation and must not permanently allow Domain Admins, Global Administrators, the Group Policy service, or federation APIs.
+  - zh: >-
+      分级输出 policy_state_anomaly、consumer_adoption、authority_unresolved、elevation_confirmed、post_use_reversion 与 restored_state_with_residual_authority。只有完整正向权限差和首个新获准操作可进入 elevation_confirmed；只关闭防御或分发载荷转交相邻检测。回退分支要求语义等价 restore 与先前 consumer use，不能用“两次反向变更在一小时内”替代。缺字段、弱时间连接或正常变更窗口降低置信度。
+    en: >-
+      Tier outputs as policy_state_anomaly, consumer_adoption, authority_unresolved, elevation_confirmed, post_use_reversion, and restored_state_with_residual_authority. Only a complete positive authority difference and first newly authorized operation can enter elevation_confirmed; defense-only impairment or payload distribution routes to adjacent detection. The reversion branch requires a semantically equivalent restoration and prior consumer use rather than substituting two inverse changes within one hour. Missing fields, weak temporal joins, or a normal change window lower confidence.
+  - zh: >-
+      保留窗口按效果最长尾部校准，并在每次高风险变更与回退时主动列举 consumers、tokens/sessions 和 side effects。使用不具生产权限的 canary principal/request 验证 pre/post policy decision，但不得在生产域加入真实攻击者 signer 或执行破坏性 GPO。平台不能提供 version 时，公开标记 coverage gap，用 scope、replica、refresh、request 与 content hash 组合降级，避免把近时间当作因果。
+    en: >-
+      Calibrate retention to the longest effect tail and proactively enumerate consumers, tokens or sessions, and side effects at each high-risk mutation and reversion. Validate pre-state and post-state policy decisions with a canary principal or request that has no production authority, but never add a real adversary signer or execute a destructive GPO in production. Where a platform omits version, expose the coverage gap and combine scope, replica, refresh, request, and content hash as a downgrade rather than treating temporal proximity as causality.
+evidence_refs: [REF-000338, REF-000339, REF-000340, REF-000341, REF-000342, REF-000343, REF-000344]
+lifecycle: {status: review, version: 0.1.0, created: '2026-09-13', modified: '2026-09-13', contributors: [Niji Matrix Research], reviewers: []}

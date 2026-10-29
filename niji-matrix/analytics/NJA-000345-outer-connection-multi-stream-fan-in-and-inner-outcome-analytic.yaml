@@ -1,0 +1,160 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000345
+strategy_ref: DET-000258
+name:
+  zh: 外层连接多流 fan-in 与内层结果分析
+  en: Outer-Connection Multi-Stream Fan-In and Inner-Outcome Analytic
+summary:
+  zh: 按流 ID 或端点 fan-in 恢复一个外层连接中的并发内层服务与结果。
+  en: Recover concurrent inner services and outcomes in one outer connection through stream IDs or endpoint fan-in.
+domains:
+- enterprise
+platforms:
+- Windows
+- Linux
+- macOS
+- ESXi
+logic:
+  paragraphs:
+  - zh: 为每个长期外层连接生成 outer_session_id，并从合法隧道控制日志、内存/样本解析、端点 socket 或可见 framing 中取得 stream_id、open/close、direction、inner destination
+      和 byte count。计算同时活动流数、每流寿命、流到本地 socket/任务的映射及一个外层连接的 fan_in_count。若一个未批准 outer session 在重叠时间内承载两个以上独立内层服务/任务，并产生文件管理、网络访问、shell
+      或 C2 结果，则输出 multiplexed_inner_sessions。
+    en: Generate outer_session_id for every long-lived outer connection and obtain stream_id, open or close state, direction,
+      inner destination, and byte count from legitimate tunnel-control logs, memory or sample parsing, endpoint sockets, or
+      visible framing. Calculate concurrent stream count, per-stream lifetime, stream-to-local-socket or task mapping, and
+      fan_in_count for one outer connection. Emit multiplexed_inner_sessions when an unapproved outer session carries at least
+      two independent inner services or tasks during overlapping time and produces file-management, network-access, shell,
+      or C2 outcomes.
+  - zh: 没有 stream ID 时，可用多个本地 socket 同时映射到同一 tunnel process 与 outer_flow_id 作为中置信 fan-in；只有长连接、流量突发或高字节数不能证明多路复用。HTTP/2、QUIC、企业
+      VPN、服务网格和远管平台本来会多路复用，必须与批准 controller/workload/peer 及内层结果对照。
+    en: Without stream IDs, concurrent mapping of multiple local sockets to one tunnel process and outer_flow_id provides
+      medium-confidence fan-in. A long connection, burst, or high byte count alone does not prove multiplexing. HTTP/2, QUIC,
+      enterprise VPNs, service meshes, and remote-management platforms legitimately multiplex and require comparison with
+      approved controller, workload, peer, and inner outcomes.
+data_requirements:
+- source_type: tunnel-stream-control
+  name:
+    zh: 多路流控制与解复用字段
+    en: Multiplexed Stream Control and Demultiplexing Fields
+  channel: tunnel server/client audit, decapsulator, memory capture, or validated sample parser
+  required_fields:
+  - event_time
+  - endpoint_id
+  - tunnel_id
+  - outer_session_id
+  - stream_id
+  - stream_event
+  - direction
+  - inner_destination_or_service
+  - byte_count
+  - result
+- source_type: endpoint-socket-ownership
+  name:
+    zh: 本地 socket 至外层连接映射
+    en: Local Socket to Outer Connection Mapping
+  channel: EDR or eBPF socket telemetry
+  required_fields:
+  - event_time
+  - endpoint_id
+  - process_start_key_or_tunnel_id
+  - local_socket_id
+  - local_peer
+  - outer_flow_id
+  - bytes_in
+  - bytes_out
+  - duration
+- source_type: outer-network-flow
+  name:
+    zh: 外层长连接流量
+    en: Outer Long-Lived Connection Flow
+  channel: Zeek conn.log, firewall or flow telemetry
+  required_fields:
+  - ts
+  - uid
+  - source
+  - destination
+  - protocol
+  - service
+  - duration
+  - orig_bytes
+  - resp_bytes
+  - packets
+- source_type: inner-task-or-service-outcome
+  name:
+    zh: 每流内层任务或服务结果
+    en: Per-Stream Inner Task or Service Outcome
+  channel: endpoint, application, file, shell, and remote-service audit
+  required_fields:
+  - event_time
+  - endpoint_id
+  - stream_or_session_id_when_available
+  - action
+  - target
+  - result
+- source_type: approved-multiplexed-session-inventory
+  name:
+    zh: 批准多路会话清单
+    en: Approved Multiplexed Session Inventory
+  channel: VPN, service mesh, HTTP2 or QUIC, IDE, and remote-management governance
+  required_fields:
+  - owner
+  - workload
+  - controller_or_peer
+  - outer_protocol
+  - permitted_inner_services
+  - max_streams
+  - ticket
+  - valid_from
+  - valid_to
+observables:
+- zh: 一个外层会话在重叠时间内承载多个可分别打开/关闭的内层流并连接不同服务或任务
+  en: One outer session carries several independently opened and closed inner streams during overlapping time and maps them
+    to different services or tasks
+- zh: 多个本地 socket 的字节与寿命汇入同一 process/outer uid，后继结果证明不是独立无关连接
+  en: Bytes and lifetimes from multiple local sockets fan into one process and outer uid, with successor outcomes proving
+    they are not unrelated connections
+correlation:
+  window:
+    zh: 覆盖外层连接全寿命；流并发在滚动一分钟内计算，外层终止后保留四十八小时连接后继结果。
+    en: Cover the full outer-connection lifetime, calculate stream concurrency in rolling one-minute windows, and retain successor
+      outcomes for forty-eight hours after termination.
+  dimensions:
+  - endpoint_id
+  - tunnel_id
+  - outer_session_id
+  - outer_flow_id
+  - stream_id
+  - local_socket_id
+  - inner_destination_or_service
+  - controller_or_peer
+  - time
+false_positives:
+- zh: 正常 HTTP/2、QUIC、企业 VPN、服务网格、远控平台、数据库连接池和应用网关会在单连接中承载多流
+  en: Normal HTTP/2, QUIC, enterprise VPNs, service meshes, remote-control platforms, database pools, and application gateways
+    carry multiple streams in one connection
+blind_spots:
+- zh: 多路 framing 在加密内层且无端点 stream telemetry，只能用 socket fan-in 推断
+  en: Multiplex framing inside encryption without endpoint stream telemetry leaves only socket-fan-in inference
+- zh: 内核或设备实现不暴露 per-stream ID，连接迁移或重连改变 outer flow 标识
+  en: Kernel or device implementations do not expose per-stream IDs, and connection migration or reconnect changes outer-flow
+    identity
+tuning_guidance:
+  paragraphs:
+  - zh: 为每类批准多路协议记录 owner、workload、peer、允许 inner service 和预期流数，不用固定“两个流”作为恶意阈值。高置信要求未批准关系、可分辨的独立内层流及至少一个恶意结果；加密场景保留 fan-in
+      证据但标注推断级别。
+    en: Record owner, workload, peer, permitted inner services, and expected stream count for every approved multiplexed protocol
+      rather than using a fixed two-stream malicious threshold. High confidence requires an unapproved relationship, distinguishable
+      independent inner streams, and at least one malicious outcome. Preserve fan-in evidence in encrypted cases but label
+      it inferential.
+evidence_refs:
+- REF-001141
+- REF-000634
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-10-05'
+  modified: '2026-10-05'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

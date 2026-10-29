@@ -1,0 +1,39 @@
+schema_version: "2.0.0"
+type: evasion-subtechnique
+id: NJS-0070-003
+parent_ref: NJT-0070
+name: {zh: 运行时激活钩子重定向, en: Runtime-Activation Hook Redirection}
+summary: {zh: 攻击者修改 profiler、AppDomainManager 或等价激活/回调槽，使受信 runtime 在正常生命周期事件加载或调用攻击者代码。, en: Adversaries modify a profiler AppDomainManager or equivalent activation or callback slot so a trusted runtime loads or invokes attacker code at a normal lifecycle event.}
+aliases: [COR_PROFILER Hijacking, AppDomainManager Injection]
+lineage: {attck_subtechnique_inherited: false}
+definition_and_concept:
+  paragraphs:
+  - zh: 运行时激活钩子重定向固定“受信 runtime 的内建激活槽被预置”变量。攻击者设置 COR_PROFILER/CLSID、AppDomainManager config、KernelCallbackTable 或等价 profiler/manager/callback 引用，使 CLR、GUI runtime 或应用在启动、域创建、事件分发等正常生命周期点自动加载 DLL、实例化 manager 或调用攻击者地址。host 和普通依赖可保持完整，执行由激活状态触发。
+    en: Runtime-Activation Hook Redirection fixes prepositioning of a built-in activation slot in a trusted runtime. The adversary sets COR_PROFILER or CLSID AppDomainManager configuration KernelCallbackTable or an equivalent profiler manager or callback reference so the CLR GUI runtime or application automatically loads a DLL instantiates a manager or calls an attacker address at startup domain creation event dispatch or another normal lifecycle point. The host and ordinary dependencies can remain intact while activation state triggers execution.
+  - zh: 若恶意 DLL 仅因搜索路径优先被选中归 NJS-0070-001；若覆盖原 host/依赖或 service target 归 NJS-0070-002。任意事件注册不都属于本项：必须是 loader/runtime 内建控制转移槽，而通用 WMI/任务/event consumer 归事件触发或调度技术。
+    en: A malicious DLL selected only by search precedence belongs to NJS-0070-001 and overwritten host dependency or service target to NJS-0070-002. Not every event registration qualifies; this child requires a built-in loader or runtime control-transfer slot, while general WMI tasks or event consumers belong to event-trigger or scheduling techniques.
+stealth_characteristics:
+  paragraphs:
+  - zh: 运行时激活钩子重定向让可见 module/manager 或回调在合法 CLR/应用生命周期中出现，进程来源、签名 host 与启动时序均接近正常 profiling/扩展。Blue Mockingbird 在多个组织设置 COR_PROFILER 加载矿工 DLL，CL-STA-1062 使用 AppDomainManager 加载恶意 manager，直接证明变量。环境/注册表/config 变化、CLSID/path、writer、CLR/module event 与后继结果仍可恢复；受管 profiler 清单和动态代码策略会限制。
+    en: Runtime-Activation Hook Redirection makes a visible module manager or callback appear during a legitimate CLR or application lifecycle so process provenance signed host and startup timing resemble normal profiling or extension. Blue Mockingbird set COR_PROFILER to load a miner DLL across organizations and CL-STA-1062 used AppDomainManager to load a malicious manager, directly establishing the variable. Environment registry or config changes CLSID or path writer CLR or module event and later outcome remain recoverable; governed profiler inventories and dynamic-code policy constrain it.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 必须证明攻击者修改 runtime/loader 激活引用、受信 runtime 随后消费该状态并加载/调用攻击者代码，以及执行结果。合法性能 profiler、诊断、应用 manager、UI callback 和安全代理同形，需结合批准工具、签名、路径、部署来源和结果。按 COR_PROFILER/AppDomainManager/KernelCallbackTable 不拆分，因为共同防守对象是 activation slot—consumer—outcome。
+    en: Evidence must show adversary modification of a runtime or loader activation reference subsequent consumption by a trusted runtime to load or invoke attacker code and an execution outcome. Legitimate performance profilers diagnostics application managers UI callbacks and security agents share the shape and require approved tool signing path deployment origin and outcome. COR_PROFILER AppDomainManager and KernelCallbackTable do not partition the child because the common defensive object is activation slot consumer and outcome.
+application_scenarios_and_threat_model:
+  application_scenarios: {paragraphs: [{zh: 攻击者获得环境、注册表、应用 config 或目标进程回调结构写权限后，指定兼容 profiler DLL/manager/callback，等待或触发 .NET 应用、服务、GUI 进程或升级程序的正常生命周期，使其以合法 host 身份加载载荷。, en: After obtaining write access to environment registry application configuration or a target process callback structure the adversary specifies a compatible profiler DLL manager or callback and waits for or triggers a .NET application service GUI process or updater lifecycle to load the payload under a legitimate host identity.}]}
+  threat_model:
+    attacker_model: {paragraphs: [{zh: 需要精确 runtime 版本、CLSID/config/结构、DLL 接口和触发条件，某些变体需重启或新 CLR 实例。权限、签名/App Control、动态代码安全、受管 profiler、配置保护和 CFG/CET 限制；错误 manager/profiler 可使应用崩溃。, en: Requires exact runtime version CLSID configuration or structure DLL interface and trigger and some variants need restart or a new CLR instance. Permissions signing or App Control dynamic-code security governed profilers configuration protection and CFG or CET constrain it; bad managers or profilers can crash applications.}]}
+    defender_model: {paragraphs: [{zh: 需版本化环境/注册表/config/回调状态及 writer，记录 CLR/runtime 启动、实际加载 module/manager、host/target 和结果，并与批准 profiler/应用版本比较。只看 host 进程或当前 config 无法连接先前写入和激活。, en: Defenders version environment registry configuration or callback state and writer record CLR or runtime start actual loaded module or manager host or target and outcome and compare approved profiler and application versions. Host process or current configuration alone cannot join prior write to activation.}]}
+stealth_mechanisms:
+- mechanism_ref: NM-FD
+  role: primary
+  summary: {zh: 恶意模块继承受信 runtime 的正常激活来源, en: A malicious module inherits normal activation provenance from a trusted runtime}
+  analysis: {paragraphs: [{zh: 攻击者修改激活槽后由合法 runtime 在预期生命周期调用载荷，恶意与合法 profiler/manager 共享 host、时序和加载特征，形成特征伪装。Blue Mockingbird 与 AppDomainManager 定向活动直接支持 high；writer—slot—runtime—module—outcome 链可反证。, en: After an adversary changes an activation slot a legitimate runtime invokes the payload at an expected lifecycle point so malicious and legitimate profilers or managers share host timing and load features producing Feature Disguise. Blue Mockingbird and targeted AppDomainManager activity directly support high confidence; writer-slot-runtime-module-outcome lineage disconfirms it.}]}
+  evidence_refs: [REF-000237, REF-000238, REF-000240]
+  confidence: high
+defense: {detections: {coverage: available, strategy_refs: [DET-000084]}, mitigations: {coverage: available, mitigation_refs: [MIT-000085]}}
+evidence: {claim_refs: [CLM-000432, CLM-000433, CLM-000437], case_refs: [CASE-000082], reference_refs: [REF-000237, REF-000238, REF-000240]}
+research:
+  limitations: {paragraphs: [{zh: 直接现场证据覆盖 COR_PROFILER 与 AppDomainManager；KernelCallbackTable 只作为等价内建回调槽归类，未由本批案例直接证明。合法 profiler/manager 常用于性能和安全，且不同 runtime 激活字段差异大；需本地批准清单，不能按 profiler 存在定性。, en: Direct field evidence covers COR_PROFILER and AppDomainManager. KernelCallbackTable is classified only as an equivalent built-in callback slot and is not directly demonstrated by a batch case. Legitimate profilers or managers support performance and security and activation fields vary by runtime; local approved inventories are required rather than classification from profiler presence.}]}
+lifecycle: {status: review, version: 0.1.0, created: '2026-09-12', modified: '2026-09-12', contributors: [Niji Matrix Research], reviewers: []}

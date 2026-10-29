@@ -1,0 +1,444 @@
+handoff_schema_version: "2.0.0"
+type: technique-research-handoff
+batch_ref: BATCH-TA0010-001
+work_item_ref: WORK-TA0010-T1030
+temporary_key_prefix: B10-T1030-
+candidate:
+  source_type: attack
+  source_attack_id: T1030
+  name: {zh: 数据传输大小限制, en: Data Transfer Size Limits}
+recommendation:
+  decision: adapt
+  confidence: high
+  rationale:
+    paragraphs:
+      - zh: >-
+          T1030 在 Enterprise 19.1 的父级定义把固定大小切块或低于阈值的报文外传归入 TA0010；其案例又包含明确的带宽限速。保留控制外传规模这一行为锚点，但把 Niji 范围改写为攻击者有意改变单次外传单元或一段时间内的发送量，进而削弱单事件或短窗口阈值判断。普通传输协议分段、目的服务的强制大小限制、网络拥塞以及业务流量整形都不能仅凭小块或低速外观准入。
+        en: >-
+          The Enterprise 19.1 T1030 parent anchors fixed-size chunks and packets kept below thresholds within TA0010, while its examples also include explicit bandwidth limiting. Keep attacker control of exfiltration magnitude as the behavioral anchor, but adapt the Niji scope to intentional control of either one outbound unit or the amount sent over a time window, thereby weakening single-event or short-window threshold judgments. Ordinary protocol segmentation, a destination service's mandatory size ceiling, congestion, and authorized traffic shaping do not qualify merely because transfers look small or slow.
+  original_attack_subtechniques_imported: false
+  scope_notes:
+    zh: 单元体积与时间窗体积是两条可并存的变量；T1029 管理时刻或周期，T1020 管理自动触发，T1041/T1048/T1567 管理通道，NJT-0133 管理传输前归档内容。
+    en: Unit size and time-window volume are independent, combinable variables; T1029 owns clock or cycle choice, T1020 automated triggering, T1041/T1048/T1567 channels, and NJT-0133 pre-transfer archival content.
+proposed_content:
+  name: {zh: 外传规模约束, en: Exfiltration Volume Shaping}
+  summary:
+    zh: 攻击者控制单次或短时间窗口内的外传规模，使局部流量低于粗粒度告警阈值，并把数据泄露分散到需跨事件恢复的痕迹中。
+    en: An adversary controls the volume of an outbound unit or short time window so local traffic falls below coarse alert thresholds and data loss is dispersed into traces that require cross-event reconstruction.
+  definition_and_concept:
+    paragraphs:
+      - zh: >-
+          外传规模约束是攻击者在已经取得可外传数据后，主动规定上传对象、应用请求或持续传输在一个可观察单元中承载多少数据的行为。其直接目标仍是将数据送达攻击者可接收的位置；规模限制改变完成该目标的传输形态，而不改变数据来源、目的地或所选协议。
+        en: >-
+          Exfiltration Volume Shaping is the attacker-controlled setting of how much already acquired data an upload object, application request, or continuing transfer carries within an observable unit. Its immediate objective remains delivery to a location the attacker can receive; volume control changes how that delivery appears without itself changing the data source, destination, or protocol.
+      - zh: >-
+          可控制量至少包括单个对象或请求的上限，以及每个短观察窗中的发送量上限。前者通常把大数据集拆成可重组的较小部分；后者通过读取或发送节流延长同一外传任务。两者都必须以降低可见规模或阈值触发概率的因果链证明其匿迹意义，不能把任何使用分块 API 或限速选项的工具自动纳入。
+        en: >-
+          Controllable quantities include the maximum size of one object or request and the outbound volume within a short observation window. The first commonly splits a larger data set into reconstructible parts; the second extends the same exfiltration job by throttling reads or sends. Both need a causal account of reduced visible magnitude or threshold exposure; a tool's use of a chunking API or rate option alone does not establish stealth.
+  stealth_characteristics:
+    paragraphs:
+      - zh: >-
+          本技术把一次明显的大型外传变成多次较小发送，或把高吞吐短时段变成较长的低吞吐活动。按单文件、单请求、单连接或短时峰值触发的控制可能分别漏过局部痕迹；剩余的对象数量、累计出站字节、持续时间、源文件读取、目标账号和上传结果仍然存在，且重复的大小或速度模式自身可能变得异常。
+        en: >-
+          This technique turns one conspicuous large transfer into multiple smaller sends or a brief high-throughput interval into longer lower-throughput activity. Controls keyed only to one file, request, connection, or short peak can each miss the local traces. Object counts, cumulative outbound bytes, duration, source-file reads, destination account, and upload outcomes remain visible, and repeated sizes or rates may themselves become anomalous.
+      - zh: >-
+          匿迹收益取决于防守方的计量边界。能按同一进程、主机、身份与目的地跨连接聚合字节的防守方，可能比只看一次请求的传感器更容易发现分散后的总量；若只有 TLS 外层连接摘要，则无法可靠区分应用分块与普通重试，也无法凭固定包长推出文件切块。
+        en: >-
+          The stealth benefit depends on the defender's accounting boundary. A defender able to aggregate bytes across connections by process, host, identity, and destination can recover dispersed volume more readily than a sensor limited to one request. With only TLS connection summaries, application chunking may be indistinguishable from retries, and fixed packet lengths cannot establish file chunking.
+  scope_boundary_definition:
+    paragraphs:
+      - zh: >-
+          纳入攻击者为规避局部传输量观察而选定的文件分卷、应用级负载上限、定量读取或发送节流；同一实施可以同时具有单元上限和时间窗上限。纳入判断需要外传语境、攻击者可控参数或可重组序列，并需指出哪一种防守观察因规模改变而失效。网络 MTU、TCP 分段、HTTP 多部分语法以及云服务强制分片本身不满足这一标准。
+        en: >-
+          Scope includes attacker-selected file volumes, application payload caps, or metered reading and sending used to evade local transfer-volume observation; one implementation can impose both unit and window caps. Inclusion requires an exfiltration context, attacker control or a reconstructible sequence, and an account of which defender observation loses force. Network MTU, TCP segmentation, HTTP multipart syntax, and cloud-mandated chunking alone do not meet this test.
+      - zh: >-
+          T1029 关注外传在何时、以何种周期发生；即使低速传输跨越多个时段，只要没有独立的时刻选择，仍由本技术承担。T1020 关注自动化触发而非体积；T1041、T1048 和 T1567 关注承载通道；NJT-0133 关注外传前的压缩、加密和封装，只有为控制网络发送单元而做的分卷才属于此处。备份、同步、上传限额和拥塞控制可产生相似形态，须借授权用途、源数据及目的地排除。
+        en: >-
+          T1029 owns when or how periodically exfiltration occurs; a slow transfer spanning several periods stays here unless there is an independent clock choice. T1020 owns automated triggering rather than volume, and T1041, T1048, and T1567 own carriage channels. NJT-0133 owns compression, encryption, and packaging before egress; volume splitting belongs here only when it controls network delivery units. Backups, synchronization, upload quotas, and congestion control can look similar and require authorization, source-data, and destination context to rule out.
+  application_scenarios_and_threat_model:
+    application_scenarios:
+      paragraphs:
+        - zh: >-
+            攻击者取得文档、数据库导出或配置后，面对按单次上传量或短时出站峰值报警的出口环境，可选择把归档分成多份送往云服务，或限制传输工具的每秒发送量。DFIR Report 观察到入侵者使用 Rclone 将共享目录送至 MEGA 且设置 --bwlimit 10M；Cybereason 对 StealBit 的逆向还记录按十五秒窗口控制读取量的能力。两者说明规模控制可以嵌入不同通道和工具，并不证明所有限速选择都有匿迹目的。
+          en: >-
+            After acquiring documents, database exports, or configuration, an adversary facing alerts on individual uploads or short outbound peaks may split an archive into several cloud uploads or cap a transfer tool's send rate. The DFIR Report observed intruders moving a share to MEGA with Rclone and --bwlimit 10M; Cybereason's StealBit reverse engineering records a separate ability to control file reads over 15-second windows. These show volume control across channels and tools, but do not prove every rate choice was made for stealth.
+    threat_model:
+      attacker_model:
+        paragraphs:
+          - zh: >-
+              攻击者必须已能读取拟外传数据、选择发送程序或参数，并拥有可接收多个部分或长时间传输的目标端。单元切块还要求目标端能识别顺序或重组内容；限速要求攻击者容忍更长暴露时间、重试和任务中断。攻击者可能知道企业阈值，也可能仅按常见单请求和带宽告警作保守估计；不能凭结果反推其确切知识。
+            en: >-
+              The attacker must already be able to read the intended data, select the sender or its parameters, and use a receiver that can accept multiple parts or a longer-running transfer. Unit splitting also needs sequencing or reconstruction at the destination. Rate capping requires tolerance for longer exposure, retries, and interruption. The attacker may know local thresholds or merely estimate common per-request and bandwidth alerts; the observed result cannot reveal exact knowledge.
+      defender_model:
+        paragraphs:
+          - zh: >-
+              防守方可能持有 Zeek 等流量记录中的时间、源目标、持续时间与方向字节，也可能在可检查 HTTP 或代理出口取得方法、主机、URI、请求体长度和上传状态，并在端点记录启动命令及连接进程。若传感器只保留单连接摘要或短周期计数，跨连接累计与应用对象关系会缺失；即便具备完整字节遥测，未核对合法备份、同步和批准目的地也会误判。
+            en: >-
+              The defender may have timestamps, endpoints, duration, and directional bytes in Zeek-style flows, plus method, host, URI, request-body length, and upload status where HTTP or a proxy is inspectable, and process command lines or network attribution at the endpoint. A sensor retaining only per-connection summaries or short counters loses cross-connection totals and application-object relationships. Even complete byte telemetry can misclassify authorized backup or sync traffic unless source, destination, and approval are checked.
+  stealth_mechanisms:
+    - mechanism_ref: NM-ST
+      role: primary
+      summary: {zh: 将一次外传量分散为多个低强度观察单元, en: Disperse one exfiltration volume across lower-intensity observation units}
+      analysis:
+        paragraphs:
+          - zh: >-
+              攻击者为每次上传设定较小上限或为一段时间内的发送量设定预算，使原本集中出现在一个对象或短时峰值中的字节散落到多个请求或更长时间。单局部阈值因此只见到低强度事件，防守方必须跨请求、连接和时间重建总量。已观察到的分块和 StealBit 明确的十五秒速率控制分别支持行为两端；实际是否绕过某组织规则仍须在该组织阈值下验证。
+            en: >-
+              The attacker caps each upload or budgets bytes over a time window, dispersing what would have appeared as one large object or short peak across requests or a longer span. A local threshold then sees weaker events, and the defender must reconstruct totals across requests, connections, and time. Observed chunking and StealBit's explicit 15-second rate control support the two behavioral forms; whether a specific organization's rule is bypassed still requires testing against that rule.
+      evidence_keys: [B10-T1030-REF-ATTACK, B10-T1030-REF-ESET, B10-T1030-REF-STEALBIT]
+      confidence: medium
+  subtechnique_taxonomy:
+    narrative:
+      paragraphs:
+        - zh: >-
+            建议按外传预算的计量单位划分两个 Niji 原生子项：单元大小约束改变每个对象或应用请求的可见体积，时间窗发送量约束改变持续传输的速率曲线。前者重点验证重复小对象或请求及重组关系，后者重点验证长期稳定或受控低速与累计字节；同一工具可以同时实现两者，协议和工具名称不划界。
+          en: >-
+            Two Niji-native children are proposed by the accounting unit of the exfiltration budget. Per-unit size capping changes the visible magnitude of each object or application request; time-window volume capping changes the rate profile of a continuing transfer. The first is tested through repeated small objects or requests and reconstruction, the second through sustained controlled throughput and cumulative bytes. One tool can implement both; protocol and product names do not define the boundary.
+proposed_subtechniques:
+  - temporary_key: B10-T1030-CHILD-UNIT
+    name: {zh: 单元限额切块外传, en: Per-Unit Capped Chunk Exfiltration}
+    confidence: medium
+    summary:
+      zh: 攻击者把同一数据集拆为受控大小的多个发送单元，使每次上传的可见体积低于单事件判定门槛。
+      en: An adversary splits one data set into multiple controlled-size delivery units so each upload remains below a single-event decision threshold.
+    definition_and_concept:
+      paragraphs:
+        - zh: >-
+            单元限额切块外传是外传规模约束的一种实现：攻击者选择文件分卷、上传对象或应用层请求的最大负载，将本可一次送出的数据按多个单元传输，并在接收端保持顺序或重组能力。其目的仍是完成数据外传，分类变量是每个可计量发送单元的大小上限，而不是文件格式、协议分片或具体上传工具。
+          en: >-
+            Per-Unit Capped Chunk Exfiltration is a form of exfiltration volume shaping in which the attacker sets a maximum file-volume, upload-object, or application-request payload, transfers data that could otherwise be sent at once in multiple units, and preserves sequence or reassembly at the receiver. Its objective remains data exfiltration. The classification variable is the size ceiling of each measurable delivery unit, not a file format, protocol fragment, or upload tool.
+    stealth_characteristics:
+      paragraphs:
+        - zh: >-
+            单元限额切块外传使原本会以一个大对象出现的数据量分布在多次较小上传中；只比较单请求或单文件大小的规则可能看不到整体数据集。该实施同时增加了请求次数、重复尺寸、连续对象名或偏移量，防守方可通过较长时间和共同目的地恢复关系。ESET 记录 LunarWeb 在压缩后输出超过 1.33 MB 时按 384–512 KB 的随机部分发送，但没有证明其随机化是为了规避阈值。
+          en: >-
+            Per-Unit Capped Chunk Exfiltration distributes data that would appear as one large object across smaller uploads, so a rule comparing only one request or file size can miss the whole data set. It also increases request count and may leave repeated size, sequential object-name, or offset traces that a defender can reconnect over time and destination. ESET observed LunarWeb send output over 1.33 MB in random 384–512 KB parts, but did not establish that the randomization was chosen to evade a threshold.
+    scope_boundary_definition:
+      paragraphs:
+        - zh: >-
+            纳入有证据表明攻击者控制外传单元上限、多个单元属于同一数据集且该选择影响防守局部观察的行为。正常 TCP 分段、云 API 要求的分片、应用协议上限、合法大文件断点续传或只是先归档成多个容器，都不能单独成立；只有分卷服务于外传单元控制时才越过 NJT-0133 的归档边界。若主要变量是单位时间发送量，则归兄弟项；若主要变量是时钟窗口，则检查 T1029。
+          en: >-
+            Scope requires evidence of attacker control over an outbound unit ceiling, a relationship among units of one data set, and a resulting change to local defender observation. Normal TCP segmentation, cloud API mandated chunks, application protocol limits, legitimate resumable upload, or merely creating several archives is insufficient. Volumes cross the NJT-0133 archival boundary only when sized for outbound delivery. A rate budget belongs to the sibling; clock-window selection should be assessed under T1029.
+    application_scenarios_and_threat_model:
+      application_scenarios:
+        paragraphs:
+          - zh: >-
+              攻击者在收集或归档完成后，经可重复提交对象的 Web、云或 C2 接口外传较大数据集时，可选择每个请求或对象的上限，令接收端按标识、顺序或偏移恢复内容。CISA 记录 Play 将受害数据分段并用 WinSCP 转移，ESET 的 LunarWeb 逆向则直接展示按输出长度切块的代码行为；两者的防守阈值规避意图均不能单独由来源证实。
+            en: >-
+              After collection or archiving, an adversary sending a larger data set over a repeatable web, cloud, or C2 interface may cap each request or object and have the receiver reconstruct content by identifier, order, or offset. CISA reports Play segmenting victim data before WinSCP transfer, and ESET's LunarWeb analysis directly shows output-length-driven chunks. Neither source independently proves intent to evade a defender's size threshold.
+      threat_model:
+        attacker_model:
+          paragraphs:
+            - zh: >-
+                攻击者需要读取完整数据、选择分卷大小或应用请求负载，并持有能接收多次发送且完成重组的端点。较多请求会增加认证、失败重试和对象管理成本；只有知道或估计某些单事件阈值时，上限选择才具有明确的匿迹收益。
+              en: >-
+                The attacker needs access to the full data, control of volume size or application request payload, and a receiver that can accept repeated sends and reconstruct them. More requests increase authentication, retry, and object-management costs. A chosen ceiling has a clear stealth advantage only relative to known or estimated single-event thresholds.
+        defender_model:
+          paragraphs:
+            - zh: >-
+                防守方若可见代理上传日志、解密后的 HTTP 请求体长度或目标服务对象审计，就能按主机、用户、目的地、路径和短序列聚合小单元。仅有 Zeek conn.log 时可累计连接字节，却不能把 TCP 包长或单个连接大小直接等同应用级切块；TLS 未解密时，具体请求与对象边界可能不可见。
+              en: >-
+                A defender with proxy upload logs, decrypted HTTP request-body lengths, or destination-service object audit can aggregate small units by host, user, destination, path, and sequence. Zeek conn.log alone can sum connection bytes but cannot equate TCP packet or connection size with application chunks. When TLS is not inspected, request and object boundaries may remain unavailable.
+    stealth_mechanisms:
+      - mechanism_ref: NM-ST
+        role: primary
+        summary: {zh: 将大对象拆成多个低于单次计量阈值的外传单元, en: Split a large object into delivery units below per-event accounting thresholds}
+        analysis:
+          paragraphs:
+            - zh: >-
+                攻击者把一个大数据集拆为多个受控上限的发送单元，使每次可见上传量低于只看单事件大小的阈值；整体外传仍需要接收端重组。局部告警可能减弱，但重复请求、累计字节与序列关系增加。ATT&CK 明确描述阈值假设，ESET 与 CISA 证明真实恶意传输采用了切块；具体绕过效果仍为待验证推断。
+              en: >-
+                The attacker divides one large data set into delivery units with a controlled ceiling, so each upload is below a detector that judges one event's size; the receiver still reconstructs the whole. Local alerts may weaken, while repeated requests, cumulative bytes, and sequence relationships increase. ATT&CK describes the threshold hypothesis and ESET and CISA document real malicious chunked transfer; bypass of any particular control remains an inference to test.
+        evidence_keys: [B10-T1030-REF-ATTACK, B10-T1030-REF-ESET, B10-T1030-REF-PLAY]
+        confidence: medium
+    evidence_keys: [B10-T1030-CLM-UNIT, B10-T1030-CASE-LUNAR, B10-T1030-REF-ATTACK, B10-T1030-REF-ESET, B10-T1030-REF-PLAY]
+    limitations:
+      paragraphs:
+        - zh: >-
+            ATT&CK 的 T1030 说明可用于规避传输量阈值，但 Play 与 LunarWeb 原始资料主要证明发生了分段，不提供具体阈值、被绕过的产品或告警前后对照。LuminousMoth 绕过的 5 MB 限额可能是服务兼容性限制，故不据此提升匿迹置信度。需要从外传上下文与防守规则共同验证有意限额，不能从大小重复单独判定恶意。
+          en: >-
+            ATT&CK says the technique can evade transfer-size alerts, but primary Play and LunarWeb reporting mainly proves segmentation and gives no specific defender threshold, bypassed product, or before-and-after alert comparison. LuminousMoth's 5 MB limit may be a service compatibility ceiling, so it does not raise stealth confidence. Intentional capping needs exfiltration context and defender-rule evidence; repeated sizes alone do not establish malicious use.
+  - temporary_key: B10-T1030-CHILD-RATE
+    name: {zh: 时间窗限额外传, en: Time-Window Capped Exfiltration}
+    confidence: high
+    summary:
+      zh: 攻击者约束持续外传在短时间窗口内的发送量，使峰值较低而完成时间延长。
+      en: An adversary constrains outbound bytes during short windows of a continuing exfiltration, lowering peaks while extending completion time.
+    definition_and_concept:
+      paragraphs:
+        - zh: >-
+            时间窗限额外传是攻击者对持续外传施加字节每秒或其他滚动时间窗预算，以读取或发送节流方式调节吞吐。此处稳定变量是单位时间发送量上限；是否使用 Rclone、StealBit 或其他程序只是实现，设置开始时刻或周期性运行则属 T1029 的时间选择。
+          en: >-
+            Time-Window Capped Exfiltration is the attacker-imposed budget of bytes per second or another rolling window on a continuing outbound transfer, implemented by throttling reads or sends. The stable variable is the cap on sent volume per time unit. Rclone, StealBit, or another program is an implementation; choosing a start time or periodic recurrence belongs to T1029's clock choice.
+    stealth_characteristics:
+      paragraphs:
+        - zh: >-
+            时间窗限额外传压低瞬时或短窗出站峰值，使按某个速率上限触发的监测可能不再报警；总外传量并未降低，只是出现于更长的时段。持续低速、重复相似窗量和异常进程到同一外部目标的长期联系仍可观察，且更长运行时间提高任务被中断或事后追溯的机会。
+          en: >-
+            Time-Window Capped Exfiltration lowers instantaneous or short-window outbound peaks, potentially avoiding monitoring keyed to a rate threshold. Total exfiltrated volume does not shrink; it appears across a longer period. Sustained low throughput, repeated similar window totals, and a long-lived link from an unusual process to one external destination remain observable, while longer runtime increases interruption and later attribution opportunities.
+    scope_boundary_definition:
+      paragraphs:
+        - zh: >-
+            纳入攻击者为降低传输量告警而控制外传读取或发送速率，或在入侵外传语境下显式设置并实际形成可观测限额。服务端限流、拥塞、链路质量、普通备份限速和未形成出站数据传送的睡眠都排除。若限额随一天中特定时段变化，可同时评估 T1029；若每个对象还受大小上限约束，可同时评估兄弟子项。
+          en: >-
+            Scope includes attacker control of exfiltration read or send rate to reduce volume-alert exposure, or an explicitly configured cap that produces such a trace in an intrusion context. Server throttling, congestion, link quality, approved backup shaping, and sleeps without outbound delivery are excluded. A cap scheduled by time of day may also warrant T1029; a separate size ceiling on each object may also warrant the sibling child.
+    application_scenarios_and_threat_model:
+      application_scenarios:
+        paragraphs:
+          - zh: >-
+              攻击者需要从共享目录或端点外传大量资料，却希望避免网络出口短时高峰时，可把云传输工具的上传带宽固定在较低值。DFIR Report 的真实入侵记录 Rclone --bwlimit 10M；Cybereason 逆向确认 StealBit 的 -net/-once 可按十五秒预算延迟文件读取，并明确把该功能与规避监测远端发送量联系起来。
+            en: >-
+              An adversary moving a large set from a share or endpoint while avoiding a short egress spike can set a low upload rate in a cloud-transfer tool. The DFIR Report records Rclone --bwlimit 10M in a real intrusion. Cybereason confirmed by reverse engineering that StealBit's -net/-once options delay file reads against a 15-second budget and explicitly associated the feature with evasion of sent-volume monitoring.
+      threat_model:
+        attacker_model:
+          paragraphs:
+            - zh: >-
+                攻击者须有持续访问权、可运行较久的外传进程及可修改的读取或发送节流参数。速率预算低于短窗阈值时可能延长至数小时或数日，要求接收端容忍中断与续传；若攻击者无法在长时间保持会话或目标路径，限速反而降低成功率。
+              en: >-
+                The attacker needs sustained access, an outbound process that can run long enough, and control over read or send throttling. A budget below a short-window alert may extend the operation to hours or days and requires the receiver to tolerate interruptions and resumption. If access or the destination cannot persist, capping can reduce success rather than improve stealth.
+        defender_model:
+          paragraphs:
+            - zh: >-
+                防守方需从同一主机与目标的流量记录重建时间桶出站字节，并尽量用进程启动参数及连接归属确认是谁实施限速。Zeek conn.log 的 orig_bytes 支持连接级方向字节，但跨越长连接的精细速率需要周期计数器、流中间记录或代理遥测；只凭最终 conn.log 无法重建内部十五秒曲线。Microsoft DeviceNetworkEvents 可以提供进程关联，通常不提供本分析所需出站字节量。
+              en: >-
+                The defender needs directional byte counts for a host-destination pair in time buckets and should use process command lines and connection attribution to identify who imposed the cap. Zeek conn.log orig_bytes supports per-connection directional totals, but fine-grained rate within one long connection needs periodic counters, interim flow records, or proxy telemetry; a final conn.log cannot reconstruct its internal 15-second curve. Microsoft DeviceNetworkEvents can link a process to a connection but does not normally provide the outbound byte counts this analytic requires.
+    stealth_mechanisms:
+      - mechanism_ref: NM-ST
+        role: primary
+        summary: {zh: 将大外传量稀释到更长的低峰值时间序列, en: Dilute a large outbound volume across a longer low-peak time series}
+        analysis:
+          paragraphs:
+            - zh: >-
+                攻击者限制读取或发送量，使短时间段的出站峰值下降，而相同数据总量在更多窗口内逐步到达目标。短窗高带宽规则因每窗信号较弱而可能失效，防守方必须跨窗累积并核对长期目的地和进程。StealBit 原始逆向直接描述为规避按时间统计发送量的检测；DFIR 事件仅证明真实入侵选择了 Rclone 带宽限制。
+              en: >-
+                The attacker throttles reads or sends, reducing the outbound peak in each short interval while the same total reaches the receiver over more windows. Short-window high-bandwidth rules may miss weaker local signals, forcing the defender to accumulate across windows and examine long-lived process and destination context. StealBit's primary reverse engineering explicitly describes evasion of sent-volume-over-time detection; the DFIR case proves only that intruders selected Rclone bandwidth limiting.
+        evidence_keys: [B10-T1030-REF-STEALBIT, B10-T1030-REF-DFIR, B10-T1030-REF-RCLONE]
+        confidence: high
+    evidence_keys: [B10-T1030-CLM-RATE, B10-T1030-CASE-DFIR, B10-T1030-REF-STEALBIT, B10-T1030-REF-DFIR, B10-T1030-REF-RCLONE]
+    limitations:
+      paragraphs:
+        - zh: >-
+            StealBit 逆向支持设计能力和作者所述规避目标，却未公开某企业监测规则及真实告警下降；DFIR 的 Rclone --bwlimit 10M 也可能兼顾稳定性或链路占用。不同计量来源对长连接、TLS 与代理拆分的时间粒度不同，实施分析前须验证字段和采样，不应把任何低速连接自动归为恶意限额。
+          en: >-
+            StealBit reverse engineering supports the capability and its stated evasion purpose but does not publish an enterprise rule or observed alert reduction. The DFIR Rclone --bwlimit 10M choice could also reflect stability or link-use concerns. Telemetry sources differ in granularity across long connections, TLS, and proxies, so an implementation must validate fields and sampling rather than labeling every slow connection as malicious capping.
+defense_candidates:
+  detection_strategies:
+    - temporary_key: B10-T1030-DET-VOLUME
+      name: {zh: 外传单元与长窗总量关联, en: Exfiltration Unit and Long-Horizon Volume Correlation}
+      objective:
+        zh: 将低于单次大小或短窗速率阈值的出站发送按数据集、进程、身份与目的地恢复为同一外传任务。
+        en: Reconstruct outbound sends below a per-unit size or short-window rate threshold into one exfiltration task by data set, process, identity, and destination.
+      detects_keys: [B10-T1030-PARENT, B10-T1030-CHILD-UNIT, B10-T1030-CHILD-RATE]
+      domains: [enterprise]
+      analytic_keys: [B10-T1030-NJA-UNIT, B10-T1030-NJA-RATE]
+      evidence_keys: [B10-T1030-REF-ATTACK, B10-T1030-REF-ZEEK-HTTP, B10-T1030-REF-ZEEK-CONN, B10-T1030-REF-MDE]
+  detection_analytics:
+    - temporary_key: B10-T1030-NJA-UNIT
+      name: {zh: 重复小型上传的对象谱系关联, en: Repeated Small-Upload Object Lineage Correlation}
+      logic:
+        zh: >-
+          在可见应用请求体或代理上传对象的出口，筛选出站 POST/PUT 或服务上传事件，按设备、用户/令牌、目的主机、URI 家族和可得对象标识，在建议的 1–24 小时窗口内聚合 request_body_len、请求数、累计字节和尺寸分布。找出多个相近或上限受控的成功小上传，其累计量超过该资产角色的正常值，而单次大小均落在现有单事件阈值以下的序列；若可见分卷名、偏移或共同来源文件读取则提高置信度，并排除批准备份、部署和同步任务。阈值应先从本地规则和基线校准，不把示例字节常量硬编码为恶意判据。
+        en: >-
+          Where application request bodies or proxy upload objects are visible, select outbound POST/PUT or service upload events and group by device, user or token, destination host, URI family, and available object identifier over a suggested 1–24-hour window. Aggregate request_body_len, request count, total bytes, and size distribution. Identify sequences of repeated similarly sized or visibly capped successful small uploads whose total exceeds the asset role's normal behavior while every unit stays below a local per-event alert threshold. Raise confidence for volume names, offsets, or shared source-file reads, and exclude approved backup, deployment, and synchronization jobs. Calibrate thresholds to local policy and baseline rather than hard-coding illustrative byte values as malicious.
+      data_requirements:
+        - source_type: http_upload_metadata
+          name: {zh: 可检查 HTTP 上传元数据, en: Inspectable HTTP upload metadata}
+          channel: Zeek http.log after authorized TLS inspection or equivalent proxy log
+          required_fields: [ts, uid, id.orig_h, id.resp_h, method, host, uri, request_body_len, status_code]
+        - source_type: network_connection
+          name: {zh: 网络连接摘要, en: Network connection summary}
+          channel: Zeek conn.log
+          required_fields: [ts, uid, id.orig_h, id.resp_h, orig_bytes]
+      observables:
+        zh: 同源同目的重复成功小上传、相近请求体长度或有序分卷、跨单事件阈值的累计出站量。
+        en: Repeated successful small uploads to one destination, similar request-body lengths or ordered volumes, and aggregate outbound bytes above the per-event limit.
+      correlation: {window: 1–24 hours, dimensions: [source_host, user_or_token, destination_host, uri_family, object_or_series_id]}
+      false_positives:
+        zh: 合法备份分卷、软件发布、云端同步、断点续传与服务强制分块可形成相近小请求序列。
+        en: Authorized backup volumes, software deployment, cloud sync, resumable uploads, and service-mandated chunking can form similar small-request sequences.
+      blind_spots:
+        zh: 未检查 TLS、使用单个长连接或仅持有连接汇总时无法可靠看到每个应用对象；代理多租户出口也可能缺失发起身份。
+        en: Without TLS inspection, with one long connection, or with connection summaries only, individual application objects may be invisible; a shared proxy may also lose originating identity.
+      tuning_guidance:
+        zh: 按资产角色、服务和批准作业基线设置最小重复次数、累计字节与尺寸相似度；保留新目标或不常见发起进程的覆盖，不用笼统服务白名单抹除风险。
+        en: Set minimum repeat count, cumulative bytes, and size similarity by asset role, service, and approved job baseline; preserve coverage for new destinations and uncommon initiating processes rather than exempting an entire service.
+      evidence_keys: [B10-T1030-REF-ZEEK-HTTP, B10-T1030-REF-ZEEK-CONN, B10-T1030-REF-ESET, B10-T1030-REF-ATTACK]
+    - temporary_key: B10-T1030-NJA-RATE
+      name: {zh: 低峰值外传的长窗累计与进程核验, en: Low-Peak Exfiltration Long-Window Accumulation and Process Check}
+      logic:
+        zh: >-
+          对具备周期出站字节计数的流/代理日志，将每个设备—目的地—进程可关联路径聚合为短桶和 24–72 小时滚动累计，识别短桶始终低于本地高峰阈值、长期出站量或持续时间却超过资产角色基线的任务。核对进程启动参数中的 --bwlimit、-net、-once 或等效节流配置、发起账号与源数据读取，以区分主动限速与拥塞或服务端限流。连接结束才产出的 Zeek conn.log 可提供累计证据，但不能单独计算长连接内的短桶速率；需另有周期计数器或代理逐请求字节。
+        en: >-
+          With periodic directional byte counters from flow or proxy telemetry, group each device-destination path, joined to a process where possible, into short buckets and rolling 24–72-hour totals. Identify jobs whose short buckets remain below local peak rules but whose long-run sent bytes or duration exceed the asset role's baseline. Check process arguments such as --bwlimit, -net, -once or equivalent throttle configuration, account, and source-data reads to distinguish intentional capping from congestion or server throttling. A Zeek conn.log emitted at connection end can establish a total but cannot by itself calculate short-bucket rates inside a long connection; periodic counters or per-request proxy bytes are required.
+      data_requirements:
+        - source_type: periodic_egress_bytes
+          name: {zh: 周期方向出站字节, en: Periodic directional egress bytes}
+          channel: IPFIX/NetFlow active-export or equivalent proxy counters; validate deployment-specific field availability
+          required_fields: [timestamp, source_ip, destination_ip, bytes_out, interval_start, interval_end]
+        - source_type: process_execution
+          name: {zh: 进程启动与参数, en: Process creation and arguments}
+          channel: EDR process creation or Sysmon Event ID 1
+          required_fields: [timestamp, device_id, process_id_or_start_key, account, command_line]
+        - source_type: process_connection
+          name: {zh: 端点进程连接归属, en: Endpoint process connection attribution}
+          channel: Microsoft Defender XDR DeviceNetworkEvents or equivalent
+          required_fields: [Timestamp, DeviceId, RemoteIP, RemoteUrl, InitiatingProcessUniqueId]
+      observables:
+        zh: 低于短窗峰值的连续出站桶、跨天累计大流量、主动限速参数与同一进程外联。
+        en: Consecutive outbound buckets below short-window peaks, large cumulative multi-hour or multi-day volume, active throttle parameters, and egress by the same process.
+      correlation: {window: 24–72 hours, dimensions: [device_id, destination_ip_or_service, process_start_key, account]}
+      false_positives:
+        zh: 批准的备份、数据迁移、媒体上传、网络链路饱和和服务端限流都可能呈现低峰值长时发送。
+        en: Approved backups, migration, media uploads, link saturation, and server-side throttling can all produce long low-peak sends.
+      blind_spots:
+        zh: 缺少周期字节计数无法从最终连接摘要复原速率；NAT、共享代理、TLS 与无法关联进程的流量会降低归属精度。
+        en: Without periodic byte counters, a final connection summary cannot reconstruct rates; NAT, shared proxies, TLS, and flows without process linkage reduce attribution precision.
+      tuning_guidance:
+        zh: 按资产角色、目的服务和批准迁移窗口设定累计量及持续时间，保留未知目的地和非典型进程的告警；同时测量短桶与长窗，避免用单一字节阈值覆盖所有环境。
+        en: Set total-volume and duration thresholds by asset role, service, and approved migration windows, retaining alerts on unknown destinations and atypical processes; compare short buckets with long windows instead of using one universal byte threshold.
+      evidence_keys: [B10-T1030-REF-ZEEK-CONN, B10-T1030-REF-MDE, B10-T1030-REF-STEALBIT, B10-T1030-REF-DFIR]
+  mitigations:
+    - temporary_key: B10-T1030-MIT-EGRESS
+      name: {zh: 受控出口与累计上传预算, en: Governed Egress and Cumulative Upload Budget}
+      purpose:
+        zh: 使外传即使被切成小单元或限速，也仍受批准目的地、身份与跨事件累计控制约束。
+        en: Keep exfiltration under approved-destination, identity, and cross-event accounting controls even when split or rate capped.
+      measures:
+        - key: authorized-egress
+          control_type: preventive
+          description:
+            zh: 对敏感资产的云存储和任意外部上传设置经批准的目的地、账号、代理和应用路径，阻断非授权路径并保留上传主体。
+            en: Constrain cloud storage and other external uploads from sensitive assets to approved destinations, accounts, proxies, and applications, blocking unauthorized paths while retaining uploader identity.
+        - key: cumulative-budget
+          control_type: detective-support
+          description:
+            zh: 在出口代理、云审计或 DLP 中按主机、用户和目的地累计请求数与发送字节，并保留足以覆盖分卷或慢速任务的窗口及调查证据。
+            en: Aggregate request count and sent bytes by host, user, and destination in the egress proxy, cloud audit, or DLP layer, retaining a window and evidence long enough for multipart or slow jobs.
+      applications:
+        - target_key: B10-T1030-PARENT
+          use:
+            zh: 先限定敏感资产可用上传路径，再对同一身份和目的地的单次对象及长期累计量同时执行审批和响应。
+            en: Restrict upload paths available to sensitive assets, then enforce approval and response on both individual objects and long-run totals for one identity and destination.
+          expected_effect:
+            zh: 减少攻击者可切换的外传通道，并使规模分散仍产生可核对的累计记录。
+            en: Reduce outbound paths available to the attacker and preserve auditable totals despite volume dispersion.
+          limitations:
+            zh: 已获批准的业务通道仍可能被滥用；强制阻断和过短预算会伤害合法备份与迁移，须建立例外治理。
+            en: An approved business channel can still be abused; rigid blocking or short budgets can disrupt backup and migration and require governed exceptions.
+        - target_key: B10-T1030-CHILD-UNIT
+          use:
+            zh: 让 DLP 或代理按上传序列而非单请求限制敏感对象总量，把分卷名、请求 URI、源主机及上传者纳入同一审批对象。
+            en: Have DLP or proxy controls judge the total of an upload series rather than one request, joining volume names, request URI, source host, and uploader into one approval object.
+          expected_effect:
+            zh: 切块不再重置单事件额度，重复小对象仍可触发累计拦截或复核。
+            en: Chunking no longer resets a per-event allowance; repeated small objects can trigger cumulative blocking or review.
+          limitations:
+            zh: 加密或不可见对象标识时，重组关系可能不完整；合法断点续传需保留业务豁免。
+            en: Encryption or invisible object identifiers can make series reconstruction incomplete, and legitimate resumable uploads need business exceptions.
+        - target_key: B10-T1030-CHILD-RATE
+          use:
+            zh: 对长期向新目的地发送的任务设置跨小时或跨天累计预算，并对限速进程及批准迁移作业分别授权。
+            en: Apply multi-hour or multi-day cumulative budgets to jobs sending to new destinations, with separate authorization for throttle-configured processes and approved migrations.
+          expected_effect:
+            zh: 低峰值不再自动规避总量控制，攻击者须接受更长暴露时间或寻找获批通道。
+            en: Low peaks no longer bypass total-volume controls automatically, forcing longer exposure or access to an approved path.
+          limitations:
+            zh: 很小的总量可能仍低于累计预算，窗口跨越及身份漂移会削弱统计；必须用源数据敏感性补足。
+            en: Small totals may still fall below cumulative budgets, and window crossings or identity drift weaken accounting; source-data sensitivity must supplement it.
+      evidence_keys: [B10-T1030-REF-ATTACK, B10-T1030-REF-ZEEK-HTTP, B10-T1030-REF-ZEEK-CONN, B10-T1030-REF-STEALBIT]
+existing_library_reuse:
+  reference_refs: []
+  claim_refs: []
+  case_refs: []
+  strategy_refs: []
+  analytic_refs: []
+  mitigation_refs: []
+  relationship_refs: []
+  notes:
+    zh: 对现有共享库标题及语义检索未发现 T1030 专用来源、声明、案例、DET/NJA/MIT；NJT-0133 的分卷边界可直接引用为相邻对象，但它的归档防御不等同本项出站计量防御。
+    en: Title and semantic searches found no existing T1030-specific source, claim, case, DET/NJA/MIT. NJT-0133 is an adjacent boundary to cite, but its archival defenses do not provide equivalent outbound volume accounting.
+library_candidates:
+  references:
+    - {temporary_key: B10-T1030-REF-ATTACK, title: MITRE ATT&CK Enterprise 19.1 T1030 Data Transfer Size Limits, url: "https://attack.mitre.org/versions/v19/techniques/T1030/", supports: parent behavior, tactic mapping, zero ATT&CK children, threshold hypothesis}
+    - {temporary_key: B10-T1030-REF-ESET, title: ESET Research LunarWeb technical analysis, url: "https://www.welivesecurity.com/en/eset-research/moon-backdoors-lunar-landing-diplomatic-missions/", supports: observed output over 1.33 MB split into random 384–512 KB parts; no explicit size-threshold bypass claim}
+    - {temporary_key: B10-T1030-REF-PLAY, title: CISA/FBI/ASD Play ransomware advisory AA23-352A, url: "https://www.cisa.gov/news-events/cybersecurity-advisories/aa23-352a", supports: segmented compromised data and WinSCP exfiltration; no specific stealth-purpose proof}
+    - {temporary_key: B10-T1030-REF-DFIR, title: The DFIR Report CONTInuing the Bazar Ransomware Story, url: "https://thedfirreport.com/2021/11/29/continuing-the-bazar-ransomware-story/", supports: observed Rclone --bwlimit 10M with MEGA upload and two three-hour transfer instances}
+    - {temporary_key: B10-T1030-REF-STEALBIT, title: Cybereason Inside the LockBit Arsenal StealBit analysis, url: "https://www.cybereason.com/blog/research/threat-analysis-report-inside-the-lockbit-arsenal-the-stealbit-exfiltration-tool", supports: 15-second operator-selected exfiltration rate; delayed ZwReadFile; explicit evasion of sent-volume monitoring}
+    - {temporary_key: B10-T1030-REF-RCLONE, title: Rclone global --bwlimit documentation, url: "https://rclone.org/docs/#bwlimit-bandwidth-spec", supports: configurable upload/download byte-per-second limits and timetable; tool capability only}
+    - {temporary_key: B10-T1030-REF-ZEEK-CONN, title: Zeek conn.log documentation, url: "https://docs.zeek.org/en/current/reference/logs/conn.html", supports: ts uid endpoint duration and orig_bytes fields; connection-level not request-level bytes}
+    - {temporary_key: B10-T1030-REF-ZEEK-HTTP, title: Zeek http.log documentation, url: "https://docs.zeek.org/en/current/reference/logs/http.html", supports: method host uri request_body_len status_code and uid linkage on inspectable HTTP}
+    - {temporary_key: B10-T1030-REF-MDE, title: Microsoft DeviceNetworkEvents schema, url: "https://learn.microsoft.com/en-us/defender-xdr/advanced-hunting-devicenetworkevents-table", supports: device remote endpoint and initiating process linkage; no routine outbound byte field}
+  claims:
+    - {temporary_key: B10-T1030-CLM-ADMISSION, statement_zh: 攻击者可用传输单元大小或短窗发送量控制改变单事件与短窗出站观察，而两种变化都仍留下累计数据量, statement_en: Attacker control of outbound unit size or short-window sent volume changes single-event and short-window observation while preserving cumulative byte totals, evidence_keys: [B10-T1030-REF-ATTACK, B10-T1030-REF-STEALBIT, B10-T1030-REF-ZEEK-CONN], confidence: medium}
+    - {temporary_key: B10-T1030-CLM-UNIT, statement_zh: 真实恶意外传可把大输出拆成多个受控大小部分，但所查原始事件未证明特定防守阈值被绕过, statement_en: Real malicious exfiltration can split large output into controlled-size parts, but the reviewed primary incidents do not establish bypass of a specific defender threshold, evidence_keys: [B10-T1030-REF-ESET, B10-T1030-REF-PLAY], confidence: medium}
+    - {temporary_key: B10-T1030-CLM-RATE, statement_zh: StealBit 的操作者可按十五秒窗口设定外传速率并通过延迟文件读取限制发送量，其研究报告明确将该能力与规避发送量监测相连, statement_en: StealBit operators can set a 15-second exfiltration-rate budget and delay file reads to constrain sent volume, a capability its analysis explicitly links to evasion of sent-volume monitoring, evidence_keys: [B10-T1030-REF-STEALBIT], confidence: high}
+    - {temporary_key: B10-T1030-CLM-DEFENSE, statement_zh: 可检查 HTTP 的请求体长度与连接方向字节属于不同计量层级，子项检测须分别重建请求序列及时间窗累计, statement_en: Inspectable HTTP request-body lengths and connection directional bytes are different accounting layers, requiring separate reconstruction of request sequences and time-window totals, evidence_keys: [B10-T1030-REF-ZEEK-HTTP, B10-T1030-REF-ZEEK-CONN], confidence: high}
+  cases:
+    - {temporary_key: B10-T1030-CASE-LUNAR, name_zh: LunarWeb 受控大小输出分块, name_en: LunarWeb Capped Output Chunks, evidence_keys: [B10-T1030-REF-ESET], boundary: observed chunk behavior only; defensive threshold bypass unproven}
+    - {temporary_key: B10-T1030-CASE-DFIR, name_zh: Bazar/Conti 入侵中的 Rclone 限速外传, name_en: Rclone Bandwidth-Limited Exfiltration in Bazar/Conti Intrusion, evidence_keys: [B10-T1030-REF-DFIR], boundary: real configured rate limit; operator intent unproven}
+  detection_strategies: [B10-T1030-DET-VOLUME]
+  detection_analytics: [B10-T1030-NJA-UNIT, B10-T1030-NJA-RATE]
+  mitigations: [B10-T1030-MIT-EGRESS]
+  relationships: []
+research:
+  taxonomy_breadth_review:
+    attack_subtechnique_count: 0
+    attack_subtechnique_ids: []
+    represented_dimensions: []
+    breadth_trigger: ordinary
+    coverage_resolutions: []
+    candidate_stealth_axes_examined:
+      - {axis: per-transfer unit size, resolution: formal-child-proposed, key: B10-T1030-CHILD-UNIT}
+      - {axis: short-window sent volume, resolution: formal-child-proposed, key: B10-T1030-CHILD-RATE}
+      - {axis: clock schedule, resolution: adjacent-technique, owner: T1029}
+      - {axis: transport or cloud service, resolution: adjacent-technique, owner: T1041/T1048/T1567}
+      - {axis: protocol-required fragmentation, resolution: not-stealth-distinct}
+      - {axis: pre-transfer compression or encryption, resolution: adjacent-technique, owner: NJT-0133}
+    second_pass_required: false
+    second_pass_completed: false
+    proposed_niji_child_count: 2
+    breadth_gap_explained: true
+    reviewer_notes:
+      zh: ATT&CK 19.1 无子项，仍独立检验了单元大小与时间窗体积两条轴；二者具有不同的检测数据与误报条件，并未按 ATT&CK 子项或工具划分。
+      en: ATT&CK 19.1 has no children, yet unit size and time-window volume were tested independently; they require distinct detection data and have distinct false positives, without importing ATT&CK children or dividing by tool.
+  evidence_coverage:
+    parent_behavior_keys: [B10-T1030-REF-ATTACK, B10-T1030-REF-DFIR, B10-T1030-REF-STEALBIT]
+    boundary_keys: [B10-T1030-REF-RCLONE, B10-T1030-REF-ESET, B10-T1030-REF-ZEEK-HTTP, B10-T1030-REF-ZEEK-CONN]
+    mechanism_support: [B10-T1030-REF-STEALBIT, B10-T1030-REF-ESET, B10-T1030-REF-PLAY]
+    child_existence_support: [B10-T1030-REF-ESET, B10-T1030-REF-PLAY, B10-T1030-REF-STEALBIT, B10-T1030-REF-DFIR]
+    unsupported_or_deferred:
+      - APT41 fixed-size exfiltration attribution is not confirmed by the cited Group-IB original, which discusses ingress payload writes rather than data exfiltration.
+      - LuminousMoth 5 MB bypass may concern service compatibility, not defender evasion.
+      - Neither Play nor LunarWeb source proves a specific alert threshold was bypassed.
+      - A final Zeek conn.log cannot measure within-connection 15-second throughput without periodic counters.
+  content_depth_review:
+    compared_with_njt_0001: true
+    field_responsibilities_complete: true
+    candidate_specific_prose: true
+    repeated_prose_reviewed: true
+    notes:
+      zh: 父项与两个子项分别覆盖定义、痕迹、残余观察、范围、场景及攻防条件；需要主 Agent 对照兄弟 T1029 定稿，交接不是正式审定稿。
+      en: The parent and two children each cover definition, traces, residual observation, scope, scenario, and attacker/defender conditions; the primary agent must converge against sibling T1029 before canonical authoring.
+  automation_review:
+    canonical_prose_bulk_generated: false
+    mechanical_uses: [YAML serialization and parse check only]
+  limitations:
+    paragraphs:
+      - zh: >-
+          T1030 固定版提供父行为和可能的阈值规避机理，而多份原始案例只能证明切块或限速的发生，不能证明当地检测规则实际漏报。StealBit 的作者级逆向对速率规避意图最明确，DFIR 的 Rclone 事件则对真实使用最明确；因此速率子项的设计因果强于具体攻击效果，切块子项保持中等置信度。
+        en: >-
+          Fixed-version T1030 anchors parent behavior and a possible threshold-evasion mechanism, while several primary incidents establish chunking or rate capping without proving a local rule missed an alert. StealBit reverse engineering is clearest about rate-evasion design and the DFIR case about real use; the rate child's design causality is stronger than proof of operational effect, and the chunk child remains medium-confidence.
+      - zh: >-
+          APT41 的 ATT&CK 条目与其 Group-IB 引文存在可核对的语义差距，后者描述向受害主机分段写入 Beacon 载荷而非外传。分块检测若依赖对象边界需能见 HTTP 或服务审计，速率检测若依赖短桶需周期字节字段；任一前提不满足时应降低覆盖声称，不用连接数量或 DeviceNetworkEvents 单独替代字节证据。
+        en: >-
+          ATT&CK's APT41 example has a verifiable semantic gap with its Group-IB citation: the latter describes staged Beacon payload writes to the victim, not exfiltration. Chunk analytics require visible HTTP or service object boundaries, while rate analytics require periodic byte fields. When either prerequisite is absent, coverage claims should be reduced rather than substituting connection count or DeviceNetworkEvents alone for byte evidence.
+  rejected_mechanisms:
+    - {mechanism_ref: NM-DO, reason: Chunk size and rate change accounting, not the inherent interpretability of content; encryption or compression belongs to an adjacent behavior.}
+    - {mechanism_ref: NM-FD, reason: Small or slow traffic may resemble legitimate activity but available sources do not prove intentional feature imitation distinct from volume dilution.}
+  open_questions:
+    - Primary agent should decide whether one DET with two NJA objects remains semantically distinct from T1029 detection after both handoffs converge.
+    - Confirm a deployment-specific periodic byte source before promoting the proposed rate analytic; Zeek conn.log alone is insufficient for long-connection short buckets.
+    - If the unit child requires direct evidence of an actor selecting chunk size for a detector threshold, keep medium confidence or defer formalization after review.
+integration:
+  status: pending
+  resolutions: []

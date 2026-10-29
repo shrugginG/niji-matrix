@@ -1,0 +1,93 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000050
+strategy_ref: DET-000071
+name: {zh: 利用—排除变更—存续入口方向分析, en: Exploitation-Exclusion-Change-Surviving-Entry Directional Analytic}
+summary:
+  zh: 以资产和对象 before/after 差分证明入侵后的选择性关闭或清除，并验证攻击者替代入口在排除动作后仍持续使用。
+  en: Use asset and object before and after differences to establish selective post-compromise closure or cleanup and verify continuing use of an adversary alternative entry after exclusion.
+domains: [enterprise]
+platforms: [Windows, Linux, macOS, Network Devices, Containers, IaaS]
+logic:
+  paragraphs:
+    - zh: 建立资产的疑似入侵窗口，保存 exploit/登录时间、漏洞或服务、来源、session/request、执行结果及随后创建的账户、密钥、web shell、服务、任务、cron、进程或网络通道。将候选替代入口标识为独立于原入口，并等待后继认证、进程或通信验证；没有替代入口状态时，后续 patch/kill 只进入异常变更队列。
+      en: Establish the asset's suspected compromise window and retain exploit or sign-in time, vulnerability or service, origin, session or request, execution outcome, and later account, key, web shell, service, task, cron, process, or network channel creation. Mark candidate alternative entries as independent from the original and wait for later authentication, process, or communication validation. Without alternative-entry state, later patch or kill activity enters only the anomalous-change queue.
+    - zh: 入口关闭分支采集 patch package/script、service/firewall/configuration 变化、account privilege、actor/session/process、command/API、old/new exposure、结果、批准与重启，并将姿态变化连接到原 exploit 和替代入口。确认需要原面在攻击者控制窗口内从可用变为不可用、变更 actor 可归于攻击者，以及替代入口在变更后继续；UNC5174 式后门账户—mitigation.sh 顺序可以提高置信度。
+      en: The ingress-closure branch collects patch package or script, service, firewall, or configuration change, account privilege, actor or session or process, command or API, old and new exposure, outcome, approval, and restart and joins posture change to the original exploit and alternative entry. Confirmation requires the original surface to change from available to unavailable during adversary control, a change actor attributable to the adversary, and continuing alternative entry after the mutation. An UNC5174-style backdoor-account-to-mitigation.sh sequence raises confidence.
+    - zh: 竞争清除分支维护清除前进程、任务、服务、账户、文件和 Registry 对象集合，保存 terminator/deleter、target identity/hash、命令/API 与结果，再与清除后集合比较。被删除对象必须由独立威胁情报或行为证据标记为恶意，清除 actor 不能是批准 EDR/响应者，并且关联 watchdog、后门账户、新 cron/service、miner 或 C2 在清除后继续。PG_MEM 与 NetSky.P 可用于校准这种选择性。
+      en: The competing-eviction branch maintains pre-cleanup sets of processes, tasks, services, accounts, files, and Registry objects, retains terminator or deleter, target identity or hash, command or API, and outcome, and compares post-cleanup sets. Removed objects need independent threat-intelligence or behavioral evidence of maliciousness, the cleanup actor cannot be an approved EDR or responder, and a related watchdog, backdoor account, new cron or service, miner, or C2 must continue afterward. PG_MEM and NetSky.P calibrate this selectivity.
+    - zh: 结果分为“异常修复/清除”“疑似选择性排除”和“确认排他控制”。第一类只有动作，第二类有方向或存续中的一项，第三类要求攻击者控制、排除对象和自身存续全部成立。按 actor→target 建立有向边，保留不确定性；多个操作者共享工具、攻击者升级自身组件、合法应急响应或自动 controller 修复时降低置信度。
+      en: Tier outputs as anomalous remediation or cleanup, suspected selective exclusion, and confirmed exclusive control. The first has only an action, the second has either direction or survival, and the third requires adversary control, excluded object, and own survival together. Build directed actor-to-target edges and preserve uncertainty. Lower confidence for multiple operators sharing tools, an adversary upgrading its own component, legitimate emergency response, or automatic-controller repair.
+data_requirements:
+  - source_type: compromise-and-exposure-history
+    name: {zh: 入侵与暴露面历史, en: "Compromise and exposure history"}
+    channel: null
+    required_fields: [timestamp, device_id, vulnerability_or_service_id, source, principal_id, session_or_request_id, exploit_outcome, exposure_state]
+  - source_type: alternative-entry-creation
+    name: {zh: 替代账户、密钥、服务与通道创建, en: "Alternative account, key, service, and channel creation"}
+    channel: null
+    required_fields: [timestamp, device_id, creator_principal_id, creator_process_or_session_id, entry_id, entry_type, dependency, operation, outcome]
+  - source_type: administrative-exclusion-change
+    name: {zh: 补丁、服务、账户、防火墙与配置排除变更, en: "Patch, service, account, firewall, and configuration exclusion changes"}
+    channel: null
+    required_fields: [timestamp, device_id, actor_principal_id, actor_process_or_session_id, target_object_id, target_type, command_or_api, old_state, new_state, package_or_tool, outcome, restart_id]
+  - source_type: process-and-persistence-removal
+    name: {zh: 进程终止与持久化对象删除, en: "Process termination and persistence-object deletion"}
+    channel: null
+    required_fields: [timestamp, device_id, terminator_principal_id, terminator_process_or_session_id, target_object_id, target_type, target_hash_or_identity, operation, outcome]
+  - source_type: asset-object-snapshot
+    name: {zh: 漏洞、进程、任务、服务、账户与持久对象快照, en: "Vulnerability, process, task, service, account, and persistence snapshots"}
+    channel: null
+    required_fields: [snapshot_time, device_id, object_id, object_type, state, owner_or_principal, hash_or_version, network_or_resource_context]
+  - source_type: surviving-entry-activity
+    name: {zh: 存续认证、进程、网络与资源活动, en: "Surviving authentication, process, network, and resource activity"}
+    channel: null
+    required_fields: [timestamp, device_id, entry_id, principal_or_process_id, session_id, channel, source, destination_or_resource, action, outcome]
+  - source_type: change-and-response-record
+    name: {zh: 变更与事件响应工单, en: "Change and incident-response record"}
+    channel: null
+    required_fields: [change_id, device_id, approver, operator, planned_objects, planned_action, validity_window, response_case_id, status]
+observables:
+  - zh: exploit 成功和替代账户/服务创建后，同一攻击者链运行厂商 mitigation 或关闭原服务，随后替代入口仍认证或通信。
+    en: After exploit success and alternative account or service creation, the same adversary chain runs a vendor mitigation or closes the original service and the alternative entry continues authenticating or communicating.
+  - zh: 当前漏洞扫描显示已修补，但修补时间晚于未授权账户、web shell 或 tunnel 创建且没有匹配响应计划。
+    en: Current vulnerability scanning reports patched, but patch time follows unauthorized account, web shell, or tunnel creation and has no matching response plan.
+  - zh: 非防守进程或数据库会话枚举并终止多个已知恶意进程/cron，却保留关联后门用户、新 cron、watchdog、miner 或外联。
+    en: A nondefensive process or database session enumerates and terminates multiple known malicious processes or cron entries while retaining a related backdoor user, new cron, watchdog, miner, or egress.
+  - zh: Registry Run keys、任务或服务的竞争集合被删除，而同一时间窗内另一恶意对象继续传播、执行或连接。
+    en: A competing set of Registry Run keys, tasks, or services is deleted while another malicious object continues propagating, executing, or connecting in the same interval.
+  - zh: 排除动作发生在正式响应前或由已入侵 session 发起，清除后资产仍出现异常认证、进程或网络结果。
+    en: An exclusion action occurs before formal response or from a compromised session and the asset retains anomalous authentication, process, or network outcomes afterward.
+  - zh: 原入口、被排除对象、排除 actor、自身存续入口和以后使用形成有向 before/after 链。
+    en: Original entry, excluded object, exclusion actor, surviving own entry, and later use form a directional before and after chain.
+correlation:
+  window:
+    zh: 从首次利用前一小时开始，覆盖替代入口创建、排除动作及其后七日，并继续观察存续入口三十日；进程终止/对象删除与快照差使用十分钟直接窗口。精确 session/entry/object ID 可跨完整状态寿命连接。
+    en: Begin one hour before first exploitation, cover alternative-entry creation, exclusion actions, and seven days afterward, and observe the surviving entry for thirty days. Use a direct ten-minute window for process termination or object deletion to snapshot difference. Exact session, entry, or object IDs can span the complete state lifetime.
+  dimensions: [device, compromise, original_entry, actor_or_session, alternative_entry, changed_or_removed_object, pre_post_snapshot, surviving_entry, change_record, response_case, time]
+false_positives:
+  - zh: 紧急补丁、管理员停服、EDR 隔离、恶意软件清除、账户事件响应和取证通道保留会产生相同排除动作。
+    en: Emergency patching, administrator service shutdown, EDR containment, malware removal, account incident response, and forensic-channel retention produce the same exclusion actions.
+  - zh: 自动更新、高可用 controller、编排器和应用 watchdog 会修复服务、终止重复进程或重建期望对象。
+    en: Automatic updates, high-availability controllers, orchestrators, and application watchdogs repair services, terminate duplicate processes, or rebuild desired objects.
+  - zh: 攻击者升级自己的 miner、bot 或 implant 时会删除旧版本，但没有竞争主体。
+    en: An adversary upgrading its own miner, bot, or implant removes an old version without a competing principal.
+blind_spots:
+  - zh: 缺少变更前快照、原利用日志、替代入口创建或后继使用时，无法证明方向、选择性和存续。
+    en: Direction, selectivity, and survival cannot be proven without pre-change snapshots, original-exploitation logs, alternative-entry creation, or later use.
+  - zh: 系统重建、短生命周期容器或日志保留过短会在清除前丢失竞争对象集合。
+    en: Reimage, short-lived containers, or insufficient retention loses the competing-object set before cleanup.
+  - zh: 攻击者借用批准管理员、厂商更新工具或安全代理执行排除时，来源可能看似合法。
+    en: Provenance can appear legitimate when the adversary uses an approved administrator, vendor updater, or security agent for exclusion.
+  - zh: 多个攻击者共享账户、脚本或 miner 时，对象名称和 hash 不能可靠归属操作者。
+    en: Object name and hash cannot reliably identify the operator when multiple adversaries share an account, script, or miner.
+tuning_guidance:
+  paragraphs:
+    - zh: 为 patch、service、account、EDR 和编排器建立批准主体、来源、窗口、目标集合及工单基线；白名单绑定具体 change/response case 和预期对象，不绑定工具名或管理员组。紧急响应可允许事后工单，但必须由独立通信渠道确认。
+      en: Baseline approved principals, origins, windows, target sets, and change records for patching, services, accounts, EDR, and orchestrators. Bind allowances to a concrete change or response case and expected objects rather than tool name or administrator group. Emergency response can allow retrospective records but needs confirmation through an independent communication channel.
+    - zh: 被删除对象的恶意标签必须来自独立 IOC、行为或调查证据，不能由“被删”反推；按 actor→target 建立有向图，并把清除后账户、服务、任务、进程和网络集合与 actor 关联。没有存续入口时最高输出异常修复/清除。
+      en: A removed object's malicious label must come from independent IOC, behavior, or investigation evidence and cannot be inferred from deletion. Build actor-to-target directed edges and relate post-cleanup account, service, task, process, and network sets to the actor. Without a surviving entry, the highest output is anomalous remediation or cleanup.
+    - zh: 响应期间可以降低自动阻断避免证据被进一步删除，但应继续远程采集终止、删除、patch 和认证/网络结果。按设备角色调整七日窗口；互联网设备和僵尸网络可能更短，低频间谍入口更长，窗口变化必须有本地数据支持。
+      en: During response, automated enforcement can be reduced to avoid further evidence deletion while remote collection of termination, deletion, patch, and authentication or network outcomes continues. Adjust the seven-day window by device role; internet appliances and botnets can be shorter and sparse espionage entries longer, with local data supporting changes.
+evidence_refs: [REF-000184, REF-000314, REF-000315, REF-000316]
+lifecycle: {status: review, version: 1.0.0, created: "2026-09-11", modified: "2026-09-12", contributors: [Niji Matrix Research], reviewers: []}

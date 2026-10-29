@@ -1,0 +1,87 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000250
+strategy_ref: DET-000207
+name:
+  zh: Docker 资源读取调用者—API 路径分析
+  en: Docker Resource-Read Caller–API Route Analytic
+summary:
+  zh: 在经验证的 Docker 请求或进程通道中识别容器、镜像和 inspect 枚举。
+  en: Identify container, image, and inspect enumeration in validated Docker request or process telemetry.
+domains:
+- enterprise
+platforms:
+- Docker
+- Linux
+logic:
+  paragraphs:
+  - zh: 仅在部署能记录 Docker daemon 请求或本地 CLI/SDK 调用者时，将 GET /containers/json、镜像列表和 inspect 路径归一为资源读取。按 host、socket/remote source、user、process、route
+      和 filters 与批准运维作业比较；若只有 Docker lifecycle events，则明确不宣称覆盖只读列表。
+    en: Only where a deployment records Docker daemon requests or local CLI or SDK callers, normalize GET /containers/json,
+      image list, and inspect routes as resource reads. Compare host, socket or remote source, user, process, route, and filters
+      with approved operations. Where only Docker lifecycle events exist, explicitly do not claim coverage of read-only listing.
+data_requirements:
+- source_type: docker-daemon-request
+  name:
+    zh: Docker daemon 请求日志
+    en: Docker daemon request telemetry
+  channel: null
+  required_fields:
+  - timestamp
+  - host_id
+  - caller_identity
+  - source
+  - http_method
+  - api_route
+  - query_filters
+  - status_code
+- source_type: endpoint-process-lineage
+  name:
+    zh: Docker CLI/SDK 进程谱系
+    en: Docker CLI or SDK process lineage
+  channel: null
+  required_fields:
+  - timestamp
+  - host_id
+  - user_id
+  - process_guid
+  - image
+  - command_line
+  - parent_guid
+observables:
+- zh: 非基线调用者读取全部容器、镜像或多个 inspect 对象
+  en: A nonbaseline caller lists all containers or images or inspects multiple objects
+correlation:
+  window:
+    zh: 同一主机和调用主体 30 分钟；与后继容器操作连接两小时，并按运维周期校准。
+    en: Thirty minutes per host and caller, with a two-hour join to later container operations, calibrated to operations cadence.
+  dimensions:
+  - host_id
+  - caller_identity
+  - source
+  - api_route
+  - target
+  - time
+false_positives:
+- zh: Docker 运维、监控、镜像清理、CI runner、Desktop UI 和安全工具会合法枚举
+  en: Docker operations, monitoring, image cleanup, CI runners, Desktop UI, and security tools legitimately enumerate
+blind_spots:
+- zh: Docker System Events 不是完整请求审计，本地 socket SDK 可能没有 CLI 进程，代理会折叠来源，日志轮转会丢历史
+  en: Docker System Events are not complete request audit; local-socket SDK use may lack a CLI process, proxies collapse origins,
+    and log rotation loses history
+tuning_guidance:
+  paragraphs:
+  - zh: 先验证实际 request/process channel，再按调用者、daemon、route、filter、目标与作业窗口调优。没有该通道时把 Docker 分支标为 unavailable。
+    en: Validate the actual request or process channel first, then tune by caller, daemon, route, filter, target, and job
+      window. Mark the Docker branch unavailable where that channel does not exist.
+evidence_refs:
+- REF-000818
+- REF-000822
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-09-27'
+  modified: '2026-09-27'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

@@ -1,0 +1,1199 @@
+handoff_schema_version: "2.0.0"
+type: technique-research-handoff
+batch_ref: BATCH-TA0006-007
+work_item_ref: WORK-TA0006-T1040
+temporary_key_prefix: TMP-TA0006-007-T1040
+candidate:
+  temporary_key: TMP-TA0006-007-T1040-PARENT
+  source_type: attack
+  source_attack_id: T1040
+  name:
+    zh: 网络嗅探
+    en: Network Sniffing
+  fixed_baseline:
+    domain: enterprise-attack
+    version: "19.1"
+    attack_object_version: "1.7"
+recommendation:
+  decision: adapt
+  confidence: medium
+  original_attack_subtechniques_imported: false
+  rationale:
+    paragraphs:
+      - zh: >-
+          ATT&CK Enterprise 19.1 的 T1040 同时映射 Credential Access 与 Discovery，并把被动接口捕获、SPAN、云流量镜像和网络设备原生抓包放在同一父行为内。TA0006 应保留“不改变通信原定目的地而观察在途数据”这一行为锚点，但把正式范围收紧为已经取得明文秘密、挑战应答、可恢复的认证交换或等价认证材料的捕获。仅看到地址、服务、版本、VLAN 或一般通信内容属于 Discovery 或 Collection 结果；只启动抓包而未证明认证流进入观察面，则是暴露或尝试，不能宣称凭据获取完成。
+        en: >-
+          ATT&CK Enterprise 19.1 maps T1040 to both Credential Access and Discovery and places passive interface capture, SPAN, cloud traffic mirroring, and native network-device capture under the same parent behavior. For TA0006, preserve the anchor of observing data in transit without changing its intended destination, but narrow formal scope to captures that acquire plaintext secrets, challenge responses, recoverable authentication exchanges, or equivalent authentication material. Addresses, services, versions, VLANs, and general communications content are Discovery or Collection outcomes. Starting a capture without showing that authentication traffic entered the observation surface establishes exposure or attempt, not completed credential acquisition.
+      - zh: >-
+          直接事件证据支持这一收窄。Mandiant 在 UNC3886 入侵的 TACACS+ 服务器上恢复并分析了 LOOKOVER：该 libpcap 嗅探器筛选认证报文、使用服务器共享秘密解混淆并准备写出提取结果；但样本在写盘前发生崩溃，因此它直接证明部署、材料处理逻辑和端点观察位置，不能证明全部凭据被持久保存或使用。2025 年 CISA 等机构联合通告直接记录国家支持行为者在受侵路由器上收集原生 PCAP，并观察到 SPAN/RSPAN/ERSPAN 镜像及指向认证流量的抓包文件；通告对具体 TACACS+ 凭据解密和后继使用仍使用推断措辞。准入置信度据此为 medium，而不是把工具能力或镜像配置自动提升为成功凭据获取。
+        en: >-
+          Direct incident evidence supports this narrowing. On a TACACS+ server compromised by UNC3886, Mandiant recovered and analyzed LOOKOVER, a libpcap sniffer that selected authentication packets, used the server's shared secret to de-obfuscate them, and prepared extracted results for output. The sample crashed before completing its disk write, so the evidence directly establishes deployment, material-processing logic, and an endpoint observation position, but not durable collection or use of every credential. A 2025 joint advisory led by CISA directly documents state-sponsored actors collecting native PCAPs on compromised routers and observed SPAN, RSPAN, or ERSPAN mirroring and authentication-focused capture files. The advisory remains inferential about decryption of particular TACACS+ credentials and successor use. Admission is therefore medium confidence rather than treating tool capability or mirror configuration as successful credential acquisition.
+  admission_gate:
+    required_evidence:
+      - adversary_controlled_observation_surface
+      - authentication_bearing_flow_observed_at_that_surface
+      - credential_material_present_or_recoverable
+      - capture_or_material_result_linked_by_session_flow_artifact_or_forensic_state
+    insufficient_alone:
+      - packet_capture_tool_execution
+      - promiscuous_mode_or_raw_socket_without_authentication_flow
+      - mirror_session_without_collector_receipt
+      - network_metadata_or_discovery_only
+      - encrypted_payload_without_key_or_termination_boundary
+      - lawful_monitoring_without_adversary_control
+    successful_account_use_required: false
+proposed_content:
+  name:
+    zh: 凭据流量被动嗅探
+    en: Passive Credential-Traffic Sniffing
+  summary:
+    zh: 攻击者在不改变认证通信原定目的地的情况下，从端点、既有转发路径或复制观察面捕获可用认证材料，并利用观察行为与正常流量诊断相似且不产生受害端交互的特点降低可见性。
+    en: An adversary captures usable authentication material at an endpoint, an existing transit path, or a replicated observation plane without changing the communication's intended destination, reducing visibility because observation generates no victim-facing exchange and resembles ordinary traffic diagnostics.
+  definition_and_concept:
+    paragraphs:
+      - zh: >-
+          凭据流量被动嗅探是攻击者控制一个能够看见原始认证流或其副本的观察位置，读取并保存其中的口令、挑战应答、会话证明、共享秘密可解开的认证正文或其他可用于后继认证的材料。直接目标是从已经发生的通信中取得认证材料；捕获可位于认证端点、原有转发节点或另建的复制观察面，但不要求攻击者向通信双方注入报文，也不改变原定服务指向。
+        en: >-
+          Passive Credential-Traffic Sniffing occurs when an adversary controls an observation position that can see an original authentication flow or its copy and reads or retains passwords, challenge responses, session proofs, authentication bodies recoverable with a shared secret, or other material usable for follow-on authentication. Its direct objective is authentication material from communications already occurring. Capture may reside at an authentication endpoint, an existing forwarding node, or a replicated observation plane, but does not require injecting packets toward either party or changing the intended service direction.
+      - zh: >-
+          本概念以观察关系和材料结果为核心，不以 tcpdump、libpcap、Pktmon、嵌入式抓包、SPAN、某个接口或协议名称定义边界。报文已被保存也不自动等于取得凭据：防守方须区分明文秘密、弱保护且已具备恢复条件的交换、只可离线猜测的证明、不可解密密文和纯元数据。成功登录、离线破解或中继是可能的后继结果，需要另证。
+        en: >-
+          The concept is defined by the observation relationship and material outcome, not by tcpdump, libpcap, Pktmon, embedded capture, SPAN, an interface, or a protocol name. Saving packets does not automatically equal credential acquisition. Defenders must distinguish plaintext secrets, weakly protected exchanges with demonstrated recovery conditions, proofs suitable only for offline guessing, undecryptable ciphertext, and metadata. Successful sign-in, offline cracking, or relay are possible successor outcomes that require separate evidence.
+  stealth_characteristics:
+    paragraphs:
+      - zh: >-
+          被动嗅探不需要制造新的认证请求、竞争响应或路径漂移。原始会话可正常完成，发送方和接收方日志也不必出现额外参与者；攻击者的主要痕迹集中在观察位置的抓包权限、套接字或捕获驱动、过滤条件、缓冲区、镜像状态、输出文件和导出连接中。只查看认证服务器成功日志或原始流量路径的防守方因此可能完全看不到复制或读取动作。
+        en: >-
+          Passive sniffing need not generate a new authentication request, competing response, or path drift. The original session may complete normally and endpoint logs need not record an additional participant. Most residue accumulates at the observation position in capture privileges, packet sockets or drivers, filters, buffers, mirror state, output files, and export connections. A defender looking only at successful authentication logs or the original traffic path may therefore miss the copying or reading action entirely.
+      - zh: >-
+          攻击者还可以借用运维人员本来就用于故障诊断、性能分析和安全监测的原生能力，并用短时、窄过滤器只选取认证端口或目标接口。该相似性提高恶意与合法抓包的区分成本，但不会消除控制面和产物痕迹。端到端加密会降低路径外观察面的材料可见性；如果捕获发生在终止点、认证服务器掌握共享秘密，或攻击者另行取得解密材料，网络上“已加密”的外观仍不能排除凭据暴露。
+        en: >-
+          The adversary can also borrow native functions used for troubleshooting, performance analysis, and security monitoring, with short-lived narrow filters that select authentication ports or interfaces. This similarity raises the cost of separating malicious from authorized capture but does not erase control-plane and artifact residue. End-to-end encryption reduces material visibility at observation points outside the boundary. When capture occurs at a termination point, an authentication server holds the shared secret, or the adversary separately obtains decryption material, an encrypted wire appearance does not rule out credential exposure.
+  scope_boundary_definition:
+    paragraphs:
+      - zh: >-
+          纳入要求攻击者没有通过名称、网关、无线接入点、代理或路由修改把认证流主动导向新目的地，而是在原端点、原路径或不影响原交付的复制分支上观察它。NJT-0136/T1557 拥有受信路径或服务指向被主动替换和证明被跨目标中继的行为；同一事件若先建立恶意路径再抓包，可分别记录路径介入与嗅探，但两者证据不能互相替代。T1187/NJT-0165 拥有攻击者诱使受害主体新产生认证交换的因果起点；如果诱发后的交换又在独立观察面被捕获，可双重标注。
+        en: >-
+          Inclusion requires observation at an original endpoint, the original path, or a copy branch that does not affect original delivery, rather than active redirection through a changed name, gateway, wireless access point, proxy, or route. NJT-0136/T1557 owns deliberate replacement of a trusted path or service direction and cross-destination relay of a proof. An event that first establishes an adversarial path and then captures packets may carry both labels, but evidence for one cannot substitute for the other. T1187/NJT-0165 owns the causal trigger that makes a victim emit a new authentication exchange. An induced exchange later captured on a separately established observation surface may also carry both labels.
+      - zh: >-
+          T1111 以多因素证明或一次性值被截获这一材料结果为直接对象，而本对象要求网络观察位置及报文捕获证据；经网络抓取到 OTP 时可并列，但短信服务端窃取、键盘记录或伪页面收集只归 T1111 或相应输入对象。仅从抓包获知主机、端口、服务和拓扑属于 TA0007 Discovery；获取普通正文属于相应 Collection 技术。获授权的 NDR、故障诊断、事件响应、性能分析与依法实施的监测可产生完全相同的命令、镜像和 PCAP，必须以批准主体、工单、范围、过滤器、保留期、输出目的地和业务所有者排除。
+        en: >-
+          T1111 directly concerns interception of an MFA proof or one-time value, whereas this object requires a network observation position and packet-capture evidence. A network capture that acquires an OTP may carry both labels, but theft at an SMS provider, keylogging, or collection through an imitation page belongs to T1111 or the relevant input technique. Learning hosts, ports, services, and topology from a capture belongs to TA0007 Discovery; obtaining ordinary content belongs to the applicable Collection technique. Authorized NDR, troubleshooting, incident response, performance analysis, and lawful monitoring can produce identical commands, mirrors, and PCAPs and must be excluded through the approved principal, ticket, scope, filter, retention, output destination, and business owner.
+  application_scenarios_and_threat_model:
+    application_scenarios:
+      paragraphs:
+        - zh: >-
+            在认证服务器或应用端点被攻陷后，攻击者可在处理认证流的主机上建立包套接字或调用捕获库，利用该端点持有的共享秘密或位于加密终止后的观察位置恢复材料。UNC3886 将 LOOKOVER 部署到 TACACS+ 服务器、按 TCP/49 筛选并使用 TKEY 解混淆，说明端点位置能把单纯密文捕获转化为可解释的认证正文。
+          en: >-
+            After compromising an authentication server or application endpoint, an adversary can create packet sockets or invoke a capture library on the host processing the authentication flow, using a shared secret held by that endpoint or an observation position beyond transport termination to recover material. UNC3886's deployment of LOOKOVER on a TACACS+ server, its TCP/49 filter, and its use of TKEY for de-obfuscation show how an endpoint position can turn packet capture into interpretable authentication content.
+        - zh: >-
+            在受侵路由器、交换机或云网络控制面上，攻击者可使用已有转发节点的原生抓包功能，或创建 SPAN、RSPAN、ERSPAN 与虚拟网络镜像，把经过关键接口、子网或负载均衡终止区的流复制给收集器。原通信仍到达合法目标，使业务故障和服务端异常保持较低；攻击者随后可在设备闪存、收集实例或远端位置筛选认证材料。
+          en: >-
+            On a compromised router, switch, or cloud network control plane, an adversary may use native capture on an existing forwarding node or create SPAN, RSPAN, ERSPAN, or virtual-network mirroring that copies flows crossing a critical interface, subnet, or load-balancer termination zone to a collector. Original communications still reach the legitimate target, keeping service disruption and endpoint anomalies low, while the adversary later filters authentication material in device storage, a collector instance, or a remote location.
+    threat_model:
+      attacker_model:
+        paragraphs:
+          - zh: >-
+              攻击者需要控制至少一个对目标流量有真实可见性的主机、网络设备、共享介质位置或镜像控制面，并具备相应抓包权限，例如 Linux CAP_NET_RAW、管理员级捕获驱动、网络设备特权 CLI 或创建流量镜像的云 IAM 权限。观察位置必须覆盖认证交换；交换若受强端到端保护，攻击者还需处于终止边界内、控制终止组件、获得共享秘密或利用可恢复的认证设计。只拥有接口名称或抓包工具不会保证看到交换机上其他端口，也不会保证密文可用。
+            en: >-
+              The adversary needs control of at least one host, network device, shared-medium position, or mirror control plane with real visibility into the target flow, together with the relevant capture authority such as Linux CAP_NET_RAW, an administrator-level capture driver, privileged network-device CLI, or cloud IAM permission to create traffic mirrors. The position must cover the authentication exchange. If the exchange has strong end-to-end protection, the actor must also reside inside the termination boundary, control a terminating component, possess a shared secret, or exploit a recoverable authentication design. An interface name or capture tool alone does not make other switch ports visible and does not make ciphertext usable.
+      defender_model:
+        paragraphs:
+          - zh: >-
+              防守方假定可在观察位置附近取得至少一种控制面或主机遥测，并在认证系统侧维护哪些流量可能含何类材料的目录。端点可提供进程、原始包套接字、驱动、接口状态与文件创建；网络设备可提供 AAA 命令记账、抓包对象、缓冲区和文件导出；云平台可提供镜像 create、patch、delete 的 Admin Activity。认证日志通常只能证明正常交换发生，不能证明它是否被复制，因此分析必须把捕获生命周期与同一设备、接口、流和时间的认证材料评估连接起来。
+            en: >-
+              The defender is assumed to obtain at least one control-plane or host telemetry source near the observation position and maintain an authentication-system inventory describing which flows may carry which material classes. Endpoints may provide process, raw packet socket, driver, interface-state, and file-creation evidence. Network devices may provide AAA command accounting, capture objects, buffers, and file exports. Cloud platforms may provide Admin Activity for mirror create, patch, and delete operations. Authentication logs normally establish that an exchange occurred, not whether it was copied, so analysis must join capture lifecycle to the same device, interface, flow, time, and a credential-material assessment.
+          - zh: >-
+              防守方不应把原始口令或完整 PCAP广泛送入 SIEM。材料确认可以由受限取证流程输出 artifact hash、协议/材料类别、是否含明文或可恢复证明、加密边界和审查者，而不保存秘密值。NIST SP 800-150 指出 PCAP 可含认证凭据、PII 与敏感组织信息，并建议按会话、时间、端口或协议过滤及去除不相关正文；这一隐私约束同时限制检测覆盖和数据共享方式。
+            en: >-
+              The defender should not send raw passwords or complete PCAPs broadly into a SIEM. A restricted forensic workflow can emit artifact hash, protocol or material class, whether plaintext or a recoverable proof was present, the encryption boundary, and the reviewer without retaining the secret value. NIST SP 800-150 notes that PCAPs can contain authentication credentials, PII, and sensitive organizational information and recommends filtering by conversation, time, port, or protocol and redacting irrelevant payload. This privacy constraint limits both detection coverage and how evidence can be shared.
+  stealth_mechanisms:
+    - mechanism_ref: NM-BT
+      role: primary
+      summary:
+        zh: 在认证双方之外静默复制既有交换而不产生新的受害端交互
+        en: Silently copy an existing exchange outside the authenticating parties without generating a new victim-facing interaction
+      analysis:
+        paragraphs:
+          - zh: >-
+              行为设计把读取动作放在包套接字、既有转发设备或复制分支中，原认证流的源、目标和结果可以保持不变。痕迹因而从认证日志和业务路径移到抓包权限、观察面配置及输出产物；如果这些位置没有纳入 EDR、AAA 记账或云审计，关键读取行为不会进入常规告警视野。CISA 对受侵路由器原生 PCAP 与镜像的观察以及 Mandiant 对认证服务器内 LOOKOVER 的分析支持这种跨观察面差异，但不能证明所有网络都缺少相应遥测。
+            en: >-
+              The behavior places reading in a packet socket, an existing forwarding device, or a copy branch, leaving the original authentication flow's source, destination, and result unchanged. Traces move from authentication logs and the business path into capture authority, observation-plane configuration, and output artifacts. Where EDR, AAA accounting, or cloud audit does not cover those positions, the critical read never enters routine alerting. CISA's observation of native PCAP and mirroring on compromised routers and Mandiant's analysis of LOOKOVER inside an authentication server support this cross-plane difference, but do not establish that every network lacks such telemetry.
+      evidence_keys:
+        - TMP-TA0006-007-T1040-REF-ATTACK
+        - TMP-TA0006-007-T1040-REF-CISA-AA25-239A
+        - REF-000179
+      confidence: medium
+    - mechanism_ref: NM-FD
+      role: secondary
+      summary:
+        zh: 借用原生诊断和监测能力使恶意抓包接近合法运维外观
+        en: Borrow native diagnostic and monitoring functions so malicious capture resembles authorized operations
+      analysis:
+        paragraphs:
+          - zh: >-
+              攻击者使用 monitor capture、SPAN 或云 Packet Mirroring 等原生能力时，命令、资源类型和输出格式与故障诊断或 NDR 部署相同，并可用窄过滤器和短持续时间降低异常规模。恶意差异存在于主体是否获批、被观察资产、材料类别、收集器目的地和产物处置，而不是工具名称。Cisco 与 Google 官方文档证明这些控制与审计字段可以实施，CISA 事件证明攻击者实际滥用过相同能力；合法运维的高基数使特征相似性成立，但具体告警下降幅度没有公开测量。
+            en: >-
+              When an adversary uses native functions such as monitor capture, SPAN, or cloud Packet Mirroring, commands, resource types, and output formats match troubleshooting or NDR deployment, and narrow filters with short duration can reduce anomaly size. The malicious difference lies in approval, observed assets, material class, collector destination, and artifact handling rather than the tool name. Cisco and Google documentation establish the available controls and audit fields, while the CISA incident shows adversary abuse of the same capabilities. High volumes of legitimate administration support feature similarity, but no public measurement quantifies alert reduction.
+      evidence_keys:
+        - TMP-TA0006-007-T1040-REF-CISA-AA25-239A
+        - TMP-TA0006-007-T1040-REF-CISCO-EPC
+        - TMP-TA0006-007-T1040-REF-GCP-MIRROR-AUDIT
+      confidence: medium
+  subtechnique_taxonomy:
+    proposed_coverage: established
+    proposed_child_count: 3
+    narrative:
+      paragraphs:
+        - zh: >-
+            建议建立三项 Niji 原生子技术，并以取得观察的位置及新增痕迹拓扑互斥划分。认证端点共驻抓取发生在发送、接收或验证认证交换的主机上，可能位于加密终止内或可直接取得解密秘密；既有转发路径抓取发生在原本就在转发该流量的节点上，不改变原路径也不建立独立复制目标；复制观察面抓取则创建从原流到另一收集器的镜像分支。若同一转发设备把流量镜像到外部收集器，以新增复制分支为主归第三项；仅在本机缓冲原流则归第二项。
+          en: >-
+            Propose three Niji-native children separated exclusively by acquisition position and newly created trace topology. Authentication-Endpoint Co-resident Capture occurs on a host that sends, receives, or verifies the exchange and may lie inside transport termination or directly hold the recovery secret. Existing-Transit-Path Capture occurs on a node already forwarding the original flow, without changing that path or creating a separate collector destination. Replicated-Observation-Plane Capture creates a mirror branch from the original flow to another collector. When a forwarding device mirrors traffic to an external collector, the new copy branch takes precedence and the event belongs to the third child; buffering the original flow locally on that device belongs to the second.
+        - zh: >-
+            接口、协议、工具、云或本地位置和产品名称均不定义兄弟项。共享介质上的第三方纯被动接收可能具有独立观察位置，但现有高质量事件证据常与恶意接入点、主动名称响应或未证明的材料结果混合，本批将其保留为 evidence-deferred，不为补齐“被动嗅探”外观而强建第四项。三项正式子技术均要求凭据材料结果；只取得网络事实则转入 Discovery 范围。
+          en: >-
+            Interfaces, protocols, tools, cloud versus on-premises placement, and product names do not define siblings. A third party listening on a shared medium may represent another observation position, but available high-quality event evidence often mixes it with a rogue access point, active name response, or an unproven material result. This batch keeps that axis evidence-deferred rather than forcing a fourth child to mirror the phrase passive sniffing. Every formal child still requires a credential-material outcome; network facts alone move to Discovery scope.
+  evidence:
+    claim_keys:
+      - TMP-TA0006-007-T1040-CLM-ADMISSION
+      - TMP-TA0006-007-T1040-CLM-BOUNDARY
+      - TMP-TA0006-007-T1040-CLM-ENDPOINT-AXIS
+      - TMP-TA0006-007-T1040-CLM-TRANSIT-AXIS
+      - TMP-TA0006-007-T1040-CLM-REPLICA-AXIS
+      - TMP-TA0006-007-T1040-CLM-PRIVACY
+    case_keys:
+      - TMP-TA0006-007-T1040-CASE-UNC3886-LOOKOVER
+      - TMP-TA0006-007-T1040-CASE-PRC-ROUTER-PCAP
+    reference_keys:
+      - TMP-TA0006-007-T1040-REF-ATTACK
+      - TMP-TA0006-007-T1040-REF-CISA-AA25-239A
+      - TMP-TA0006-007-T1040-REF-APT33-SNIFFPASS
+      - REF-000179
+proposed_subtechniques:
+  - temporary_key: TMP-TA0006-007-T1040-CHILD-ENDPOINT
+    name:
+      zh: 认证端点共驻抓取
+      en: Authentication-Endpoint Co-resident Capture
+    disposition: formal
+    confidence: medium
+    stable_variable: 捕获进程与认证交换的发送、接收或验证端点共驻，可利用终止后的可见正文或端点持有的恢复秘密
+    trace_change: 端点出现原始包套接字、捕获库或驱动使用、接口过滤状态和 PCAP/提取文件，但远端路径与认证结果可以不变
+    defender_observation_difference: 需要主机进程与包捕获权限、认证服务会话及材料评估的关联；仅靠交换机镜像清单或路由器命令无法覆盖
+    prerequisites: 攻击者已控制认证客户端、服务端或验证端点，并能取得包捕获权限；若报文受保护，还需终止后位置或端点可用秘密
+    evidence_keys:
+      - REF-000179
+      - TMP-TA0006-007-T1040-REF-LINUX-PACKET
+      - TMP-TA0006-007-T1040-REF-MS-PKTMON
+    proposed_content:
+      summary:
+        zh: 攻击者在参与认证交换的主机上直接捕获凭据流量，借端点本身的可见性或秘密恢复材料，同时不改变对端和网络路径。
+        en: An adversary captures credential traffic directly on a host participating in authentication and uses endpoint visibility or secrets to recover material without changing the peer or network path.
+      definition_and_concept:
+        paragraphs:
+          - zh: >-
+              认证端点共驻抓取指捕获逻辑运行在认证交换的发送端、接收端或验证端主机，并从该主机接口看到的原始报文中取得认证材料。该位置可与协议终止或共享秘密存储共驻，使路径外观察者只能看到的密文在端点上变得可恢复。分类依据是捕获位置与认证角色共驻，而不是 Linux、Windows、TACACS+、libpcap 或某个恶意样本。
+            en: >-
+              Authentication-Endpoint Co-resident Capture places capture logic on the sending, receiving, or verifying host of an authentication exchange and acquires material from packets visible to that host. Co-location with protocol termination or shared-secret storage can make traffic recoverable that an outside observer sees only as ciphertext. The boundary is co-residence between capture position and authentication role, not Linux, Windows, TACACS+, libpcap, or a malware family.
+      stealth_characteristics:
+        paragraphs:
+          - zh: >-
+              认证端点共驻抓取把恶意读取藏在原本就应处理该认证流的主机内，通信双方、路由和服务结果无需变化。主机仍留下进程、CAP_NET_RAW 或等价权限、AF_PACKET/捕获驱动、接口成员关系、过滤器以及写出文件；但认证日志单独看只显示一次正常处理。端点 EDR 缺失、认证设备黑盒化或攻击者取得内核权限时，观察差异更难恢复。
+            en: >-
+              Authentication-Endpoint Co-resident Capture hides the read inside a host expected to process the authentication flow, without changing peers, routing, or service outcome. The host still leaves process, CAP_NET_RAW or equivalent privilege, AF_PACKET or capture-driver, interface-membership, filter, and output-file traces, while the authentication log alone records ordinary handling. Missing EDR, a black-box authentication appliance, or adversary kernel authority makes the difference harder to recover.
+      scope_boundary_definition:
+        paragraphs:
+          - zh: >-
+              纳入要求主机是认证流的真实发送、接收或验证参与者，并证明捕获接口覆盖该会话及材料可见或可恢复。修改认证程序在输入或验证函数中直接旁路复制秘密归 NJT-0169 或 NJS-0093-003 等输入/事务对象；只有从网络报文观察路径读取时才归本项。服务器上的普通 PCAP、性能诊断和授权故障排查必须以工单与过滤范围排除。
+            en: >-
+              Inclusion requires that the host truly sends, receives, or verifies the authentication flow and that the capture surface covers the session with visible or recoverable material. Modifying an authentication program to side-copy a secret directly inside input or verification functions belongs to input or transaction objects such as NJT-0169 or NJS-0093-003. This child applies only when the read occurs through the network-packet observation path. Routine server PCAP, performance diagnostics, and authorized troubleshooting require exclusion through ticket and filter scope.
+      application_scenarios_and_threat_model:
+        application_scenarios:
+          paragraphs:
+            - zh: >-
+                UNC3886 在受侵 TACACS+ 服务器部署 LOOKOVER，并用 libpcap 筛选 TCP/49 报文、以 TKEY 解混淆认证正文。相同变量也可出现在 VPN、代理或身份服务主机：攻击者利用端点捕获能力观察本机真实会话，再把材料写入内存或受控文件；协议和产品变化不改变共驻位置。
+              en: >-
+                UNC3886 deployed LOOKOVER on a compromised TACACS+ server, filtered TCP/49 through libpcap, and used TKEY to de-obfuscate authentication bodies. The same variable can occur on VPN, proxy, or identity-service hosts when an adversary uses endpoint capture capability to observe real local sessions and stage material in memory or a controlled file. Changes in protocol or product do not change the co-resident position.
+        threat_model:
+          attacker_model:
+            paragraphs:
+              - zh: >-
+                  攻击者需要控制认证端点上的高权限进程、服务账户、驱动或网络 capability，并知道要观察的接口、会话或协议特征。若依赖端点共享秘密，还需读取配置、内存或环境变量；LOOKOVER 的 TKEY 即为直接例证。严格最小权限、不可导出密钥、进程隔离和端点完整性会提高成本。
+                en: >-
+                  The adversary needs control of a privileged process, service identity, driver, or network capability on the authentication endpoint and enough knowledge to select the interface, session, or protocol features. When recovery depends on an endpoint shared secret, the actor must also read configuration, memory, or environment state; LOOKOVER's TKEY is direct evidence. Least privilege, non-exportable keys, process isolation, and endpoint integrity raise the cost.
+          defender_model:
+            paragraphs:
+              - zh: >-
+                  防守方需要把进程启动或注入、包套接字/驱动与接口状态、捕获文件以及认证服务会话连接到同一 host、process start key、interface 和 flow。只按 tcpdump 或 Wireshark 名称告警会漏掉自定义库与注入进程；只看原始套接字又会淹没于监控代理。确认材料时由受限取证流程输出材料类别和 artifact hash，不在通用日志中保存秘密。
+                en: >-
+                  Defenders need to join process creation or injection, packet socket or driver and interface state, capture files, and authentication-service sessions on host, process start key, interface, and flow. Alerting on tcpdump or Wireshark names misses custom libraries and injected processes, while raw-socket-only rules drown in monitoring agents. A restricted forensic workflow should emit material class and artifact hash for confirmation without placing secrets in general logs.
+      stealth_mechanisms:
+        - mechanism_ref: NM-BT
+          role: primary
+          summary:
+            zh: 在合法认证端点内部观察正常会话使读取不进入远端认证日志
+            en: Observe normal sessions inside a legitimate authentication endpoint so the read does not enter remote authentication logs
+          analysis:
+            paragraphs:
+              - zh: >-
+                  捕获逻辑与真实认证端点共驻并读取该端点原本就接收或发送的报文，因而不需要额外目的地或新认证事件。远端只看到正常会话，关键差异留在端点的套接字、代码、权限和输出产物。LOOKOVER 的端点部署、libpcap 处理及输出路径直接支持该因果链；样本崩溃限制了对持久结果的结论，不影响观察位置差异。
+                en: >-
+                  Capture logic co-resides with a real authentication endpoint and reads packets the host already sends or receives, requiring no extra destination or new authentication event. The peer sees a normal session while the decisive differences remain in endpoint sockets, code, privileges, and output artifacts. LOOKOVER's endpoint deployment, libpcap processing, and output path directly support this chain. The sample crash limits conclusions about durable results but not the observation-position difference.
+          evidence_keys:
+            - REF-000179
+          confidence: medium
+      research_limitations:
+        paragraphs:
+          - zh: >-
+              Mandiant 证明 LOOKOVER 已部署并配置处理真实 TACACS+ 报文，但报告指出其在加密提取凭据并写盘时崩溃，且没有证明后继账户使用。端点捕获与认证程序内直接秘密记录在实现上可能接近，必须依据数据是否来自网络报文观察而非函数参数或应用内对象进行边界判断。
+            en: >-
+              Mandiant establishes that LOOKOVER was deployed and configured to process real TACACS+ packets, but reports a crash while encrypting extracted credentials for disk output and does not establish successor account use. Endpoint packet capture and direct secret logging inside an authentication program can look similar in implementation, so the boundary must turn on whether data came from packet observation rather than function arguments or application objects.
+  - temporary_key: TMP-TA0006-007-T1040-CHILD-TRANSIT
+    name:
+      zh: 既有转发路径抓取
+      en: Existing-Transit-Path Capture
+    disposition: formal
+    confidence: medium
+    stable_variable: 捕获发生在原本已经转发目标认证流的网络节点，并在本节点缓冲或导出原流而不改变服务指向或增加独立镜像收集器
+    trace_change: 转发设备出现抓包对象、过滤器、运行缓冲、PCAP 文件和导出动作；原流路径与端点结果保持不变
+    defender_observation_difference: 需要网络设备 AAA/CLI、运行状态、文件系统和传输日志，而端点 EDR 及云镜像 API 不足以覆盖
+    prerequisites: 攻击者已控制位于目标流量真实路径上的路由、交换、VPN 或边缘设备，并具有原生抓包或等价数据面读取权限
+    evidence_keys:
+      - TMP-TA0006-007-T1040-REF-CISA-AA25-239A
+      - TMP-TA0006-007-T1040-REF-CISCO-EPC
+    proposed_content:
+      summary:
+        zh: 攻击者在本来就转发认证流量的设备上本地缓冲或导出报文，保持原通信路径与服务结果不变，同时取得凭据材料。
+        en: An adversary locally buffers or exports packets on a device already forwarding authentication traffic, preserving the original path and service result while acquiring credential material.
+      definition_and_concept:
+        paragraphs:
+          - zh: >-
+              既有转发路径抓取指攻击者在已经属于认证通信真实转发路径的路由器、交换机、VPN 或边缘节点上启用本地捕获，并从该节点的接口、控制平面或数据面缓冲区取得材料。该节点没有把受害者导向新的服务，也没有把流量复制到另一个持续收集目标；分类变量是“原有转发权同时成为观察权”。
+            en: >-
+              Existing-Transit-Path Capture enables local capture on a router, switch, VPN, or edge node already forwarding the real authentication communication and obtains material from that node's interface, control plane, or data-plane buffer. The node does not direct the victim to a new service or establish another persistent collector target. The variable is that preexisting forwarding authority becomes observation authority.
+      stealth_characteristics:
+        paragraphs:
+          - zh: >-
+              既有转发路径抓取保留源、目标和正常转发结果，通常不会让端点产生证书、解析或网关异常；受侵设备还可能缺少 EDR。残余证据包括特权 CLI 会话、monitor capture 或等价对象、过滤器、开始/停止时间、缓冲计数、闪存 PCAP 和 TFTP/SCP 等导出。集中 AAA 记账、运行状态盘点和文件清单可恢复这些痕迹，但设备自身日志被清除时置信度下降。
+            en: >-
+              Existing-Transit-Path Capture preserves source, destination, and forwarding outcome and generally creates no certificate, resolution, or gateway anomaly at endpoints. Compromised appliances may also lack EDR. Residue includes privileged CLI sessions, monitor capture or equivalent objects, filters, start and stop times, buffer counts, PCAPs in device storage, and TFTP or SCP exports. Central AAA accounting, runtime-state inventory, and file inventory can recover these traces, but confidence declines when the appliance clears its own logs.
+      scope_boundary_definition:
+        paragraphs:
+          - zh: >-
+              纳入要求该设备在攻击前或独立于抓包已经位于目标流的真实路径上，且抓包在设备本地结束或作为一次性产物导出。通过修改路由、DNS、ARP、DHCP 或代理使流量新经过该设备归 NJT-0136；配置 SPAN、ERSPAN 或云镜像形成持续复制目的地归复制观察面抓取。只有转发设备命令而无认证流覆盖与材料结果时仍是尝试。
+            en: >-
+              Inclusion requires the device to have been on the flow's real path before or independently of the capture, with capture terminating locally or exported as a discrete artifact. Changing routing, DNS, ARP, DHCP, or proxy behavior so traffic newly traverses the device belongs to NJT-0136. Configuring SPAN, ERSPAN, or cloud mirroring to create a persistent copy destination belongs to Replicated-Observation-Plane Capture. Device commands without authentication-flow coverage and a material result remain an attempt.
+      application_scenarios_and_threat_model:
+        application_scenarios:
+          paragraphs:
+            - zh: >-
+                2025 年联合通告记录行为者在受侵 Cisco IOS XE 设备上使用原生嵌入式抓包，创建并导出 `mycap.pcap`、`tac.pcap` 等文件，主要目标被评估为经过 TCP/49 的 TACACS+ 认证流。企业骨干、分支出口、VPN 集中器与运营商边缘都可能提供同类位置，只要设备本来就转发该交换。
+              en: >-
+                The 2025 joint advisory documents actors using native embedded capture on compromised Cisco IOS XE devices and creating or exporting files such as `mycap.pcap` and `tac.pcap`, with TACACS+ authentication over TCP/49 assessed as the primary target. Enterprise cores, branch edges, VPN concentrators, and provider edges provide the same position when they already forward the exchange.
+        threat_model:
+          attacker_model:
+            paragraphs:
+              - zh: >-
+                  攻击者需要取得转发设备的特权 CLI、管理 API、容器或固件级访问，并选择覆盖认证流的接口和过滤器。能保存 PCAP 不代表能解释材料；明文、弱保护、可取得共享秘密或位于 TLS 终止之后仍是必要条件之一。设备存储、CPU、抓包长度和导出路径限制行动规模。
+                en: >-
+                  The adversary needs privileged CLI, management API, container, or firmware-level access to a forwarding device and must select interfaces and filters covering authentication flows. Saving a PCAP does not make material interpretable. Plaintext, weak protection, possession of a shared secret, or placement after TLS termination remains necessary. Device storage, CPU, capture length, and export path constrain scale.
+          defender_model:
+            paragraphs:
+              - zh: >-
+                  防守方依赖独立于受侵设备的 AAA 命令记账、配置与运行状态快照、设备文件目录、捕获缓冲参数及向外文件传输记录。检测须把 actor/session、capture name、interface、filter、时间、PCAP hash 与认证流目录连接；不能因命令属于厂商原生功能而放行，也不能因合法网管经常抓包而永久白名单某个账户。
+                en: >-
+                  Defenders depend on AAA command accounting outside the compromised appliance, configuration and runtime snapshots, device file listings, capture-buffer parameters, and outbound file-transfer records. Detection must join actor and session, capture name, interface, filter, time, PCAP hash, and the authentication-flow inventory. Native vendor functionality is not inherently benign, and frequent troubleshooting does not justify a permanent account allowlist.
+      stealth_mechanisms:
+        - mechanism_ref: NM-FD
+          role: primary
+          summary:
+            zh: 以原生设备诊断命令包装恶意凭据抓取
+            en: Wrap malicious credential capture in native device-diagnostic commands
+          analysis:
+            paragraphs:
+              - zh: >-
+                  行为者在正常转发设备上使用嵌入式抓包和常见 PCAP 文件格式，命令与故障排查具有相同表面，原认证流继续正常转发。恶意差异只在未经批准的主体、敏感接口/过滤器、异常持续时间和导出目的地中显现。CISA 的实际命令与文件观察及 Cisco 的功能说明共同支持该特征相似性；如果集中记账和运行对象盘点完备，伪装效果会显著下降。
+                en: >-
+                  The actor uses embedded capture and ordinary PCAP formats on a normal forwarding device, producing the same visible commands as troubleshooting while the authentication flow continues normally. Malice appears only in the unapproved principal, sensitive interface or filter, anomalous duration, and export destination. CISA's observed commands and files together with Cisco's functional documentation support this feature similarity. Complete centralized accounting and runtime-object inventory substantially reduce the disguise.
+          evidence_keys:
+            - TMP-TA0006-007-T1040-REF-CISA-AA25-239A
+            - TMP-TA0006-007-T1040-REF-CISCO-EPC
+          confidence: medium
+      research_limitations:
+        paragraphs:
+          - zh: >-
+              联合通告直接证明原生 PCAP 收集和文件命名，且在至少一案中发现可逆保存的 TACACS+ 共享秘密；但“主要目标”和“可离线解密”仍是分析判断，不能写成行为者已成功解密并使用某个管理员口令。设备厂商对抓包对象、AAA 字段和运行状态保留差异很大。
+            en: >-
+              The joint advisory directly establishes native PCAP collection and file naming and reports a reversibly stored TACACS+ shared secret in at least one case. Its statements about the primary objective and possible offline decryption remain analytic assessments and cannot be rewritten as proven decryption and use of a particular administrator password. Capture objects, AAA fields, and runtime-state retention vary substantially across vendors.
+  - temporary_key: TMP-TA0006-007-T1040-CHILD-REPLICA
+    name:
+      zh: 复制观察面抓取
+      en: Replicated-Observation-Plane Capture
+    disposition: formal
+    confidence: medium
+    stable_variable: 攻击者新增一个不影响原交付结果的流量副本分支，把认证流送往独立收集器
+    trace_change: 出现镜像资源或交换机 monitor session、源范围与过滤器、收集目标、封装流及生命周期审计，而原流仍走原路径
+    defender_observation_difference: 主要依赖网络或云控制面审计、镜像资源清单和收集器流量，不依赖源端点 raw socket 或单设备本地 PCAP
+    prerequisites: 攻击者控制交换/虚拟网络镜像配置及可接收副本的收集器，镜像范围覆盖认证流并存在材料可见性
+    evidence_keys:
+      - TMP-TA0006-007-T1040-REF-CISA-AA25-239A
+      - TMP-TA0006-007-T1040-REF-GCP-MIRROR-AUDIT
+    proposed_content:
+      summary:
+        zh: 攻击者建立不影响原通信交付的镜像分支，把认证流复制到独立收集器，并在业务路径保持正常时取得材料。
+        en: An adversary creates a mirror branch that does not affect original delivery, copies authentication flows to an independent collector, and acquires material while the business path remains normal.
+      definition_and_concept:
+        paragraphs:
+          - zh: >-
+              复制观察面抓取指攻击者通过交换镜像、远程镜像、封装镜像或虚拟网络 Packet Mirroring 创建第二份流量视图，并把它交付给与原认证双方和原转发节点分离的收集器。直接变量是“增加复制边而不替换原路径”；云与本地、SPAN 与 API、物理与虚拟接口只是实现。
+            en: >-
+              Replicated-Observation-Plane Capture creates a second traffic view through switch mirroring, remote or encapsulated mirroring, or virtual-network Packet Mirroring and delivers it to a collector separate from the authenticating parties and original forwarding node. The direct variable is adding a copy edge without replacing the original path. Cloud versus on-premises, SPAN versus API, and physical versus virtual interfaces are implementations.
+      stealth_characteristics:
+        paragraphs:
+          - zh: >-
+              复制分支不改变原会话目的地、响应和认证结果，源端点通常不会知道另有收集器。残余痕迹集中在镜像 create/patch/delete、源接口或实例选择、过滤器、收集目标、封装流量和收集器接收量；短时创建后删除会逃离现态清单，但仍可由不可变 Admin Activity 和网络流历史恢复。控制面日志被删除、物理 TAP 或提供方内部复制会形成盲区。
+            en: >-
+              The copy branch does not change the original session destination, response, or authentication result, and source endpoints normally do not know another collector exists. Residue concentrates in mirror create, patch, and delete events, selected source interfaces or instances, filters, collector targets, encapsulated traffic, and collector receipt volume. Short-lived mirrors deleted after use escape current-state inventory but remain recoverable from immutable Admin Activity and flow history. Deleted control-plane logs, physical taps, and provider-internal copying create blind spots.
+      scope_boundary_definition:
+        paragraphs:
+          - zh: >-
+              纳入要求存在到独立收集目标的复制边，并证明其源范围覆盖认证流且收集器收到可用材料。设备在本机缓冲原路径报文归既有转发路径抓取；把原流改路到攻击者再转发归 NJT-0136。合法 NDR、合规留存、性能分析和故障诊断使用相同镜像资源，须以 owner、批准窗口、固定目标和数据处理规则排除。
+            en: >-
+              Inclusion requires a copy edge to an independent collector, proof that its source scope covers authentication traffic, and receipt of usable material at the collector. Local buffering of original-path packets belongs to Existing-Transit-Path Capture, while rerouting the original flow through the adversary belongs to NJT-0136. Authorized NDR, compliance retention, performance analysis, and troubleshooting use the same mirror resources and require exclusion through owner, approval window, pinned target, and data-handling rules.
+      application_scenarios_and_threat_model:
+        application_scenarios:
+          paragraphs:
+            - zh: >-
+                行为者可在交换机上建立 SPAN/RSPAN/ERSPAN，把多个接口或 VLAN 的流量送往受控收集端；也可在 IaaS 中创建 Packet Mirroring 资源，选择关键实例、子网和过滤器并将副本送到收集虚拟机。负载均衡或代理终止后的镜像位置可能看到比互联网路径更丰富的正文，但具体终止边界必须实测。
+              en: >-
+                An actor may create SPAN, RSPAN, or ERSPAN on a switch to send traffic from multiple interfaces or VLANs to a controlled collector, or create an IaaS Packet Mirroring resource selecting critical instances, subnets, and filters and delivering copies to a collector VM. A mirror positioned after load-balancer or proxy termination may see richer content than the Internet path, but the actual termination boundary must be validated.
+        threat_model:
+          attacker_model:
+            paragraphs:
+              - zh: >-
+                  攻击者需要修改镜像会话或云网络资源的权限、一个能够接收并处理副本的目标，以及对源范围和认证时段的了解。若只镜像密文，仍需解密条件；若收集目标跨项目、网络或租户，还需相应连接与路由。严格 IAM、固定 collector、双人批准和短期凭据可降低可行性。
+                en: >-
+                  The adversary needs authority to modify mirror sessions or cloud network resources, a target able to receive and process copies, and knowledge of source scope and authentication timing. Mirroring ciphertext still requires recovery conditions. A collector across projects, networks, or tenants also needs connectivity and routing. Strict IAM, pinned collectors, dual approval, and short-lived credentials reduce feasibility.
+          defender_model:
+            paragraphs:
+              - zh: >-
+                  防守方应保留镜像资源全生命周期而不只查询现态。Google Cloud 明确把 packetMirrorings.insert、patch 和 delete 记为 Admin Activity，并记录相关写权限；等价平台应至少保留 actor、request ID、project/tenant、source resources、filter、collector target、operation 和结果。再把镜像有效区间与收集器收到的封装流、认证流目录和材料评估关联。
+                en: >-
+                  Defenders should retain full mirror-resource lifecycle rather than querying current state only. Google Cloud explicitly records packetMirrorings.insert, patch, and delete as Admin Activity with associated write permissions. Equivalent platforms should retain actor, request ID, project or tenant, source resources, filter, collector target, operation, and result, then join the mirror-valid interval to encapsulated flows received by the collector, the authentication-flow inventory, and the material assessment.
+      stealth_mechanisms:
+        - mechanism_ref: NM-BT
+          role: primary
+          summary:
+            zh: 将认证流读取移入独立复制分支使原路径和端点观察保持正常
+            en: Move authentication-flow reading into an independent copy branch so original-path and endpoint observations remain normal
+          analysis:
+            paragraphs:
+              - zh: >-
+                  镜像资源复制报文并保持原交付，端点与服务端均无需产生异常连接或失败。行为痕迹落在另一个控制平面和收集器，若身份、网络和认证团队不关联这些视角，读取动作处于常规认证监测范围之外。CISA 对 SPAN/RSPAN/ERSPAN 的行为者使用记录和 Google 的可审计镜像生命周期支持该观察差；缺少 collector receipt 时只能确认复制风险，不能确认凭据材料结果。
+                en: >-
+                  A mirror resource copies packets while preserving original delivery, so neither endpoint nor service needs to create an anomalous connection or failure. Traces land in another control plane and collector. Without correlation across identity, network, and authentication teams, the read stays outside routine authentication monitoring. CISA's record of actor use of SPAN, RSPAN, and ERSPAN and Google's auditable mirror lifecycle support the observation difference. Without collector receipt, evidence confirms copy risk rather than a credential-material outcome.
+          evidence_keys:
+            - TMP-TA0006-007-T1040-REF-CISA-AA25-239A
+            - TMP-TA0006-007-T1040-REF-GCP-MIRROR-AUDIT
+          confidence: medium
+      research_limitations:
+        paragraphs:
+          - zh: >-
+              联合通告汇总多个国家支持行为者和环境，公开文本没有把每个 SPAN/RSPAN/ERSPAN 会话逐一连接到某个被成功恢复的凭据；Google 文档只证明镜像与审计字段可实施，不证明攻击事件。正式案例应区分观察到镜像、收集器接收和材料确认三个阶段。
+            en: >-
+              The joint advisory aggregates multiple state-sponsored actors and environments and does not connect every SPAN, RSPAN, or ERSPAN session to a specifically recovered credential. Google documentation establishes mirror and audit capabilities, not an attack incident. Formal cases must distinguish observed mirroring, collector receipt, and material confirmation as separate stages.
+defense_candidates:
+  detection_strategies:
+    - temporary_key: TMP-TA0006-007-T1040-DET-OBSERVATION-MATERIAL
+      name:
+        zh: 未授权观察面—认证材料结果关联
+        en: Unauthorized Observation Surface–Authentication Material Outcome Correlation
+      objective:
+        zh: 把主机包捕获、网络设备原生抓包和镜像复制面的生命周期分别连接到真实认证流及分级材料结果，并用批准关系排除合法监控。
+        en: Join host packet capture, native network-device capture, and mirror-plane lifecycle separately to real authentication flows and graded material outcomes, using approval relationships to exclude authorized monitoring.
+      subjects:
+        - TMP-TA0006-007-T1040-PARENT
+        - TMP-TA0006-007-T1040-CHILD-ENDPOINT
+        - TMP-TA0006-007-T1040-CHILD-TRANSIT
+        - TMP-TA0006-007-T1040-CHILD-REPLICA
+      analytic_refs:
+        - TMP-TA0006-007-T1040-NJA-ENDPOINT
+        - TMP-TA0006-007-T1040-NJA-TRANSIT
+        - TMP-TA0006-007-T1040-NJA-MIRROR
+      evidence_keys:
+        - REF-000179
+        - TMP-TA0006-007-T1040-REF-CISA-AA25-239A
+        - TMP-TA0006-007-T1040-REF-CISCO-EPC
+        - TMP-TA0006-007-T1040-REF-GCP-MIRROR-AUDIT
+        - TMP-TA0006-007-T1040-REF-NIST-PCAP-PRIVACY
+      confidence: medium
+  detection_analytics:
+    - temporary_key: TMP-TA0006-007-T1040-NJA-ENDPOINT
+      strategy_ref: TMP-TA0006-007-T1040-DET-OBSERVATION-MATERIAL
+      name:
+        zh: 端点捕获权限—认证流—材料产物关联
+        en: Endpoint Capture Authority–Authentication Flow–Material Artifact Correlation
+      logic:
+        paragraphs:
+          - zh: >-
+              首先按 host 和 process start key 建立包捕获活动：进程或注入主体取得 CAP_NET_RAW/管理员捕获能力，创建 AF_PACKET/raw socket、调用捕获驱动或原生 Pktmon，并绑定 interface、filter 与起止时间。然后把有效区间与认证流目录相交，并连接 PCAP、ETL、二进制提取文件或内存取证产物。只有受限审查确认 artifact 含明文、可恢复证明或已具备恢复秘密时，输出“TA0006 材料已取得”；缺少材料评估时输出“未授权认证流观察面”，不能升级结果。
+            en: >-
+              First construct packet-capture activity by host and process start key: a process or injected principal obtains CAP_NET_RAW or administrator capture authority, creates an AF_PACKET or raw socket, invokes a capture driver or native Pktmon, and binds interface, filter, start, and stop times. Intersect that interval with the authentication-flow inventory and join PCAP, ETL, binary extraction files, or memory-forensic artifacts. Emit acquired TA0006 material only when restricted review confirms plaintext, a recoverable proof, or possession of the recovery secret. Without material assessment, emit unauthorized authentication-flow observation rather than upgrading the outcome.
+      data_requirements:
+        - source_type: host-packet-capture-control
+          name:
+            zh: 主机包捕获权限与接口活动
+            en: Host packet-capture authority and interface activity
+          channel: kernel audit, EDR, ETW, or equivalent platform telemetry
+          required_fields: [timestamp, host_id, process_start_key, process_image, executable_hash, principal_id, privilege_or_capability, capture_api_or_socket_family, interface_id, filter_hash, operation, outcome]
+        - source_type: host-capture-artifact
+          name:
+            zh: 抓包与提取产物生命周期
+            en: Capture and extraction artifact lifecycle
+          channel: file, memory, and removable-storage telemetry
+          required_fields: [timestamp, host_id, process_start_key, artifact_id, path_or_memory_region, format_or_magic, size, content_hash, create_or_delete, destination]
+        - source_type: authentication-flow-inventory
+          name:
+            zh: 认证流与加密边界目录
+            en: Authentication-flow and encryption-boundary inventory
+          channel: identity, service, and network metadata
+          required_fields: [timestamp, host_id, interface_id, flow_id, source, destination, protocol_family, service_role, material_class_expected, encryption_or_obfuscation, termination_boundary]
+        - source_type: restricted-material-assessment
+          name:
+            zh: 受限凭据材料评估
+            en: Restricted credential-material assessment
+          channel: privacy-controlled forensic review
+          required_fields: [case_id, artifact_id, artifact_hash, flow_id, material_class, plaintext_or_recoverable, recovery_condition, reviewer_id, raw_secret_retained]
+        - source_type: capture-approval
+          name:
+            zh: 抓包批准与数据处理约束
+            en: Capture approval and data-handling constraints
+          channel: change and incident management
+          required_fields: [ticket_id, principal_id, asset_scope, interface_scope, filter_scope, valid_from, valid_to, output_destination, purpose, owner]
+      observables:
+        - zh: 未批准进程获得包捕获权限并在同一有效期内观察认证服务流，随后生成 PCAP 或协议特定提取文件
+          en: An unapproved process obtains packet-capture authority, observes authentication-service traffic in the same interval, and creates a PCAP or protocol-specific extraction artifact
+        - zh: 认证服务主机上不属于已登记监控栈的进程绑定原始包接口，过滤器与认证端口或目标重合
+          en: A process outside the registered monitoring stack binds a raw-packet interface on an authentication host with a filter overlapping authentication ports or peers
+      correlation:
+        window:
+          zh: 从捕获权限或进程建立起覆盖 start 到 stop，并继续关联产物导出、删除或二十四小时；材料审查按 artifact hash 跨越事件调查全期。
+          en: Span capture authority or process creation through start and stop and continue through artifact export, deletion, or twenty-four hours; material assessment follows artifact hash for the full investigation.
+        dimensions: [host_id, process_start_key, principal_id, interface_id, filter_hash, flow_id, artifact_id, ticket_id, time]
+      false_positives:
+        - zh: 获批故障诊断、NDR/EDR 传感器、事件响应取证、性能分析和协议测试
+          en: Approved troubleshooting, NDR or EDR sensors, incident-response forensics, performance analysis, and protocol testing
+      blind_spots:
+        - zh: 内核或捕获驱动被攻击者控制、内存内无文件提取、进程注入使 socket 归属失真、设备不提供接口审计，以及强加密使材料内容无法判定
+          en: Adversary-controlled kernel or capture driver, memory-only extraction, process injection that distorts socket ownership, absent interface audit, and strong encryption that prevents material assessment
+      tuning_guidance:
+        paragraphs:
+          - zh: >-
+              允许项必须绑定进程签名/hash、主体、接口、过滤器、资产范围、输出目标与到期时间；不能永久放行 tcpdump、Pktmon 或 root。先以认证服务器和高权限管理流建立低噪声试点，验证平台是否真实提供 socket family、interface 与 process start key。原始正文留在受限证据库，SIEM 只接收材料类别、artifact hash 和布尔结果。
+            en: >-
+              Bind allowances to process signature or hash, principal, interface, filter, asset scope, output target, and expiration. Do not permanently allow tcpdump, Pktmon, or root. Pilot on authentication servers and privileged management flows and verify that the platform actually supplies socket family, interface, and process start key. Keep raw payload in a restricted evidence store and send only material class, artifact hash, and boolean outcome to the SIEM.
+      evidence_keys:
+        - REF-000179
+        - TMP-TA0006-007-T1040-REF-LINUX-PACKET
+        - TMP-TA0006-007-T1040-REF-MS-PKTMON
+        - TMP-TA0006-007-T1040-REF-NIST-PCAP-PRIVACY
+      confidence: medium
+    - temporary_key: TMP-TA0006-007-T1040-NJA-TRANSIT
+      strategy_ref: TMP-TA0006-007-T1040-DET-OBSERVATION-MATERIAL
+      name:
+        zh: 网络设备抓包会话—PCAP 导出—认证流关联
+        en: Network-Device Capture Session–PCAP Export–Authentication Flow Correlation
+      logic:
+        paragraphs:
+          - zh: >-
+              以集中 AAA 命令记账和设备运行盘点恢复 capture name、interface、direction、filter、limit、buffer、start/stop 与操作者，再连接 flash/NVRAM 文件及 TFTP、SCP、FTP 或管理通道导出。将抓包有效区间和过滤范围与认证流目录相交；命中敏感流且无精确批准时报告未授权观察面，PCAP 受限评估确认材料后升级。抓包随后被删除或 running state 被恢复时仍保留生命周期告警。
+            en: >-
+              Use centralized AAA command accounting and runtime inventory to recover capture name, interface, direction, filter, limit, buffer, start and stop, and actor, then join device-storage files and TFTP, SCP, FTP, or management-channel exports. Intersect capture intervals and filters with the authentication-flow inventory. Report an unauthorized observation surface when sensitive flows match without precise approval and upgrade only after restricted PCAP assessment confirms material. Preserve the lifecycle alert when capture objects are deleted or running state is restored.
+      data_requirements:
+        - source_type: network-device-command-accounting
+          name:
+            zh: 网络设备特权命令记账
+            en: Network-device privileged command accounting
+          channel: TACACS+/RADIUS AAA accounting or equivalent remote log
+          required_fields: [timestamp, device_id, admin_session_id, actor_id, source_address, privilege_level, command, command_hash, outcome]
+        - source_type: network-device-capture-state
+          name:
+            zh: 抓包对象与缓冲运行状态
+            en: Capture object and buffer runtime state
+          channel: device operational inventory
+          required_fields: [timestamp, device_id, capture_name, interface_id, direction, filter_or_acl, start_time, stop_time, packet_count, buffer_size, file_path, state]
+        - source_type: network-device-file-transfer
+          name:
+            zh: 设备文件与导出传输
+            en: Device file and export transfer
+          channel: device filesystem and network telemetry
+          required_fields: [timestamp, device_id, admin_session_id, artifact_id, file_path, file_hash, size, transfer_protocol, destination, outcome]
+        - source_type: authentication-flow-inventory
+          name:
+            zh: 认证流与加密边界目录
+            en: Authentication-flow and encryption-boundary inventory
+          channel: identity, service, and flow metadata
+          required_fields: [timestamp, device_id, interface_id, flow_id, source, destination, protocol_family, service_role, material_class_expected, encryption_or_obfuscation, termination_boundary]
+        - source_type: restricted-material-assessment
+          name:
+            zh: 受限凭据材料评估
+            en: Restricted credential-material assessment
+          channel: privacy-controlled forensic review
+          required_fields: [case_id, artifact_id, artifact_hash, flow_id, material_class, plaintext_or_recoverable, recovery_condition, reviewer_id, raw_secret_retained]
+        - source_type: capture-approval
+          name:
+            zh: 网络设备抓包批准
+            en: Network-device capture approval
+          channel: change and incident management
+          required_fields: [ticket_id, device_id, actor_id, interface_scope, filter_scope, valid_from, valid_to, output_destination, purpose, owner]
+      observables:
+        - zh: 未批准管理员在承载 TACACS+、RADIUS、LDAP、SMB 或 Web 认证流的接口建立短时抓包并导出 PCAP
+          en: An unapproved administrator creates a short capture on an interface carrying TACACS+, RADIUS, LDAP, SMB, or web authentication and exports a PCAP
+        - zh: 抓包对象删除前向非管理目的地传输新建的 PCAP，且过滤器与高权限认证流重合
+          en: A newly created PCAP transfers to a nonmanagement destination before capture deletion and its filter overlaps privileged authentication flows
+      correlation:
+        window:
+          zh: 从首条 capture 定义命令前十五分钟覆盖 start、stop、export、删除及其后二十四小时；按 capture name、admin session 和 artifact hash 可跨越设备重启。
+          en: Start fifteen minutes before the first capture-definition command and span start, stop, export, deletion, and twenty-four hours afterward; capture name, admin session, and artifact hash may join across reboot.
+        dimensions: [device_id, admin_session_id, actor_id, capture_name, interface_id, filter_or_acl, flow_id, artifact_id, destination, ticket_id, time]
+      false_positives:
+        - zh: 有工单的厂商支持、链路故障诊断、协议迁移验证、NDR 传感器校验和事件响应
+          en: Ticketed vendor support, link troubleshooting, protocol-migration validation, NDR sensor validation, and incident response
+      blind_spots:
+        - zh: 设备未启用远程命令记账、行为者停用或清除日志、固件级抓包绕过 CLI、物理 TAP，以及设备文件被直接从存储读取
+          en: Missing remote command accounting, actor-disabled or cleared logs, firmware-level capture bypassing CLI, physical taps, and direct reads from device storage
+      tuning_guidance:
+        paragraphs:
+          - zh: >-
+              按设备角色维护哪些接口与认证流属于高敏感范围。合法抓包批准应限制 capture name、命令主体、ACL/filter、持续时间、最大包长、文件路径和唯一导出目的地；即使账户常用于运维，也不永久白名单。对没有命令字段的平台使用配置差分、文件与流量证据降级关联，并明确置信度。
+            en: >-
+              Maintain high-sensitivity interfaces and authentication flows by device role. Authorized capture approvals should constrain capture name, command principal, ACL or filter, duration, maximum packet length, file path, and one export destination. Do not permanently allow an account because it often performs administration. On platforms lacking command fields, use lower-confidence joins across configuration difference, file, and flow evidence and state that confidence explicitly.
+      evidence_keys:
+        - TMP-TA0006-007-T1040-REF-CISA-AA25-239A
+        - TMP-TA0006-007-T1040-REF-CISCO-EPC
+        - TMP-TA0006-007-T1040-REF-NIST-PCAP-PRIVACY
+      confidence: high
+    - temporary_key: TMP-TA0006-007-T1040-NJA-MIRROR
+      strategy_ref: TMP-TA0006-007-T1040-DET-OBSERVATION-MATERIAL
+      name:
+        zh: 镜像资源生命周期—收集器接收—认证材料关联
+        en: Mirror Resource Lifecycle–Collector Receipt–Authentication Material Correlation
+      logic:
+        paragraphs:
+          - zh: >-
+              对每次 mirror create、patch、enable、disable 和 delete 保存 event-time 资源版本，规范 source interfaces/instances/subnets、filter、collector target 与 actor。把镜像有效区间连接到收集器收到的封装或镜像字节，再与认证流目录相交。未经批准且覆盖高价值认证流时报告复制面异常；只有 collector artifact 的受限评估确认材料时才报告 TA0006 结果。删除后的现态为空不能关闭历史告警。
+            en: >-
+              Preserve the event-time resource version for every mirror create, patch, enable, disable, and delete and normalize source interfaces, instances or subnets, filter, collector target, and actor. Join the mirror-valid interval to encapsulated or mirrored bytes received by the collector and intersect with the authentication-flow inventory. Report a copy-plane anomaly when an unapproved mirror covers high-value authentication flows, and report a TA0006 outcome only after restricted assessment of a collector artifact confirms material. Empty current state after deletion does not close the historical alert.
+      data_requirements:
+        - source_type: mirror-control-plane-audit
+          name:
+            zh: 流量镜像控制面审计
+            en: Traffic-mirror control-plane audit
+          channel: cloud Admin Activity, switch AAA/configuration log, or equivalent
+          required_fields: [timestamp, platform, tenant_or_project, request_id, actor_id, operation, mirror_id, source_resources, filter, collector_target, old_state, new_state, outcome]
+        - source_type: mirror-collector-flow
+          name:
+            zh: 镜像收集器接收流量
+            en: Mirror collector receipt flow
+          channel: VPC flow, switch telemetry, collector interface counters, or equivalent
+          required_fields: [timestamp, tenant_or_network, mirror_id_or_encapsulation_key, source_resource, collector_target, collector_interface, packet_count, byte_count, flow_id]
+        - source_type: authentication-flow-inventory
+          name:
+            zh: 认证流与加密边界目录
+            en: Authentication-flow and encryption-boundary inventory
+          channel: identity, load balancer, service, and flow metadata
+          required_fields: [timestamp, tenant_or_network, source_resource, flow_id, source, destination, protocol_family, service_role, material_class_expected, encryption_or_obfuscation, termination_boundary]
+        - source_type: restricted-material-assessment
+          name:
+            zh: 受限凭据材料评估
+            en: Restricted credential-material assessment
+          channel: privacy-controlled forensic review
+          required_fields: [case_id, artifact_id, artifact_hash, flow_id, material_class, plaintext_or_recoverable, recovery_condition, reviewer_id, raw_secret_retained]
+        - source_type: mirror-approval-inventory
+          name:
+            zh: 批准镜像与收集器清单
+            en: Approved mirror and collector inventory
+          channel: asset and change management
+          required_fields: [ticket_id, mirror_id, owner, source_scope, filter_scope, collector_target, valid_from, valid_to, data_purpose, retention_policy]
+      observables:
+        - zh: 新建或修改的镜像覆盖身份服务或管理认证流，并将副本发送至无 owner、跨项目或首次出现的收集器
+          en: A new or modified mirror covers identity-service or management-authentication flows and sends copies to an unowned, cross-project, or first-seen collector
+        - zh: 短时镜像在收集器接收大量认证流后被删除，且无相符工单和保留策略
+          en: A short-lived mirror is deleted after its collector receives substantial authentication traffic without a matching ticket and retention policy
+      correlation:
+        window:
+          zh: 从镜像 create/patch 前一小时覆盖其完整有效期、delete 及其后七日的收集器产物；request ID 和 mirror ID 可跨全生命周期，缺少 ID 时仅在十五分钟内按 source/target/filter 降级关联。
+          en: Start one hour before mirror create or patch and span its full validity, delete, and seven days of collector artifacts afterward. Request ID and mirror ID may join the complete lifecycle; without them, use source, target, and filter only within a fifteen-minute lower-confidence window.
+        dimensions: [platform, tenant_or_project, request_id, mirror_id, actor_id, source_resource, filter, collector_target, flow_id, ticket_id, time]
+      false_positives:
+        - zh: 获批 NDR/IDS、合规监测、故障诊断、容量分析、迁移验证和依法授权的监测
+          en: Approved NDR or IDS, compliance monitoring, troubleshooting, capacity analysis, migration validation, and lawfully authorized monitoring
+      blind_spots:
+        - zh: 物理 TAP、云提供方内部且租户不可见的复制、受侵控制面删除审计、合法收集器本身被攻陷，以及镜像正文因端到端加密不可解释
+          en: Physical taps, provider-internal copies invisible to the tenant, compromised control plane deleting audit, compromise of an approved collector, and end-to-end encryption that leaves mirrored payload uninterpretable
+      tuning_guidance:
+        paragraphs:
+          - zh: >-
+              为每个批准镜像固定 owner、源资源、过滤器、collector、用途、保留期和到期时间，并对跨项目/网络目标及身份服务源提高严重度。先验证平台审计是否记录完整 request body；缺失敏感字段时用资源快照补齐。内容确认应在受限收集器完成，通用分析只处理资源与流元数据。
+            en: >-
+              Pin owner, source resources, filter, collector, purpose, retention, and expiration for every approved mirror, with higher severity for cross-project or cross-network targets and identity-service sources. Verify whether the platform audit retains the complete request body and supplement missing sensitive fields with resource snapshots. Perform content confirmation on a restricted collector while general analytics process only resource and flow metadata.
+      evidence_keys:
+        - TMP-TA0006-007-T1040-REF-CISA-AA25-239A
+        - TMP-TA0006-007-T1040-REF-GCP-MIRROR-AUDIT
+        - TMP-TA0006-007-T1040-REF-NIST-PCAP-PRIVACY
+      confidence: medium
+  mitigations:
+    - temporary_key: TMP-TA0006-007-T1040-MIT-CAPTURE-GOVERNANCE
+      name:
+        zh: 凭据传输保护与观察面治理
+        en: Credential Transport Protection and Observation-Plane Governance
+      summary:
+        zh: 通过端到端传输保护、抓包权限最小化、镜像目标约束和隐私化证据处理降低凭据被动捕获机会并保留可调查痕迹。
+        en: Reduce passive credential-capture opportunities and preserve investigable traces through end-to-end transport protection, least capture authority, constrained mirror targets, and privacy-preserving evidence handling.
+      description:
+        paragraphs:
+          - zh: >-
+              控制应同时减少“看得见流量”和“流量可转化为凭据”两个条件。组织应识别认证协议真实终止位置，对可升级协议实施强端到端保密性、完整性和对端认证；把主机 raw capture、网络设备 EPC/monitor capture、交换镜像和云镜像权限分别限制到有 owner 的短期工作流，并把命令、资源生命周期和输出目的地写入独立审计。原始 PCAP 本身是敏感数据资产，须加密、最小访问、短保留和按需脱敏。
+            en: >-
+              Controls must reduce both visibility of the flow and the ability to turn observed traffic into credentials. Organizations should identify real authentication-protocol termination points and deploy strong end-to-end confidentiality, integrity, and peer authentication where protocols can be upgraded. Host raw capture, network-device EPC or monitor capture, switch mirroring, and cloud mirroring should each be limited to an owned short-lived workflow, with commands, resource lifecycle, and output destinations recorded independently. Raw PCAP is itself a sensitive data asset and requires encryption, least access, short retention, and need-based sanitization.
+      measures:
+        - key: end-to-end-authentication-transport
+          name:
+            zh: 认证传输与终止边界加固
+            en: Authentication transport and termination-boundary hardening
+          control_type: preventive
+          description:
+            paragraphs:
+              - zh: >-
+                  淘汰明文或仅弱混淆的认证交换，对 Web 与管理认证采用当前安全 TLS，对 TACACS+ 可行环境迁移至 TLS 1.3 并验证双方身份；记录代理、负载均衡和认证服务器的实际终止边界。加密不能防止终止端被控或共享秘密被盗，因此同时保护密钥、配置和认证服务完整性。
+                en: >-
+                  Remove plaintext or weakly obfuscated authentication exchanges, use current secure TLS for web and management authentication, and migrate TACACS+ to TLS 1.3 where supported with peer validation. Record actual termination boundaries at proxies, load balancers, and authentication servers. Encryption does not prevent capture at a compromised terminator or with a stolen shared secret, so protect keys, configuration, and authentication-service integrity as well.
+        - key: least-capture-and-mirror-authority
+          name:
+            zh: 抓包与镜像最小权限
+            en: Least packet-capture and mirror authority
+          control_type: exposure-reduction
+          description:
+            paragraphs:
+              - zh: >-
+                  从普通工作负载移除不需要的 CAP_NET_RAW、捕获驱动和管理员权限；网络设备按角色限制抓包、文件导出与配置命令；云 IAM 将 mirror create/update/delete 与 collector 管理分权，并采用 JIT、双人批准、固定目标和自动到期。
+                en: >-
+                  Remove unnecessary CAP_NET_RAW, capture drivers, and administrator rights from ordinary workloads. Restrict capture, file export, and configuration commands on network devices by role. In cloud IAM, separate mirror create, update, and delete from collector administration and use JIT access, dual approval, pinned targets, and automatic expiration.
+        - key: independent-capture-lifecycle-audit
+          name:
+            zh: 独立抓包生命周期与输出审计
+            en: Independent capture lifecycle and output audit
+          control_type: detective-support
+          description:
+            paragraphs:
+              - zh: >-
+                  将端点捕获权限、网络设备 AAA 命令、镜像资源版本、PCAP 文件及导出目的地发送到攻击者难以同时修改的日志域，持续盘点现态和已删除对象；对认证流建立材料类别与终止边界目录，支持无正文关联。
+                en: >-
+                  Send endpoint capture authority, network-device AAA commands, mirror resource versions, PCAP files, and export destinations to a logging domain the actor cannot readily alter at the same time. Inventory current and deleted objects and maintain material-class and termination-boundary records for authentication flows so correlation need not centralize payload.
+        - key: pcap-sensitive-data-governance
+          name:
+            zh: PCAP 敏感数据与响应治理
+            en: PCAP sensitive-data and response governance
+          control_type: containment
+          description:
+            paragraphs:
+              - zh: >-
+                  把 PCAP 和提取结果按凭据、PII 与敏感组织数据保护，限制原文读取，按会话与时间过滤并脱敏共享副本。确认未授权捕获后保全 hash 和生命周期证据、撤销观察面、轮换暴露口令/共享秘密、失效相关会话，并检查后继认证，不因只发现抓包命令就无差别轮换全部账户。
+                en: >-
+                  Protect PCAPs and extracted results as credential, PII, and sensitive organizational data, restrict raw access, and filter by conversation and time while sanitizing shared copies. After confirming unauthorized capture, preserve hashes and lifecycle evidence, revoke the observation surface, rotate exposed passwords or shared secrets, invalidate related sessions, and inspect successor authentications. Do not rotate every account indiscriminately based only on a capture command.
+      applications:
+        - target_ref: TMP-TA0006-007-T1040-PARENT
+          use:
+            paragraphs:
+              - zh: >-
+                  建立跨端点、网络设备和云控制面的统一观察面清单，并把每条认证路径的材料类别、加密终止、允许抓包主体和收集目的地记录在同一治理模型中。未授权观察面处置以实际覆盖的身份与材料类别确定轮换范围。
+                en: >-
+                  Build one observation-surface inventory across endpoints, network devices, and cloud control planes, recording each authentication path's material class, encryption termination, permitted capture principals, and collector destinations in one governance model. Scope credential rotation after unauthorized observation to identities and material classes actually covered.
+          expected_effect:
+            paragraphs:
+              - zh: >-
+                  减少可直接看到认证流的主体，使路径外捕获更常只得到不可用密文，并为剩余抓包留下可与授权和材料结果关联的记录。
+                en: >-
+                  Fewer principals can see authentication flows, outside-path captures more often yield unusable ciphertext, and remaining capture leaves records joinable to authorization and material outcome.
+          limitations:
+            paragraphs:
+              - zh: >-
+                  端点终止、合法监控和故障诊断仍需要一定观察能力；错误关闭抓包会损害运维与事件响应，终止端或密钥已失陷时网络加密也不能保护材料。
+                en: >-
+                  Endpoint termination, authorized monitoring, and troubleshooting still require some observation capability. Overly broad capture denial harms operations and incident response, and network encryption cannot protect material when the terminator or key is compromised.
+        - target_ref: TMP-TA0006-007-T1040-CHILD-ENDPOINT
+          use:
+            paragraphs:
+              - zh: >-
+                  在认证端点移除非必要 raw capture capability，固定允许的传感器 hash、接口和输出位置，将认证服务密钥设为最小可读，并对捕获文件与异常协议提取文件执行受限访问和短保留。
+                en: >-
+                  Remove unnecessary raw-capture capability from authentication endpoints, pin approved sensor hashes, interfaces, and output locations, minimize readability of authentication-service keys, and apply restricted access and short retention to captures and protocol-extraction files.
+          expected_effect:
+            paragraphs:
+              - zh: >-
+                  攻击者必须提升到更高权限、破坏已登记传感器或修改端点完整性才能读取流量，且凭据提取更易留下进程与产物差异。
+                en: >-
+                  The adversary must obtain higher privilege, compromise a registered sensor, or alter endpoint integrity to read traffic, and credential extraction is more likely to leave process and artifact differences.
+          limitations:
+            paragraphs:
+              - zh: >-
+                  内核级攻击、受信传感器被劫持和应用内部可见正文不受 raw socket 限制充分覆盖；认证设备可能不支持 EDR 或细粒度 capability。
+                en: >-
+                  Kernel-level compromise, hijacked trusted sensors, and plaintext visible inside the application are not fully covered by raw-socket controls, and authentication appliances may lack EDR or granular capabilities.
+        - target_ref: TMP-TA0006-007-T1040-CHILD-TRANSIT
+          use:
+            paragraphs:
+              - zh: >-
+                  对转发设备启用独立 AAA 命令记账，按角色限制 capture/export，要求每次抓包绑定接口、ACL、时长、包长、文件路径和唯一管理目的地；禁止从设备直接导出到未知 TFTP/SCP 服务器。
+                en: >-
+                  Enable independent AAA command accounting on forwarding devices, restrict capture and export by role, and bind each capture to interface, ACL, duration, packet length, file path, and one management destination. Prevent direct export to unknown TFTP or SCP servers.
+          expected_effect:
+            paragraphs:
+              - zh: >-
+                  原生诊断能力仍可使用，但恶意操作者可选择的敏感范围和出口减少，短时创建与删除也保留远端生命周期证据。
+                en: >-
+                  Native diagnostics remain usable while the sensitive scope and destinations available to an adversary shrink, and short-lived creation and deletion retain remote lifecycle evidence.
+          limitations:
+            paragraphs:
+              - zh: >-
+                  固件或本地最高权限攻击者可绕过 CLI 和记账，旧设备可能没有命令级 AAA；紧急故障排查需要预定义 break-glass 路径并接受更高审计强度。
+                en: >-
+                  Firmware or local highest-privilege adversaries may bypass CLI and accounting, and legacy devices may lack command-level AAA. Emergency troubleshooting needs a predefined break-glass path with stronger audit.
+        - target_ref: TMP-TA0006-007-T1040-CHILD-REPLICA
+          use:
+            paragraphs:
+              - zh: >-
+                  将镜像创建与 collector 管理分权，只允许固定安全项目/端口接收副本，给镜像资源设置 owner、用途、源范围、过滤器、保留期与自动删除，并对跨项目目标和身份服务源实施双人批准。
+                en: >-
+                  Separate mirror creation from collector administration, permit copies only to pinned security projects or ports, assign owner, purpose, source scope, filter, retention, and automatic deletion to every mirror, and require dual approval for cross-project targets and identity-service sources.
+          expected_effect:
+            paragraphs:
+              - zh: >-
+                  攻击者难以静默建立任意复制边，异常目标与短期生命周期进入独立 Admin Activity，批准监控也具有可核对责任和到期时间。
+                en: >-
+                  The adversary cannot silently create arbitrary copy edges as easily, anomalous targets and short lifecycles enter independent Admin Activity, and approved monitoring has accountable ownership and expiration.
+          limitations:
+            paragraphs:
+              - zh: >-
+                  合法 collector 被攻陷、物理 TAP、交换芯片或云提供方内部复制不会由租户镜像 IAM 阻止；严格固定目标可能影响弹性扩缩容。
+                en: >-
+                  Compromise of an approved collector, physical taps, switch-silicon copying, and provider-internal replication are not prevented by tenant mirror IAM, while strict target pinning may complicate elastic scaling.
+      evidence_keys:
+        - TMP-TA0006-007-T1040-REF-CISA-AA25-239A
+        - TMP-TA0006-007-T1040-REF-CISCO-EPC
+        - TMP-TA0006-007-T1040-REF-GCP-MIRROR-AUDIT
+        - TMP-TA0006-007-T1040-REF-LINUX-PACKET
+        - TMP-TA0006-007-T1040-REF-RFC8907
+        - TMP-TA0006-007-T1040-REF-RFC9887
+        - TMP-TA0006-007-T1040-REF-NIST-TLS
+        - TMP-TA0006-007-T1040-REF-NIST-PCAP-PRIVACY
+      confidence: medium
+existing_library_reuse:
+  reference_refs:
+    - REF-000179
+  claim_refs: []
+  case_refs: []
+  strategy_refs: []
+  analytic_refs: []
+  mitigation_refs: []
+  relationship_refs: []
+  reviewed_nonreuse:
+    - object_ref: CASE-000065
+      resolution: split
+      reason: >-
+        CASE-000065 records replacement of the TACACS+ daemon and direct application-function credential logging. LOOKOVER is a separate packet-sniffing attempt, with a different executable, data path, artifact, and conclusion level; sharing actor and server does not preserve case identity.
+    - object_ref: MIT-000132
+      resolution: defer
+      reason: >-
+        Authentication-audience binding limits cross-destination relay but does not govern passive capture authority or protect plaintext material already visible on the authorized path.
+    - object_ref: MIT-000168
+      resolution: defer
+      reason: >-
+        Automatic-authentication destination control addresses induced outbound material. T1040 may observe a fully authorized destination and needs capture-plane privilege, encryption-boundary, and PCAP handling measures.
+    - object_ref: DET-000186
+      resolution: split
+      reason: >-
+        DET-000186 starts at an untrusted object's resource reference and induced outbound authentication. T1040 starts at an observation surface over an already occurring flow and requires capture lifecycle and material-artifact data.
+library_candidates:
+  references:
+    - temporary_key: TMP-TA0006-007-T1040-REF-ATTACK
+      resolution: create
+      identity: attack_id:T1040;other:ATT&CK Enterprise 19.1 parent
+      title:
+        zh: 网络嗅探，技术 T1040，ATT&CK Enterprise 19.1
+        en: Network Sniffing, Technique T1040, ATT&CK Enterprise 19.1
+      source_type: official-documentation
+      publisher: MITRE ATT&CK
+      url: https://attack.mitre.org/versions/v19/techniques/T1040/
+      locator: Parent paragraphs; Credential Access and Discovery mappings; no sub-techniques; packet interface, promiscuous mode, SPAN, cloud mirroring, and network-device CLI coverage
+      evidence_stage: parent behavior and breadth anchor only
+      limitations: Does not by itself prove a Niji child, credential-material result in a case, analytic fields, or mitigation effect.
+    - temporary_key: TMP-TA0006-007-T1040-REF-CISA-AA25-239A
+      resolution: create
+      identity: advisory:AA25-239A
+      title:
+        zh: 应对中国国家支持行为者入侵全球网络并支撑间谍体系
+        en: Countering Chinese State-Sponsored Actors Compromise of Networks Worldwide to Feed Global Espionage System
+      source_type: government-advisory
+      publisher: CISA, NSA, FBI and international partners
+      published: "2025-08-27"
+      url: https://www.cisa.gov/news-events/cybersecurity-advisories/aa25-239a
+      locator: Technical details for in-transit capture and SPAN/RSPAN/ERSPAN; credential-bearing PCAP on compromised routers; native EPC commands and filenames; case study of TACACS+ shared-secret recovery condition; mitigations for logging and capture abuse
+      evidence_stage: direct observed device capture and mirror behavior; assessed credential objective and recoverability
+      limitations: Aggregates multiple incidents and actors. It says TACACS+ was likely the primary objective and that a recovered Type 7 secret would enable decryption; it does not prove each mirror yielded credentials or identify every credential later used.
+    - temporary_key: TMP-TA0006-007-T1040-REF-APT33-SNIFFPASS
+      resolution: create
+      identity: url:https://www.security.com/blogs/threat-intelligence/elfin-apt33-espionage
+      title:
+        zh: Elfin 持续攻击沙特与美国组织
+        en: "Elfin: Relentless Espionage Group Targets Multiple Organizations in Saudi Arabia and U.S."
+      source_type: incident-report
+      publisher: Symantec threat intelligence, now Security.com
+      published: "2019-03-27"
+      url: https://www.security.com/blogs/threat-intelligence/elfin-apt33-espionage
+      locator: Public tools used by Elfin/APT33; SniffPass described as stealing passwords by sniffing network traffic; associated hash
+      evidence_stage: observed actor tool use and credential objective
+      limitations: Does not describe the exact observation position, captured session, credential value, or successful downstream use, so it supports parent admission but not a specific topology child or high-confidence case outcome.
+    - temporary_key: TMP-TA0006-007-T1040-REF-CISCO-EPC
+      resolution: create
+      identity: url:https://www.cisco.com/c/en/us/td/docs/ios-xml/ios/epc/configuration/xe-17/epc-xe-17-book/nm-packet-capture-xe.html
+      title:
+        zh: Cisco IOS XE 17 嵌入式报文捕获配置指南
+        en: Cisco IOS XE 17 Embedded Packet Capture Configuration Guide
+      source_type: official-documentation
+      publisher: Cisco
+      url: https://www.cisco.com/c/en/us/td/docs/ios-xml/ios/epc/configuration/xe-17/epc-xe-17-book/nm-packet-capture-xe.html
+      locator: monitor capture name, ACL/filter, duration, interface and direction, buffer, start/stop, export, show parameter, and buffer dump
+      evidence_stage: implementable network-device capture fields and normal administrative capability
+      limitations: Product documentation is not attack evidence and cannot show adversary intent or credential content.
+    - temporary_key: TMP-TA0006-007-T1040-REF-GCP-MIRROR-AUDIT
+      resolution: create
+      identity: url:https://docs.cloud.google.com/compute/docs/logging/audit-logging
+      title:
+        zh: Google Compute Engine 审计日志中的 Packet Mirroring 方法
+        en: Packet Mirroring Methods in Google Compute Engine Audit Logging
+      source_type: official-documentation
+      publisher: Google Cloud
+      url: https://docs.cloud.google.com/compute/docs/logging/audit-logging
+      locator: PacketMirroringsService insert, patch, and delete Admin Activity; method names; create/update permissions; list/get Data Access
+      evidence_stage: implementable cloud mirror lifecycle and audit fields
+      limitations: Capability and logging documentation only; does not prove an adversarial mirror or complete request-field retention in every export.
+    - temporary_key: TMP-TA0006-007-T1040-REF-LINUX-PACKET
+      resolution: create
+      identity: linux-man-pages:packet(7)
+      title:
+        zh: Linux packet(7) 包套接字
+        en: Linux packet(7) Packet Sockets
+      source_type: official-documentation
+      publisher: Linux man-pages project
+      url: https://man7.org/linux/man-pages/man7/packet.7.html
+      locator: AF_PACKET and SOCK_RAW behavior; CAP_NET_RAW requirement; PACKET_ADD_MEMBERSHIP and PACKET_MR_PROMISC; interface index fields
+      evidence_stage: endpoint capture prerequisite and telemetry field support
+      limitations: API documentation does not show malicious use, logging availability, or that promiscuous mode is required for every endpoint capture.
+    - temporary_key: TMP-TA0006-007-T1040-REF-MS-PKTMON
+      resolution: create
+      identity: url:https://learn.microsoft.com/en-us/windows-server/networking/technologies/pktmon/pktmon-syntax
+      title:
+        zh: Windows Packet Monitor 命令与输出
+        en: Windows Packet Monitor Command Formatting and Output
+      source_type: official-documentation
+      publisher: Microsoft
+      url: https://learn.microsoft.com/en-us/windows-server/networking/technologies/pktmon/pktmon-syntax
+      locator: Packet capture and filters; component selection; start/stop; ETL logging; conversion to pcapng; packet counters
+      evidence_stage: normal native endpoint capture capability and possible artifact fields
+      limitations: Does not guarantee command telemetry or show adversarial use; attackers may use custom drivers or APIs instead.
+    - temporary_key: TMP-TA0006-007-T1040-REF-RFC8907
+      resolution: create
+      identity: rfc:8907
+      title:
+        zh: TACACS+ 协议
+        en: The Terminal Access Controller Access-Control System Plus Protocol
+      source_type: standard
+      publisher: RFC Editor / IETF
+      published: "2020-09"
+      url: https://www.rfc-editor.org/rfc/rfc8907.html
+      locator: Section 4.5 data obfuscation and Section 10 security considerations; MD5/XOR construction; shared-secret dependency; lack of meaningful integrity, privacy, and replay protection; secure-path guidance
+      evidence_stage: material recoverability, encryption-boundary, and mitigation rationale
+      limitations: Protocol risk and capability source, not evidence of UNC3886 or another incident.
+    - temporary_key: TMP-TA0006-007-T1040-REF-RFC9887
+      resolution: create
+      identity: rfc:9887
+      title:
+        zh: 基于 TLS 1.3 的 TACACS+
+        en: Terminal Access Controller Access-Control System Plus over TLS 1.3
+      source_type: standard
+      publisher: RFC Editor / IETF
+      published: "2026"
+      url: https://www.rfc-editor.org/rfc/rfc9887.html
+      locator: Obsolescence of TACACS+ obfuscation; mandatory TLS 1.3; improved confidentiality, integrity, and peer authentication; operator limitations
+      evidence_stage: mitigation implementation and limitations
+      limitations: Published after some cited incidents and does not protect a compromised endpoint or prove deployment availability across current devices.
+    - temporary_key: TMP-TA0006-007-T1040-REF-NIST-TLS
+      resolution: create
+      identity: doi:10.6028/NIST.SP.800-52r2
+      title:
+        zh: NIST SP 800-52 Rev. 2 TLS 实施选择、配置与使用指南
+        en: NIST SP 800-52 Rev. 2 Guidelines for TLS Implementations
+      source_type: official-documentation
+      publisher: NIST
+      published: "2019-08"
+      url: https://doi.org/10.6028/NIST.SP.800-52r2
+      locator: TLS authentication, confidentiality, integrity, protocol versions, cipher guidance, certificates, and extensions
+      evidence_stage: general protected-transport mitigation basis
+      limitations: General TLS guidance does not establish where an enterprise terminates encryption or whether a particular authentication protocol supports TLS.
+    - temporary_key: TMP-TA0006-007-T1040-REF-NIST-PCAP-PRIVACY
+      resolution: create
+      identity: doi:10.6028/NIST.SP.800-150
+      title:
+        zh: NIST SP 800-150 网络威胁信息共享指南
+        en: NIST SP 800-150 Guide to Cyber Threat Information Sharing
+      source_type: official-documentation
+      publisher: NIST
+      published: "2016-10"
+      url: https://doi.org/10.6028/NIST.SP.800-150
+      locator: Table 3-2 PCAP may contain authentication credentials, PII, CUI, or other sensitive data; filter by conversation/time/port/protocol; redact irrelevant payload while preserving analytic value
+      evidence_stage: privacy, retention, and evidence-handling requirements
+      limitations: Governs sharing and handling rather than malicious capture detection; it does not specify a T1040 analytic threshold.
+  claims:
+    - temporary_key: TMP-TA0006-007-T1040-CLM-ADMISSION
+      resolution: create
+      proposition:
+        zh: TA0006 下的 T1040 需要攻击者控制的被动观察面、认证流实际进入该观察面，以及明文或可恢复认证材料结果；抓包能力、Discovery 元数据或不可解密密文不足以完成凭据获取。
+        en: Under TA0006, T1040 requires an adversary-controlled passive observation surface, an authentication flow actually reaching that surface, and plaintext or recoverable authentication material; capture capability, Discovery metadata, or undecryptable ciphertext does not complete Credential Access.
+      evidence_keys: [TMP-TA0006-007-T1040-REF-ATTACK, TMP-TA0006-007-T1040-REF-CISA-AA25-239A, REF-000179, TMP-TA0006-007-T1040-REF-RFC8907]
+      evidence_mode: parent anchor plus direct incidents and constrained inference
+    - temporary_key: TMP-TA0006-007-T1040-CLM-BOUNDARY
+      resolution: create
+      proposition:
+        zh: 不改变原定通信目的地的观察归 T1040；路径指向替换归 NJT-0136，诱发新的认证交换归 NJT-0165，MFA 材料结果归 T1111，只有网络事实的输出归 Discovery。
+        en: Observation that does not change the intended destination belongs to T1040; path-direction replacement belongs to NJT-0136, inducing a new authentication exchange belongs to NJT-0165, the MFA-material outcome belongs to T1111, and network-fact-only output belongs to Discovery.
+      evidence_keys: [TMP-TA0006-007-T1040-REF-ATTACK]
+      evidence_mode: taxonomy boundary inference reviewed against canonical adjacent objects
+    - temporary_key: TMP-TA0006-007-T1040-CLM-ENDPOINT-AXIS
+      resolution: create
+      proposition:
+        zh: 与认证角色共驻的包捕获可利用端点终止位置或本地秘密恢复材料，并要求主机 capture authority、进程、接口、产物与认证流关联，形成独立于转发设备和镜像控制面的防守观察差。
+        en: Packet capture co-resident with an authentication role can use endpoint termination or local secrets to recover material and requires correlation of host capture authority, process, interface, artifact, and authentication flow, creating a defender-observation difference from transit-device and mirror-control-plane capture.
+      evidence_keys: [REF-000179, TMP-TA0006-007-T1040-REF-LINUX-PACKET, TMP-TA0006-007-T1040-REF-MS-PKTMON]
+      evidence_mode: direct incident plus platform capability
+    - temporary_key: TMP-TA0006-007-T1040-CLM-TRANSIT-AXIS
+      resolution: create
+      proposition:
+        zh: 已在原路径转发认证流的受侵设备可用本地原生抓包保持端点与路径结果不变；其稳定残余是设备命令、抓包对象、缓冲/PCAP 与导出，而非端点 raw socket 或镜像资源。
+        en: A compromised device already forwarding an authentication flow can use local native capture while preserving endpoint and path outcomes; its stable residue is device commands, capture objects, buffers or PCAPs, and exports rather than endpoint raw sockets or mirror resources.
+      evidence_keys: [TMP-TA0006-007-T1040-REF-CISA-AA25-239A, TMP-TA0006-007-T1040-REF-CISCO-EPC]
+      evidence_mode: direct incident and official implementation
+    - temporary_key: TMP-TA0006-007-T1040-CLM-REPLICA-AXIS
+      resolution: create
+      proposition:
+        zh: 流量镜像新增到独立收集器的复制边而不替换原路径，因此需要 event-time 镜像资源、collector receipt 和认证流材料的三方关联，形成独立 Niji 子项。
+        en: Traffic mirroring adds a copy edge to an independent collector without replacing the original path, requiring a three-way join across event-time mirror resource, collector receipt, and authentication-flow material and thereby supporting an independent Niji child.
+      evidence_keys: [TMP-TA0006-007-T1040-REF-CISA-AA25-239A, TMP-TA0006-007-T1040-REF-GCP-MIRROR-AUDIT]
+      evidence_mode: observed actor behavior plus official audit capability
+    - temporary_key: TMP-TA0006-007-T1040-CLM-PRIVACY
+      resolution: create
+      proposition:
+        zh: PCAP 可同时含认证凭据、PII 和组织敏感信息；T1040 检测应集中处理元数据和材料类别，把原始正文留在受限证据库并对共享副本过滤、脱敏。
+        en: PCAP can contain authentication credentials, PII, and sensitive organizational information; T1040 detection should centralize metadata and material class while retaining raw payload in a restricted evidence store and filtering or sanitizing shared copies.
+      evidence_keys: [TMP-TA0006-007-T1040-REF-NIST-PCAP-PRIVACY]
+      evidence_mode: direct official handling guidance applied to analytic design
+  cases:
+    - temporary_key: TMP-TA0006-007-T1040-CASE-UNC3886-LOOKOVER
+      resolution: create
+      name:
+        zh: UNC3886 在 TACACS+ 服务器部署 LOOKOVER 嗅探器
+        en: UNC3886 Deployment of LOOKOVER on a TACACS+ Server
+      actor_or_campaign: UNC3886
+      time_range: activity described by Mandiant in 2024 reporting
+      target: compromised TACACS+ authentication server
+      central_observed_facts:
+        zh: Mandiant 恢复了伪装路径下的 LOOKOVER，确认其使用 libpcap 过滤 TACACS+ 认证报文、以 TKEY 解混淆并准备把提取结果写入指定文件；core dump 显示程序在加密提取凭据并写盘时崩溃。
+        en: Mandiant recovered LOOKOVER from a disguised path, confirmed libpcap filtering of TACACS+ authentication packets, TKEY-based de-obfuscation, and preparation to write extracted results to a specified file; a core dump showed the program crashing while encrypting extracted credentials for disk output.
+      not_established:
+        zh: 未证明全部捕获材料成功写盘、具体凭据值、成功登录或后继账户使用；不可与同服务器的后门 tac_plus 二进制替换合并为一个案例。
+        en: The source does not establish durable output of all captured material, specific credential values, successful authentication, or successor account use, and this event must not be merged with replacement of the tac_plus binary on the same server.
+      evidence_keys: [REF-000179]
+      confidence: medium
+    - temporary_key: TMP-TA0006-007-T1040-CASE-PRC-ROUTER-PCAP
+      resolution: create
+      name:
+        zh: 国家支持行为者滥用受侵路由器 PCAP 与镜像能力
+        en: State-Sponsored Abuse of Compromised-Router PCAP and Mirroring
+      actor_or_campaign: PRC state-sponsored actors summarized in AA25-239A
+      time_range: activity since at least 2021, advisory published 2025-08-27
+      target: enterprise, telecommunications, government, transportation, lodging, and military network infrastructure
+      central_observed_facts:
+        zh: 联合机构观察到行为者在受侵网络设备上配置原生 PCAP 和 SPAN/RSPAN/ERSPAN，发现 `mycap.pcap`、`tac.pcap` 等产物及协助导出的命令；至少一案的设备配置以可逆 Type 7 形式保存 TACACS+ 共享秘密。
+        en: The joint agencies observed actors configuring native PCAP and SPAN, RSPAN, or ERSPAN on compromised network devices and identified artifacts such as `mycap.pcap` and `tac.pcap` plus commands used for export. In at least one case, the device configuration stored a TACACS+ shared secret in reversible Type 7 form.
+      not_established:
+        zh: 通告将捕获 TACACS+ 和使用恢复秘密离线解密表述为主要目标或可行结果，没有证明每个 PCAP/镜像都含凭据、具体秘密已被解密或账户已被使用。
+        en: The advisory describes TACACS+ capture and offline decryption with the recovered secret as a primary objective or feasible result and does not establish that every PCAP or mirror contained credentials, that a particular secret was decrypted, or that an account was used.
+      evidence_keys: [TMP-TA0006-007-T1040-REF-CISA-AA25-239A]
+      confidence: medium
+  detection_strategies:
+    - TMP-TA0006-007-T1040-DET-OBSERVATION-MATERIAL
+  detection_analytics:
+    - TMP-TA0006-007-T1040-NJA-ENDPOINT
+    - TMP-TA0006-007-T1040-NJA-TRANSIT
+    - TMP-TA0006-007-T1040-NJA-MIRROR
+  mitigations:
+    - TMP-TA0006-007-T1040-MIT-CAPTURE-GOVERNANCE
+  relationships:
+    - temporary_key: TMP-TA0006-007-T1040-REL-BOUNDARY
+      resolution: defer
+      reason: Boundary prose with NJT-0136, NJT-0165, T1111, and TA0007 is sufficient unless the primary agent confirms a canonical relationship type and a matrix-wide need for an explicit edge.
+research:
+  taxonomy_breadth_review:
+    attack_subtechnique_count: 0
+    attack_subtechnique_ids: []
+    represented_dimensions:
+      - passive interface capture
+      - promiscuous shared-medium observation
+      - SPAN and traffic mirroring
+      - cloud mirror services
+      - native network-device capture
+      - credential and discovery outcomes
+    breadth_trigger: ordinary
+    coverage_resolutions:
+      - source_cluster: endpoint packet interface and local capture utility
+        resolution: niji-variable-candidate
+        result: TMP-TA0006-007-T1040-CHILD-ENDPOINT
+        reason: Authentication-role co-residence changes material visibility, host residue, and defense requirements independently of tool or OS.
+      - source_cluster: network-device native capture on an existing forwarding path
+        resolution: niji-variable-candidate
+        result: TMP-TA0006-007-T1040-CHILD-TRANSIT
+        reason: Original-path device-local buffering preserves endpoint view and creates command, buffer, file, and export traces.
+      - source_cluster: SPAN, RSPAN, ERSPAN, and virtual network mirroring
+        resolution: niji-variable-candidate
+        result: TMP-TA0006-007-T1040-CHILD-REPLICA
+        reason: A separate copy edge and collector require control-plane lifecycle plus collector-receipt correlation.
+      - source_cluster: shared-medium third-party passive observation
+        resolution: evidence-deferred
+        reason: Available high-quality event sources do not isolate successful credential-material capture from rogue-access, active poisoning, or capability-only evidence strongly enough for a formal sibling.
+      - source_cluster: network metadata and topology learned from capture
+        resolution: adjacent-technique
+        reason: Discovery-only result belongs to the TA0007 T1040 candidate and cannot establish TA0006 Credential Access.
+      - source_cluster: active redirection, relay, or induced authentication
+        resolution: adjacent-technique
+        reason: Path change belongs to NJT-0136 and induced emission belongs to NJT-0165; passive capture may co-occur but needs independent evidence.
+    candidate_stealth_axes_examined:
+      - axis: observation position relative to authentication endpoint and crypto termination
+        result: formal
+        children: [TMP-TA0006-007-T1040-CHILD-ENDPOINT, TMP-TA0006-007-T1040-CHILD-TRANSIT]
+      - axis: original-flow versus replicated-flow trace topology
+        result: formal
+        children: [TMP-TA0006-007-T1040-CHILD-TRANSIT, TMP-TA0006-007-T1040-CHILD-REPLICA]
+      - axis: visible plaintext, recoverable proof, and undecryptable ciphertext
+        result: parent-admission-gate
+        reason: Material visibility determines whether Credential Access completes but can vary within every observation position, so it is not a sibling partition.
+      - axis: tool, interface, protocol, cloud/on-premises, product, or vendor
+        result: rejected
+        reason: These are implementations without stable independent trace topology.
+      - axis: capture timing or filter narrowness
+        result: parent-characteristic
+        reason: Short duration and narrow filters can increase stealth but evidence does not establish a stable sibling with unique defense across positions.
+    second_pass_required: false
+    second_pass_completed: true
+    proposed_niji_child_count: 3
+    breadth_gap_explained: true
+    reviewer_notes:
+      zh: >-
+        ATT&CK 无子项不降低开放 taxonomy 搜索责任。本轮从父描述与一手事件分别检查端点、既有转发、复制分支、共享介质、加密材料和主动路径变化；前三项通过稳定变量、痕迹和防守差门槛，共享介质因事件证据混杂暂缓，材料可见性作为全部子项的 TA0006 结果门槛而非第四子项。
+      en: >-
+        ATT&CK's lack of children does not reduce the open taxonomy search obligation. This pass separately examined endpoint, existing transit, copy branch, shared medium, encrypted material, and active path change using parent text and first-party incidents. The first three pass stable-variable, trace, and defense-difference gates. Shared-medium evidence remains mixed and deferred, while material visibility is the TA0006 outcome gate across all children rather than a fourth child.
+  evidence_coverage:
+    parent_behavior_keys:
+      - TMP-TA0006-007-T1040-REF-ATTACK
+      - TMP-TA0006-007-T1040-REF-APT33-SNIFFPASS
+      - TMP-TA0006-007-T1040-REF-CISA-AA25-239A
+      - REF-000179
+    boundary_keys:
+      - TMP-TA0006-007-T1040-REF-ATTACK
+      - TMP-TA0006-007-T1040-REF-RFC8907
+      - TMP-TA0006-007-T1040-REF-NIST-PCAP-PRIVACY
+    mechanism_support:
+      - mechanism_ref: NM-BT
+        evidence_keys: [TMP-TA0006-007-T1040-REF-ATTACK, TMP-TA0006-007-T1040-REF-CISA-AA25-239A, REF-000179]
+        confidence: medium
+      - mechanism_ref: NM-FD
+        evidence_keys: [TMP-TA0006-007-T1040-REF-CISA-AA25-239A, TMP-TA0006-007-T1040-REF-CISCO-EPC, TMP-TA0006-007-T1040-REF-GCP-MIRROR-AUDIT]
+        confidence: medium
+    child_existence_support:
+      - child_key: TMP-TA0006-007-T1040-CHILD-ENDPOINT
+        evidence_keys: [REF-000179, TMP-TA0006-007-T1040-REF-LINUX-PACKET, TMP-TA0006-007-T1040-REF-MS-PKTMON]
+      - child_key: TMP-TA0006-007-T1040-CHILD-TRANSIT
+        evidence_keys: [TMP-TA0006-007-T1040-REF-CISA-AA25-239A, TMP-TA0006-007-T1040-REF-CISCO-EPC]
+      - child_key: TMP-TA0006-007-T1040-CHILD-REPLICA
+        evidence_keys: [TMP-TA0006-007-T1040-REF-CISA-AA25-239A, TMP-TA0006-007-T1040-REF-GCP-MIRROR-AUDIT]
+    unsupported_or_deferred:
+      - successful_use_of_credentials_from_every_cited_capture
+      - exact_credentials_recovered_from_CISA_router_PCAPPs
+      - every_SPAN_or_cloud_mirror_contained_authentication_material
+      - shared_medium_passive_capture_as_a_formal_child
+      - quantitative_alert_reduction_from_short_or_narrow_capture
+      - encrypted_wire_traffic_equals_protected_material_at_a_compromised_terminator
+  evidence_stage_review:
+    - source_key: TMP-TA0006-007-T1040-REF-ATTACK
+      direct: fixed-baseline behavior, tactic mappings, implementation breadth, no ATT&CK children
+      inference_limit: no automatic Niji taxonomy or case outcome
+    - source_key: REF-000179
+      direct: LOOKOVER deployment, libpcap filtering, TKEY use, protocol processing, output path, crash evidence
+      inference_limit: no proof that every credential was durably written or later used
+    - source_key: TMP-TA0006-007-T1040-REF-CISA-AA25-239A
+      direct: actor capture and mirror behavior, observed commands and filenames, one reversibly stored TACACS+ secret
+      inference_limit: intended credential target and offline recovery do not prove every captured credential or successor authentication
+    - source_key: TMP-TA0006-007-T1040-REF-GCP-MIRROR-AUDIT
+      direct: mirror lifecycle operations, audit type, method names, and permissions
+      inference_limit: no malicious event or guarantee that exported logs retain every resource field
+    - source_key: TMP-TA0006-007-T1040-REF-NIST-PCAP-PRIVACY
+      direct: PCAP sensitivity and sanitization guidance
+      inference_limit: no malicious-detection threshold
+  content_depth_review:
+    compared_with_njt_0001: true
+    field_responsibilities_complete: true
+    candidate_specific_prose: true
+    repeated_prose_reviewed: true
+    notes:
+      zh: >-
+        父级研究稿分别承担行为和 Credential Access 结果定义、无交互与原生运维相似性的匿迹特性、相邻技术和合法监控边界、场景、攻击者能力、可见遥测与隐私限制。三个子项均给出准确名称起始的匿迹特性、位置变量、残余痕迹、前提、独立检测数据与限制；没有按接口、协议、工具、平台或产品复制 ATT&CK 实现。
+      en: >-
+        The parent research separately covers behavior and Credential Access outcome, the stealth properties of no victim-facing exchange and native-operation similarity, adjacent and lawful-monitoring boundaries, scenarios, attacker capability, defender telemetry, and privacy limits. Each child has exact-name-led stealth prose, a position variable, residual traces, prerequisites, distinct detection data, and limitations. None copies ATT&CK implementations by interface, protocol, tool, platform, or product.
+  automation_review:
+    canonical_prose_bulk_generated: false
+    mechanical_uses:
+      - YAML parsing
+      - recursive key inspection
+      - temporary-key referential audit
+  limitations:
+    paragraphs:
+      - zh: >-
+          证据层级不对称。CISA 联合通告对路由器抓包、文件名、命令和镜像行为具有直接观察，但对具体 TACACS+ 材料的成功解密多为“主要目标”“可实现”或“可能包含”的分析；Mandiant 对 LOOKOVER 的代码与运行残留分析很强，却记录了写出阶段崩溃。APT33 来源证明 SniffPass 被行为者采用并以窃取口令为设计目标，但缺少具体观察位置、会话与后继使用。正式对象必须保留 deployment、capture、material-present、recoverable 和 used 五个证据阶段，不能用工具功能补齐缺失阶段。
+        en: >-
+          Evidence levels are asymmetric. The joint CISA advisory directly observes router capture, filenames, commands, and mirroring, but frames successful decryption of particular TACACS+ material as a primary objective, feasibility, or possible content. Mandiant provides strong code and runtime-residue analysis of LOOKOVER but records a crash during output. The APT33 source establishes actor adoption of SniffPass and its password-theft purpose but lacks a specific observation position, session, and successor use. Formal content must preserve deployment, capture, material-present, recoverable, and used as five separate evidence stages rather than filling gaps from tool capability.
+      - zh: >-
+          检测字段跨平台差异明显。Linux packet(7) 证明 CAP_NET_RAW、AF_PACKET、interface index 与 promiscuous membership 的能力，不保证系统默认审计这些字段；Windows Pktmon 证明原生捕获、ETL 与 pcapng 产物，不保证每次 API 调用可归因；网络设备和云平台也可能缺少完整 request body。Analytic 部署前必须用良性抓包实验验证字段，并在不能取得 artifact 或材料评估时把结论降为观察面风险。
+        en: >-
+          Detection fields differ substantially across platforms. Linux packet(7) establishes CAP_NET_RAW, AF_PACKET, interface index, and promiscuous membership capability but not default auditing of those fields. Windows Pktmon establishes native capture plus ETL and pcapng artifacts but not attribution for every API call. Network devices and cloud platforms may also omit complete request bodies. Before deployment, benign capture tests must validate fields, and findings without artifact or material assessment must remain observation-surface risk.
+      - zh: >-
+          凭据检测本身会扩大敏感数据处理面。为了证明材料结果而广泛解码或集中完整 PCAP，会重新制造本技术所利用的风险；受限取证、最少字段、短保留、去标识化与访问审计是分析前提。隐私限制可能使组织只能高置信检测未授权抓包而不能自动确认具体秘密，此时不得用推断替代证据。
+        en: >-
+          Credential detection itself can enlarge the sensitive-data surface. Broad decoding or centralization of full PCAP to prove material outcome recreates the risk this technique exploits. Restricted forensics, minimum fields, short retention, de-identification, and access audit are analytic prerequisites. Privacy constraints may let an organization detect unauthorized capture with high confidence without automatically confirming a specific secret; inference must not replace evidence in that case.
+  rejected_mechanisms:
+    - mechanism_ref: NM-DO
+      reason:
+        zh: 网络加密或攻击者对 PCAP 的后续封装会影响内容可解释性，但它们不是本候选被动观察行为本身的稳定匿迹因果；若记录应由相应保护退化、数据遮蔽或后续处理对象承担。
+        en: Network encryption or adversary packaging of a PCAP affects content interpretability but is not the stable stealth causality of passive observation itself; applicable protection-impairment, data-obscuration, or follow-on handling objects should own it.
+    - mechanism_ref: NM-ST
+      reason:
+        zh: 短时或窄过滤抓包可能降低局部信号，但现有事件没有证明时间/空间稀释是跨位置稳定变量或量化告警下降；本批把它保留为父级特性。
+        en: Short-lived or narrow-filter capture may reduce local signal, but available incidents do not establish temporal or spatial dilution as a stable cross-position variable or quantify alert reduction; it remains a parent characteristic.
+  open_questions:
+    - 是否能取得一个高质量在野来源，直接证明共享介质第三方在未改变路径、未充当恶意接入点的情况下捕获并恢复了凭据材料？
+    - CISA AA25-239A 背后的个案是否能公开确认某个 `tac.pcap` 的材料存在、共享秘密恢复和后继认证三阶段？
+    - 主 Agent 是否将 endpoint-local packet capture 与 NJT-0169/NJS-0093-003 的应用内秘密旁路复制按数据来源严格拆分，并对同一进程双重行为允许并列标注？
+    - 现有共享缓解对象是否会在后续批次形成通用“网络设备原生敏感功能治理”，从而使本批 MIT 候选需要 split 或 extend，而不是独立创建？
+integration:
+  status: pending
+  resolutions:
+    - candidate_key: TMP-TA0006-007-T1040-REL-BOUNDARY
+      status: defer
+      reason: Boundary prose is sufficient unless the primary agent confirms a canonical relationship need.

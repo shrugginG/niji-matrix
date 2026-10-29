@@ -1,0 +1,130 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000185
+strategy_ref: DET-000170
+name:
+  zh: RDS 影子控制策略—请求—结果链
+  en: RDS Shadow-Control Policy, Request, and Outcome Chain
+summary:
+  zh: 连接影子控制策略变化、shadow 请求、原会话活动及未经批准的共同控制结果。
+  en: Join shadow-control policy changes, shadow requests, original session activity, and unapproved co-control outcomes.
+domains:
+- enterprise
+platforms:
+- Windows
+logic:
+  paragraphs:
+  - zh: 在 RDS 会话主机记录每个活动会话的所有者、SessionID 和控制权限/同意策略。以进程创建事件识别 mstsc 或其他远程控制客户端的 shadow/control 请求，将发起账户、主机、目标 SessionID、控制而非仅查看模式与当时的
+      Shadow 策略快照相连。若经本环境验证的 RDS 远程控制操作日志或传感器报告请求成功，且发起者不同于原用户、未获批并随后出现原会话中的目标资源动作，则报告成功的控制端并存；只有命令行或策略变更时报告尝试或风险，不把它当成功。原用户继续在线的情形不能强制要求
+      4779/4778。
+    en: Record each active RDS session's owner, SessionID, control rights, and consent policy on the host. Identify mstsc
+      or another remote-control client's shadow and control request from process-creation telemetry, then join initiator account,
+      source host, target SessionID, control rather than view-only mode, and the contemporaneous Shadow policy snapshot. If
+      an environment-validated RDS remote-control operation log or sensor confirms acceptance, the initiator differs from
+      the original user, no approval exists, and a destination-resource action follows in the original session, report successful
+      parallel control. Command line or policy change alone is an attempt or exposure. Do not require 4779 or 4778 when the
+      original user remains connected.
+data_requirements:
+- source_type: windows-process-creation
+  name:
+    zh: Windows 进程创建与命令行
+    en: Windows process creation and command line
+  channel: Security/4688
+  required_fields:
+  - time_created
+  - computer
+  - subject_logon_id
+  - new_process_id
+  - new_process_name
+  - creator_process_id
+  - process_command_line
+- source_type: rds-session-control-operation
+  name:
+    zh: RDS 会话影子控制操作
+    en: RDS session shadow-control operation
+  channel: null
+  required_fields:
+  - timestamp
+  - session_host
+  - target_session_id
+  - target_session_owner
+  - controller_account
+  - controller_host
+  - operation
+  - result
+- source_type: rds-shadow-policy-state
+  name:
+    zh: RDS 影子控制策略状态
+    en: RDS shadow-control policy state
+  channel: null
+  required_fields:
+  - timestamp
+  - session_host
+  - shadow_policy_value
+  - policy_source
+  - last_change_actor
+- source_type: rds-approval-and-asset-context
+  name:
+    zh: RDS 支持审批与资产情境
+    en: RDS support approval and asset context
+  channel: null
+  required_fields:
+  - approval_id
+  - session_owner
+  - support_operator
+  - source_device
+  - destination_host
+  - valid_from
+  - valid_to
+observables:
+- zh: 未获批的管理主体把影子策略改为无需用户同意，随后向另一用户活动 SessionID 发出控制请求。
+  en: An unapproved administrator changes shadow policy to omit consent and then requests control of another user's active
+    SessionID.
+- zh: 经会话主机确认的影子控制成功后，原用户仍在线，而同一会话产生不合职责的资源动作。
+  en: After the session host confirms successful shadow control, the original user remains present while the same session
+    performs resource actions inconsistent with the owner's role.
+correlation:
+  window:
+    zh: 策略改变到影子请求可观察二十四小时；请求到同一会话控制默认两分钟，再追踪目标动作十分钟。
+    en: Observe up to twenty-four hours from policy change to shadow request, default to two minutes from request to control
+      of the same session, and follow target actions for ten minutes.
+  dimensions:
+  - session_host
+  - target_session_id
+  - target_session_owner
+  - controller_account
+  - controller_host
+  - shadow_policy_value
+  - operation_result
+  - approval_id
+false_positives:
+- zh: 获批准的远程支持、培训和无障碍协助会使用 shadow 或共享会话。
+  en: Approved remote support, training, and accessibility assistance may use shadow or shared sessions.
+blind_spots:
+- zh: 缺少 shadow 操作日志或原用户在场证明时，只能把进程与策略变化判为风险信号，不能断言实际共同控制。
+  en: Without shadow-operation logs or proof of the original user's presence, process and policy changes remain risk signals
+    rather than confirmed co-control.
+tuning_guidance:
+  paragraphs:
+  - zh: 先在实际 Windows/RDS 版本上验证 RemoteConnectionManager 或 EDR 何种事件明确表示 shadow 接受，不能仅按固定事件号照搬。允许规则绑定工单、支持人员、会话所有者、主机、控制/查看模式、同意要求和期限；不因管理工具签名或影子策略长期存在而忽略新请求。对仅改变策略或被阻断请求保留
+      attempt 标签，对成功且有目标结果的活动单独升级。
+    en: First validate on the actual Windows and RDS version which RemoteConnectionManager or EDR event conclusively means
+      shadow acceptance; do not transplant a fixed event ID without testing. Bind allowances to ticket, support operator,
+      session owner, host, control versus view mode, consent requirement, and expiry. Do not ignore a new request because
+      the tool is signed or the policy is longstanding. Preserve attempt for policy-only or blocked requests and separately
+      upgrade accepted control with a destination result.
+evidence_refs:
+- REF-000618
+- REF-000619
+- REF-000620
+- REF-000621
+- REF-000622
+- REF-000623
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-09-22'
+  modified: '2026-09-22'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

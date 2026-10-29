@@ -1,0 +1,152 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000277
+strategy_ref: DET-000224
+name:
+  zh: 次要接口—进程—旁路流量差分
+  en: Secondary Interface–Process–Bypass Flow Differential
+summary:
+  zh: 把 LocalIP 映射到次要接口与独立路由，确认绕开主要边界的外送。
+  en: Map LocalIP to a secondary interface and independent route to confirm sending outside the primary boundary.
+domains:
+- enterprise
+platforms:
+- Windows
+- Linux
+- macOS
+logic:
+  paragraphs:
+  - zh: 为每台资产建立主要受管 interface/network/gateway 与批准故障切换清单。在 adapter 由 down 到 up、连接新的 public network、出现新 IP/default
+      gateway 或默认路由优先级改变后，以 DeviceId、时间和 LocalIP 把进程网络事件映射到具体 adapter；在 30 分钟内寻找敏感文件读取/暂存和经该 interface 的发送字节。若目的地未批准且主要边界覆盖图在同时段没有对应流，输出
+      alternate-path-send；只有发送字节或接收结果成立时升级为 exfiltration-supported。主要边界缺失只能在 coverage_complete=true 时参与判断。
+    en: Build a primary managed interface, network, and gateway baseline plus approved failover inventory for every
+      asset. After an adapter changes from down to up, joins a new public network, receives a new IP or default
+      gateway, or changes default-route preference, map process network events to the adapter by DeviceId, time,
+      and LocalIP. Within 30 minutes, find sensitive-file reads or staging and sent bytes over that interface. When
+      destination is unapproved and the verified primary-boundary coverage map has no corresponding flow, output
+      alternate-path-send; elevate to exfiltration-supported only with sent bytes or receiver outcome. Absence at
+      primary egress participates only when coverage_complete is true.
+data_requirements:
+- source_type: endpoint-network-configuration
+  name:
+    zh: 端点网络适配器与连接网络快照
+    en: Endpoint adapter and connected-network snapshots
+  channel: Microsoft Defender XDR DeviceNetworkInfo or equivalent
+  required_fields:
+  - timestamp
+  - deviceid
+  - networkadaptername
+  - networkadaptertype
+  - networkadapterstatus
+  - connectednetworks
+  - ipaddresses
+  - defaultgateways
+- source_type: endpoint-network-event
+  name:
+    zh: 发起进程网络事件
+    en: Initiating-process network event
+  channel: Microsoft Defender XDR DeviceNetworkEvents or equivalent
+  required_fields:
+  - timestamp
+  - deviceid
+  - localip
+  - localport
+  - remoteip
+  - remoteurl
+  - remoteport
+  - protocol
+  - initiatingprocessuniqueid
+  - initiatingprocessfilename
+- source_type: interface-flow-counter
+  name:
+    zh: 按接口方向流量计数
+    en: Directional per-interface flow counters
+  channel: host firewall, eBPF, ETW/WFP, interface accounting, or equivalent
+  required_fields:
+  - timestamp
+  - device-id
+  - interface-id
+  - local-ip
+  - process-id-if-available
+  - remote-address
+  - bytes-sent
+  - bytes-received
+  - flow-id
+- source_type: endpoint-file-event
+  name:
+    zh: 敏感文件访问或暂存事件
+    en: Sensitive-file access or staging events
+  channel: Microsoft Defender XDR DeviceFileEvents or equivalent
+  required_fields:
+  - timestamp
+  - deviceid
+  - filename
+  - folderpath
+  - filesize
+  - initiatingprocessuniqueid
+  - actiontype
+- source_type: egress-coverage-and-approval
+  name:
+    zh: 主要出口覆盖与批准接口清单
+    en: Primary-egress coverage and approved-interface inventory
+  channel: asset, network, and change management
+  required_fields:
+  - device-id
+  - primary-interface
+  - approved-secondary-interface
+  - approved-network-or-profile
+  - valid-from
+  - valid-to
+  - owner
+  - coverage-complete
+observables:
+- zh: 外联 LocalIP 属于次要 adapter、未批准网络或独立默认网关
+  en: Outbound LocalIP belongs to a secondary adapter, unapproved network, or independent default gateway
+- zh: 敏感读取后该接口出现发送字节，而完整主要边界无匹配流
+  en: Sent bytes appear on that interface after sensitive access while a verified-complete primary boundary has
+    no matching flow
+correlation:
+  window:
+    zh: 使用三十分钟高置信路径，并为慢速传输扩展至二十四小时。
+    en: Use a thirty-minute high-confidence path and extend to twenty-four hours for slow transfer.
+  dimensions:
+  - device-id
+  - adapter-name
+  - local-ip
+  - gateway
+  - connected-network
+  - process-unique-id
+  - destination
+  - flow-id
+  - approval-id
+false_positives:
+- zh: 批准的 WWAN/SD-WAN 故障切换、差旅热点和应急支持
+  en: Approved WWAN or SD-WAN failover, travel hotspots, and emergency support
+- zh: 仍经受管安全服务的 VPN 或虚拟接口
+  en: VPN or virtual adapters still routed through a managed security service
+blind_spots:
+- zh: 接口快照稀疏或没有按接口字节计量
+  en: Adapter snapshots are sparse or per-interface byte accounting is absent
+- zh: 主要边界覆盖不完整使未见流量不具证明力
+  en: Incomplete primary-boundary coverage makes absence non-probative
+tuning_guidance:
+  paragraphs:
+  - zh: 按资产角色固定主接口、允许的 failover profile、gateway 和服务身份；虚拟 tunnel 与物理/无线接口分开基线。不要只按 adapter 类型告警，必须连接未批准网络、发起进程、发送字节或敏感读取；仍保留对新目的地和未经批准的
+      profile 变化检查。
+    en: Pin primary interface, approved failover profile, gateway, and service identity by asset role and baseline
+      virtual tunnels separately from physical or radio interfaces. Do not alert on adapter type alone; require
+      an unapproved network, initiating process, sent bytes, or sensitive read while retaining checks for new destinations
+      and unapproved profile changes.
+evidence_refs:
+- REF-000934
+- REF-000604
+- REF-000475
+- REF-000933
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-10-04'
+  modified: '2026-10-04'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

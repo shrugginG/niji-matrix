@@ -1,0 +1,152 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000342
+strategy_ref: DET-000256
+name:
+  zh: 同源输入接收路由到服务器第二输出关联
+  en: Same-Origin Input Receiver Route to Second Server Output Correlation
+summary:
+  zh: 关联同源接收路由、成功输入请求与服务端第二输出。
+  en: Join a same-origin receiver route, successful input request, and second server output.
+domains:
+- enterprise
+platforms:
+- Web Applications
+- Linux
+- Windows
+logic:
+  paragraphs:
+  - zh: 将数据入口批准接收图与服务器 route/controller 清单连接，识别新建或被修改的同源 POST 路径、参数门控处理器、模板/控制器哈希漂移及非批准写入者。对每个成功请求以 app_id、request_id、pseudonymous_session_id、form_id
+      和 route 为键，在三十分钟内关联 Web 进程或子进程的新文件、加密小记录、curl/HTTP 客户端调用和非业务目的外联；不得保留请求正文或字段值。
+    en: Join the approved data-entry receiver graph to the server route and controller inventory, identifying new or changed
+      same-origin POST paths, parameter-gated handlers, template or controller hash drift, and unapproved writers. For each
+      successful request, use application ID, request ID, pseudonymous session ID, form ID, and route to join new files, small
+      encrypted records, curl or HTTP-client calls, and nonbusiness egress from the web process or child within thirty minutes,
+      without retaining request bodies or field values.
+  - zh: 新路由或控制器差异单独标为 server integrity exposure；同源请求成功但无结果链标为 receiver candidate；只有差异接收路径在用户交互后产生攻击者可读文件或非批准外联时标为 suspected
+      capture。若服务器正常需要调用支付、反欺诈或 CRM 服务，必须用 data_contract_id、目的字段分类、证书身份、固定账户和变更单验证，而不能按目的域整体放行。
+    en: A new route or controller difference alone is server integrity exposure. A successful same-origin request without
+      an outcome chain is a receiver candidate. Suspected capture requires the changed receiver path to produce an attacker-readable
+      file or unapproved egress after user interaction. Where the server legitimately calls payment, fraud, or CRM services,
+      validate data-contract ID, destination field class, certificate identity, fixed account, and change record rather than
+      allowlisting an entire destination domain.
+data_requirements:
+- source_type: server-route-and-controller-integrity
+  name:
+    zh: 服务端路由控制器与制品完整性
+    en: Server Route Controller and Artifact Integrity
+  channel: Externally anchored deployment manifest, file integrity monitoring, runtime route registry, or application inventory
+  required_fields:
+  - timestamp
+  - app_id
+  - release_id
+  - route
+  - method
+  - controller_or_handler
+  - expected_hash
+  - observed_hash
+  - writer_identity
+  - deployment_id
+  - result
+- source_type: server-request-outcome
+  name:
+    zh: 服务端请求结果元数据
+    en: Server Request-Outcome Metadata
+  channel: Reverse proxy or application access log with privacy-safe request metadata
+  required_fields:
+  - timestamp
+  - app_id
+  - request_id
+  - pseudonymous_session_id
+  - form_id
+  - route
+  - method
+  - response_status
+  - bytes_in
+  - bytes_out
+  - server_process_id
+- source_type: web-process-file-and-egress
+  name:
+    zh: Web 进程文件与外联结果
+    en: Web-Process File and Egress Outcomes
+  channel: EDR, application runtime, host audit, and network telemetry
+  required_fields:
+  - timestamp
+  - host_id
+  - server_process_id
+  - child_process_id
+  - file_path
+  - bytes_written
+  - destination
+  - destination_certificate_or_account
+  - bytes_out
+  - command_or_library
+- source_type: approved-server-data-contract
+  name:
+    zh: 批准的服务端数据接收合同
+    en: Approved Server Data-Receiver Contract
+  channel: Application architecture inventory, service catalog, and change management
+  required_fields:
+  - app_id
+  - route
+  - data_contract_id
+  - approved_destination
+  - field_classification
+  - service_identity
+  - approval_start
+  - approval_end
+  - owner
+observables:
+- zh: 未批准同源 POST 路由或参数门控处理器
+  en: Unapproved same-origin POST route or parameter-gated handler
+- zh: 模板或控制器哈希漂移与成功表单请求同现
+  en: Template or controller hash drift coincides with a successful form request
+- zh: Web 进程在输入请求后形成隐藏记录或调用非业务 HTTP 客户端
+  en: Web process forms a hidden record or invokes a nonbusiness HTTP client after an input request
+- zh: 同源接收后出现不匹配数据合同的第二输出
+  en: Same-origin receipt is followed by a second output that does not match a data contract
+correlation:
+  window:
+    zh: 服务器制品差异后观察二十四小时；单次成功输入请求以 request_id、session、form_id、route 和 process 在后三十分钟连接文件与外联结果。
+    en: Observe for twenty-four hours after server-artifact drift; join one successful input request to file and egress outcomes
+      by request ID, session, form ID, route, and process during the following thirty minutes.
+  dimensions:
+  - app_id
+  - release_id
+  - deployment_id
+  - route
+  - request_id
+  - pseudonymous_session_id
+  - form_id
+  - server_process_id
+  - destination
+  - data_contract_id
+  - time
+false_positives:
+- zh: 支付授权、反欺诈评分、CRM/工单提交、邮件通知、日志与指标代理、紧急修复和蓝绿部署会在表单请求后产生服务器第二输出。
+  en: Payment authorization, fraud scoring, CRM or ticket submission, mail notification, log and metric agents, emergency
+    fixes, and blue-green deployments create legitimate second server outputs after form requests.
+blind_spots:
+- zh: 攻击者控制应用、主机与日志接收端时可修改路由同时伪造本地审计；无 request_id、共享 Web 进程、多层队列、加密应用负载和 serverless 下游会削弱逐事务连接。同源静态资源完全在 CDN 边缘被改写时，服务器主机可能没有文件证据。
+  en: An adversary controlling application, host, and log receiver can change routes and falsify local audit. Missing request
+    IDs, shared web processes, multilayer queues, encrypted application payloads, and serverless downstreams weaken transaction-level
+    joins. When same-origin static resources are rewritten entirely at a CDN edge, the origin host may contain no file evidence.
+tuning_guidance:
+  paragraphs:
+  - zh: 为每条数据入口路由维护调用图和接收合同，按 release 与 deployment_id 版本化；只允许具体服务身份、证书和字段分类，而非宽泛域名。使用脱敏合成提交定期验证 request_id 能穿过代理、应用与外联链，对无链路环境分别输出
+      integrity exposure、receiver candidate 和 suspected capture，避免越级。
+    en: Maintain a call graph and receiver contract for each data-entry route, versioned by release and deployment ID. Allow
+      exact service identities, certificates, and field classes rather than broad domains. Use redacted synthetic submissions
+      to verify that request IDs cross proxy, application, and egress chains. In environments without that lineage, emit integrity
+      exposure, receiver candidate, and suspected capture as separate levels rather than overstating certainty.
+evidence_refs:
+- REF-001128
+- REF-001129
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-10-05'
+  modified: '2026-10-05'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

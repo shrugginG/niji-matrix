@@ -1,0 +1,115 @@
+handoff_schema_version: 2.0.0
+type: technique-research-handoff
+batch_ref: BATCH-TA0004-008
+work_item_ref: WORK-TA0004-T1611
+temporary_key_prefix: B4-008-T1611
+candidate:
+  source_type: attack
+  source_attack_id: T1611
+  name: {zh: 逃逸到主机, en: Escape to Host}
+recommendation:
+  decision: adapt
+  confidence: high
+  rationale:
+    paragraphs:
+    - zh: ATT&CK Enterprise 19.1 将 T1611 映射到 Privilege Escalation，描述从容器或虚拟化环境越过隔离边界进入底层宿主，并列出 host filesystem mount、privileged container、namespace/capability、runtime socket、Windows global symbolic link、kernel/runtime 与 ESXi 漏洞等实现。Niji 适配为“隔离工作负载至宿主权限逃逸”，把直接对象限定为原 container/guest authority context 与 host authority context 之间的边界转换。只有 pre-state 无权完成某项 host operation，经可定位 primitive 或 Broker path 产生 positive authority difference 并完成首个 host-only authorized outcome，才确认 TA0004。
+      en: ATT&CK Enterprise 19.1 maps T1611 to Privilege Escalation and describes crossing from a container or virtualized environment into the underlying host, with implementations including host-filesystem mounts, privileged containers, namespaces or capabilities, runtime sockets, Windows global symbolic links, kernel or runtime vulnerabilities, and ESXi vulnerabilities. Niji adapts it as Isolated-Workload-to-Host Authority Escape and limits the direct object to a boundary transition between the original container or guest authority context and host authority context. TA0004 is confirmed only when the pre-state could not perform a host operation, a locatable primitive or broker path creates a positive authority difference, and the first host-only authorized outcome occurs.
+    - zh: 固定 ATT&CK 无子项。开放搜索没有按平台、CVE、mount、socket 或 capability 拆分，而收敛出两个 Niji-native 痕迹拓扑：容器进程经别名直接触达宿主规范资源，以及容器请求经宿主侧 Broker 转换为 daemon/helper/new-workload 结果。前者改变“同路径属于哪个 namespace”的可观察性，后者改变结果的 visible initiator；二者关联主键和预防动作不同，故正式数量为 2。
+      en: Fixed ATT&CK has no children. Open search does not partition by platform, CVE, mount, socket, or capability and instead converges on two Niji-native trace topologies: a container process directly reaches a canonical host resource through an alias, and a container request is translated by a host-side broker into a daemon, helper, or new-workload outcome. The former changes observability of which namespace owns a same-named path, while the latter changes the visible initiator of the result. Their correlation keys and preventive actions differ, so the formal count is two.
+formal_object_resolution:
+  technique_ref: B4-008-T1611-NJT-01
+  action: create-adapted-technique
+  decision_to_create: DEC-TA0004-T1611
+  subtechniques_to_create: [B4-008-T1611-NJS-01, B4-008-T1611-NJS-02]
+  proposed_name: {zh: 隔离工作负载至宿主权限逃逸, en: Isolated-Workload-to-Host Authority Escape}
+  proposed_child_names:
+  - {zh: 宿主资源命名空间别名投射, en: Host-Resource Namespace-Alias Projection}
+  - {zh: 宿主 Broker 逃逸来源转换, en: Host-Broker Escape-Provenance Translation}
+privilege_result_gate:
+  chain: container-or-guest-scoped-prestate -> exact-boundary-primitive-or-broker-request -> effective-host-context-or-canonical-host-resource -> positive-authority-difference -> first-host-only-authorized-outcome
+  insufficient_indicators: [container-UID-0, privileged-label, hostPID-or-hostNetwork, hostPath-or-device-presence, runtime-process, shell-on-host-filesystem, CVE-hit, exploit-crash, host-credential-string-without-use]
+stealth_mechanisms:
+- mechanism_ref: NM-BT
+  role: primary
+  confidence: high
+  causal_chain:
+    zh: 攻击者从 container/guest context 穿越共享 kernel、runtime、host service 或 hypervisor boundary；痕迹不再停留在一个 telemetry domain，而被拆成 workload 内 primitive、host boundary event 与宿主资源/进程结果，且不同侧使用 container ID、namespace、inode/handle、broker request、host PID 或 VM identity 等不同键；只看 workload 或宿主任一侧时无法证明同一主体取得了正权限差；跨边界语义因而落在局部观察之外并形成 Boundary Traversal。统一时间、boundary identity、pre/post context 与 first host-only outcome 可恢复。
+    en: The adversary crosses a shared-kernel, runtime, host-service, or hypervisor boundary from a container or guest context. The trace no longer remains in one telemetry domain and is split among an in-workload primitive, a host-boundary event, and a host-resource or process outcome, while each side uses different keys such as container ID, namespace, inode or handle, broker request, host PID, or VM identity. Workload-only or host-only observation cannot prove that the same actor obtained a positive authority difference. Cross-boundary semantics therefore fall outside local observation and create Boundary Traversal. Unified time, boundary identity, pre and post contexts, and the first host-only outcome can recover the chain.
+  evidence_refs: [B4-008-T1611-REF-01, B4-008-T1611-REF-05, B4-008-T1611-REF-06]
+- mechanism_ref: NM-BT
+  role: secondary
+  confidence: high
+  causal_chain:
+    zh: 在资源别名分支，攻击者让 container-visible path/handle 解析到 canonical host resource，使可见进程仍属容器而目标名称在不同 mount/object namespace 中重名；痕迹从显式宿主执行变成 container process 对普通路径/句柄的读写；缺少 container ID、mount namespace、inode/handle 与 host canonical mapping 的审计会把宿主 `/etc/passwd`、注册表或设备误当容器对象；资源归属因此跨命名空间边界不透明。映射版本、mount propagation、canonical identity 与 host effect 可反证。
+    en: In the resource-alias branch, the adversary makes a container-visible path or handle resolve to a canonical host resource, leaving the visible process container-scoped while the target name is reused across mount or object namespaces. The trace changes from explicit host execution into a container process reading or writing an ordinary path or handle. Audit without container ID, mount namespace, inode or handle, and host-canonical mapping can mistake host `/etc/passwd`, registry, or device access for a container object. Resource ownership therefore becomes opaque across the namespace boundary. Mapping version, mount propagation, canonical identity, and host effect can disconfirm the concealment.
+  evidence_refs: [B4-008-T1611-REF-03, B4-008-T1611-REF-04, B4-008-T1611-REF-05, B4-008-T1611-REF-07]
+- mechanism_ref: NM-BT
+  role: secondary
+  confidence: medium
+  causal_chain:
+    zh: 在 Broker 分支，攻击者经 runtime socket/API 或 host-consumed callback 提交高权限动作，随后由 dockerd/containerd/kubelet/runc、kernel helper、hypervisor service 或新建 workload 在宿主侧完成；痕迹从原容器进程的直接宿主操作变成受信 Broker 的 transaction/process 和结果，原请求与结果分处不同进程、namespace 或时间；仅检查宿主进程父子关系会把结果归给正常基础设施，无法识别原 container principal；来源转换因而削弱关联和归因。control-channel event、request body/hash、broker transaction、effective context 与 outcome 可恢复。
+    en: In the broker branch, the adversary submits a privileged action through a runtime socket or API or a host-consumed callback, after which dockerd, containerd, kubelet, runc, a kernel helper, a hypervisor service, or a newly created workload completes it on the host. The trace changes from direct host action by the originating container process into a trusted broker transaction or process and result, separating request and outcome across processes, namespaces, or time. Host-process-parentage-only analysis attributes the result to normal infrastructure and cannot identify the original container principal. Provenance translation therefore weakens correlation and attribution. Control-channel event, request body or hash, broker transaction, effective context, and outcome can recover it.
+  evidence_refs: [B4-008-T1611-REF-01, B4-008-T1611-REF-02, B4-008-T1611-REF-06, B4-008-T1611-REF-08]
+taxonomy:
+  attack_subtechnique_count: 0
+  explicit_coverage_complete: true
+  second_pass_complete: true
+  final_formal_child_count: 2
+  new_formal_child_count: 2
+  formal_candidates: [B4-008-T1611-NJS-01, B4-008-T1611-NJS-02]
+  parent_core: [direct kernel namespace or hypervisor crossing, boundary count and chain length, container-label variation, exploit capability and misconfiguration prerequisites]
+  adjacent: [T1068 vulnerability exploitation, NJT-0067 new-workload execution, NJT-0089 durable service reconciliation, NJT-0092 image-borne recurrence]
+  hypotheses: [transient post-outcome cleanup, deliberate cross-sensor node selection or multi-boundary chaining]
+  rejected: [platform runtime provider CVE image tool medium target and log-field partitions]
+shared_library_resolutions:
+- library: references
+  decision: reuse-and-create
+  reuse_refs: [REF-000213]
+  create_candidates: [B4-008-T1611-REF-01, B4-008-T1611-REF-02, B4-008-T1611-REF-03, B4-008-T1611-REF-04, B4-008-T1611-REF-05, B4-008-T1611-REF-06, B4-008-T1611-REF-07, B4-008-T1611-REF-08]
+  rationale: Reuse Pod Security Standards for admission controls on privileged host namespace hostPath and capability fields; create fixed ATT&CK, Docker daemon, Kubernetes hostPath/kernel constraint, Siloscape, TeamTNT, dependency-graph, and PACED anchors at their narrow scopes.
+- library: claims
+  decision: create
+  create_candidates: [B4-008-T1611-CLM-01, B4-008-T1611-CLM-02, B4-008-T1611-CLM-03, B4-008-T1611-CLM-04, B4-008-T1611-CLM-05]
+  rationale: Create atomic parent gate, cross-boundary observation, alias-path ambiguity, broker-provenance translation, and defensive correlation claims instead of extending container-deployment claims beyond their direct object.
+- library: cases
+  decision: create-and-do-not-extend-adjacent
+  create_candidates: [B4-008-T1611-CASE-01, B4-008-T1611-CASE-02]
+  adjacent_no_extend_refs: [CASE-000073, CASE-000075, CASE-000076]
+  rationale: Create Siloscape alias escape and TeamTNT host-mount or runtime-socket escape cases; existing cases cover container entry or deployment camouflage and do not prove host boundary outcome, so their subjects remain unchanged.
+- library: detections
+  decision: create
+  create_candidates: [B4-008-T1611-DET-01]
+  rationale: A new strategy must prove boundary crossing and host authority result with two analytic branches; DET-000082 owns new-workload image and specification conformance rather than canonical host-resource or broker provenance.
+- library: analytics
+  decision: create-split
+  create_candidates: [B4-008-T1611-NJA-01, B4-008-T1611-NJA-02]
+  rationale: Alias mapping uses container mount or object namespace plus inode handle and canonical host target, whereas broker translation uses request channel transaction host executor and outcome; incompatible primary keys justify two implementable analytics under one DET.
+- library: mitigations
+  decision: create
+  create_candidates: [B4-008-T1611-MIT-01]
+  rationale: One boundary-governance object can apply different target-specific controls to parent alias and broker children, including user namespaces rootless or runtime isolation, admission, read-only canonical mappings, socket or API authority, callback control, patching, and host-effect recovery.
+- library: relationships
+  decision: defer
+  refs: []
+  rationale: Direct defense evidence and adjacent boundaries express current semantics; no additional directional relationship is needed.
+evidence_coverage:
+  parent_behavior-tactic-and-zero-child-anchor: [B4-008-T1611-REF-01]
+  host-daemon-control-and-authority: [B4-008-T1611-REF-02]
+  host-resource-projection-and-prevention: [B4-008-T1611-REF-03, B4-008-T1611-REF-04, REF-000213]
+  observed-alias-escape: [B4-008-T1611-REF-05, B4-008-T1611-CASE-01]
+  observed-mount-and-runtime-socket-paths: [B4-008-T1611-REF-06, B4-008-T1611-CASE-02]
+  path-namespace-observation-gap: [B4-008-T1611-REF-07]
+  cross-namespace-provenance-and-broker-callback-reconstruction: [B4-008-T1611-REF-08]
+research:
+  limitations:
+    paragraphs:
+    - zh: ATT&CK、Docker/Kubernetes 官方文档、Siloscape 与 TeamTNT 调查以及两项 provenance 研究共同证明越界行为、alias/Broker 痕迹拓扑和所需防御键，但公开事件通常没有同时发布 container pre-state authorization set、host post-state set 与每个 host result 的授权决定。正式对象因此可以高置信确认 taxonomy 和观察差异，却仍要求本地数据证明具体事件的 positive authority difference；`privileged: true`、UID 0 或 mount/socket 存在不能单独确认成功。
+      en: ATT&CK, official Docker and Kubernetes documentation, Siloscape and TeamTNT investigations, and two provenance studies jointly establish boundary-crossing behavior, alias and broker trace topology, and required defensive keys. Public incidents rarely publish a container pre-state authorization set, host post-state set, and authorization decision for every host result together. The formal object can therefore establish taxonomy and observation differences with high confidence while still requiring local data to prove a positive authority difference in a specific event. `privileged: true`, UID 0, or mount or socket presence alone cannot confirm success.
+    - zh: 资源别名的证据最强地覆盖 Linux mount/inode 与 Windows global symbolic link；registry、named object、block device 和 VM shared resource 的推广必须验证对应 canonical identity。Broker 证据最强地覆盖 Docker runtime socket 与 cgroup/runtime helper，kubelet、ESXi/hypervisor service 和其他 control plane 只能在保留原请求与有效执行上下文时类推。短暂清理和跨节点选择仍是假设，不进入正式子项。
+      en: Resource-alias evidence is strongest for Linux mount and inode behavior and Windows global symbolic links; extension to registry, named objects, block devices, and VM shared resources requires validation of their canonical identity. Broker evidence is strongest for Docker runtime sockets and cgroup or runtime helpers; kubelet, ESXi or hypervisor services, and other control planes can be generalized only when the original request and effective execution context are preserved. Transient cleanup and cross-node selection remain hypotheses and do not enter formal children.
+  canonical_prose_bulk_generated: false
+  unresolved_hypotheses: [transient post-outcome cleanup, deliberate cross-sensor node selection or multi-boundary chaining]
+integration:
+  status: integrated-review
+  planned_actions: [reserve and create eight references five claims and two cases, create DEC-TA0004-T1611, create one adapted NJT and two Niji-native NJS objects, create one DET and two bidirectionally linked NJA objects, create one MIT with parent and two child-specific applications, run quality bundle pipeline reserved-ID review npm test and bilingual live Web QA]
+  completed_actions: [created REF-000345 through REF-000352 and CLM-000552 through CLM-000556, created CASE-000127 and CASE-000128, created DEC-TA0004-T1611 and NJT-0101 with NJS-0101-001 and NJS-0101-002, created DET-000098 with bidirectional NJA-000078 and NJA-000079, created MIT-000099 with three target-specific applications, passed make quality and twelve infrastructure tests, built dist/techniques/NJT-0101.json, passed pipeline and reserved-ID review, passed sixty-three Review Web tests, passed fourteen-page bilingual live Web QA]

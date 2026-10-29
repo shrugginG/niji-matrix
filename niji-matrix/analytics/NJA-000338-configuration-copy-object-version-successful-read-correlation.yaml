@@ -1,0 +1,149 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000338
+strategy_ref: DET-000254
+name:
+  zh: 配置副本对象—版本—成功读取关联
+  en: Configuration-Copy Object-Version-Successful-Read Correlation
+summary:
+  zh: 按对象、主体、会话与结果字段实现“配置副本对象—版本—成功读取关联”。
+  en: Implement Configuration-Copy Object-Version-Successful-Read Correlation with object, principal, session, and outcome
+    fields.
+domains:
+- enterprise
+platforms:
+- Linux
+- Windows
+- Network Management Systems
+- Cloud Storage
+logic:
+  paragraphs:
+  - zh: 建立配置副本清单，将 repository_id/path/object_id、version_or_snapshot_id、device_id、configuration_type、created_by_job_id、created_time、content_hash
+      和 sensitivity 关联。对每次 file_read、checkout、clone、download 或 object_get，先验证 outcome=success 与 bytes_returned>0，再确认读取范围中至少一个对象解析为配置内容或哈希匹配清单；只有登录、list、metadata
+      或失败请求时保持 Discovery/企图。
+    en: Build a configuration-copy inventory joining repository ID, path or object ID, version or snapshot ID, device ID,
+      configuration type, creating job ID, creation time, content hash, and sensitivity. For every file read, checkout, clone,
+      download, or object get, first verify a successful outcome and positive returned bytes, then confirm that at least one
+      object in scope parses as configuration or has a hash matching the inventory. Login, list, metadata, or failed requests
+      remain Discovery or attempt.
+  - zh: 将确认读取与允许消费者、备份验证、差异审查、合规扫描、灾备恢复及事件响应工单核对。对 T1602_CHILD_PREEXISTING_COPY，要求同一时窗没有目标 device_id 的对应实时配置读取，或能够证明当前内容来自
+      earlier created_time/version；输出异常主体、首次访问设备集合、历史版本批量、敏感配置、非批准目的进程/会话和仓库级 clone 的展开对象。没有文件级 Git 审计时，应以 clone 范围和本地 checkout
+      文件事件保留较低粒度结论。
+    en: Reconcile confirmed reads with allowed consumers, backup verification, difference review, compliance scans, disaster
+      recovery, and incident-response work orders. For T1602_CHILD_PREEXISTING_COPY, require no corresponding live configuration
+      read for the target device in the same window or evidence that current content came from an earlier creation time or
+      version. Output anomalous principal, first-seen device set, historical-version bulk access, sensitive configuration,
+      unapproved destination process or session, and objects expanded from a repository-level clone. When Git lacks file-level
+      audit, retain a lower-granularity conclusion based on clone scope and local checkout file events.
+data_requirements:
+- source_type: configuration-copy-inventory
+  name:
+    zh: 配置副本对象与版本清单
+    en: Configuration-copy Object and Version Inventory
+  channel: Configuration archive, backup catalog, version-control index, or CMDB
+  required_fields:
+  - repository_id
+  - object_id_or_path
+  - version_or_snapshot_id
+  - device_id
+  - configuration_type
+  - created_by_job_id
+  - created_time
+  - content_hash
+  - sensitivity
+- source_type: repository-or-file-read-audit
+  name:
+    zh: 版本库对象存储或文件读取审计
+    en: Version-repository Object-store or File-read Audit
+  channel: Git/CVS/SVN server audit, object-storage data events, or host file-read audit validated in deployment
+  required_fields:
+  - timestamp
+  - repository_id
+  - principal_id
+  - session_id
+  - operation
+  - object_id_or_path
+  - version_or_snapshot_id
+  - outcome
+  - bytes_returned
+  - source_address
+  - destination_process_or_client
+- source_type: approved-copy-consumer
+  name:
+    zh: 批准的配置副本消费者与恢复任务
+    en: Approved Configuration-copy Consumer and Restore Job
+  channel: Backup, compliance, disaster-recovery, change-management, and ticket system
+  required_fields:
+  - consumer_id
+  - principal_id
+  - approved_repository_scope
+  - approved_device_scope
+  - purpose
+  - job_id
+  - approval_start
+  - approval_end
+  - owner
+- source_type: live-device-configuration-read
+  name:
+    zh: 实时设备配置读取对照
+    en: Live-device Configuration-read Comparator
+  channel: Normalized output of T1602_NJA_LIVE_READ_OUTCOME
+  required_fields:
+  - timestamp
+  - device_id
+  - principal_id
+  - request_id
+  - completion_status
+  - output_object_id
+observables:
+- zh: 历史配置对象或版本成功返回给不在允许消费者清单中的主体
+  en: A historical configuration object or version is successfully returned to a principal outside the allowed-consumer inventory
+- zh: 当前副本读取覆盖敏感或首次接触设备，却没有同时间实时设备事务
+  en: A current replica read covers sensitive or first-seen devices without contemporaneous live-device transactions
+- zh: repository clone 或 checkout 经对象清单展开后包含多个设备配置，结果进入非批准进程或会话
+  en: A repository clone or checkout expands through the object inventory to multiple device configurations and enters an
+    unapproved process or session
+correlation:
+  window:
+    zh: 单次读取前十五分钟至完成后一小时；版本库和对象访问基线至少九十日，以覆盖月度、季度灾备和审计流程。
+    en: Fifteen minutes before a read through one hour after completion; at least ninety days for repository and object-access
+      baselines to cover monthly and quarterly recovery or audit work.
+  dimensions:
+  - repository_id
+  - object_id_or_path
+  - version_or_snapshot_id
+  - device_id
+  - principal_id
+  - session_id
+  - job_id
+  - destination_process_or_client
+  - time
+false_positives:
+- zh: 配置备份完整性检查、版本差异审查、灾备恢复、审计取证、批量设备迁移、密钥轮换验证、厂商支持和授权开发测试会合法读取历史或多设备配置。
+  en: Backup-integrity checks, version-difference review, disaster recovery, audit forensics, bulk device migration, key-rotation
+    validation, vendor support, and authorized development testing legitimately read historical or multi-device configuration.
+blind_spots:
+- zh: 本地文件系统未启用 read SACL/auditd、Git 仅记录 clone 不记录文件、缓存或备份被离线复制、共享账户或存储端只保留管理事件时，主体和对象粒度不足。加密副本或脱敏模板可能无法在线确认内容；设备无实时命令只是必要对照，不是独立证明。
+  en: Principal and object resolution are weak when local filesystems lack read SACL or auditd, Git records clones rather
+    than files, caches or backups are copied offline, accounts are shared, or storage retains management events only. Encrypted
+    copies or redacted templates may resist online content confirmation. Absence of a live device command is a necessary comparator,
+    not independent proof.
+tuning_guidance:
+  paragraphs:
+  - zh: 按配置仓库、设备组、版本年龄、敏感性、消费者职责和固定作业周期建立基线；例外绑定具体目的、对象集合、有效期和目标工具。对 Git clone 等仓库级操作必须展开当时 commit tree，而不是以 clone 次数阈值替代对象语义；应急恢复可提高范围但仍须保留批准人和结果位置。
+    en: Baseline by configuration repository, device group, version age, sensitivity, consumer duty, and fixed job cycle.
+      Bind exceptions to a purpose, object set, validity interval, and destination tool. For repository-level actions such
+      as Git clone, expand the commit tree at that time instead of replacing object semantics with a clone-count threshold.
+      Emergency recovery may broaden scope but must retain approver and result location.
+evidence_refs:
+- REF-000792
+- REF-001120
+- REF-001121
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-10-05'
+  modified: '2026-10-05'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

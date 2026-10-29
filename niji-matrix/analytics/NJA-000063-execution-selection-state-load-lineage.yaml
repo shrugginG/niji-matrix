@@ -1,0 +1,59 @@
+schema_version: "2.0.0"
+type: detection-analytic
+id: NJA-000063
+strategy_ref: DET-000084
+name: {zh: 搜索、完整性与 Runtime 激活状态关联分析, en: Search Integrity and Runtime Activation-State Correlation Analytic}
+summary: {zh: 版本化执行前选择状态，并将其与实际解析/加载和首个攻击者结果连接，输出三类互斥变量。, en: Version pre-execution selection state and join it to actual resolution or load and first attacker outcome producing three exclusive variables.}
+domains: [enterprise]
+platforms: [Windows, Linux, macOS]
+logic:
+  paragraphs:
+  - zh: 为每次可能改变执行选择的写入生成 selection_state_id，记录 writer process/user、时间、权限/ACL、变更单和旧/new value。搜索分支版本化工作/应用目录、PATH、loader 环境、manifest、请求依赖名和所有候选路径；完整性分支版本化 executable/library/service ImagePath/registry target 的 hash、签名与接口；激活分支版本化 COR_PROFILER/CLSID、AppDomainManager config、callback pointer 或等价 runtime slot。
+    en: Generate a selection-state ID for every write that may change execution selection and record writer process or user time permission or ACL change record and old and new values. The search branch versions working and application directories PATH loader environment manifests requested dependency names and all candidate paths. The integrity branch versions executable library service ImagePath or registry target hash signature and interface. The activation branch versions COR_PROFILER or CLSID AppDomainManager configuration callback pointers or equivalent runtime slots.
+  - zh: 将 selection_state_id 连接下一次 consumer start、dependency request、resolved path/hash、loader/CLR/module/manager event 和首个 process/thread/memory/file/network 结果。原对象完整而更早新增候选被选中输出搜索阴影；稳定 identity 的 content/target 变化被消费输出完整性替换；普通搜索和 host 完整但 activation slot 触发新 module/callback 输出 runtime 重定向。只有状态未加载时保留 exposure/prepositioned 状态，不确认 Execution。
+    en: Join the selection-state ID to the next consumer start dependency request resolved path or hash loader or CLR module or manager event and first process thread memory file or network outcome. An intact original with an earlier new candidate selected outputs search shadowing. Content or target change under a stable identity that is consumed outputs integrity substitution. Normal search and intact host with an activation slot triggering a new module or callback outputs runtime redirection. State never loaded remains exposure or prepositioned state rather than confirmed Execution.
+data_requirements:
+- source_type: execution-state-writer
+  name: {zh: 文件、目录、环境、注册表与配置 Writer, en: File directory environment registry and configuration writer}
+  channel: null
+  required_fields: [timestamp, host_id, writer_process_entity, writer_user, state_type, state_location, old_value_or_hash, new_value_or_hash, permissions_or_acl, change_or_approval_id]
+- source_type: loader-search-and-resolution
+  name: {zh: Loader 搜索候选与实际解析, en: Loader search candidates and actual resolution}
+  channel: null
+  required_fields: [timestamp, consumer_process_entity, requested_name, search_environment_or_path, candidate_paths_and_order, resolved_path, resolved_hash, module_signature, load_status]
+- source_type: executable-service-integrity
+  name: {zh: 可执行文件、依赖与服务目标完整性, en: Executable dependency and service-target integrity}
+  channel: null
+  required_fields: [object_path_or_service, baseline_hash_or_target, current_hash_or_target, signature, interface_or_exports, file_or_registry_acl, version, approved_package]
+- source_type: runtime-activation-state
+  name: {zh: Profiler、AppDomain 与 Callback 激活状态, en: Profiler AppDomain and callback activation state}
+  channel: null
+  required_fields: [runtime_process_entity, runtime_version, activation_slot, profiler_or_manager_id, module_or_callback_path, configuration_source, writer, activation_event, load_status]
+- source_type: hijacked-execution-outcome
+  name: {zh: 模块、进程、线程、内存、文件与网络结果, en: Module process thread memory file and network outcome}
+  channel: null
+  required_fields: [timestamp, consumer_process_entity, loaded_module_or_manager, child_process_or_thread, memory_region_or_protection, file_or_registry_action, network_destination, original_function_handoff, outcome]
+- source_type: software-runtime-approval-baseline
+  name: {zh: 软件包、插件与 Profiler 批准基线, en: Software package plug-in and profiler approval baseline}
+  channel: null
+  required_fields: [application_or_service, approved_package_or_commit, approved_paths_and_hashes, approved_writer, approved_activation_slots, expected_modules_or_targets, validity_window]
+observables:
+- {zh: 签名 launcher 请求正常依赖名，但从用户可写或新建更早目录加载未批准 hash 并产生未知内存/网络行为, en: A signed launcher requests a normal dependency name but loads an unapproved hash from a user-writable or newly earlier directory and produces unknown memory or network behavior}
+- {zh: 稳定 service/path 在未批准 writer 后 hash 或 target 改变，下一次启动仍显示原服务名但加载攻击者内容, en: A stable service or path changes hash or target after an unapproved writer and the next start retains the service name while loading attacker content}
+- {zh: COR_PROFILER/AppDomain/callback 状态由非常见进程修改，随后 CLR/runtime 在无批准 profiler 时加载新 DLL/manager, en: COR_PROFILER AppDomain or callback state is changed by an uncommon process and a CLR or runtime then loads a new DLL or manager without an approved profiler}
+correlation:
+  window: {zh: 从状态写入到该状态撤销、软件升级或首次九十日，并对每次 consumer 加载观察后一小时结果。, en: From state write until revocation software upgrade or the first ninety days with one hour of outcomes after every consumer load.}
+  dimensions: [host, writer, user, selection_state, path_environment, requested_name, candidate_order, stable_identity, baseline_hash_target, runtime_slot, consumer, resolved_hash, loaded_module, outcome, approval, time]
+false_positives:
+- {zh: 软件安装/升级/修复、合法插件与便携应用、开发环境 PATH、性能 profiler、安全代理、服务迁移和灾备恢复, en: Software installation update or repair legitimate plug-ins and portable apps development PATH performance profilers security agents service migration and disaster recovery}
+blind_spots:
+- {zh: 没有旧 hash/target/config 基线、writer 事件丢失或状态写入早于保留窗口, en: Missing old hash target or configuration baseline lost writer event or state write predates retention}
+- {zh: loader 不报告候选顺序/实际路径、内存 callback 被改后快速恢复或受信 updater 被攻陷产生一致审批元数据, en: Loader omits candidate order or actual path in-memory callback is restored quickly or a compromised trusted updater produces consistent approval metadata}
+tuning_guidance:
+  paragraphs:
+  - zh: 按软件/服务版本维护完整路径、依赖 hash、搜索目录与 runtime activation allowlist；允许项绑定具体 package/commit/writer/时间，不按 signer、目录或 profiler 名称永久放行。分别输出未消费状态、加载确认和恶意结果，避免把所有可写路径当执行事件。
+    en: Maintain full paths dependency hashes search directories and runtime activation allowlists by software or service version. Bind allowances to concrete package commit writer and time rather than permanently allowing signers directories or profiler names. Output unconsumed state confirmed load and malicious outcome separately so writable paths are not mislabeled as execution.
+  - zh: 用受控 DLL/dylib/PATH、service replacement 和 COR_PROFILER/AppDomainManager 测试验证 writer、candidate order、resolved hash 与 runtime event 字段；对延迟触发至少保留九十日。缺少 candidate order 时以实际路径与批准 manifest 差分，降低搜索分支置信度。
+    en: Test controlled DLL dylib or PATH service replacement and COR_PROFILER or AppDomainManager cases to validate writer candidate order resolved hash and runtime event fields and retain delayed activation at least ninety days. Without candidate order compare actual path to approved manifests and lower search-branch confidence.
+evidence_refs: [REF-000180, REF-000233, REF-000234, REF-000235, REF-000236, REF-000237, REF-000238, REF-000239, REF-000240]
+lifecycle: {status: review, version: 0.1.0, created: '2026-09-12', modified: '2026-09-12', contributors: [Niji Matrix Research], reviewers: []}

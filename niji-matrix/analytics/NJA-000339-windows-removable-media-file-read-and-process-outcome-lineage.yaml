@@ -1,0 +1,147 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000339
+strategy_ref: DET-000255
+name:
+  zh: Windows 可移动介质文件读取与进程结果谱系
+  en: Windows Removable-Media File Read and Process Outcome Lineage
+summary:
+  zh: 区分介质接入、文件读取允许、实际 ReadData 与攻击者可用结果。
+  en: Distinguish media attachment, allowed file read, exercised ReadData, and attacker-usable outcomes.
+domains:
+- enterprise
+platforms:
+- Windows
+logic:
+  paragraphs:
+  - zh: '以 PnpDeviceConnected、UsbDriveMounted 或等价事件为每次接入生成 attachment_session_id，保存 DeviceId、MediaDeviceId、MediaInstanceId、MediaSerialNumber、卷/盘符、用户和时间。部署显式
+      Device Control AuditAllowed/AuditDenied；只把 RemovableStoragePolicyTriggered 中表示文件级读取、verdict 为允许、含 FolderPath、FileSize、InitiatingProcess
+      和介质字段的事件作为允许读取候选。Disk-level read、mount、目录/属性浏览和 deny 不升级为内容取得；达到每台设备每日高级搜寻上限时标记 telemetry_capped。
+
+      启用 Audit Removable Storage，把同一接入会话、用户/LogonId、对象路径和短窗内的 4663 ReadData 连接到进程；4663 表示访问权被实际使用，但不保证完整文件留存。再连接进程启动、签名、父进程和网络，寻找同一进程或明确子进程产生的输出文件、归档成员或外联字节。按介质、进程、用户和十五分钟聚合，与批准的导入、备份、杀毒、取证、恢复和迁移比较。输出
+      attachment_only、access_policy_only、exercised_read 或 read_with_attacker_usable_outcome；只有后两级且来源未经批准时进入告警。'
+    en: 'Generate attachment_session_id from PnpDeviceConnected, UsbDriveMounted, or equivalent events and retain DeviceId,
+      MediaDeviceId, MediaInstanceId, MediaSerialNumber, volume or drive, user, and time. Deploy explicit Device Control AuditAllowed
+      and AuditDenied. Treat RemovableStoragePolicyTriggered as an allowed-read candidate only when it denotes file-level
+      read, verdict is allowed, and FolderPath, FileSize, InitiatingProcess, and media fields exist. Disk-level read, mount,
+      directory or attribute browsing, and deny do not become acquisition; mark telemetry_capped when the per-device daily
+      advanced-hunting cap is reached.
+
+      Enable Audit Removable Storage and join event 4663 ReadData in the same attachment session, user or LogonId, object
+      path, and short window to its process. Event 4663 shows exercised access but not complete-file retention. Join process
+      start, signer, parent, and network, then find output files, archive members, or egress bytes produced by the same process
+      or explicit child. Aggregate by medium, process, user, and fifteen minutes and compare with approved import, backup,
+      antimalware, forensics, restore, and migration. Emit attachment_only, access_policy_only, exercised_read, or read_with_attacker_usable_outcome;
+      only the latter two with unapproved sources alert.'
+data_requirements:
+- source_type: mde-device-control
+  name:
+    zh: 经验证的Mde Device Control数据
+    en: Mde Device Control
+  channel: DeviceEvents PnpDeviceConnected UsbDriveMounted UsbDriveUnmounted RemovableStoragePolicyTriggered
+  required_fields:
+  - timestamp
+  - device_id
+  - action_type
+  - initiating_process_account
+  - initiating_process_id
+  - initiating_process_file_name
+  - media_device_id
+  - media_instance_id
+  - media_serial_number
+  - media_bus_type
+  - media_class_name
+  - folder_path
+  - file_size
+  - removable_storage_access
+  - removable_storage_policy_verdict
+- source_type: windows-removable-storage-audit
+  name:
+    zh: 经验证的Windows Removable Storage Audit数据
+    en: Windows Removable Storage Audit
+  channel: Security/4663 with Audit Removable Storage success auditing
+  required_fields:
+  - timestamp
+  - device_id
+  - subject_user_sid
+  - subject_logon_id
+  - object_name
+  - process_id
+  - process_name
+  - access_mask
+  - accesses
+- source_type: endpoint-process-file-network
+  name:
+    zh: 经验证的Endpoint Process File Network数据
+    en: Endpoint Process File Network
+  channel: EDR process file archive and network telemetry
+  required_fields:
+  - timestamp
+  - device_id
+  - process_unique_id
+  - parent_process_unique_id
+  - user_id
+  - image
+  - signer
+  - command_line
+  - source_path
+  - destination_path
+  - bytes_written
+  - archive_path
+  - remote_endpoint
+  - network_bytes
+observables:
+- zh: 介质接入后未经批准进程出现文件级读取允许与 4663 ReadData，并产生输出、归档或外联
+  en: An unapproved process produces file-level read allow and event 4663 ReadData after attachment followed by output archive
+    or egress
+- zh: 只有 mount、目录或 ReadAttributes 时保持候选层
+  en: Mount directory access or ReadAttributes alone remains candidate-level
+correlation:
+  window:
+    zh: 每个接入会话默认按十五分钟聚合，并按批准业务周期保留历史。
+    en: 15m per attachment session with history retained for the approved business cycle
+  dimensions:
+  - device_id
+  - attachment_session_id
+  - media_instance_id
+  - media_serial_number
+  - volume_id
+  - mount_point
+  - user_id
+  - logon_id
+  - process_unique_id
+  - object_path
+  - output_path
+  - remote_endpoint
+false_positives:
+- zh: 照片导入、备份恢复、杀毒、索引、取证、DLP、迁移和离线补丁会合法读取介质
+  en: Photo import backup restore antimalware indexing forensics DLP migration and offline patching legitimately read media
+- zh: 用户经 Explorer 或 Finder 正常打开文件可能由通用 shell 发起
+  en: Ordinary user opens through Explorer Finder or peers can originate from a generic shell
+blind_spots:
+- zh: 未启用策略审计或 4663、事件达到上限、隔离端无代理或 EDR 不记录读取
+  en: Missing policy audit or 4663 event caps agentless isolated hosts or EDR without read telemetry
+- zh: MTP、PTP、加密容器、原始卷或设备缓存不一定呈现普通盘符 ReadData
+  en: MTP PTP encrypted containers raw volumes or device caches may not present ordinary drive ReadData
+tuning_guidance:
+  paragraphs:
+  - zh: 先以审计模式验证 RemovableStorageAccess、FolderPath 覆盖和事件量，再按介质组、用户组和 File Read mask 8 收窄。例外绑定签名、用户/服务 SID、介质组、路径、工单和有效期，不按进程名或
+      DeviceID 永久放行。对象敏感度、非交互会话、异常父进程、隐藏输出和紧邻外联提高优先级；mount 或 denied event 只用于发现和策略诊断。
+    en: Validate RemovableStorageAccess, FolderPath coverage, and event volume in audit mode, then narrow by media group,
+      user group, and File Read mask 8. Bind exceptions to signer, user or service SID, media group, path, ticket, and expiry
+      rather than process name or DeviceID alone. Sensitivity, noninteractive session, anomalous parent, hidden output, and
+      proximate egress raise priority; mount and denied events support discovery and policy diagnostics only.
+evidence_refs:
+- REF-000597
+- REF-001070
+- REF-000379
+- REF-000906
+- REF-001127
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-10-05'
+  modified: '2026-10-05'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

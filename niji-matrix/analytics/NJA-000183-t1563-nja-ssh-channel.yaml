@@ -1,0 +1,141 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000183
+strategy_ref: DET-000170
+name:
+  zh: SSH 原连接—新通道—本地控制者差分
+  en: SSH Original Connection to New Channel and Local Controller Differential
+summary:
+  zh: 将旧 SSH 认证传输上的新逻辑通道与本地套接字或客户端进程接触者关联。
+  en: Join a new logical channel on an old authenticated SSH transport to the local process touching its control socket or
+    client.
+domains:
+- enterprise
+platforms:
+- Linux
+- macOS
+logic:
+  paragraphs:
+  - zh: 在可部署通道埋点的跳板与目标对上，先记录 sshd 初始认证所建连接的 connection_id、账户、源地址、建立时间和通道集合。在同一 connection_id 后续创建 shell/exec 通道时，查询跳板近两分钟内的
+      ControlPath Unix socket 客户端进程或对原 ssh 客户端的 ptrace/调试事件，把进程 uid、启动谱系、socket owner 与原 SSH 客户端进程比较；再核对目标新通道关联的 shell/exec
+      进程和高风险内部资源动作。若新发起进程与原管理员操作链不符且无批准的复用关系，输出控制者交接候选；只有目标结果相连才升级为横向成功。通道数量增加但无可识别本地异常或仅无新认证，保持低置信调查信号。
+    en: On jump-host and destination pairs with validated channel instrumentation, first retain the sshd connection_id, account,
+      source address, creation time, and channel set established at initial authentication. When a later shell or exec channel
+      appears on the same connection_id, search a two-minute jump-host window for a ControlPath Unix-socket client process
+      or ptrace/debug access to the original ssh client and compare process UID, start lineage, socket owner, and original
+      SSH client. Then join the destination channel to its shell or exec process and high-risk internal resource actions.
+      Emit a controller-handoff candidate when the new initiator diverges from the administrator's approved process lineage
+      without an authorized sharing relation; upgrade to lateral success only with a linked destination result. Channel count
+      growth without a local anomalous initiator, or simply missing new authentication, remains a low-confidence lead.
+data_requirements:
+- source_type: instrumented-openssh-connection-channel
+  name:
+    zh: 经验证的 SSH 连接和通道遥测
+    en: Validated SSH connection and channel telemetry
+  channel: null
+  required_fields:
+  - timestamp
+  - destination_host
+  - connection_id
+  - channel_id
+  - channel_type
+  - account
+  - source_ip
+  - authentication_time
+  - channel_open_time
+- source_type: jump-host-unix-socket-and-debug-access
+  name:
+    zh: 跳板主机套接字和调试访问
+    en: Jump-host socket and debug access
+  channel: null
+  required_fields:
+  - timestamp
+  - jump_host
+  - source_process_id
+  - source_process_start_time
+  - source_uid
+  - target_process_id
+  - socket_path
+  - socket_owner_uid
+  - operation
+  - result
+- source_type: destination-process-lineage
+  name:
+    zh: 目标 SSH 进程谱系
+    en: Destination SSH process lineage
+  channel: null
+  required_fields:
+  - timestamp
+  - destination_host
+  - process_id
+  - parent_process_id
+  - account
+  - session_or_channel_id
+  - executable
+  - command_line
+- source_type: approved-ssh-sharing-inventory
+  name:
+    zh: 批准 SSH 复用关系
+    en: Approved SSH-sharing relationships
+  channel: null
+  required_fields:
+  - approval_id
+  - jump_host
+  - destination_host
+  - account
+  - allowed_process_or_role
+  - control_path
+  - valid_from
+  - valid_to
+observables:
+- zh: 旧认证连接上出现新的 shell/exec channel，跳板同时有非原客户端谱系的进程访问其控制套接字或客户端进程。
+  en: A new shell or exec channel appears on an old authenticated connection while a jump-host process outside the original
+    client lineage accesses its control socket or process.
+- zh: 目标 SSH 会话以原账户产生新命令或资源访问，但无对应的新目标认证且本地发起进程与原所有者不符。
+  en: A destination SSH session runs a new command or resource action as the original account without new destination authentication,
+    while the local initiator diverges from the owner.
+correlation:
+  window:
+    zh: 本地控制套接字访问到新通道默认两分钟；原连接到后继通道按真实传输寿命追踪，最长二十四小时并按跳板任务调优。
+    en: Default to two minutes from local control-socket access to new channel; follow the original connection through its
+      actual lifetime, up to twenty-four hours with jump-host tuning.
+  dimensions:
+  - jump_host
+  - destination_host
+  - connection_id
+  - channel_id
+  - account
+  - original_client_process
+  - new_initiator_process
+  - socket_path
+  - approval_id
+false_positives:
+- zh: 批准的 ControlMaster 多终端复用、备份、部署和合法调试也会在同一认证连接上增加通道。
+  en: Approved multi-terminal ControlMaster use, backup, deployment, and legitimate debugging also add channels on one authenticated
+    connection.
+blind_spots:
+- zh: 标准 sshd 未必提供稳定通道 ID；缺少跳板 socket 或 ptrace 遥测时不能断言通道由另一控制者打开。
+  en: Stock sshd may lack stable channel IDs; without jump-host socket or ptrace telemetry, a different controller cannot
+    be attributed reliably.
+tuning_guidance:
+  paragraphs:
+  - zh: 先在受管跳板试点标定每个 sshd 版本能稳定输出的连接/通道标识；不能取得 channel_id 时不声称精确归因。批准复用只按具体账户、跳板、目标、控制路径、进程角色和有效期允许，不永久放行所有 ssh。将正常调试器和自动化映射到工单；对
+      root 跨用户附着和目标高权限命令提升优先级，但仍要求控制者差异和实际目标结果。
+    en: Pilot each managed jump-host and sshd version to validate stable connection and channel identifiers; do not claim
+      exact attribution without a channel ID. Allow approved sharing only for a specific account, jump host, target, control
+      path, process role, and validity period, not all ssh activity. Map legitimate debugging and automation to tickets. Prioritize
+      root cross-user attachment and sensitive destination commands while still requiring controller divergence and an actual
+      destination result.
+evidence_refs:
+- REF-000614
+- REF-000615
+- REF-000616
+- REF-000370
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-09-22'
+  modified: '2026-09-22'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

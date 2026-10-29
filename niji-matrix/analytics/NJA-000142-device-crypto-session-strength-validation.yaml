@@ -1,0 +1,46 @@
+schema_version: "2.0.0"
+type: detection-analytic
+id: NJA-000142
+strategy_ref: DET-000137
+name: {zh: 设备加密变更—会话强度验证, en: Device Crypto Change to Session-Strength Validation}
+summary: {zh: 识别会话表面加密但实际算法、密钥交换或完整性保护低于批准基线的设备路径。, en: "Identify device paths that appear encrypted while actual algorithms, key exchange, or integrity protection fall below the approved baseline."}
+domains: [enterprise]
+platforms: [Network Devices]
+logic:
+  paragraphs:
+    - zh: 为每台网关或网络加密设备保存批准的固件 hash、运行内存映像证明、加密配置与服务绑定，以及批准算法/组/密钥长度。比较配置提交、管理员会话、映像/模块变化和加密引擎状态，找出影响同一接口、隧道或对等体的变化。再从真实握手或安全的受控测试会话读取协商参数、密钥交换结果、加密与完整性是否实际生效；不记录生产密钥明文。
+      en: Retain approved firmware hashes, running-memory image attestation, cryptographic configuration and service bindings, and permitted algorithms, groups, and key lengths for each gateway or network encryption device. Compare commits, administrator sessions, image or module changes, and crypto-engine state to locate changes affecting the same interface, tunnel, or peer. Then read negotiated parameters, key-exchange outcomes, and effective encryption and integrity from real handshakes or safe controlled test sessions without collecting production plaintext keys.
+    - zh: 若协商强度或受控密钥交换结果低于基线，且能连接同设备状态变化与实际受影响流量，输出 confirmed_weakening；若仅有加速器关闭或性能变化而会话保持等效保护，输出 path_change_only。Cisco 恶意 IOS 映像案例提示普通握手字段可能看不出派生密钥材料被改，因此映像差与受控密码验证可提高置信度；缺少任一结果层时保留 unresolved。
+      en: Emit confirmed_weakening when negotiated strength or a controlled key-exchange result is below baseline and the same device change links to actually affected traffic. An accelerator-off or performance change with equivalent session protection is path_change_only. The malicious Cisco IOS images show that ordinary handshake fields may miss altered derived keying material, so image differential and controlled cryptographic validation raise confidence. Missing either outcome layer remains unresolved.
+data_requirements:
+  - source_type: network-device-config-and-aaa
+    name: {zh: 设备加密配置与管理会话, en: Device Crypto Configuration and Administrative Session}
+    channel: Network device configuration and AAA audit
+    required_fields: [timestamp, device_id, admin_id, session_id, config_version, interface_id, tunnel_id, peer_id, algorithm_policy, key_length_policy, crypto_engine_state, approval_id]
+  - source_type: network-image-integrity
+    name: {zh: 持久与运行映像完整性, en: Persistent and Running-Image Integrity}
+    channel: Vendor image attestation or forensic acquisition
+    required_fields: [timestamp, device_id, flash_image_hash, running_image_hash, module_hash, approved_image_hash, verification_result]
+  - source_type: negotiated-session-and-test
+    name: {zh: 会话协商与受控密码测试, en: Negotiated Session and Controlled Crypto Test}
+    channel: Peer handshake telemetry and controlled probe
+    required_fields: [timestamp, device_id, interface_id, tunnel_id, peer_id, session_id, cipher_suite, key_exchange_group, negotiated_key_length, integrity_enabled, test_result]
+observables:
+  - {zh: 设备实际运行映像或密钥交换模块偏离批准 hash, en: The running device image or key-exchange module differs from its approved hash}
+  - {zh: 同一隧道仍显示密文但受控测试发现弱派生密钥材料, en: The same tunnel still displays ciphertext while a controlled test finds weak derived keying material}
+  - {zh: 加密引擎停用但协商保护未变，仅形成路径变更线索, en: "Crypto engine is disabled but negotiated protection is unchanged, yielding a path-change lead only"}
+correlation:
+  window: {zh: 配置或映像变化前二十四小时至随后七日的同接口/对等体会话，并在每次设备重载后重新验证。, en: "Correlate twenty-four hours before a configuration or image change through seven days of sessions on the same interface and peer, and revalidate after every device reload."}
+  dimensions: [device_id, config_version, running_image_hash, interface_id, tunnel_id, peer_id, session_id, time]
+false_positives:
+  - {zh: 经批准的密码套件迁移或对等体兼容窗口且有受控补偿措施, en: Approved cipher migration or peer-compatibility window with controlled compensating measures}
+  - {zh: 厂商诊断暂时停用硬件加速但软件仍提供等效保护, en: Vendor diagnostics temporarily disable hardware acceleration while software preserves equivalent protection}
+blind_spots:
+  - {zh: 设备不支持运行内存证明且恶意修改只存在于内存, en: Device lacks running-memory attestation while malicious changes reside only in memory}
+  - {zh: 握手元数据正常但密钥派生实现被篡改且无安全受控测试, en: Handshake metadata looks normal while key derivation is tampered and no safe controlled test is available}
+tuning_guidance:
+  paragraphs:
+    - zh: 按设备型号、接口用途和对等体维护算法与密钥交换基线；批准例外绑定隧道、时间、管理会话及补偿控制，不把所有旧设备永久豁免。对生产密钥不做提取，使用厂商验证或隔离测试路径；仅靠性能下降不升格为加密损伤。
+      en: Baseline algorithms and key exchange by device model, interface role, and peer. Approved exceptions bind tunnel, time, administrator session, and compensating control rather than permanently exempting all legacy devices. Do not extract production keys; use vendor validation or an isolated test path. Throughput decline alone does not become cryptographic damage.
+evidence_refs: [REF-000466, REF-000467, REF-000468]
+lifecycle: {status: review, version: "1.0.0", created: "2026-09-22", modified: "2026-09-22", contributors: [Niji Matrix Research], reviewers: []}

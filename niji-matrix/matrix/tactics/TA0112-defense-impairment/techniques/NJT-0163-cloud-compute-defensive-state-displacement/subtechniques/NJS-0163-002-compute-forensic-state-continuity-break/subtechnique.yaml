@@ -1,0 +1,63 @@
+schema_version: "2.0.0"
+type: evasion-subtechnique
+id: NJS-0163-002
+name: {zh: 计算取证状态连续性断裂, en: Compute Forensic-State Continuity Break}
+summary: {zh: 攻击者删除、回退或重置既有计算 lineage，使覆盖恶意活动窗口的来宾证据终止、倒退且无法恢复。, en: "Adversaries delete, revert, or reset an existing compute lineage so guest evidence covering the malicious interval terminates, rewinds, and cannot be recovered."}
+aliases: []
+parent_ref: NJT-0163
+lineage: {attck_subtechnique_inherited: false}
+definition_and_concept:
+  paragraphs:
+    - zh: 计算取证状态连续性断裂是攻击者在云实例或磁盘已经承载活动后，通过删除资源、恢复旧快照、替换磁盘或触发临时存储重置，使来宾文件、内存、进程和代理事件序列不再覆盖目标调查区间。直接对象是既有 lineage 的 evidence continuity，而不是删除或回退动作本身。
+      en: Compute Forensic-State Continuity Break is adversary deletion of a resource, restoration of an older snapshot, disk replacement, or ephemeral-storage reset after a cloud instance or disk has carried activity, causing guest file, memory, process, and agent event sequences no longer to cover the target investigation interval. Its direct object is evidence continuity on an existing lineage rather than deletion or reversion itself.
+    - zh: 控制面通常仍保留 actor、request 和生命周期结果，但来宾状态可永久丢失或倒退。只有不同权日志、snapshot/backup 和 evidence manifest 均不能恢复恶意窗口时，才是完成断裂；资源从当前清单消失但证据已外送，不属于本子项。
+      en: The control plane normally retains actor, request, and lifecycle result while guest state can disappear permanently or rewind. The break completes only when separately authorized logs, snapshots or backups, and the evidence manifest cannot restore the malicious interval. A resource disappearing from current inventory while evidence was exported is not this child.
+stealth_characteristics:
+  paragraphs:
+    - zh: 计算取证状态连续性断裂让删除、恢复和自动重建保留正常云运维外观；调查时当前实例可能不存在或显示较早的干净状态，主机级事件链在 lifecycle 边界停止。防守若没有外部 sequence 和版本 manifest，会把缺口理解为资源生命周期自然结束，难以把先前活动与 actor 关联。
+      en: Compute Forensic-State Continuity Break gives deletion, recovery, and automatic rebuild an ordinary cloud-operations appearance. At investigation time the current instance may not exist or display an older clean state, and the host event chain stops at the lifecycle boundary. Without an external sequence and version manifest, defenders can interpret the gap as natural resource termination and struggle to attribute prior activity to the actor.
+    - zh: 残余包括 delete/revert/reset API、actor/session、snapshot ancestry、pre/post version、last guest event、boot/agent sequence、备份 coverage 和删除保护状态。WORM 日志、独立快照和删除前证据 manifest 会保留连续性；有完整覆盖时，该动作可能属于 Impact 或正常恢复，但不构成本子项。
+      en: Residue includes delete, revert, or reset API, actor and session, snapshot ancestry, before and after version, last guest event, boot or agent sequence, backup coverage, and deletion-protection state. WORM logs, independent snapshots, and a pre-deletion evidence manifest preserve continuity. With complete coverage the action may belong to Impact or normal recovery but not this child.
+scope_boundary_definition:
+  paragraphs:
+    - zh: 纳入要求同一 lineage 已有恶意/高风险活动，攻击者随后控制删除、回退或重置，来宾证据出现无法由批准恢复解释的缺口，且可恢复备份/外部日志不能覆盖 target interval。只见资源删除、快照恢复、Spot 终止或日志停止时不确认；没有 prior activity 也不能从缺失反推攻击。
+      en: Include only when the same lineage has malicious or high-risk activity, an adversary subsequently controls deletion, reversion, or reset, guest evidence has a gap not explained by approved recovery, and recoverable backup or external logs cannot cover the target interval. Resource deletion, snapshot restoration, Spot termination, or stopped logs alone is not confirmation, and absence cannot imply an attack without prior activity.
+    - zh: 主要业务破坏归 Impact，已持久化集中日志删除归证据擦除，云 ancestry 变化归 NJT-0126，新 identity 未注册归 NJS-0163-001。子项不按 delete/revert/ephemeral API 或云厂商拆分；这些是触发同一连续性变量的实现。
+      en: Primary business destruction belongs to Impact, deletion of already centralized logs to evidence erasure, cloud ancestry change to NJT-0126, and an unenrolled new identity to NJS-0163-001. The child is not divided by delete, revert, or ephemeral API or cloud provider; these implement the same continuity variable.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+      - zh: 攻击者完成数据窃取、凭据访问或恶意执行后，删除 VM/磁盘或恢复到活动前快照，使当前 guest 不再包含工具、缓存、进程或本地日志。Microsoft 观察 LAPSUS$ 在窃取后删除云资源，支持恶意生命周期终止；是否真正清除调查证据取决于组织外送和备份。
+        en: After data theft, credential access, or malicious execution, an adversary deletes a VM or disk or restores a pre-activity snapshot so the current guest no longer contains tools, cache, processes, or local logs. Microsoft observed LAPSUS$ deleting cloud resources after theft, supporting malicious lifecycle termination, while actual investigative loss depends on external export and backup.
+  threat_model:
+    attacker_model:
+      paragraphs:
+        - zh: 攻击者需有删除、回退、磁盘或备份权限，知道哪些证据只留在 guest、保留窗口和删除保护。它必须在外部采集前行动或同时覆盖备份策略；控制面不可变日志、组织外备份、删除审批和冷却期会暴露/阻止。批量删除还可能触发显著 Impact 告警。
+          en: The adversary needs deletion, reversion, disk, or backup authority and knowledge of evidence that remains only in the guest, retention windows, and deletion protection. It must act before external collection or also overcome backup policy. Immutable control-plane logs, organization-external backup, delete approval, and cooling periods expose or block activity, while mass deletion can trigger conspicuous Impact alerts.
+    defender_model:
+      paragraphs:
+        - zh: 防守方保存 lifecycle 事件、lineage、pre/post state、来宾 agent sequence、last event、关键摘要、备份 coverage 和外部日志 watermark，并能在资源消失后查询。若从未采集 guest 证据，只能确认生命周期风险而不能知道缺失内容；云根身份同时控制日志与备份时需要组织外副本。
+          en: Defenders retain lifecycle events, lineage, before and after state, guest-agent sequence, last event, critical digests, backup coverage, and external-log watermark after resource disappearance. If guest evidence was never collected, they can establish lifecycle risk but not the missing content. Organization-external copies are needed when cloud-root identity controls both logs and backups.
+stealth_mechanisms:
+  - mechanism_ref: NM-BT
+    role: primary
+    summary: {zh: 正常删除或恢复外观掩盖恶意活动窗口的来宾证据断裂, en: Ordinary deletion or recovery appearance conceals a guest-evidence break over the malicious interval}
+    analysis:
+      paragraphs:
+        - zh: 攻击者调用正常生命周期能力终止或倒退 guest state，控制面只显示可接受的删除/恢复操作，原活动的本地痕迹却不再位于当前资源。防守若没有独立 manifest 和备份覆盖，就把事件链停止归为资源自然消亡，关键行为因此落在默认调查边界之外。
+          en: The adversary invokes ordinary lifecycle capabilities to terminate or rewind guest state. The control plane shows a plausible deletion or recovery while local traces of prior activity no longer exist in the current resource. Without an independent manifest and backup coverage, defenders attribute the stopped event chain to natural resource death, placing critical behavior outside the default investigation boundary.
+    evidence_refs: [REF-000103, REF-000698, REF-000699]
+    confidence: medium
+defense:
+  detections: {coverage: available, strategy_refs: [DET-000184]}
+  mitigations: {coverage: available, mitigation_refs: [MIT-000166]}
+evidence:
+  claim_refs: [CLM-000804, CLM-000805, CLM-000806]
+  case_refs: [CASE-000225]
+  reference_refs: [REF-000103, REF-000696, REF-000698, REF-000699]
+research:
+  limitations:
+    paragraphs:
+      - zh: LAPSUS$ 来源直接证明窃取后删除资源，但主要动机可为破坏或危机操纵，不直接证明每个资源的取证缺口；Google 文档证明永久删除可能性但不是事件。子项保持 medium，并要求 target interval 与不可恢复结果。快照回退的恶意现场案例仍有限。
+        en: The LAPSUS$ source directly establishes resource deletion after theft, but the primary motive may be destruction or crisis manipulation and does not prove a forensic gap for every resource. Google documentation establishes permanent-deletion possibility but is not an incident. The child remains medium and requires a target interval plus unrecoverable outcome. Malicious field cases for snapshot reversion remain limited.
+lifecycle: {status: review, version: "0.1.0", created: "2026-09-23", modified: "2026-09-23", contributors: [Niji Matrix Research], reviewers: []}

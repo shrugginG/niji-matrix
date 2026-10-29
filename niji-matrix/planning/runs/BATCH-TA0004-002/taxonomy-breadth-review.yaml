@@ -1,0 +1,97 @@
+schema_version: 1.0.0
+type: taxonomy-breadth-review
+batch_ref: BATCH-TA0004-002
+work_item_ref: WORK-TA0004-T1134
+attack_baseline: {domain: enterprise-attack, version: '19.1'}
+attack_subtechnique_count: 5
+attack_subtechnique_ids: [T1134.002, T1134.003, T1134.004, T1134.005, T1134.001]
+represented_dimensions:
+- launching a new process under an existing or newly created token
+- creating a logon token from credentials and assigning it for impersonation
+- selecting a displayed parent process and, with sufficient access, inheriting parent attributes or token context
+- persisting additional authorization SIDs in an Active Directory identity and carrying them into later tokens
+- duplicating an existing token and applying it to a thread, an existing process, or a new process
+breadth_trigger: two-axis-minimum
+coverage_resolutions:
+- attack_refs: [T1134.001, T1134.003]
+  resolution: niji-variable-candidate
+  rationale_zh: 两个 ATT&CK 实现都可把不同身份的模拟令牌绑定到现有进程线程，使进程映像、PID 和主令牌保持，而资源访问按线程有效令牌判定。Niji 稳定变量是载体连续时的有效身份替换，不是令牌来自复制还是凭据登录。
+  rationale_en: Both ATT&CK implementations can bind an impersonation token for another identity to a thread in an existing process, preserving image, PID, and primary token while resource access is evaluated under the thread's effective token. The stable Niji variable is effective-identity substitution with carrier continuity, not whether the token came from duplication or credential logon.
+- attack_refs: [T1134.002, T1134.004, T1134.001]
+  resolution: niji-variable-candidate
+  rationale_zh: 这些实现可创建新进程，同时让令牌来源、实际调用者、记录的创建主体或显示父进程分离。Niji 稳定变量是新进程权威与创建谱系的解耦；仅按 CreateProcess API、令牌来源或 PPID 字段拆分会重复实现分类。
+  rationale_en: These implementations can create a new process while separating token origin, actual caller, recorded creator subject, or displayed parent. The stable Niji variable is decoupling new-process authority from creation lineage; splitting by CreateProcess API, token source, or PPID field would repeat implementation taxonomy.
+- attack_refs: [T1134.005]
+  resolution: adjacent-technique
+  rationale_zh: SID-History 注入的直接持久状态是既有目录身份上的授权图边，已经落入 NJT-0083 和 NJS-0083-002；后续令牌携带该 SID 是该持久状态的使用证据。T1134 父级检测可以消费令牌声明，但本批次不复制持久身份 taxonomy。
+  rationale_en: The direct durable state in SID-History injection is an authorization-graph edge on an existing directory identity, already covered by NJT-0083 and NJS-0083-002; a later token carrying the SID is evidence that the durable state was used. Parent T1134 detection can consume token claims, but this batch does not duplicate the persistent-identity taxonomy.
+candidate_stealth_axes_examined:
+- axis: process-resident-effective-identity-substitution
+  disposition: formal
+  trace_change: A selected thread performs access checks under a foreign impersonation token while the enclosing process retains its image, PID, ancestry, and primary token, creating a process-level identity view that differs from operation-time effective identity.
+  defender_effect: Process-owner or process-tree analytics can attribute sensitive operations to the carrier's ordinary identity; defenders must observe thread token assignment or effective token at the resource operation and reconstruct the source token or logon session.
+  prerequisites: The adversary can obtain or create an impersonation-capable token and assign it to a controlled thread, with access rights and impersonation level sufficient for the intended operation.
+  evidence_disposition: conclusion-level support from Microsoft access-token and SetThreadToken semantics, ATT&CK T1134.001 and T1134.003 behavior, and the observed Lotus Blossom token-retrieval and launch-privilege tooling
+  defense_difference: Requires thread-level effective-token state, carrier primary token, source process or logon session, impersonation level, and resource outcome; a new-process-only lineage analytic is insufficient.
+- axis: new-process-authority-lineage-decoupling
+  disposition: formal
+  trace_change: A new process is instantiated with a token from another identity or with an explicitly selected parent, so caller, creator subject, displayed parent, token source, target subject, and resulting process authority need not describe one continuous lineage.
+  defender_effect: Parent-child allowlists and single-source process creation records can accept the chosen parent or target identity and lose the actual token acquisition and caller relationship; defenders must compare independent creator, parent, token, logon, and first-action observations.
+  prerequisites: The adversary can obtain or create a usable primary token, or open a candidate parent with the required process-creation access, and can create the child before the relevant token or handle becomes unavailable.
+  evidence_disposition: conclusion-level support from Microsoft DuplicateTokenEx, CreateProcessWithTokenW, and PROC_THREAD_ATTRIBUTE_PARENT_PROCESS semantics, ATT&CK T1134.002 and T1134.004, and Trellix observation of DarkGate PPID spoofing for monitoring evasion
+  defense_difference: Requires creator-versus-target subject, actual caller, declared parent, process GUID, token source or AuthenticationId, integrity, and first privileged outcome across Security, ETW, and endpoint sources.
+- axis: dormant-token-privilege-selective-activation
+  disposition: formal
+  trace_change: The attacker enables one or more privileges already present but disabled in the current token, preserving the process, user SID, logon session, and token origin while changing the privilege attributes immediately before a protected operation.
+  defender_effect: Identity-change and new-process rules may see no transition; defenders must capture privilege-state deltas and join each newly enabled privilege to the first operation that consumes it rather than treating token inventory as static.
+  prerequisites: The target token already contains the privilege, the adversary can obtain TOKEN_ADJUST_PRIVILEGES access, and the enabled privilege authorizes or facilitates the intended protected action.
+  evidence_disposition: conclusion-level support from Microsoft AdjustTokenPrivileges semantics and CrowdStrike's direct observation that SUNSPOT modified its process token to enable SeDebugPrivilege before reading other processes
+  defense_difference: Requires before/after privilege attributes, token identity, adjuster, privilege-consumption evidence, and short causal windows; thread identity or process ancestry correlation alone cannot resolve it.
+- axis: token-source-provenance-stolen-versus-created
+  disposition: parent-core
+  trace_change: A copied token leaves process or token-handle access lineage, whereas LogonUser or an authentication package can leave a new logon session and token source.
+  defender_effect: Source reconstruction branches differ, but both feed the same carrier-level observation problem once the token is assigned to a thread or process.
+  rationale: Token provenance is mandatory parent evidence and an analytic branch, but it does not maintain a sibling boundary independent of carrier continuity or new-process creation.
+- axis: primary-versus-impersonation-token-type
+  disposition: parent-core
+  trace_change: Primary tokens normally describe processes and impersonation tokens can override thread security context.
+  defender_effect: Token type determines which carrier assignment is legal and which fields are collected, but it is an enabling system distinction rather than an adversarial stealth objective by itself.
+  rationale: Formal children already partition the observable carrier effect; promoting Windows token types would reproduce platform implementation semantics.
+- axis: impersonation-level-selection
+  disposition: rejected
+  trace_change: Identification, impersonation, and delegation levels change what remote or local actions an impersonating thread can perform.
+  defender_effect: The level is useful context for capability and risk scoring.
+  rationale: Current evidence does not show impersonation-level choice producing a persistent stealth boundary or a separate detection and mitigation object; it primarily changes authority reach.
+- axis: delayed-stored-token-use
+  disposition: deferred
+  trace_change: An attacker can retain a duplicated token handle or equivalent material and use it after the source process or initial access event, widening the correlation interval.
+  defender_effect: Short process-access windows may fail to connect later privileged action to acquisition.
+  rationale: ATT&CK procedure examples suggest storage and later use, but collected sources do not establish a stable lifecycle boundary, survival semantics, or defense delta independent of token-source lineage; conclusion remains under-evidenced.
+- axis: minimum-privilege-set-activation
+  disposition: hypothesis
+  trace_change: An attacker might enable only the privilege required for one action and restore its prior state, reducing privilege-change volume and duration.
+  defender_effect: Count or duration thresholds may be less sensitive while a precise privilege-to-operation join remains effective.
+  rationale: AdjustTokenPrivileges supports selective changes and restoration, but the sources do not establish adversarial minimum-set selection as a demonstrated stealth design distinct from selective activation itself.
+- axis: sid-history-durable-authorization-edge
+  disposition: adjacent
+  trace_change: A directory attribute mutation persists an additional SID that appears in later logon tokens and changes resource authorization.
+  defender_effect: Detection begins with AD old/new state and continues across logon and resource access, and remediation must remove the durable directory value.
+  rationale: This is the established NJS-0083-002 indirect authorization-graph variable; duplicating it under T1134 would create two owners for the same direct state and recovery action.
+- axis: ppid-only-process-tree-break
+  disposition: adjacent
+  trace_change: A process advertises a selected parent without acquiring higher effective authority.
+  defender_effect: Process-tree attribution weakens and independent creator observations are needed.
+  rationale: Without a higher token context or privilege result, the direct objective is process-tree evasion rather than TA0004; the fixed v19 taxonomy's process-tree semantics remain adjacent and are not absorbed into this privilege-escalation object.
+- axis: api-tool-or-product-partition
+  disposition: rejected
+  trace_change: API names and tooling alter local telemetry labels but do not define a stable trace property.
+  defender_effect: Sensor coverage differs by provider, yet the required joins remain carrier/effective identity, new-process authority lineage, or privilege-state delta.
+  rationale: Tool, API, malware family, process name, Windows version, event ID, and log provider are prohibited taxonomy axes.
+second_pass_required: false
+second_pass_completed: true
+second_pass_notes_zh: 虽然五项 ATT&CK 子技术不触发 6+ 强制二次搜索，本批仍执行开放式第二轮，以进程/线程承载体、令牌来源、令牌类型、模拟级别、权限位生命周期、延迟使用、最小激活集合、SID-History 和纯 PPID 谱系为维度。只有进程驻留身份替换、新进程权威谱系解耦和休眠权限选择性激活同时通过全部门禁；其余收敛为父级核心、相邻技术、假设、延后或拒绝。
+second_pass_notes_en: Although five ATT&CK children do not trigger the mandatory 6+ second pass, this batch performed an open second search across process or thread carrier, token origin, token type, impersonation level, privilege-bit lifecycle, delayed use, minimum activation set, SID-History, and PPID-only lineage. Only process-resident identity substitution, new-process authority-lineage decoupling, and selective activation of dormant privileges pass every gate; the remainder converge on parent core, adjacent technique, hypothesis, deferred, or rejected.
+proposed_niji_child_count: 3
+breadth_gap_explained: true
+reviewer_notes_zh: 三项正式轴分别改变操作时的有效身份承载体、新进程的权威/创建谱系和同一令牌内的权限状态，所需主键与处置均不可互换。减少为两项会把无身份变化的权限位激活错误并入身份替换，或把线程内与新进程取证混合；增加会按令牌来源、类型、模拟级别、API 或已有持久身份状态机械拆分。五项 ATT&CK 实现因此并未映射成五项 Niji 子技术。
+reviewer_notes_en: The three formal axes respectively alter the operation-time effective-identity carrier, new-process authority or creation lineage, and privilege state inside the same token, with non-interchangeable keys and response. Reducing to two would wrongly merge privilege-bit activation without identity change into substitution or mix in-thread and new-process forensics. Adding children would partition by token source, type, impersonation level, API, or an already-owned durable identity state. The five ATT&CK implementations therefore do not map to five Niji children.

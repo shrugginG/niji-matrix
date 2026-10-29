@@ -1,0 +1,640 @@
+handoff_schema_version: '2.0.0'
+type: technique-research-handoff
+batch_ref: BATCH-TA0011-004
+work_item_ref: WORK-TA0011-T1132
+temporary_key_prefix: B4-T1132
+candidate:
+  source_type: attack
+  source_attack_id: T1132
+  name:
+    zh: C2 可逆表示编码
+    en: Reversible C2 Representation Encoding
+recommendation:
+  decision: adapt
+  confidence: high
+  original_attack_subtechniques_imported: false
+  rationale:
+    paragraphs:
+      - zh: >-
+          ATT&CK Enterprise 19.1 的 T1132 将对命令控制数据施加字符或二进制到文本表示变换，以降低内容在规范化前的可检测性，明确限定于 TA0011。NCSC 对 SpecCom 的代码级报告展示了 C2 请求、入站任务和回传输出经过 UTF-16、XOR、Base64 与 URL 编码的可逆链；Unit 42 对 TDrop2 的逆向分析展示了加密后使用自定义 Base64 字母表、接收端解码并恢复命令、执行后回传结果。父行为和“可见表示—恢复语义”因果链均获一手证据支持，因此不应 exclude。
+        en: >-
+          ATT&CK Enterprise 19.1 defines T1132 as applying character or binary-to-text representation transforms to command-and-control data so the content is harder to detect before normalization, specifically within TA0011. NCSC's code-level SpecCom report shows a reversible chain of UTF-16, XOR, Base64, and URL encoding for C2 requests, inbound tasking, and returned output. Unit 42's reverse engineering of TDrop2 shows encryption followed by a custom Base64 alphabet, receiver-side decoding to recover commands, execution, and result upload. The parent behavior and visible-representation-to-recovered-semantics causal chain have direct evidence, so exclusion is unwarranted.
+      - zh: >-
+          需要 adapt 的原因是 Niji 现有 `NJT-0115` 及 `NJS-0115-001` 已经覆盖跨战术的可逆语义变换，`NJT-0152` 又已覆盖 C2 消息中的噪声、载体和服务契约观察差。T1132 不能成为第三个拥有 Base64、十六进制、自定义字母表、多层编码或压缩恢复变量的分类。建议只保留一个 TA0011 父级对象，明确其直接对象是 C2 命令或结果在传输中的可逆表示，以及规范化前后的语义差；正式子项为 `none-justified`，变量级归类复用 `NJS-0115-001`，会话层额外混淆按条件与 `NJT-0152` 并列。
+        en: >-
+          Adaptation is required because existing `NJT-0115` and `NJS-0115-001` already cover reversible semantic transformation across tactics, while `NJT-0152` already owns C2 observation differences created by noise, carriers, and service contracts. T1132 must not become a third owner of Base64, hexadecimal, custom alphabets, layered encoding, or decompression variables. Keep one TA0011 parent whose direct object is reversible representation of commands or results in transit and the semantic difference before and after normalization. Its formal child coverage should be `none-justified`; variable-level classification reuses `NJS-0115-001`, while additional conversation-level obfuscation co-classifies with `NJT-0152` only when present.
+proposed_content:
+  summary:
+    zh: 攻击者将 C2 命令或结果转换为可逆的字符或二进制表示，使防守方在完成正确规范化前无法直接使用原始控制语义。
+    en: An adversary transforms C2 commands or results into a reversible character or binary representation so defenders cannot directly use the original control semantics before correct normalization.
+  definition_and_concept:
+    paragraphs:
+      - zh: >-
+          C2 可逆表示编码是攻击者对正在传输的命令、任务参数、主机标识或执行结果施加一个或多个可重放变换，使接收端能够按对应逆变换恢复原字节，而防守传感器首先看到 Base-N、十六进制、转义文本、修改字母表、压缩流或其组合。直接目的是把可解释的控制语义推迟到恢复边界之后，而不是建立通道、保护通信机密性或改变消息所属服务。
+        en: >-
+          Reversible C2 Representation Encoding is the application of one or more replayable transforms to commands, task parameters, host identifiers, or execution results in transit, allowing the receiver to restore original bytes through corresponding inverse transforms while the defender first sees Base-N, hexadecimal, escaped text, a modified alphabet, a compressed stream, or a combination. Its direct purpose is to postpone interpretable control semantics until after the recovery boundary, rather than establish a channel, protect communication confidentiality, or change the service role claimed by the message.
+      - zh: >-
+          概念锚是原始 C2 语义、传输中表示、按确定顺序执行的变换链、接收端恢复结果和控制后果。Base64、十六进制、gzip、XOR 或自定义表只是实现名称；标准或非标准并不改变根本行为。只有来源证明攻击者有意对 C2 内容施加变换，并能把可见表示连接到恢复命令或结果时，才进入本技术。协议为互操作强制执行的编码以及没有恶意控制语义的压缩不属于本项。
+        en: >-
+          The conceptual anchors are original C2 semantics, in-transit representation, an ordered transform chain, receiver-side recovery, and a control outcome. Base64, hexadecimal, gzip, XOR, and custom tables are implementation names; whether an encoding is standard does not change the behavior. Classification requires evidence that the adversary deliberately transformed C2 content and a link from visible representation to a recovered command or result. Encoding mandated by a protocol for interoperability and compression without malicious control semantics are outside scope.
+  stealth_characteristics:
+    paragraphs:
+      - zh: >-
+          表示变换会移除或重排原命令关键字、路径、参数、文件头和结果文本，使只对原始网络缓冲区运行字符串、正则或文件签名的规则不能直接命中。多层链还让一次规范化只得到中间表示，自定义字母表会使默认 Base64 解析失败。防守方看到的长度、字符分布和格式标识仍然存在，但若没有正确的层序、参数或字母表，这些痕迹不能直接还原控制语义。
+        en: >-
+          Representation transforms remove or rearrange original command keywords, paths, parameters, file headers, and result text, preventing string, regular-expression, or file signatures applied only to the raw network buffer from matching directly. Layered chains leave an intermediate representation after one normalization pass, and a custom alphabet can defeat a default Base64 parser. Length, character distribution, and format markers remain visible, but without the correct layer order, parameters, or alphabet they do not directly recover control semantics.
+      - zh: >-
+          残余痕迹包括编码字母表约束、填充和长度关系、解码/解压例程、变换参数、输入输出摘要、网络对象与端点进程的连接，以及恢复后立即出现的命令执行、文件动作或回传。保存原始对象并递归记录每层输入输出的防守方可以恢复语义；TLS 不可见、内容未留存、密钥缺失、专有变换或资源上限会形成盲区。高熵或长 Base64 字符串单独只支持待规范化对象，不能证明恶意。
+        en: >-
+          Residual traces include alphabet constraints, padding and length relationships, decode or decompression routines, transform parameters, input and output digests, linkage between the network object and endpoint process, and command execution, file activity, or return traffic immediately after recovery. A defender preserving the original and recording every layer's input and output can restore semantics. Opaque TLS, absent content retention, missing keys, proprietary transforms, or resource limits create blind spots. High entropy or a long Base64 string alone supports only a normalization candidate, not a malicious conclusion.
+  scope_boundary_definition:
+    paragraphs:
+      - zh: >-
+          纳入要求同时具备 C2 语境、攻击者控制的可逆表示变换、接收端恢复能力以及恢复后的命令或结果证据。标准库调用与自定义解码器均可成立，算法是否公开不是判定条件。合法邮件 MIME、HTTP URL 编码、JSON 转义、协议规定的二进制到文本转换、备份压缩、软件更新包和性能型 Content-Encoding 是正常反例；只有当相同表示被攻击者用于隐藏恶意控制语义，并形成恢复结果链时才分类。
+        en: >-
+          Inclusion requires a C2 context, an attacker-controlled reversible representation transform, receiver recovery capability, and evidence of the recovered command or result. A standard library call and a custom decoder can both qualify; public availability of the algorithm is not a criterion. Legitimate mail MIME, HTTP URL encoding, JSON escaping, protocol-required binary-to-text conversion, backup compression, software-update packages, and performance-oriented Content-Encoding are normal counterexamples. Classification applies only when the adversary uses the representation to conceal malicious control semantics and a recovery-outcome chain exists.
+      - zh: >-
+          `NJS-0115-001` 唯一拥有“可重放可逆表示链”这一原生变量；当证据能够恢复 C2 编码链时，事件应同时归入本父级和该跨战术子项，而不在 T1132 下复制子项。`NJT-0152` 只在攻击者额外加入无意义字节、把语义分散到载体字段或伪造产品服务契约时并列；纯编码不满足消息混淆子项。`T1573` 负责密码变换带来的机密性，即使密文随后 Base64 化也应把加密和编码分别归类。`T1001` 的噪声、载体和服务伪装，及普通压缩和协议编码，均不能由“存在 Base64”推定。
+        en: >-
+          `NJS-0115-001` uniquely owns the Niji-native variable of a replayable reversible representation chain. When evidence recovers a C2 encoding chain, the event should co-classify under this parent and that cross-tactic child without duplicating a T1132 child. `NJT-0152` co-applies only when the actor additionally inserts inert bytes, distributes semantics across carrier fields, or forges a product-service contract; plain encoding does not satisfy its children. `T1573` owns confidentiality from cryptographic transformation, so encryption and later Base64 representation are classified separately. Noise, carrier or service camouflage under `T1001`, ordinary compression, and protocol encoding cannot be inferred from the mere presence of Base64.
+  application_scenarios_and_threat_model:
+    application_scenarios:
+      paragraphs:
+        - zh: >-
+            在 HTTP C2 中，植入可以先把主机标识转为 UTF-16，按流量密钥和样本密钥执行 XOR，再 Base64 与 URL 编码后放入表单参数；服务端按逆序恢复。入站响应可在 HTML 注释中携带另一条多层编码任务，植入恢复出 `dir` 等命令并执行，再对输出执行同一类链后 POST 回传。SpecCom 提供完整实例。TDrop2 则说明自定义 Base64 字母表只是另一实现，仍须解码并解密才出现 `tick` 命令和参数。
+          en: >-
+            In HTTP C2, an implant can convert a host identifier to UTF-16, apply XOR with traffic and sample keys, then Base64- and URL-encode it into a form parameter for inverse recovery by the server. An inbound response can carry another layered task inside an HTML comment; the implant recovers a command such as `dir`, executes it, and applies a similar chain to returned output. SpecCom provides a complete instance. TDrop2 shows that a custom Base64 alphabet is another implementation: decoding and decryption are still required before `tick` commands and parameters appear.
+    threat_model:
+      attacker_model:
+        paragraphs:
+          - zh: >-
+              攻击者需控制发送端变换与接收端逆变换，选择能通过承载字段字符、长度和解析约束的表示，并处理填充、分块和错误。多层或专有变换可能增加带宽、CPU、实现缺陷和互操作失败；解码器、固定字母表、流量密钥及恢复顺序也会成为稳定分析点。若真正目标是机密性，还必须另行管理密码密钥并承担 T1573 的成本，编码本身不提供该性质。
+            en: >-
+              The adversary must control the sender transform and receiver inverse, choose a representation compatible with carrier character, length, and parsing constraints, and handle padding, chunking, and errors. Multiple or proprietary layers increase bandwidth, CPU, implementation defects, and interoperability failures. Decoders, fixed alphabets, traffic keys, and recovery order also become stable analytic points. If confidentiality is the real objective, the actor must separately manage cryptographic keys and accept T1573 costs because encoding itself does not provide that property.
+      defender_model:
+        paragraphs:
+          - zh: >-
+              防守方假定可在合法授权下取得原始 HTTP、DNS、邮件或其他消息对象，保留会话与对象标识，并把网络内容连接到发起/接收进程和后继动作。规范化流水线能够识别候选表示、限制递归深度与总展开量、记录每层输入输出摘要和失败原因，并把恢复对象重新送入内容检测。若只能看到五元组或 TLS 元数据，最多能报告字符/长度形态，不能声称已恢复编码命令。
+            en: >-
+              The defender is assumed to lawfully obtain raw HTTP, DNS, mail, or other message objects, retain session and object identifiers, and join network content to sending or receiving processes and successor actions. A normalization pipeline identifies candidate representations, limits recursion depth and total expansion, records every layer's input and output digests plus failure reason, and resubmits recovered objects to content detection. If only five-tuples or TLS metadata are visible, the defender can report character or length shape at most and cannot claim a recovered encoded command.
+          - zh: >-
+              协议解析器应先给出字段的合法编码要求和内容边界，再对不需要编码或恢复后含控制语义的对象提高优先级。Snort 的 Base64 解码缓冲区证明可以把检测游标放到规范化结果，Zeek 的 uid/fuid 可连接 HTTP 事务和文件对象；这些文档只证明实现字段与操作，不证明阈值、误报率或未知字母表自动恢复。生产策略必须保留正常 MIME、认证头和业务压缩基线。
+            en: >-
+              Protocol parsers should first supply legitimate encoding requirements and content boundaries, then prioritize representations not required by the protocol or whose recovered content contains control semantics. Snort's Base64 decoded buffer shows that a detection cursor can operate on normalized output, and Zeek uid or fuid can join HTTP transactions and file objects. These documents establish implementable fields and operations, not thresholds, false-positive rates, or automatic recovery of unknown alphabets. Production policy must preserve baselines for normal MIME, authentication headers, and business compression.
+  stealth_mechanisms:
+    - mechanism_ref: NM-DO
+      role: primary
+      summary:
+        zh: 传输表示在恢复前不直接揭示控制语义
+        en: In-transit representation does not directly reveal control semantics before recovery
+      analysis:
+        paragraphs:
+          - zh: >-
+              攻击者按确定链把命令或结果从可解释字节转换成编码、转义或压缩表示，网络和日志痕迹首先保存变换后对象；防守方若只检查这一层，原关键词和结构不存在，必须重放逆变换才能理解。接收端恢复后执行或回传完成从表示差到控制结果的因果链，形成数据遮蔽。SpecCom 与 TDrop2 均提供可复核输入、恢复步骤和恶意结果；具体产品是否漏报未被测量。
+            en: >-
+              The adversary converts commands or results from interpretable bytes into encoded, escaped, or compressed representations through an ordered chain, causing network and log traces to retain the transformed object first. Original keywords and structure are absent for a defender inspecting only that layer, and inverse transforms are required for interpretation. Receiver recovery followed by execution or return completes the causal chain from representation difference to control outcome, producing Data Obscuration. SpecCom and TDrop2 provide reproducible inputs, recovery steps, and malicious results; no source measures a particular product miss.
+      evidence_keys:
+        - REF-000625
+        - B4-T1132-REF-SPECCOM
+        - B4-T1132-REF-TDROP2
+      confidence: high
+  subtechnique_taxonomy:
+    narrative:
+      paragraphs:
+        - zh: >-
+            T1132 在 Niji 中建议保持父级处理，不建立正式 NJS。固定基线的“标准编码”和“非标准编码”按算法是否符合既有规范区分，但两者共享同一个攻击者可控变量：可重放的表示变换链；痕迹差异都是规范化前缺少真实语义，防守动作都是识别变换、逆向恢复、记录每层摘要并校验结果。SpecCom 的标准 Base64 与 TDrop2 的自定义字母表说明实现不同，却没有产生稳定的兄弟边界或不同防御目标。
+          en: >-
+            T1132 should remain parent-only in Niji with no formal NJS. The fixed baseline separates standard and non-standard encoding by conformance to an existing specification, but both share one attacker-controlled variable: a replayable representation-transform chain. In both cases, real semantics are absent before normalization and defense identifies the transform, performs inverse recovery, records each layer's digest, and validates the outcome. Standard Base64 in SpecCom and a custom alphabet in TDrop2 show different implementations without a stable sibling boundary or a distinct defensive objective.
+        - zh: >-
+            原生变量的唯一所有者是 `NJS-0115-001`。递归层数、Base-N 类型、字母表、是否 URL 转义、压缩器和平台都属于该变量的参数，不在 T1132 再拆分。若控制字节还被无意义对象稀释，归 `NJS-0152-001`；若完整会话伪装成批准服务，归 `NJS-0152-002`；若只把编码块放入某字段而没有额外会话观察差，保持 T1132 父级并与 `NJS-0115-001` 并列。只有来源笼统称“编码 C2”却未给恢复链时，出于证据层级可暂时只保留父级。
+          en: >-
+            `NJS-0115-001` uniquely owns the native variable. Recursion depth, Base-N family, alphabet, URL escaping, compressor, and platform are parameters of that variable and do not justify new T1132 children. Inert-object dilution additionally maps to `NJS-0152-001`; an entire conversation forged as an approved service maps to `NJS-0152-002`. Placing an encoded block in a field without another conversation-level differential remains at the T1132 parent and co-classifies with `NJS-0115-001`. Where a source merely says encoded C2 without a recoverable chain, evidence calibration may temporarily support the parent only.
+    coverage: none-justified
+    proposed_subtechnique_keys: []
+proposed_subtechniques: []
+taxonomy_candidates_examined:
+  - temporary_key: B4-T1132-AXIS-REVERSIBLE-CHAIN
+    proposed_status: cross-technique-reuse
+    owner_ref: NJS-0115-001
+    name:
+      zh: 可重放可逆表示链
+      en: Replayable Reversible Representation Chain
+    stable_variable:
+      zh: 发送端选择的变换序列及接收端可按逆序恢复的链
+      en: The sender-selected transform sequence and receiver's inverse recovery chain
+    trace_and_observation:
+      zh: 原始控制语义从可见内容消失，逐层规范化恢复中间及最终对象；该差异不因 C2 阶段改变，已由 NJS-0115-001 拥有。
+      en: Original control semantics disappear from visible content and layered normalization recovers intermediate and final objects; the differential does not change merely because it occurs in C2 and is already owned by NJS-0115-001.
+    evidence_keys:
+      - B4-T1132-REF-SPECCOM
+      - B4-T1132-REF-TDROP2
+      - REF-000400
+    defense_value:
+      zh: 直接复用 DET-000112/NJA-000100 的原始—逐层恢复—结果谱系与 MIT-000113 的递归规范化，不需复制对象。
+      en: Reuse DET-000112 and NJA-000100 original-to-layered-recovery-to-outcome lineage and MIT-000113 recursive normalization without duplicate objects.
+  - temporary_key: B4-T1132-AXIS-LAYER-DEPTH
+    proposed_status: owner-parameter
+    owner_ref: NJS-0115-001
+    name:
+      zh: 变换层深与顺序
+      en: Transform Depth and Order
+    stable_variable:
+      zh: 编码、转义、压缩或其他可逆步骤的层数和执行顺序
+      en: The number and order of encoding, escaping, compression, or other reversible steps
+    trace_and_observation:
+      zh: 单次解码只得到中间表示，资源与递归预算影响恢复；这是可逆链的量化参数，不形成新的兄弟边界。
+      en: One decode yields only an intermediate representation and recovery depends on recursion and resource budgets; this is a quantitative parameter of the reversible chain, not a sibling boundary.
+    evidence_keys:
+      - B4-T1132-REF-SPECCOM
+      - REF-000626
+    defense_value:
+      zh: 同一 Analytic 记录每层输入输出摘要并施加深度与展开量上限。
+      en: The same analytic records every layer's input and output digest and enforces depth and expansion limits.
+  - temporary_key: B4-T1132-AXIS-FIELD-DISTRIBUTION
+    proposed_status: adjacent-technique
+    owner_ref: NJS-0152-001
+    name:
+      zh: 编码块跨字段稀释
+      en: Encoded-Block Dilution across Fields
+    stable_variable:
+      zh: 控制字节是否与无意义字段或片段混合，使消息恢复不仅依赖解码还依赖选择有效片段
+      en: Whether control bytes are mixed with inert fields or fragments so recovery requires selecting meaningful parts in addition to decoding
+    trace_and_observation:
+      zh: 防守需要重建有效字段比例和位置，属于控制消息语义稀释；SUNBURST 的随机 steps 与 GUID 拼接是证据，不应在 T1132 重复。
+      en: Defense must reconstruct the position and share of meaningful fields, which belongs to Control-Message Semantic Dilution; SUNBURST random steps and GUID assembly provide evidence and should not be duplicated under T1132.
+    evidence_keys:
+      - REF-000626
+    defense_value:
+      zh: 仅在并列归类时使用 DET-000163/NJA-000174 和 MIT-000150。
+      en: Use DET-000163, NJA-000174, and MIT-000150 only when co-classification applies.
+  - temporary_key: B4-T1132-AXIS-STANDARDNESS
+    proposed_status: not-stealth-distinct
+    name:
+      zh: 标准或自定义编码
+      en: Standard or Custom Encoding
+    stable_variable:
+      zh: 字母表或编码规则是否符合公开规范
+      en: Whether the alphabet or encoding rule conforms to a public specification
+    trace_and_observation:
+      zh: 影响解析器识别方式，却不改变“可见表示—逆变换—恢复语义”的因果链；已知自定义表可配置，同一规范化框架仍适用。
+      en: It affects parser recognition but not the visible-representation-to-inverse-transform-to-recovered-semantics causal chain; a known custom table is configurable and the same normalization framework applies.
+    evidence_keys:
+      - B4-T1132-REF-RFC4648
+      - B4-T1132-REF-TDROP2
+    defense_value:
+      zh: 解析失败作为失败层保留并转入样本/端点解码器恢复，不另建 NJS。
+      en: Preserve parse failure as a failed layer and recover through sample or endpoint decoder analysis without a new NJS.
+  - temporary_key: B4-T1132-AXIS-PROTOCOL-REQUIRED
+    proposed_status: excluded-normal-behavior
+    name:
+      zh: 协议要求的合法表示
+      en: Protocol-Required Legitimate Representation
+    stable_variable:
+      zh: 编码是否由承载协议或业务格式为互操作所要求
+      en: Whether encoding is required by the carrier protocol or business format for interoperability
+    trace_and_observation:
+      zh: MIME、URL 转义和合法 Base64 可能完全正常，不能从表面形态推断攻击者意图；需恶意恢复结果才进入本父级。
+      en: MIME, URL escaping, and legitimate Base64 can be entirely normal, so adversary intent cannot be inferred from surface shape; a malicious recovered outcome is required for this parent.
+    evidence_keys:
+      - B4-T1132-REF-RFC4648
+    defense_value:
+      zh: 作为协议/应用基线和误报排除，不产生技术对象。
+      en: Use as protocol and application baseline and a false-positive exclusion rather than a technique object.
+defense_candidates:
+  detection_strategies:
+    - temporary_key: B4-T1132-DET-EXTEND-DET000112
+      resolution_recommendation: extend
+      existing_ref: DET-000112
+      name:
+        zh: 扩展内容规范化—恢复—结果关联以覆盖 C2 编码
+        en: Extend Content Normalization–Recovery–Outcome Correlation for C2 Encoding
+      rationale:
+        zh: DET-000112 的检测目标、域和 Analytic 集合已经完整覆盖可逆表示链；T1132 只增加 C2 主体，不改变策略目标。建议把新父级加入 detects_refs，并增加 C2 样本与网络内容字段证据，不创建同义 DET。
+        en: DET-000112's objective, domain, and analytic set already cover the reversible representation chain. T1132 adds a C2 subject without changing that objective. Add the new parent to detects_refs and add C2 sample and network-content evidence rather than create a synonymous DET.
+      detects_keys:
+        - B4-T1132-PARENT
+      analytic_refs:
+        - NJA-000100
+      evidence_additions:
+        - B4-T1132-REF-SPECCOM
+        - B4-T1132-REF-TDROP2
+        - B4-T1132-REF-SNORT-BASE64
+        - REF-000632
+        - REF-000633
+  detection_analytics:
+    - temporary_key: B4-T1132-NJA-REUSE-NJA000100
+      resolution_recommendation: reuse
+      existing_ref: NJA-000100
+      name:
+        zh: 复用可逆变换恢复谱系
+        en: Reuse Reversible-Transform Recovery Lineage
+      reuse_identity:
+        zh: T1132 所需逻辑仍是保存原始对象、递归重放解码/解压/规范化、记录每层输入输出摘要，并把恢复语义连接到后继动作；数据要求、窗口、维度、误报和调优与 NJA-000100 完全相同。
+        en: >-
+          T1132 uses the same logic: preserve the original object, recursively replay decoding, decompression, or normalization, record every layer's input and output digest, and join recovered semantics to a successor action. Data requirements, window, dimensions, false positives, and tuning are unchanged from NJA-000100.
+      c2_implementation_profile:
+        logic:
+          zh: 从代理、NDR、邮件网关或内容留存面取得原始消息对象，按协议字段边界生成 object.id；依次尝试协议声明的解码，再执行受限的 Base-N、十六进制、URL、压缩和已知自定义字母表恢复。每层记录成功、失败和原因，将最终命令/结果与同一端点进程在短窗内的执行、文件或回传连接。识别到编码但未恢复结果时只输出 normalization_candidate。
+          en: Obtain raw message objects from a proxy, NDR, mail gateway, or authorized content-retention layer and derive object.id from protocol field boundaries. Apply protocol-declared decoding first, followed by bounded Base-N, hexadecimal, URL, compression, and known custom-alphabet recovery. Record success, failure, and reason for every layer and join a final command or result to execution, file activity, or return traffic by the same endpoint process in a short window. If encoding is recognized without recovery, emit normalization_candidate only.
+        raw_to_normalized_fields:
+          - raw: Zeek http.log ts or equivalent proxy time
+            normalized: event.timestamp
+          - raw: endpoint device identity joined from source address and process network telemetry
+            normalized: asset.id
+          - raw: Zeek uid plus HTTP trans_depth and request-or-response direction, or equivalent transaction and field ID
+            normalized: object.id
+          - raw: SHA-256 of retained raw header, parameter, body, attachment, or extracted file
+            normalized: original.hash and transform.input_hash for layer zero
+          - raw: Content-Type, protocol field name, transfer encoding, and parser result
+            normalized: format
+          - raw: computed byte or character distribution
+            normalized: entropy
+          - raw: decoder identifier such as base64, base64url, hex, URL percent, gzip, or recovered custom table
+            normalized: transform.type
+          - raw: hash of alphabet, key reference, offset, padding policy, decompression limit, and layer order
+            normalized: transform.parameters_hash
+          - raw: SHA-256 of each decoded or decompressed buffer
+            normalized: transform.output_hash and next layer transform.input_hash
+          - raw: EDR or Sysmon process GUID, process unique ID, or process start tuple
+            normalized: process.start_key
+          - raw: recovered command execution, file action, child process, configuration change, or result upload
+            normalized: successor.action
+        observables:
+          - zh: 原始 C2 字段经两层以上变换后恢复为命令或结果，并由相同进程立即消费或回传
+            en: A raw C2 field recovers into a command or result after two or more transforms and is immediately consumed or returned by the same process
+          - zh: 标准解析失败，但从样本解码器恢复的自定义字母表产生可重放输出与控制后果
+            en: Standard parsing fails, while a custom alphabet recovered from the sample produces replayable output and a control outcome
+        correlation_window:
+          zh: 单个网络对象内保持严格层序；从最终恢复到端点结果默认五分钟，并按植入回连周期调节。
+          en: Preserve strict layer order within one network object; use five minutes by default from final recovery to endpoint outcome and tune to the implant's callback cadence.
+        false_positives:
+          - legitimate MIME and mail attachments
+          - HTTP authentication or API fields using required Base64
+          - software-update manifests and telemetry
+          - negotiated HTTP compression
+          - backup, archive, and privacy-preserving application content
+        blind_spots:
+          - opaque TLS or encrypted mail without lawful content access
+          - unretained raw bodies or truncated fields
+          - unknown proprietary alphabet or missing decryption key
+          - normalization bombs exceeding safe depth or expansion budget
+          - process-to-network identity unavailable behind proxy or NAT
+        tuning_guidance:
+          zh: 先应用协议声明与应用 schema，保留正常字段白名单；对非必需编码、异常层深、标准解析失败和恢复后控制语义提高优先级。限制深度、单层输出和总展开量，但保存失败层与原始摘要。不要以 Base64、熵或压缩本身告警为恶意。
+          en: Apply protocol declarations and application schemas first and retain allowlists for normal fields. Prioritize unnecessary encoding, unusual depth, standard-parse failure, and recovered control semantics. Bound depth, per-layer output, and total expansion while preserving failed layers and original digests. Do not call Base64, entropy, or compression malicious by itself.
+      evidence_keys:
+        - B4-T1132-REF-SPECCOM
+        - B4-T1132-REF-TDROP2
+        - B4-T1132-REF-SNORT-BASE64
+        - REF-000632
+        - REF-000633
+      logic_status: existing_analytic_reuse_with_deployment_profile_unvalidated_on_local_data
+  mitigations:
+    - temporary_key: B4-T1132-MIT-EXTEND-MIT000113
+      resolution_recommendation: extend
+      existing_ref: MIT-000113
+      name:
+        zh: 扩展内容规范化与运行时检查以覆盖 C2 编码
+        en: Extend Content Normalization and Runtime Inspection for C2 Encoding
+      rationale:
+        zh: MIT-000113 已拥有递归内容规范化与隔离运行措施，控制动作与 T1132 完全同义。保持现有 measures，不创建新 MIT，只增加新父级 application。
+        en: MIT-000113 already owns recursive content normalization and isolated-runtime measures, which are semantically identical for T1132. Keep existing measures, create no new MIT, and add one application for the new parent.
+      applications:
+        - target_key: B4-T1132-PARENT
+          use:
+            zh: 在合法可见的 C2 风险出口对 HTTP 参数、头、正文、DNS 载荷、邮件附件和其他消息字段先按协议规范化，再进行受限递归解码、解压和自定义表恢复；记录每层摘要并把恢复内容重新送入签名、语义和端点结果检查。对标准解析失败、超过安全预算或恢复出可执行控制语义的对象隔离或阻断，同时保留原始证据。
+            en: At lawfully visible C2-risk egress points, normalize HTTP parameters, headers, bodies, DNS payloads, mail attachments, and other message fields according to protocol before bounded recursive decoding, decompression, and custom-table recovery. Record every layer's digest and resubmit recovered content to signature, semantic, and endpoint-outcome checks. Isolate or block objects that fail standard parsing, exceed safe budgets, or recover executable control semantics while preserving original evidence.
+          expected_effect:
+            zh: 标准和自定义字母表、单层和多层变换均不能永久移除命令或结果语义，检测在规范化缓冲区而非只在原始表示上运行。
+            en: Standard and custom alphabets and single- or multi-layer transforms no longer permanently remove command or result semantics, because detection runs on normalized buffers rather than only raw representation.
+          limitations:
+            zh: TLS 或端到端加密可能使网关无内容可处理，专有变换和缺失密钥会阻止恢复，递归规范化还面临资源消耗和解析器攻击。合法 MIME、认证字段、压缩和隐私数据要求字段级基线、保留期限与访问控制，不能默认全部解码和留存。
+            en: TLS or end-to-end encryption may leave gateways without content, proprietary transforms and missing keys can prevent recovery, and recursive normalization introduces resource-exhaustion and parser-attack risk. Legitimate MIME, authentication fields, compression, and private data require field-level baselines, retention limits, and access controls rather than universal decoding and retention.
+      evidence_keys:
+        - B4-T1132-REF-SPECCOM
+        - B4-T1132-REF-TDROP2
+        - B4-T1132-REF-SNORT-BASE64
+        - B4-T1132-REF-RFC4648
+conditional_co_classification_defense:
+  njt_0152:
+    condition:
+      zh: 编码之外还存在无意义片段、跨字段选择或产品服务契约伪装
+      en: Inert fragments, cross-field selection, or forged product-service contract exists in addition to encoding
+    defense_refs:
+      - DET-000163
+      - MIT-000150
+    analytic_refs:
+      - NJA-000174
+      - NJA-000175
+    note:
+      zh: 不把 DET-000163/NJA-000174/175 扩展为所有 T1132 的默认防御；纯可逆编码由 DET-000112/NJA-000100 处理。
+      en: Do not extend DET-000163 or NJA-000174/175 as default defenses for every T1132 instance; DET-000112 and NJA-000100 handle plain reversible encoding.
+existing_library_reuse:
+  reference_refs:
+    - REF-000625
+    - REF-000400
+    - REF-000626
+    - REF-000632
+    - REF-000633
+  claim_refs:
+    - CLM-000749
+  case_refs:
+    - CASE-000199
+  strategy_refs:
+    - DET-000112
+  analytic_refs:
+    - NJA-000100
+  mitigation_refs:
+    - MIT-000113
+  relationship_refs: []
+  notes:
+    zh: >-
+      `REF-000625` 应扩展 locator 到 T1132 父项、T1132.001/.002 和 TA0011 映射。`CLM-000749` 已确定载体/表示遮蔽与 NJT-0115 的去重原则，可复用作边界支持；`CASE-000199` 可作为条件并列案例，但其中心事实是 SUNBURST 的消息稀释和服务仿真，不替代纯编码案例。DET-000112 应 extend detects_refs 与 evidence_refs，NJA-000100 逻辑/data/correlation/tuning 不变可 reuse，MIT-000113 仅 extend application。DET-000163 与 MIT-000150 只在 NJT-0152 条件成立时沿用，不做全局扩展。
+    en: >-
+      Extend `REF-000625`'s locator to the T1132 parent, T1132.001/.002, and TA0011 mapping. `CLM-000749` already establishes the deduplication principle between carrier or representation obscuration and NJT-0115 and can support the boundary. `CASE-000199` can serve as a conditional co-classification case, but its central facts are SUNBURST semantic dilution and service emulation and it does not replace a plain-encoding case. Extend DET-000112 detects_refs and evidence_refs; reuse NJA-000100 because logic, data, correlation, and tuning remain unchanged; extend MIT-000113 with one application. Carry DET-000163 and MIT-000150 only when NJT-0152 conditions are met rather than extending them globally.
+library_candidates:
+  references:
+    - key: B4-T1132-REF-SPECCOM
+      title:
+        zh: NCSC SpecCom 恶意软件分析报告
+        en: NCSC Malware Analysis Report SpecCom
+      source_type: government-malware-analysis
+      publisher: UK National Cyber Security Centre
+      published: '2021-09-06'
+      url: https://www.ncsc.gov.uk/static-assets/documents/malware-analysis-reports/spec-com/NCSC-MAR-Spec-Com.pdf
+      locator: Executive summary; pages 5 to 9 C2 task requests, UTF-16/XOR/Base64/URL chain, HTML-comment tasking, decoder and task output
+      credibility: high
+      evidence_limit:
+        zh: 报告对一个样本及若干配置做静态/沙箱分析，直接支持变换与恢复能力；不提供生产检测灵敏度，也不能证明每个 SpecCom 版本使用相同密钥和字段。
+        en: The report analyzes one sample and configurations through static and sandbox methods and directly supports transform and recovery capability. It gives no production detection sensitivity and does not establish identical keys or fields across every SpecCom version.
+    - key: B4-T1132-REF-TDROP2
+      title:
+        zh: Unit 42 TDrop2 技术分析
+        en: Inside TDrop2, Technical Analysis of New Dark Seoul Malware
+      source_type: sample-analysis
+      publisher: Palo Alto Networks Unit 42
+      published: '2015-12-21'
+      url: https://unit42.paloaltonetworks.com/inside-tdrop2-technical-analysis-of-new-dark-seoul-malware/
+      locator: custom encryption and Base64 alphabet; recovered tick command; command execution and result upload
+      credibility: high
+      evidence_limit:
+        zh: 报告直接逆向样本并展示恢复命令，但自定义字母表只证明一种实现；不能推出所有非标准编码比标准编码更隐蔽或需要独立 Niji 子项。
+        en: The report directly reverse engineers a sample and shows a recovered command, but the custom alphabet proves one implementation only. It does not establish that every non-standard encoding is stealthier than standard encoding or warrants a separate Niji child.
+    - key: B4-T1132-REF-RFC4648
+      title:
+        zh: RFC 4648 Base16、Base32 和 Base64 数据编码
+        en: RFC 4648, The Base16, Base32, and Base64 Data Encodings
+      source_type: standard
+      publisher: IETF RFC Editor
+      published: '2006-10'
+      identifiers:
+        rfc: '4648'
+      url: https://www.rfc-editor.org/rfc/rfc4648.html
+      locator: introduction; implementation discrepancies; alphabets; canonical encoding; Base64 and Base64url
+      credibility: high
+      evidence_limit:
+        zh: 规范定义表示与互操作要求，并说明同类编码可因应用约束使用不同字母表；它不证明攻击者意图或恶意结果。
+        en: The standard defines representation and interoperability requirements and explains that related encodings can use different alphabets for application constraints. It does not establish adversary intent or malicious outcome.
+    - key: B4-T1132-REF-SNORT-BASE64
+      title:
+        zh: Snort 3 Base64 解码与检测缓冲区
+        en: Snort 3 Base64 Decode and Data Buffers
+      source_type: official-documentation
+      publisher: Cisco Snort
+      url: https://docs.snort.org/rules/options/payload/base64
+      locator: base64_decode bytes, offset and relative arguments; base64_data decoded sticky buffer
+      credibility: high
+      evidence_limit:
+        zh: 文档证明标准 Base64 可在指定缓冲区和偏移上解码后继续匹配，不支持未知自定义字母表、递归链、恶意定性或通用阈值。
+        en: The documentation establishes decoding standard Base64 at selected buffers and offsets before further matching. It does not support unknown custom alphabets, recursive chains, malicious classification, or universal thresholds.
+  claims:
+    - key: B4-T1132-CLM-PARENT
+      statement:
+        zh: 攻击者对 C2 命令或结果施加可逆表示变换，使防守在规范化前缺少原始控制语义，而接收端逆变换后执行或回传。
+        en: Adversaries apply reversible representation transforms to C2 commands or results so defenders lack original control semantics before normalization while receivers inverse-transform and execute or return them.
+      evidence_keys:
+        - REF-000625
+        - B4-T1132-REF-SPECCOM
+        - B4-T1132-REF-TDROP2
+      evidence_mode: direct-parent-and-sample-analysis
+    - key: B4-T1132-CLM-OWNERSHIP
+      statement:
+        zh: T1132 的标准与非标准实现共享 NJS-0115-001 已拥有的可重放可逆表示链，不支持按字母表或算法再建 NJS；T1132 独立保留 TA0011 父语境。
+        en: Standard and non-standard T1132 implementations share the replayable reversible representation chain already owned by NJS-0115-001 and do not support new alphabet- or algorithm-based NJS; T1132 retains an independent TA0011 parent context.
+      evidence_keys:
+        - B4-T1132-REF-SPECCOM
+        - B4-T1132-REF-TDROP2
+        - B4-T1132-REF-RFC4648
+        - REF-000400
+      evidence_mode: cross-technique-taxonomy-inference
+    - key: B4-T1132-CLM-BOUNDARY
+      statement:
+        zh: 纯可逆编码不满足 NJT-0152；只有额外噪声、载体选择或服务契约伪装改变会话观察时才并列，密码机密性由 T1573 独立拥有。
+        en: Plain reversible encoding does not satisfy NJT-0152; co-classification requires additional noise, carrier selection, or service-contract disguise changing conversation observation, while T1573 separately owns cryptographic confidentiality.
+      evidence_keys:
+        - REF-000626
+        - B4-T1132-REF-SPECCOM
+        - B4-T1132-REF-TDROP2
+      evidence_mode: boundary-inference-from-direct-samples
+    - key: B4-T1132-CLM-NORMALIZATION
+      statement:
+        zh: 检测应保存原始 C2 对象并对每层变换记录输入、参数和输出，在恢复语义后再连接端点结果；Base64、压缩或高熵单独不足以定性。
+        en: Detection should preserve the raw C2 object, record input, parameters, and output at each transform layer, and join recovered semantics to endpoint outcomes; Base64, compression, or high entropy alone is insufficient.
+      evidence_keys:
+        - B4-T1132-REF-SPECCOM
+        - B4-T1132-REF-SNORT-BASE64
+        - REF-000632
+        - REF-000633
+      evidence_mode: implementable-design-supported-by-sample-and-field-documentation
+  cases:
+    - key: B4-T1132-CASE-SPECCOM
+      name:
+        zh: SpecCom 多层 C2 表示恢复链
+        en: SpecCom Layered C2 Representation-Recovery Chain
+      actor_or_campaign: SpecCom sample family
+      central_facts:
+        zh: NCSC 记录 SpecCom 在 HTTP 参数和 HTML 注释中传递任务，依次使用 UTF-16、两层 XOR、Base64 和 URL 编码；样本逆向可恢复 `dir C:\` 命令，命令输出通过另一端点回传。
+        en: NCSC documents SpecCom passing tasking through HTTP parameters and HTML comments using UTF-16, two XOR layers, Base64, and URL encoding; reverse engineering recovers a `dir C:\` command and command output returns through another endpoint.
+      evidence_keys:
+        - B4-T1132-REF-SPECCOM
+      scope_limit:
+        zh: 样本和沙箱证明实现能力，不提供真实组织中每次任务的完整 PCAP、漏报统计或所有版本的一致性。
+        en: Sample and sandbox analysis establish implementation capability but provide no complete PCAP for every real-organization task, miss statistics, or consistency across all versions.
+    - key: B4-T1132-CASE-TDROP2
+      name:
+        zh: TDrop2 自定义字母表命令恢复与结果回传
+        en: TDrop2 Custom-Alphabet Command Recovery and Result Return
+      actor_or_campaign: TDrop2 or Dark Seoul-related malware sample
+      central_facts:
+        zh: Unit 42 逆向发现数据先加密再用自定义 Base64 字母表编码；解码解密后出现 tick 命令，样本执行系统侦察并把结果上传 C2。
+        en: Unit 42 reverse engineering finds data encrypted and then represented through a custom Base64 alphabet; decoding and decryption recover a tick command, the sample executes system reconnaissance, and results are uploaded to C2.
+      evidence_keys:
+        - B4-T1132-REF-TDROP2
+      scope_limit:
+        zh: 单个样本支持自定义实现与结果链，不证明自定义编码普遍优于标准编码或跨产品防御效果。
+        en: One sample supports a custom implementation and outcome chain but does not establish that custom encoding generally outperforms standard encoding or has uniform effects across defensive products.
+  detection_strategies:
+    - B4-T1132-DET-EXTEND-DET000112
+  detection_analytics:
+    - B4-T1132-NJA-REUSE-NJA000100
+  mitigations:
+    - B4-T1132-MIT-EXTEND-MIT000113
+  relationships: []
+research:
+  taxonomy_breadth_review:
+    attack_subtechnique_count: 2
+    attack_subtechnique_ids:
+      - T1132.001
+      - T1132.002
+    represented_dimensions:
+      - compliance of encoding scheme with public or protocol specifications
+      - standard versus modified alphabet or representation rule
+    breadth_trigger: ordinary
+    coverage_resolutions:
+      - attack_id: T1132.001
+        attack_dimension: standard encoding such as Base-N, hexadecimal, character encoding, MIME, or gzip-related representation
+        resolution: adjacent-technique
+        owner_ref: NJS-0115-001
+        reason:
+          zh: 有意 C2 编码保留在 T1132 父级；可逆变换变量和规范化防御由 NJS-0115-001 唯一拥有。协议强制的正常编码排除。
+          en: Deliberate C2 encoding stays at the T1132 parent; NJS-0115-001 uniquely owns the reversible-transform variable and normalization defense. Protocol-required normal encoding is excluded.
+      - attack_id: T1132.002
+        attack_dimension: non-standard or modified representation such as a custom Base64 alphabet
+        resolution: adjacent-technique
+        owner_ref: NJS-0115-001
+        reason:
+          zh: 自定义字母表改变解析参数但仍是同一可重放链；标准解析失败应作为恢复链中的失败层，而非 Niji 子项身份。
+          en: A custom alphabet changes parser parameters but remains the same replayable chain; standard-parser failure is a failed recovery layer rather than a Niji child identity.
+    candidate_stealth_axes_examined:
+      - axis: reversible_transform_chain
+        result: cross-technique-reuse
+        owner_ref: NJS-0115-001
+      - axis: transform_depth_and_order
+        result: owner-parameter
+        owner_ref: NJS-0115-001
+      - axis: semantic_distribution_across_fields
+        result: adjacent-technique
+        owner_ref: NJS-0152-001
+      - axis: standardness_or_custom_alphabet
+        result: not-stealth-distinct
+      - axis: protocol_required_encoding
+        result: excluded-normal-behavior
+      - axis: cryptographic_confidentiality
+        result: adjacent-technique
+        owner: T1573
+      - axis: ordinary_compression
+        result: excluded-normal-behavior-unless-deliberate-recovery-chain
+    second_pass_required: false
+    second_pass_completed: false
+    proposed_niji_child_count: 0
+    breadth_gap_explained: true
+    reviewer_notes:
+      zh: >-
+        两个 ATT&CK 子项已逐项覆盖，但其区别只是编码规则是否标准，不满足独立痕迹、观察和防御门。开放检验了层深、字段分布、协议要求、密码机密性和压缩；相应变量已由既有对象拥有或属于正常行为。父级 `none-justified` 是跨技术去重结果，不是停止分类搜索。
+      en: >-
+        Both ATT&CK children are covered, but their distinction is only whether the encoding rule is standard and does not pass separate trace, observation, and defense gates. The open search also tested depth, field distribution, protocol requirements, cryptographic confidentiality, and compression; each variable is already owned or is normal behavior. Parent `none-justified` is a cross-technique deduplication result rather than an early stop.
+  cross_technique_ownership:
+    reversible_representation_variable:
+      unique_owner: NJS-0115-001
+      t1132_role:
+        zh: 记录该变量用于 C2 命令或结果时的 TA0011 父语境与结果门
+        en: Record the TA0011 parent context and outcome gate when the variable applies to C2 commands or results
+      default_classification:
+        zh: 恢复链和 C2 后果均可证时，T1132 父级与 NJS-0115-001 并列
+        en: Co-classify the T1132 parent and NJS-0115-001 when both recovery chain and C2 outcome are evidenced
+      parent_only_condition:
+        zh: 来源只证明 C2 内容被编码，但没有足够结论级材料恢复变换链、参数或真实输出时，仅保留 T1132 父级并降低置信度
+        en: Keep only the T1132 parent at reduced confidence when a source establishes encoded C2 but lacks conclusion-level material to recover the chain, parameters, or real output
+    c2_message_obfuscation:
+      owner: NJT-0152
+      co_classification_condition:
+        zh: 编码之外存在控制字节比例/位置稀释、载体选择或产品服务契约伪装，并造成独立的会话观察差
+        en: A separate conversation-observation differential exists through control-byte share or position dilution, carrier selection, or forged product-service contract in addition to encoding
+      no_co_classification_condition:
+        zh: 仅对一个完整 C2 字段执行可逆编码，外层服务角色和字段语义未被额外伪装
+        en: One complete C2 field is reversibly encoded without additional disguise of the outer service role or field semantics
+  evidence_coverage:
+    parent_behavior_keys:
+      - REF-000625
+      - B4-T1132-REF-SPECCOM
+      - B4-T1132-REF-TDROP2
+    boundary_keys:
+      - REF-000400
+      - REF-000626
+      - B4-T1132-REF-RFC4648
+      - B4-T1132-REF-SPECCOM
+      - B4-T1132-REF-TDROP2
+    mechanism_support:
+      - mechanism: NM-DO
+        keys:
+          - B4-T1132-REF-SPECCOM
+          - B4-T1132-REF-TDROP2
+        level: direct-transform-recovery-and-outcome
+    child_existence_support: []
+    defense_field_support:
+      - source: B4-T1132-REF-SNORT-BASE64
+        support: standard Base64 decoding at selected buffer, offset, and length followed by matching on decoded data
+      - source: REF-000632
+        support: HTTP session fields and uid transaction linkage, not payload visibility by itself
+      - source: REF-000633
+        support: network file fuid, uid, MIME, size, and extraction linkage, not semantic recovery by itself
+      - source: B4-T1132-REF-SPECCOM
+        support: concrete layer order, keys, input representation, recovered task, and returned output
+    unsupported_or_deferred:
+      - No source provides a universal threshold for encoded-string length, entropy, recursion depth, or expansion ratio that distinguishes malicious C2 from protocol-required encoding.
+      - ATT&CK standard and non-standard labels do not establish separate Niji stealth variables or separate defensive objectives.
+      - Opaque TLS and absent content retention prevent network-side semantic recovery; metadata alone cannot establish T1132.
+      - A custom alphabet may be recoverable from a sample, but unknown variants and missing keys remain lower-confidence candidates.
+      - The proposed parent-only formal package and reuse of DET-000112/NJA-000100/MIT-000113 require primary-agent schema and cross-tactic integration review.
+  content_depth_review:
+    compared_with_njt_0001: true
+    field_responsibilities_complete: true
+    candidate_specific_prose: true
+    repeated_prose_reviewed: true
+    notes:
+      zh: >-
+        父级提案完整覆盖变换对象、直接目的、恢复边界、残余痕迹、协议正常反例、相邻所有权、C2 场景、攻防能力和传感器限制。无正式 NJS 是已审查结论；若主 Agent 决定创建子项，必须重新证明其变量不由 NJS-0115-001 或 NJS-0152-001/002 拥有，并提交独立防御差异，不能从本研究的算法名称直接生成。
+      en: >-
+        The parent proposal covers transformed object, direct purpose, recovery boundary, residual traces, protocol-normal counterexamples, adjacent ownership, C2 scenario, attacker and defender capabilities, and sensor limits. No formal NJS is a reviewed conclusion. If the primary agent creates a child, it must newly prove that NJS-0115-001 or NJS-0152-001/002 does not own the variable and supply an independent defense difference rather than derive a child from algorithm names in this research.
+  automation_review:
+    canonical_prose_bulk_generated: false
+    mechanical_uses:
+      - staging YAML serialization
+      - YAML parse verification
+      - evidence-key consistency check
+      - shared-library URL and semantic lookup
+  limitations:
+    paragraphs:
+      - zh: >-
+          SpecCom 与 TDrop2 都是结论级样本逆向，分别证明多层标准表示与自定义字母表能够在接收端恢复控制语义；二者没有公开生产网络中的检测命中率、漏报率或正常业务基线。TDrop2 同时加密和编码，必须分别归入 T1573 与 T1132，不能把密码效果归功于自定义 Base64。SpecCom 同时使用 HTML 注释载体和 XOR，只有各层证据明确时才能进一步并列 NJT-0152。
+        en: >-
+          SpecCom and TDrop2 are conclusion-level sample analyses establishing receiver recovery of control semantics through layered standard representation and a custom alphabet respectively. Neither provides production-network sensitivity, miss rates, or normal-business baselines. TDrop2 both encrypts and encodes, so T1573 and T1132 must be classified separately and cryptographic effect cannot be attributed to custom Base64. SpecCom also uses an HTML-comment carrier and XOR, and further NJT-0152 co-classification requires evidence for each independent layer.
+      - zh: >-
+          RFC 4648 说明 Base-N 本来服务于互操作，并允许因 URL、文件名或协议约束选择不同字母表；因此“标准 Base64”“去掉填充”或“字符替换”不自动代表攻击。Snort 文档只证明标准 Base64 可被指定位置解码，Zeek 文档只证明事务和文件关联字段；未知自定义表、压缩炸弹、嵌套编码、内容不可见和端点进程缺失仍需专用分析与本地资源限制。
+        en: >-
+          RFC 4648 shows that Base-N normally serves interoperability and that URLs, filenames, or protocol constraints can require different alphabets. Standard Base64, omitted padding, or character substitution therefore does not automatically indicate attack. Snort documentation only establishes standard Base64 decoding at selected locations, and Zeek documentation only establishes transaction and file linkage fields. Unknown custom tables, decompression bombs, nested encoding, opaque content, and missing endpoint process identity still require specialized analysis and local resource limits.
+      - zh: >-
+          `NJT-0115` 的范围包含文件、脚本、命令和传输内容，直接复用可避免变量重复，但 T1132 仍需独立 TA0011 父级以表达 C2 结果门。这个双层建模依赖人工评审确认页面导航、证据引用和战术计数不会把 NJT-0115 的其他三个子项错误带入 TA0011；在正式写入前应由主 Agent 检查 schema 与 Web 展示。
+        en: >-
+          `NJT-0115` covers files, scripts, commands, and in-transit content, so reuse prevents duplicate variables, while T1132 still needs an independent TA0011 parent to express the C2 outcome gate. This two-level model needs human review to ensure navigation, evidence references, and tactic counts do not pull NJT-0115's other three children into TA0011 incorrectly. The primary agent should verify schema and Web presentation before canonical writing.
+  rejected_mechanisms:
+    - mechanism_ref: NM-FD
+      reason:
+        zh: 纯编码改变可解释性，不必让 C2 模仿另一良性实体；只有额外服务或载体外观时由 NJT-0152/NJS-0115-003 处理。
+        en: Plain encoding changes interpretability without necessarily imitating another benign entity; additional service or carrier appearance belongs to NJT-0152 or NJS-0115-003.
+    - mechanism_ref: NM-ST
+      reason:
+        zh: 编码本身不在时间或来源上分散消息；分块与多请求分布需独立证据并优先审查 NJT-0152-001。
+        en: Encoding itself does not distribute a message across time or sources; chunking across requests needs independent evidence and first requires NJT-0152-001 review.
+    - mechanism_ref: NM-BT
+      reason:
+        zh: 可见内容仍在传感器观察内，只是规范化前不可解释；这属于 NM-DO 而非监控覆盖外行为。
+        en: Visible content remains within sensor observation but is uninterpretable before normalization, making this NM-DO rather than behavior outside monitoring coverage.
+  open_questions:
+    - Does the technique schema and review UI permit a parent with none-justified child coverage to document cross-technique variable ownership without adding a formal relationship object?
+    - Should the primary agent add an explicit relationship from the new T1132 parent to NJS-0115-001, and if so which existing relationship type preserves variable ownership without implying parentage?
+    - Can production content-retention legally preserve the raw C2 fields needed for recursive normalization, and which protocols remain opaque?
+    - Which bounded recursion depth, per-layer output, and total expansion values are safe in the deployment while retaining coverage for observed transform chains?
+integration:
+  status: pending
+  resolutions: []

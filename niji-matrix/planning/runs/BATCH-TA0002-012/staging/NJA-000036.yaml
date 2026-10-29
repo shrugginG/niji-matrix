@@ -1,0 +1,59 @@
+schema_version: "2.0.0"
+type: detection-analytic
+id: NJA-000036
+strategy_ref: DET-000086
+name: {zh: 合成输入来源、会话门控与时序分析, en: Synthetic Input Origin Session-Gating and Timing Analytic}
+summary: {zh: 将软件/API 或设备输入身份、匿名化时序与真实会话上下文连接到后继执行，并输出三个证据校准分支。, en: Join software or API or device input identity and anonymized timing plus real-session context to successor execution and output three evidence-calibrated branches.}
+domains: [enterprise]
+platforms: [Windows, Linux, macOS]
+logic:
+  paragraphs:
+  - zh: 对连续键/鼠标/clipboard 操作生成 input_sequence_id，软件侧记录 injector process/user/session、SendInput/automation/window-message API、目标 window/thread、injected/lower-integrity flag 与调用结果；硬件侧记录 USB/PnP connect、VID/PID/serial、HID interface、driver、首次/批准状态。仅保存 key category、shortcut、长度、hold/flight-time、间隔分布、burst/pause 和 normalized command hash，避免默认记录完整敏感输入。
+    en: Generate an input sequence ID for consecutive key mouse or clipboard actions. On software paths record injector process user or session SendInput automation or window-message API target window or thread injected or lower-integrity flag and result. On hardware paths record USB or PnP connect VID PID or serial HID interface driver and first-seen or approval state. Retain key category shortcut length hold or flight time interval distribution bursts or pauses and normalized command hash rather than full sensitive input by default.
+  - zh: 连接 logon/lock、user presence/idle、active/focused window、URL/title/transaction context、clipboard change 与后继 Run dialog、terminal、shell/PowerShell、script block、file/network。cadence 分支比较人类/自动化多维分布并与来源/结果组合；context 分支要求先观察目标状态再注入；peripheral 分支要求 HID 连接/枚举后无软件 injector 却出现输入和执行。相同序列可多标签，但每个分支独立保留证据。
+    en: Join logon or lock user presence or idle active or focused window URL title or transaction context clipboard change and successor Run dialog terminal shell or PowerShell script block file and network. The cadence branch compares multidimensional human and automation distributions and combines origin and outcome. The context branch requires observed target state before injection. The peripheral branch requires HID connection or enumeration followed by input and execution without a software injector. One sequence can carry multiple labels but each branch retains independent evidence.
+data_requirements:
+- source_type: software-input-injection
+  name: {zh: 输入 API、Injector 与低层注入标志, en: Input APIs injectors and low-level injected flags}
+  channel: null
+  required_fields: [timestamp, host_id, injector_process_entity, injector_user_or_session, input_api_or_message, target_window_or_thread, injected_flag, lower_integrity_flag, event_type, result]
+- source_type: peripheral-pnp-hid
+  name: {zh: USB/PnP、HID Interface 与 Driver, en: USB or PnP HID interface and driver}
+  channel: null
+  required_fields: [timestamp, host_id, device_instance_id, vid, pid, serial_or_port, interfaces, hid_usage, driver_image, first_seen, approval_state, connect_or_disconnect]
+- source_type: input-sequence-timing
+  name: {zh: 匿名化按键/鼠标序列与时序特征, en: Anonymized key or mouse sequence and timing features}
+  channel: null
+  required_fields: [input_sequence_id, start_time, end_time, event_count, key_or_shortcut_category, hold_time_distribution, flight_time_distribution, burst_rate, pause_pattern, randomness_features, normalized_command_hash]
+- source_type: user-session-ui-context
+  name: {zh: 用户、锁屏、焦点窗口与应用情境, en: User lock focus window and application context}
+  channel: null
+  required_fields: [timestamp, host_id, logon_session, lock_state, user_presence_or_idle, active_window, focused_control, url_or_title_hash, transaction_or_application_state, clipboard_change]
+- source_type: input-triggered-execution-outcome
+  name: {zh: Run、Shell、脚本、文件与网络结果, en: Run shell script file and network outcomes}
+  channel: null
+  required_fields: [timestamp, input_sequence_id_or_session, launched_process, parent_process, command_line_or_hash, script_block_or_hash, file_path_or_hash, network_destination, outcome]
+- source_type: approved-input-automation-baseline
+  name: {zh: 辅助设备、远程支持与自动化批准基线, en: Assistive device remote support and automation approval baseline}
+  channel: null
+  required_fields: [approved_device_or_injector, user_or_team, allowed_session_or_application, timing_profile, allowed_shortcuts_or_commands, ticket_or_approval, validity]
+observables:
+- {zh: 软件 injector 先查询银行 URL/窗口并在匹配后立即注入控制台/粘贴序列，随后浏览器执行 JavaScript 或网络变化, en: A software injector queries a banking URL or window then immediately injects console and paste sequences followed by browser JavaScript or network change}
+- {zh: 新/未批准 HID 枚举为键盘后数秒内发送 Win+R/terminal/PowerShell 序列并产生下载, en: A new or unapproved HID enumerates as a keyboard and within seconds sends Win+R terminal or PowerShell sequences producing a download}
+- {zh: 输入节奏避开固定高速阈值但来源/会话异常且命令 hash、shell 与网络结果不在批准自动化基线, en: Input cadence avoids a fixed high-speed threshold but origin or session is anomalous and command hash shell and network outcomes are outside approved automation}
+correlation:
+  window: {zh: 从设备连接或 injector context 查询前五分钟到输入结果后二小时；短 HID 攻击使用秒级窗口，context 等待按 process entity 延长二十四小时。, en: From five minutes before device connection or injector context query through two hours after the input outcome with second-scale HID windows and context waiting extended twenty-four hours by process entity.}
+  dimensions: [host, input_sequence, injector_process, device_instance, vid_pid_serial, driver, user_session, lock_presence, active_window, application_context, timing_features, command_hash, launched_process, network, approval, time]
+false_positives:
+- {zh: 辅助功能与宏设备、KVM/条码枪、新键盘、远程帮助台、UI 自动化测试、游戏输入、密码管理器与合法 clipboard automation, en: Accessibility and macro devices KVM or barcode scanners new keyboards remote helpdesk UI automation tests game input password managers and legitimate clipboard automation}
+blind_spots:
+- {zh: OS 不保留硬件事件到输入序列映射、软件注入来源标志不含 PID、远程桌面/虚拟化合并来源或输入时序采样不足, en: OS lacks hardware-event-to-input mapping software injected flags omit source PID remote desktop or virtualization merges origins or timing sampling is insufficient}
+- {zh: 攻击者使用批准宏设备/远程工具并在正常 session 内复制合法节奏，命令在目标应用内部执行无子进程, en: Adversary uses an approved macro device or remote tool and copies normal cadence in a normal session while commands execute inside the target application without a child}
+tuning_guidance:
+  paragraphs:
+  - zh: 按设备/接口、用户、辅助技术、远程支持工具、应用和 session 建立基线；允许项绑定 device instance 或签名 injector、工单、目标和有效期，不永久放行某 VID/PID、键盘类别或 SendInput。cadence 使用多特征/多生成策略训练，固定阈值仅作一项信号。
+    en: Baseline device or interface user assistive technology remote-support tool application and session. Bind allowances to device instance or signed injector ticket target and validity rather than permanently allowing a VID or PID keyboard class or SendInput. Train cadence using multiple features and generation strategies and use fixed thresholds as one signal only.
+  - zh: 分别输出软件注入、context-gated、HID-origin 和 cadence anomaly，再由 shell/network/file 结果提升；没有结果时只报告输入完整性风险。对时序数据匿名化，对命令只保留规范化 hash/高风险快捷键类别，敏感原文按事件授权获取。
+    en: Output software injection context-gated HID-origin and cadence anomaly separately and raise with shell network or file outcomes. Without outcome report input-integrity risk only. Anonymize timing data and retain normalized command hashes or high-risk shortcut categories, acquiring sensitive raw content only under incident authorization.
+evidence_refs: [REF-000245, REF-000246, REF-000247, REF-000248, REF-000249, REF-000250, REF-000251]
+lifecycle: {status: review, version: 1.1.0, created: '2026-09-10', modified: '2026-09-12', contributors: [Niji Matrix Research], reviewers: []}

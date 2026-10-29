@@ -1,0 +1,117 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000289
+strategy_ref: DET-000231
+name:
+  zh: 状态保持连接与端点耗尽分析
+  en: State-Holding Connection and Endpoint Exhaustion Analytic
+summary:
+  zh: 输出低进度长连接积累、连接/worker 池饱和和合法健康失败。
+  en: Emit accumulating low-progress long connections, connection or worker-pool saturation, and failed legitimate
+    health.
+domains:
+- enterprise
+platforms:
+- Linux
+- Windows
+- macOS
+logic:
+  paragraphs:
+  - zh: 按 target/route 在 10 秒、60 秒和 5 分钟聚合 active/new/rejected connections、完成请求、processed bytes、408/503/504、connection
+      age 和 byte progress。计算 active/completed、bytes/active 和超时率，并连接 worker/handle/queue 与外部探针。
+    en: Aggregate active, new, and rejected connections, completed requests, processed bytes, 408 or 503 or 504, connection
+      age, and byte progress by target and route over 10 seconds, 60 seconds, and five minutes. Calculate active-to-completed,
+      bytes per active connection, and timeout rate and join workers, handles, queues, and external probes.
+  - zh: 当 active/worker 接近上限、进度低而带宽/完成数不高、合法探针失败时输出；按 source 与全局两级分析，避免只用单源阈值。
+    en: Emit when active connections or workers approach limits, progress is low without high bandwidth or completions,
+      and legitimate probes fail. Analyze per source and globally rather than using only source thresholds.
+data_requirements:
+- source_type: load-balancer-capacity
+  name:
+    zh: 负载均衡容量指标
+    en: Load-balancer capacity metrics
+  channel: ALB CloudWatch or equivalent
+  required_fields:
+  - event.time
+  - target.id
+  - active.connections
+  - new.connections
+  - rejected.connections
+  - request.count
+  - processed.bytes
+  - http.4xx
+  - http.5xx
+- source_type: request-progress-log
+  name:
+    zh: 请求与连接进度
+    en: Request and connection progress
+  channel: Web server and access logs
+  required_fields:
+  - event.time
+  - connection.id
+  - source.ip
+  - route
+  - request.length
+  - bytes.received
+  - connection.age
+  - request.duration
+  - status
+  - error.type
+- source_type: endpoint-pool-health
+  name:
+    zh: 端点池与业务健康
+    en: Endpoint pool and business health
+  channel: null
+  required_fields:
+  - event.time
+  - service.id
+  - workers.active
+  - workers.max
+  - queue.depth
+  - handles.used
+  - probe.success
+  - latency
+observables:
+- zh: active/completed 上升而 bytes 和请求完成率较低
+  en: Active-to-completed rises while bytes and completion rate remain low
+- zh: 连接/worker 饱和与合法探针失败相交
+  en: Connection or worker saturation intersects legitimate-probe failure
+correlation:
+  window:
+    zh: 10 秒/60 秒/5 分钟多尺度，按 endpoint 超时调优。
+    en: Use 10-second, 60-second, and five-minute scales tuned to endpoint timeouts.
+  dimensions:
+  - service.id
+  - target.id
+  - route
+  - connection.id
+  - source.ip
+  - event.time
+false_positives:
+- zh: 慢移动客户端、大上传、长轮询、合法 WebSocket、流量峰值和后端延迟
+  en: Slow mobile clients, large uploads, long polling, legitimate WebSockets, traffic peaks, and backend delay
+blind_spots:
+- zh: 完成时才写日志、TLS/代理隐藏进度、连接 ID 不贯通或自定义服务器无池指标
+  en: Completion-only logs, TLS or proxy hiding progress, disconnected connection IDs, or custom servers without pool
+    metrics
+tuning_guidance:
+  paragraphs:
+  - zh: 按 route/客户端类型维护正常 progress 与连接寿命；保护合法慢客户端同时用阶段 timeout、最小 data rate 和全局并发门。严重度必须包含内部容量和健康失败。
+    en: Baseline progress and connection lifetime by route and client type; protect legitimate slow clients while
+      applying stage timeouts, minimum data rates, and global concurrency gates. Severity requires internal capacity
+      and health failure.
+evidence_refs:
+- REF-000965
+- REF-000966
+- REF-000967
+- REF-000971
+- REF-000972
+- REF-000973
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-10-04'
+  modified: '2026-10-04'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

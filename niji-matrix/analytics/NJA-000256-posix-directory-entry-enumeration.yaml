@@ -1,0 +1,90 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000256
+strategy_ref: DET-000210
+name:
+  zh: POSIX 目录项枚举谱系分析
+  en: POSIX Directory-Entry Enumeration Lineage Analytic
+summary:
+  zh: 关联 ls/find 或自定义枚举进程与已配置的目录读取 syscall/audit 范围。
+  en: Join ls, find, or custom enumeration processes to configured directory-read syscall or audit scope.
+domains:
+- enterprise
+platforms:
+- Linux
+- macOS
+logic:
+  paragraphs:
+  - zh: 使用进程执行记录识别 ls/find/tree 或自定义工具，在 Linux 对高价值目录通过 audit rules 记录 getdents/getdents64 或目录访问。按进程、用户、根路径和时间关联，并把权限失败、mount/namespace
+      视图保留为结果语义。macOS 只有在部署有等价经验证 telemetry 时才启用分支。
+    en: Use process execution to identify ls, find, tree, or custom tools. On Linux, configure audit rules for getdents, getdents64,
+      or directory access on high-value roots. Join process, user, root, and time while preserving permission failure and
+      mount or namespace view as result semantics. Enable macOS only where equivalent validated telemetry exists.
+data_requirements:
+- source_type: posix-process-exec
+  name:
+    zh: POSIX 进程执行
+    en: POSIX process execution
+  channel: null
+  required_fields:
+  - timestamp
+  - host_id
+  - user_id
+  - process_id
+  - parent_process_id
+  - executable
+  - arguments
+  - working_directory
+- source_type: linux-audit-directory-read
+  name:
+    zh: Linux audit 目录读取
+    en: Linux audit directory read
+  channel: auditd with explicit rules
+  required_fields:
+  - timestamp
+  - host_id
+  - uid
+  - auid
+  - pid
+  - ppid
+  - syscall
+  - path
+  - exit
+  - key
+observables:
+- zh: 非常用进程在高价值根路径执行递归目录项枚举
+  en: An unusual process recursively enumerates directory entries under a high-value root
+correlation:
+  window:
+    zh: 同一进程 30 分钟并按根路径聚合，用户/服务角色基线 14 日。
+    en: Thirty minutes per process aggregated by root path, with a 14-day user or service-role baseline.
+  dimensions:
+  - host_id
+  - user_id
+  - process_id
+  - root_path
+  - syscall
+  - time
+false_positives:
+- zh: 备份、索引、杀毒、软件包管理、构建、监控和用户 shell 会合法枚举
+  en: Backup, indexing, antivirus, package management, builds, monitoring, and user shells legitimately enumerate
+blind_spots:
+- zh: audit 规则未启用、递归事件量导致丢失、容器 mount namespace、内存索引查询、macOS 无等价通道会形成盲区
+  en: Missing audit rules, loss under recursive volume, container mount namespaces, in-memory index queries, and absent macOS
+    equivalents create blind spots
+tuning_guidance:
+  paragraphs:
+  - zh: 只对高价值根路径和关键身份部署规则，监控 backlog/lost 计数并按作业窗口调优；未验证返回路径集合时只确认枚举行为。
+    en: Deploy rules only on high-value roots and key identities, monitor backlog and lost counts, and tune by job window.
+      Confirm enumeration behavior only where returned path sets are not observed.
+evidence_refs:
+- REF-000839
+- REF-000840
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-09-27'
+  modified: '2026-09-27'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

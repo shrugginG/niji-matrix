@@ -1,0 +1,114 @@
+schema_version: 2.0.0
+type: evasion-subtechnique
+id: NJS-0136-002
+parent_ref: NJT-0136
+name:
+  zh: 跨目标认证证明中继
+  en: Cross-Destination Authentication-Proof Relay
+summary:
+  zh: 将受害者面向诱导目标发出的认证证明转送给另一真实服务，使目标记录正常认证而原始目的地与实际验证者分离。
+  en: Forward a proof offered by the victim to an induced destination into a different real service, separating the intended destination from
+    the actual verifier while the latter records authentication.
+aliases: []
+lineage:
+  attck_subtechnique_inherited: false
+definition_and_concept:
+  paragraphs:
+  - zh: 跨目标认证证明中继是攻击者在受害者与其认为正在访问的服务之间接收挑战应答，并实时把该证明送给另一可达服务验证，而不需要先破解或明文读取口令。稳定变量是认证证明的原始受众和最终验证者被分离；NTLM 到 SMB 或 LDAP 是已证实例，而不是分类定义。成功中继可取得对目标服务的认证能力，但必须通过目标服务记录和后继动作证明，不能把捕获到的握手等同于成功访问。
+    en: Cross-Destination Authentication-Proof Relay receives a challenge response between a victim and the service it believes it is contacting,
+      then forwards that proof in real time to a different reachable service without first cracking or reading the plaintext password. The stable
+      variable is separation of the proof's intended audience from its eventual verifier. NTLM to SMB or LDAP is an evidenced instance, not the
+      definition. Successful relay can yield authentication capability at the target service, but target-side records and follow-on actions must
+      establish that outcome; capturing a handshake alone is insufficient.
+stealth_characteristics:
+  paragraphs:
+  - zh: 跨目标认证证明中继使攻击者通过真实服务完成验证，因而目标服务可出现一次“正确账户、正确响应”的认证而非明显猜测失败；受害终端仍按原来的资源名或自动认证行为发送证明。两端日志各自看似合理，却没有说明为何认证来源、目标服务与终端原始目的地不一致。SMB 签名、LDAP 签名和通道绑定可暴露或阻断一部分中继，说明匿迹依赖受众绑定缺口，并非任何加密认证均可被中继。
+    en: Cross-Destination Authentication-Proof Relay means that the adversary has a real service validate the proof, so the target may record
+      an authentication with a correct account and response rather than conspicuous password-guessing failures; the victim still offers the proof
+      under its original resource name or automatic-authentication behavior. Each side's log can appear plausible alone without explaining the
+      mismatch among authentication source, target service, and the endpoint's intended destination. SMB signing, LDAP signing, and channel binding
+      can expose or block particular relays, making this stealth dependent on an audience-binding gap rather than a property of all encrypted
+      authentication.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 本项要求同一次认证证明被实时转送给与受害端原始目的地不同的真实验证服务。仅收集 NetNTLM 材料后离线破解属于 T1110，窃取 Cookie 后重放属于 T1539，未改变验证受众的普通代理或被动监听均不成立。Web 钓鱼中连续代理真实 IdP 登录和 MFA
+      的首次入口变量已由 NJS-0057-004 承载；这里的边界是 SMB/LDAP 等服务之间的证明受众差，而不是页面外观或邮件投递。
+    en: This child requires a proof from one authentication exchange to be relayed in real time to a genuine verifier different from the endpoint's
+      intended destination. Collecting NetNTLM material for later offline cracking belongs to T1110, replaying a stolen cookie to T1539, and an
+      ordinary same-audience proxy or passive listening does not qualify. Existing NJS-0057-004 covers continuous proxying of a real IdP login
+      and MFA as a phishing entry. The boundary here is proof-audience difference among services such as SMB and LDAP, not page appearance or
+      message delivery.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: 名称解析或 DHCPv6 指向被操纵后，Windows 终端可能向伪装的内部资源或 WPAD 端点自动提供 NTLM 证明；中间节点将握手转给允许这种认证的 SMB 或 LDAP 目标。该路径能与选择性伪答同时出现，但本项关注的是证明跨目标验证及由此产生的服务端成功记录，而不是选择了几台受害机。
+      en: After name resolution or DHCPv6 direction is manipulated, a Windows endpoint may automatically offer an NTLM proof to a disguised internal
+        resource or WPAD endpoint, and the intermediary forwards the exchange to an SMB or LDAP target that accepts it. This can co-occur with
+        selective false answers, but this child concerns cross-destination verification and the resulting target-side success record, not how
+        many victims were selected.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者需要可诱发或截获认证的中间位置、面向目标服务的网络可达性、对挑战应答的实时处理能力以及未强制有效签名或通道绑定的目标。若受害者不发起认证、目标拒绝 NTLM、必须使用 Kerberos 服务身份或强制签名/绑定，则这条路径可能失败；不同协议的细节不能互相推定。
+        en: The actor needs an intermediary position that solicits or receives authentication, network reachability to the target service, real-time
+          handling of the challenge response, and a target without effective signing or channel binding enforcement. The path may fail if the
+          victim never authenticates, the target rejects NTLM, a Kerberos service identity is required, or signing or binding is enforced. Details
+          of one protocol cannot be presumed for another.
+    defender_model:
+      paragraphs:
+      - zh: 防守方需把终端发起的原始名称解析及连接、NTLM 审计中的客户端和目标服务、SMB/LDAP 认证结果以及签名或绑定事件连接起来。只有域控成功认证或一条目标服务访问日志时，无法判定请求是否来自中继；缺少终端或交换机来源数据时应降低分类置信度。合法代理、服务账号、扫描器和多跳网络应用是必须排查的正常相似项。
+        en: The defender must join the endpoint's original resolution and connection with client and target details from NTLM auditing, SMB or
+          LDAP authentication outcomes, and signing or binding events. A domain-controller success event or a target access log alone cannot establish
+          relay. Without endpoint or switch origin data, classification confidence should fall. Authorized proxies, service accounts, scanners,
+          and multi-hop network applications are legitimate lookalikes to investigate.
+stealth_mechanisms:
+- mechanism_ref: NM-FD
+  role: primary
+  summary:
+    zh: 借真实目标验证形成表面正常的认证结果
+    en: Use real-target verification to produce an apparently normal authentication result
+  analysis:
+    paragraphs:
+    - zh: 攻击者没有提交猜测口令，而是把受害者提供的有效挑战响应转给真实服务，使目标记录合法账户的一次认证。恶意性不在单条成功事件中，而在终端原始目的地、接收证明的中间节点和实际验证者之间的断裂。通过恢复该三方关系，防守方仍可发现伪装；在启用签名和通道绑定的目标上，中继机会本身会降低。
+      en: Rather than submit guessed passwords, the actor forwards a victim-supplied valid challenge response to a real service, which records
+        authentication for the legitimate account. The malicious fact is not the single success event but the break among the endpoint's intended
+        destination, the intermediary that received the proof, and the actual verifier. Restoring that three-party relationship exposes the disguise;
+        enforcing signing and channel binding at targets reduces relay opportunity.
+  confidence: medium
+  evidence_refs:
+  - REF-000490
+  - REF-000492
+  - REF-000493
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000143
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000132
+evidence:
+  claim_refs:
+  - CLM-000698
+  case_refs: []
+  reference_refs:
+  - REF-000490
+  - REF-000492
+  - REF-000493
+research:
+  limitations:
+    paragraphs:
+    - zh: 现有证据直接支持 Windows/NTLM 面向 SMB 或 LDAP 的中继及相应保护条件；它不能证明所有凭据协议可跨目标中继，也不能仅凭目标成功日志证明一次特定事件的前置路径被操纵。若没有客户端原始目的地、目标服务来源和协议保护状态三者的证据，应把“跨目标”降为假说。
+      en: Current evidence directly supports Windows and NTLM relays into SMB or LDAP and the relevant protection conditions. It does not establish
+        that every credential protocol permits cross-destination relay, nor does a target success log alone prove path manipulation in a particular
+        incident. Without the client's intended destination, the target service's observed source, and protocol-protection state, the cross-destination
+        conclusion should remain a hypothesis.
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-09-22'
+  modified: '2026-09-22'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

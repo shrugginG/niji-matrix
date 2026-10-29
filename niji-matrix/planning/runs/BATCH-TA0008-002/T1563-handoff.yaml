@@ -1,0 +1,1401 @@
+handoff_schema_version: 2.0.0
+type: technique-research-handoff
+batch_ref: BATCH-TA0008-002
+work_item_ref: WORK-TA0008-T1563
+temporary_key_prefix: B8B-T1563
+candidate:
+  source_type: attack
+  source_attack_id: T1563
+  name:
+    zh: 远程服务会话劫持
+    en: Remote Service Session Hijacking
+recommendation:
+  decision: adapt
+  confidence: medium
+  rationale:
+    paragraphs:
+    - zh: 固定 ATT&CK Enterprise 19.1 的 T1563 以控制他人预先建立的远程服务会话推动横向移动。Linux 内核 Yama 文档明确确认进程附着可造成 SSH 会话劫持，OpenSSH 规范可证明既有认证传输能够再承载会话通道，Microsoft
+        tscon 文档确认有权限的主体可将既有远程桌面会话连接到另一会话。因此保留父行为，但将 Niji 准入改写为攻击者实际控制先前由别人建立的认证传输、交互会话或其附着关系，并在另一内部系统或信任主体产生可验证的控制。仅找到可访问代理、会话
+        ID 或悬置桌面是前提，不是横向成功。
+      en: T1563 in the fixed ATT&CK Enterprise 19.1 baseline concerns taking control of another principal's preexisting remote-service
+        session to move laterally. Linux Yama documentation explicitly recognizes SSH session hijacking through process attachment;
+        OpenSSH specifications show that an established authenticated transport can carry another session channel; and Microsoft's
+        tscon documentation confirms that an authorized principal can connect an existing remote desktop session to a different
+        session. The parent behavior is retained, but Niji admission should require actual adversary control of a transport,
+        interactive session, or attachment previously established by someone else, followed by verifiable control of another
+        internal system or trust principal. Discovering an accessible agent, a session ID, or a disconnected desktop alone
+        is a prerequisite, not a lateral result.
+    - zh: Adapt 的必要性是 ATT&CK SSH 叙述将代理套接字误用也置于同一子页；代理为新 SSH 连接签名与接管已认证 SSH 传输不同。Matrix.org 2019 年事件中，陷阱利用转发代理将攻击者公钥植入其他主机，这直接证明凭据代理滥用及后续新连接能力，却没有证明攻击者附着到原用户已经打开的
+        PTY 或沿原 SSH TCP 连接新增通道。Mandiant 对 UNC3886 的“SSH connection hijacking”也指向拦截新来的 SSH 流以窃取凭据，不可据名称移入本技术。严格的连接/附着证据门使 T1563
+        与 T1021、T1550 和本地权限提升保持清楚边界。
+      en: Adapt is necessary because ATT&CK's SSH discussion also includes agent-socket misuse; asking an agent to sign for
+        a new SSH connection differs from taking over an already authenticated transport. In the 2019 Matrix.org incident,
+        a trap abused a forwarded agent to install the attacker's public key on other hosts. That directly supports credential-agent
+        misuse and later new-connection capability, but does not show attachment to the user's existing PTY or a new channel
+        on the original SSH TCP connection. Mandiant's description of UNC3886 "SSH connection hijacking" likewise concerns
+        diverting incoming new SSH traffic to collect credentials and cannot be included on the strength of its label. A strict
+        connection and attachment evidence gate keeps T1563 distinct from T1021, T1550, and local privilege escalation.
+  original_attack_subtechniques_imported: false
+proposed_content:
+  summary:
+    zh: 攻击者接入他人已经建立的远程服务传输或会话，使后续控制继承原有会话的认证、来源或用户上下文。
+    en: An adversary enters a remote-service transport or session already established by another principal, causing subsequent
+      control to inherit the earlier session's authentication, origin, or user context.
+  definition_and_concept:
+    paragraphs:
+    - zh: 远程服务会话劫持是攻击者在已有内部立足点上，控制另一主体先前建立且仍有效的远程交互状态。被接管的对象可以是通向内部主机的已认证传输及其新增控制通道，也可以是服务器上保留的交互桌面与客户端附着关系；核心不是服务协议名称，而是控制者和原认证/会话所有者分离后，目标仍按原有状态接受操作。至少应能指出原会话、后来的异常接入，以及由该状态产生的目标控制结果。
+      en: Remote Service Session Hijacking occurs when an adversary with an internal foothold controls remote interactive
+        state previously established and still maintained by another principal. The object may be an authenticated transport
+        to an internal host with an additional control channel, or an interactive desktop retained on a server whose client
+        attachment changes. The defining property is a separation between current controller and original authenticated session
+        owner while the target continues to accept actions under earlier state, not the name of the protocol. Evidence should
+        identify the original session, later anomalous access, and a control result derived from that state.
+    - zh: 这种行为有多层证据门：可见会话或可达套接字只证明暴露；未授权的通道创建或会话重附着证明接管动作；与目标主机或另一内部资源上的命令、进程或访问相联才能证明横向结果。正当的会话恢复、远程协助或管理员接管可能具有相同技术形态，必须结合授权、原所有者、发起进程与目标效果判别。
+      en: The behavior has several evidence gates. A visible session or reachable socket proves exposure; unauthorized channel
+        creation or session reattachment establishes the takeover action; and linked commands, processes, or resource access
+        on a destination host or another internal resource establish the lateral result. Legitimate reconnection, remote support,
+        or administrator takeover can have the same technical shape and must be evaluated against authorization, original
+        owner, initiating process, and target effect.
+  stealth_characteristics:
+    paragraphs:
+    - zh: 匿迹变量是攻击者把操作绑定到一个已经被认证和允许的会话，而不是重新建立完整登录。沿既有 SSH 传输新增通道会使目标网络边界仍只看见原有 TCP 来源和既有身份；远程桌面重附着则保留原用户桌面、进程和登录上下文，变化主要落在客户端地址、会话连接事件及接管发起者。若检测只计数新连接、新认证或陌生账户，可能漏掉这两类交接。
+      en: The stealth variable is binding adversary actions to a session that has already been authenticated and allowed rather
+        than performing a complete new logon. A new channel on an existing SSH transport can leave the destination network
+        boundary seeing the original TCP origin and identity. Remote desktop reattachment preserves the original user's desktop,
+        processes, and logon context; changes concentrate in the client address, reconnect event, and initiating actor. Detection
+        based only on new connections, new authentication, or unfamiliar accounts can miss both transitions.
+    - zh: 这种效果不是隐形。客户端的控制套接字连接或 ptrace、目标 SSH 服务端的新通道/子进程、Windows 的 4778/4779、tscon/等效管理进程以及原用户上下文中的后续动作均可能留下可关联的痕迹。没有通道级采集时，SSH
+        目标端正常会话日志可能不足以归因真实本地操作者；没有跨主机原用户活动与批准工单时，远程桌面正常重连也会产生相似日志。
+      en: This is not invisibility. Client control-socket connections or ptrace, new channels or child processes at the destination
+        SSH server, Windows 4778 and 4779, tscon or equivalent management processes, and follow-on actions in the original
+        user's context can all leave joinable traces. Without channel-level capture, ordinary SSH server logs may be insufficient
+        to attribute the true local controller. Without cross-host owner activity and approval records, routine remote desktop
+        reconnection can produce similar events.
+  scope_boundary_definition:
+    paragraphs:
+    - zh: 纳入已有远程会话或已认证传输被另一个主体接管并用于目标控制的链条，攻击者可先拥有本地普通用户权限、管理权限或特定会话连接权，但这些权限本身不是 T1563。T1021 负责攻击者用自己的账户/凭据建立新远程连接；T1550
+        负责代理、令牌、票据或其他材料被用来通过另一次认证；T1210 负责以服务漏洞触发目标控制。单纯复制密钥、访问 SSH_AUTH_SOCK、枚举 RDP 会话或观察 SSH 流不构成会话接管。
+      en: Scope includes a chain in which another principal takes over an existing remote session or authenticated transport
+        and uses it for destination control. The adversary may first hold local user, administrator, or specific session-connect
+        rights, but those rights alone are not T1563. T1021 owns new remote connections made with the attacker's account or
+        credentials; T1550 owns agent, token, ticket, or other material used in another authentication; and T1210 owns destination
+        control triggered by a service vulnerability. Copying a key, accessing SSH_AUTH_SOCK, enumerating RDP sessions, or
+        observing SSH traffic alone does not establish session takeover.
+    - zh: 若接管只让攻击者在其已控制的同一主机上取得更高本地令牌或进程权限，而没有通过另一内部主体或系统会话取得横向控制，应优先归入 TA0004 的权限提升或相关进程上下文技术。若操作先接管远程会话、又因此可控制另一主机/内部资源，两阶段可分别标注；不可将本地
+        SYSTEM 的取得自动等同于横向完成。把管理员正常帮用户恢复桌面排除在恶意分类外，除非有未授权主体与异常结果证据。
+      en: If takeover only gives the adversary a stronger local token or process authority on a host already under their control,
+        without lateral control through another internal principal or system session, TA0004 privilege escalation or the relevant
+        process-context technique is primary. If an operation first takes over a remote session and thereby controls another
+        host or internal resource, the phases can be labeled separately; gaining local SYSTEM is not automatically a lateral
+        outcome. Normal administrator help in restoring a user's desktop remains outside malicious classification absent unauthorized
+        initiator and anomalous result evidence.
+  application_scenarios_and_threat_model:
+    application_scenarios:
+      paragraphs:
+      - zh: 在 SSH 管理跳板上，运维人员已经连到内部系统并保持 ControlMaster 传输；攻击者占有同机身份或可访问控制套接字，尝试在原认证传输上建立新交互通道。另一种场景是攻击者能附着运行中的 SSH 客户端并修改通道请求。两个实现均应以“原连接没有重新认证、目标出现新增控制通道”验证，不能把转发代理为新目标签名的行为混入。
+        en: On an SSH administration jump host, an operator has already connected to an internal system and keeps a ControlMaster
+          transport alive. An adversary controlling a local identity or reaching its control socket attempts a new interactive
+          channel over the original authenticated transport. A second implementation attaches to a running SSH client and
+          changes its channel request. Both implementations require evidence that the original connection was reused without
+          fresh authentication and that a new destination control channel appeared; an agent signing for a new target connection
+          is a different behavior.
+      - zh: 在远程桌面会话主机上，另一个内部用户的会话保持活动或断开但未结束。攻击者先获得能够请求连接该会话的权限，再将它附着到自己的客户端或现有会话，并在原用户桌面中执行后续动作。此场景的核心不是 tscon 二进制本身，而是会话所有者、原客户端与新控制端之间的异常关系；管理员交接、排障和用户本人设备切换是必须排除的正常反例。
+        en: On a Remote Desktop Session Host, another internal user's session remains active or disconnected but not ended.
+          The adversary first obtains authority to request connection to that session, then attaches it to their client or
+          existing session and performs follow-on actions within the original user's desktop. The core is the anomalous relationship
+          among session owner, previous client, and new controller, not the tscon executable itself. Authorized administrator
+          handoff, troubleshooting, and the user's own device change are necessary normal counterexamples.
+    threat_model:
+      attacker_model:
+        paragraphs:
+        - zh: 攻击者须已有能看到或碰到现存会话的一处内部立足点。SSH 通道路径需要对运行中客户端的可附着权限、同身份控制套接字访问或更高权限，以及目标现存可用连接；RDP 路径需要对会话主机的连接权限、所有者口令或能实际调用连接功能的管理权限。攻击者可能知道目标会话
+            ID、socket 路径和会话所属用户，但不能假定任何已登录用户或所有 root/SYSTEM 进程都会给其可用通道。成功还取决于会话未终结、服务端允许附加通道或重连、以及目标用户上下文仍有目标资源权限。
+          en: The adversary needs an internal foothold from which an existing session can be found and reached. The SSH channel
+            path needs permission to attach to the running client, access to a same-identity control socket, or higher authority,
+            plus a usable established connection to the destination. The RDP path needs connect rights on the session host,
+            the owner's password, or administrative authority that actually permits the connection action. The adversary may
+            know a session ID, socket path, and owner, but neither every logged-in user nor every root or SYSTEM process guarantees
+            a usable channel. Success also depends on the session remaining alive, the service allowing another channel or
+            reconnection, and the target user's context retaining the needed resource rights.
+      defender_model:
+        paragraphs:
+        - zh: 防守方假定能分别采集会话初始认证、目标进程/资源行为以及部分会话生命周期事件；Linux 侧可选用经验证的 OpenSSH 通道级埋点和本机 socket/ptrace 观测，Windows 侧可用安全日志 4624、4778、4779、4688
+            及会话主机资产/批准记录。网络加密和常规认证日志不会自动揭示 SSH 新通道的真实发起者，4778 也只证明重连而不证明恶意。主机、账户、会话/连接标识、原/新客户端及时间是核心关联键；缺任一层时按暴露、接管、横向结果分级。
+          en: Assume the defender can separately collect initial session authentication, destination process or resource behavior,
+            and some session-lifecycle events. Linux deployments may add validated OpenSSH channel instrumentation and local
+            socket or ptrace observation; Windows deployments can use Security events 4624, 4778, 4779, and 4688 with session-host
+            inventory and approval records. Network encryption and ordinary authentication logs do not automatically reveal
+            the true initiator of a new SSH channel, while 4778 proves reconnection rather than malice. Host, account, session
+            or connection identity, old and new client, and time are core join keys. Missing layers require separate exposure,
+            takeover, and lateral-result grades.
+  stealth_mechanisms:
+  - mechanism_ref: NM-ST
+    role: primary
+    summary:
+      zh: 将新控制通道压入既有认证传输
+      en: Place a new control channel inside an established authenticated transport
+    analysis:
+      paragraphs:
+      - zh: 攻击者若访问已有 SSH 控制套接字或附着运行中客户端，请求目标服务端在同一认证传输上增设通道。新命令不需要新 TCP 连接和完整认证流程，目标网络视角保留原用户来源，时间上新增的控制动作与合法连接寿命重叠，降低只看连接/登录计数的检测机会。残余证据是本机
+          socket 或 ptrace 活动、传输上的通道增加、目标端新的 shell/命令进程及后续资源动作；OpenSSH 技术规范与 iSSHD 研究支持机制，公开事件并未证明其在特定入侵中实际发生。
+        en: If an adversary reaches an existing SSH control socket or attaches to a running client, they can ask the destination
+          server to add a channel on the same authenticated transport. The new command needs neither a new TCP connection
+          nor a full authentication sequence, leaving the original user's origin at the destination network boundary and overlapping
+          the new control action with a legitimate connection's lifetime. This weakens detection based only on connection
+          and logon counts. Residual evidence comprises local socket or ptrace activity, a new transport channel, a new shell
+          or command process at the destination, and subsequent resource action. OpenSSH specifications and iSSHD research
+          support the mechanism; public incident evidence here does not establish its occurrence in a particular intrusion.
+    evidence_keys:
+    - B8B-T1563-REF-OPENSSH-CONFIG
+    - B8B-T1563-REF-OPENSSH-MUX
+    - B8B-T1563-REF-ISSHD
+    - REF-000370
+    confidence: medium
+  - mechanism_ref: NM-FD
+    role: secondary
+    summary:
+      zh: 用既有用户桌面承接新控制端
+      en: Attach a new controller to an existing user desktop
+    analysis:
+      paragraphs:
+      - zh: 在有连接权限的前提下，攻击者将既有远程桌面会话接到另一客户端/会话；用户桌面、登录 ID 与许多已有进程仍是原状态，后续操作表面继续属于原账户，因此仅按账户或新登录建立告警会丢失控制者变化。残余差异包括原客户端断开与新客户端重连，或原客户端继续在线时新增控制端、会话名或
+          LogonID 的连续性、连接操作发起进程及其权限、还有原用户上下文中的异常后续行为。Microsoft 文档证明重连、影子控制及相应权限，但无权推导所有实现均免口令、免提示或恶意。
+        en: Given connect authority, an adversary attaches an existing remote desktop session to another client or session.
+          The desktop, logon ID, and many existing processes remain associated with the original user, so alerts keyed only
+          to account name or a new logon can miss the controller change. Residual differences include the prior client disconnecting
+          and a new client reconnecting, or an additional controller joining while the prior client remains, continuity in
+          session name or LogonID, the connecting process and its authority, and anomalous follow-on actions in the original
+          user's context. Microsoft documentation establishes reconnect, shadow control, and their rights, but does not justify
+          claiming that every implementation bypasses passwords or prompts or is malicious.
+    evidence_keys:
+    - B8B-T1563-REF-TSCON
+    - B8B-T1563-REF-SHADOW
+    - B8B-T1563-REF-RDP-POC
+    - B8B-T1563-REF-MAZE
+    - B8B-T1563-REF-CROWDSTRIKE-OVERWATCH
+    - B8B-T1563-REF-4778
+    - B8B-T1563-REF-4779
+    - B8B-T1563-REF-4688
+    confidence: medium
+  subtechnique_taxonomy:
+    coverage: established
+    narrative:
+      paragraphs:
+      - zh: 建议两个 Niji 原生子项，分别以攻击者改变“已认证传输内的通道控制者”和“现有交互会话所附着的客户端/操作者”为变量。前者使新动作藏于旧连接且要求通道级相关；后者使旧桌面的控制端迁移或并存，分别要求重连/来源或影子请求/策略相关。二者按被改写的会话关系、残余痕迹和防守数据划界；SSH
+          与 RDP 只是现有证据最清楚的实现，不作为 NJS 名称或成员条件。会话持续时长、代理转发和凭据类型尚不足以成为第三子项。
+        en: 'Two Niji-native children are proposed: one changes who controls a channel within an authenticated transport,
+          and the other changes the client or operator attached to an existing interactive session. The first places new action
+          inside an old connection and needs channel-level correlation; the second transfers or adds a controller to an old
+          desktop and needs reconnect or origin correlation for transfer and shadow request or policy correlation for co-control.
+          Their boundaries follow the modified session relationship, residual traces, and defender data; SSH and RDP are merely
+          the clearest implementations in the available evidence, not NJS names or membership rules. Session lifetime, agent
+          forwarding, and credential type do not yet warrant a third child.'
+proposed_subtechniques:
+- key: B8B-T1563-NJS-CHANNEL
+  name:
+    zh: 既有认证传输的控制通道增附
+    en: Control-Channel Addition to an Existing Authenticated Transport
+  summary:
+    zh: 攻击者借用另一主体保留的认证传输增加控制通道，使新操作沿原连接到达内部目标。
+    en: An adversary adds a control channel to another principal's retained authenticated transport, carrying new operations
+      to an internal target on the original connection.
+  stable_stealth_variable:
+    zh: 新控制通道的发起者与原认证传输建立者分离，网络连接和认证来源保持连续。
+    en: The new channel initiator differs from the authenticated transport's creator while network and authentication origin
+      remain continuous.
+  definition_and_concept:
+    paragraphs:
+    - zh: 既有认证传输的控制通道增附是攻击者在他人仍可用的远程服务连接内创建新的交互或命令通道，目标系统将它作为原连接的扩展承接。OpenSSH 控制套接字与运行中客户端的进程附着分别展示了不借助新目标认证而增设 SSH 通道的实现路径；本子项由传输/通道关系定义，不以
+        SSH 协议名称定义。
+      en: Control-Channel Addition to an Existing Authenticated Transport creates a new interactive or command channel inside
+        another principal's still-usable remote-service connection, which the destination accepts as an extension of that
+        connection. OpenSSH control sockets and attachment to a running client show two ways to add an SSH channel without
+        fresh destination authentication. The child is defined by transport and channel relationships, not the SSH protocol
+        name.
+  stealth_characteristics:
+    paragraphs:
+    - zh: 既有认证传输的控制通道增附使目标看到的网络五元组和原登录身份不变，目标新进程可能仍记在原账户下。真正变化是本地另一个进程访问控制套接字或附着 SSH 客户端，以及服务端同一传输上多出通道；必须保存原连接与新通道的时间、来源和进程关联。
+      en: Control-Channel Addition to an Existing Authenticated Transport leaves the network tuple and original logon identity
+        unchanged at the target, and new destination processes may be recorded under the original account. The changed evidence
+        is another local process reaching a control socket or attaching to an SSH client and a further channel on the same
+        server transport. Original-connection and new-channel time, origin, and process relationships must be retained.
+  scope_boundary_definition:
+    paragraphs:
+    - zh: 只有证明新通道沿先前他人建立的认证传输到达目标并产生可控行为，才把本子项标为完成。由 SSH agent 签名后另建 TCP 连接、新登录、ProxyJump、或转发端口上另起认证都应按实际连接/认证行为处理。合法 ControlMaster
+        共享和同一用户多终端是正常反例，缺控制者差异证据时只报告暴露。
+      en: Completion requires proof that the new channel reached and controlled the target over an authenticated transport
+        earlier established by someone else. A new TCP connection signed by ssh-agent, a fresh logon, ProxyJump, or separately
+        authenticated use of a forwarded port follows its actual connection or authentication behavior. Authorized ControlMaster
+        sharing and one user's multiple terminals are ordinary counterexamples; absent controller divergence, report exposure
+        only.
+  application_scenarios_and_threat_model:
+    application_scenarios:
+      paragraphs:
+      - zh: 管理员在跳板上保持到内部服务器的长连接，攻击者控制同机进程并可访问其控制套接字；另一实现是攻击者能附着正在运行的 SSH 客户端。原传输未结束且服务端允许附加通道时，目标可接受新的 shell 或命令，原管理员交互也可继续。
+        en: An administrator maintains a connection from a jump host to an internal server while an adversary controls a local
+          process able to reach its control socket; another implementation attaches to the running SSH client. If the transport
+          remains alive and the server permits an additional channel, the target can accept a new shell or command while the
+          administrator's interaction continues.
+    threat_model:
+      attacker_model:
+        paragraphs:
+        - zh: 攻击者须定位特定连接及其进程或 Unix 控制套接字，并具备对应本地访问/调试权限；同机普通账户不保证跨用户 socket 权限。MaxSessions、连接结束、Yama 或隔离环境可阻断路径，可见 PID 不等于可操纵通道。
+          en: The adversary must identify the connection and its process or Unix control socket and hold matching local access
+            or debug rights; an ordinary account on the same host does not imply cross-user socket access. MaxSessions, connection
+            closure, Yama, or isolation can block the path, and a visible PID does not imply channel control.
+      defender_model:
+        paragraphs:
+        - zh: 防守方需在源跳板捕获 socket 访问、进程身份及 ptrace，在目标将认证传输与通道/会话生成、子进程和资源动作连接。普通 sshd 日志和网络流只提供部分视野；没有通道级埋点时不能可靠识别真实本地发起者。
+          en: The defender needs source-jump-host socket access, process identity, and ptrace records, and destination joins
+            among authenticated transport, channel or session creation, child processes, and resource actions. Ordinary sshd
+            logs and network flows give only partial visibility; without channel instrumentation the true local initiator
+            cannot be identified reliably.
+  stealth_mechanisms:
+  - mechanism_ref: NM-ST
+    role: primary
+    summary:
+      zh: 新通道复用旧连接痕迹
+      en: Reuse an old connection's trace for a new channel
+    analysis:
+      paragraphs:
+      - zh: 新增 shell/命令通道嵌入既有 SSH 连接，网络端无新连接且认证端无完整新认证，目标端主要增加同身份进程。连接复用弱化仅看连接/登录的检测；本机 socket 或 ptrace、新 channel ID 与目标子进程仍可揭露。若客户端回退到新连接，此机理不成立。
+        en: A new shell or command channel is embedded in an existing SSH connection, leaving no new network connection or
+          full authentication and mainly adding same-identity processes at the target. Reuse weakens connection- or logon-only
+          detection; local socket or ptrace access, a new channel ID, and destination child processes remain. If the client
+          falls back to a new connection, this mechanism does not apply.
+    evidence_keys:
+    - B8B-T1563-REF-OPENSSH-CONFIG
+    - B8B-T1563-REF-OPENSSH-MUX
+    - B8B-T1563-REF-ISSHD
+    - REF-000370
+    confidence: medium
+  evidence_keys:
+  - B8B-T1563-REF-OPENSSH-CONFIG
+  - B8B-T1563-REF-OPENSSH-MUX
+  - B8B-T1563-REF-ISSHD
+  - REF-000370
+  defense_keys:
+  - B8B-T1563-DET-SESSION-CONTROLLER
+  - B8B-T1563-NJA-SSH-CHANNEL
+  - B8B-T1563-MIT-SESSION-OWNERSHIP
+  lineage:
+    attck_subtechnique_inherited: false
+- key: B8B-T1563-NJS-ATTACH
+  name:
+    zh: 既有交互会话的控制端重绑定
+    en: Controller Rebinding on an Existing Interactive Session
+  summary:
+    zh: 攻击者将他人未结束的交互会话接到新客户端，后续动作沿原用户桌面和登录上下文进行。
+    en: An adversary attaches another principal's unended interactive session to a new client, allowing later actions in the
+      original user's desktop and logon context.
+  stable_stealth_variable:
+    zh: 会话和登录主体保持，附着客户端与实际控制者改变。
+    en: The session and logged-on principal persist while the attached client and actual controller change.
+  definition_and_concept:
+    paragraphs:
+    - zh: 既有交互会话的控制端重绑定是攻击者使已由其他内部主体创建的远程交互桌面由新端独占或并行控制，从而利用原会话的用户环境与资源权利。tscon 可迁移连接并留下重连/断开证据，RDS shadow 则可在原客户端继续在线时增加控制者；两者改变的是交互会话的控制端集合，不以
+        RDP 子技术名或某个二进制划界。
+      en: Controller Rebinding on an Existing Interactive Session allows an adversary to take exclusive or parallel control
+        of an interactive desktop created by another internal principal, using its user environment and resource rights. tscon
+        can move the attachment and leave reconnect or disconnect evidence, while RDS shadow can add a controller with the
+        original client still present. Both change the controller set of the same interactive session rather than following
+        an ATT&CK protocol child or one executable.
+  stealth_characteristics:
+    paragraphs:
+    - zh: 既有交互会话的控制端重绑定保留原用户桌面及进程，单看账户或新目标登录可能看不到控制者变化。独占迁移的差异是相同 LogonID/会话名下的客户端地址转换和 4778/4779；并行影子控制的差异是远程控制请求、授权/同意策略和新控制进程，而原客户端可能不变。两者均需把发起者与原用户及后续资源动作相连；正常重连或获批远程支持是反例。
+      en: Controller Rebinding on an Existing Interactive Session preserves the original desktop and processes, so the account
+        or new-logon view may miss the controller change. Exclusive transfer can change client address under the same LogonID
+        or session name with 4778 and 4779 traces. Parallel shadow control instead produces remote-control request, permission
+        or consent-policy, and controller-process traces while the original client may remain unchanged. Both need initiator-to-owner
+        and downstream action joins; routine reconnection and approved remote support are counterexamples.
+  scope_boundary_definition:
+    paragraphs:
+    - zh: 纳入另一主体原有会话被未授权者迁移或并行控制并产生目标结果的事件。断开状态、会话枚举、用户用自己的口令恢复会话及获批远程协助均不足以成立。取得 SYSTEM 是前提，若仅有同机更高权限而无跨主体或远程资源结果，归 TA0004；另建独立桌面归
+        T1021，盗取令牌另建会话归 T1550。
+      en: Scope requires unauthorized exclusive or parallel control of another principal's existing interactive session and
+        a destination result. Disconnection, enumeration, self-reconnection with the owner's password, and approved remote
+        assistance are insufficient. SYSTEM can be a prerequisite, but same-host privilege alone without cross-principal or
+        remote-resource outcome belongs to TA0004. A separately created desktop belongs to T1021 and a new session from a
+        stolen token to T1550.
+  application_scenarios_and_threat_model:
+    application_scenarios:
+      paragraphs:
+      - zh: 会话主机保留另一管理员的断开或活动桌面，攻击者控制本机服务或另一会话并获得连接或影子控制权限。tscon 路径可迁移原桌面并断开旧端；shadow 路径可与旧端并存，若策略关闭同意提示则用户不一定获知，具体结果须以会话操作确认。
+        en: A session host retains another administrator's disconnected or active desktop while the adversary controls a service
+          or another session with connect or shadow-control rights. A tscon path can move the desktop and disconnect the previous
+          client; a shadow path can coexist with that client and, where consent is disabled, may not alert the user. The result
+          needs confirmation from the session operation.
+    threat_model:
+      attacker_model:
+        paragraphs:
+        - zh: 攻击者须识别未终结的目标会话及有效管理路径。迁移需要 Connect/Full Control 或所有者口令；影子控制需要 Remote Control/Full Control 权限，是否提示取决于 RDS 策略。会话注销、权限限制、用户同意要求或资源重新认证可阻断或暴露控制。
+          en: The adversary must identify an unended session and a working management path. Exclusive transfer needs Connect
+            or Full Control rights or the owner's password; shadow control needs Remote Control or Full Control rights, and
+            prompting depends on RDS policy. Logoff, restricted rights, user-consent requirements, or resource reauthentication
+            can block or reveal control.
+      defender_model:
+        paragraphs:
+        - zh: 防守方对迁移路径关联原 4624 Type 10、4778/4779、4688 与客户端资产；对影子路径另采集 shadow/control 请求、同意策略及 mstsc/等效进程，并验证会话控制结果。原用户身份与审批工单可解释合法支持；不能假定
+            shadow 总有 4778/4779，也不能只看二进制名称。
+          en: For exclusive transfer, the defender joins original 4624 type-10, 4778 or 4779, 4688, and client asset. For
+            shadow control, collect shadow or control requests, consent policy, and mstsc or equivalent process activity and
+            verify the session-control result. Original-owner identity and support tickets explain legitimate help; shadowing
+            must not be assumed to emit 4778 or 4779, and an image name alone is not decisive.
+  stealth_mechanisms:
+  - mechanism_ref: NM-FD
+    role: primary
+    summary:
+      zh: 原用户桌面掩盖控制端变化
+      en: Let the original desktop mask a changed controller
+    analysis:
+      paragraphs:
+      - zh: 控制端迁移或并存使新操作者使用原桌面与用户上下文，后续资源访问可保留原账户身份，降低陌生登录筛查敏感度。迁移留下断开/重连，影子控制留下控制请求、策略与进程；异常后继动作仍可揭露。免提示只在相应权限/策略下成立。
+        en: Exclusive transfer or parallel shadowing gives a new operator control in the original desktop and user context,
+          preserving account identity for later resource access and weakening unfamiliar-logon screening. Transfer leaves
+          disconnect or reconnect traces; shadowing leaves control request, policy, and process traces. Abnormal downstream
+          actions can reveal either. Promptless behavior requires the corresponding rights and policy.
+    evidence_keys:
+    - B8B-T1563-REF-TSCON
+    - B8B-T1563-REF-SHADOW
+    - B8B-T1563-REF-RDP-POC
+    - B8B-T1563-REF-MAZE
+    - B8B-T1563-REF-CROWDSTRIKE-OVERWATCH
+    - B8B-T1563-REF-4778
+    - B8B-T1563-REF-4779
+    - B8B-T1563-REF-4688
+    confidence: medium
+  evidence_keys:
+  - B8B-T1563-REF-TSCON
+  - B8B-T1563-REF-SHADOW
+  - B8B-T1563-REF-RDP-POC
+  - B8B-T1563-REF-MAZE
+  - B8B-T1563-REF-CROWDSTRIKE-OVERWATCH
+  - B8B-T1563-REF-4778
+  - B8B-T1563-REF-4779
+  - B8B-T1563-REF-4688
+  defense_keys:
+  - B8B-T1563-DET-SESSION-CONTROLLER
+  - B8B-T1563-NJA-RDP-ATTACH
+  - B8B-T1563-NJA-RDP-SHADOW
+  - B8B-T1563-MIT-SESSION-OWNERSHIP
+  lineage:
+    attck_subtechnique_inherited: false
+defense_candidates:
+  detection_strategies:
+  - key: B8B-T1563-DET-SESSION-CONTROLLER
+    name:
+      zh: 既有远程会话的控制者交接关联
+      en: Controller Handoff Correlation for Existing Remote Sessions
+    objective:
+      zh: 对同一已认证传输的新通道或同一交互会话的新附着端，比较原会话所有者、后来的发起者和目标结果，识别未经授权的控制者交接。
+      en: Compare original owner, later initiator, and destination result for a new channel on an authenticated transport
+        or a replacement or co-controller on an interactive session to identify unauthorized controller handoff.
+    covered_subjects:
+    - parent
+    - B8B-T1563-NJS-CHANNEL
+    - B8B-T1563-NJS-ATTACH
+    analytic_keys:
+    - B8B-T1563-NJA-SSH-CHANNEL
+    - B8B-T1563-NJA-RDP-ATTACH
+    - B8B-T1563-NJA-RDP-SHADOW
+    reuse_decision: create
+    distinction_from_existing:
+      zh: DET-000094/NJA-000071 处理网关 token/session 重放与新远程入口，不持有 SSH 通道身份和 Windows 原 LogonID 的客户端重附着证据；须新建本策略，避免把同名“session”误作同一检测目标。
+      en: DET-000094/NJA-000071 address gateway token or session replay and new remote entry, not SSH channel identity and
+        Windows client reattachment to an original LogonID. Create a distinct strategy despite the shared word session.
+  detection_analytics:
+  - key: B8B-T1563-NJA-SSH-CHANNEL
+    name:
+      zh: SSH 原连接—新通道—本地控制者差分
+      en: SSH Original Connection to New Channel and Local Controller Differential
+    platforms:
+    - Linux
+    - macOS
+    logic:
+      zh: 在可部署通道埋点的跳板与目标对上，先记录 sshd 初始认证所建连接的 connection_id、账户、源地址、建立时间和通道集合。在同一 connection_id 后续创建 shell/exec 通道时，查询跳板近两分钟内的
+        ControlPath Unix socket 客户端进程或对原 ssh 客户端的 ptrace/调试事件，把进程 uid、启动谱系、socket owner 与原 SSH 客户端进程比较；再核对目标新通道关联的 shell/exec
+        进程和高风险内部资源动作。若新发起进程与原管理员操作链不符且无批准的复用关系，输出控制者交接候选；只有目标结果相连才升级为横向成功。通道数量增加但无可识别本地异常或仅无新认证，保持低置信调查信号。
+      en: On jump-host and destination pairs with validated channel instrumentation, first retain the sshd connection_id,
+        account, source address, creation time, and channel set established at initial authentication. When a later shell
+        or exec channel appears on the same connection_id, search a two-minute jump-host window for a ControlPath Unix-socket
+        client process or ptrace/debug access to the original ssh client and compare process UID, start lineage, socket owner,
+        and original SSH client. Then join the destination channel to its shell or exec process and high-risk internal resource
+        actions. Emit a controller-handoff candidate when the new initiator diverges from the administrator's approved process
+        lineage without an authorized sharing relation; upgrade to lateral success only with a linked destination result.
+        Channel count growth without a local anomalous initiator, or simply missing new authentication, remains a low-confidence
+        lead.
+    data_requirements:
+    - source_type: instrumented-openssh-connection-channel
+      channel: validated_ssh_server_channel_telemetry
+      required_fields:
+      - timestamp
+      - destination_host
+      - connection_id
+      - channel_id
+      - channel_type
+      - account
+      - source_ip
+      - authentication_time
+      - channel_open_time
+    - source_type: jump-host-unix-socket-and-debug-access
+      channel: validated_endpoint_or_kernel_sensor
+      required_fields:
+      - timestamp
+      - jump_host
+      - source_process_id
+      - source_process_start_time
+      - source_uid
+      - target_process_id
+      - socket_path
+      - socket_owner_uid
+      - operation
+      - result
+    - source_type: destination-process-lineage
+      channel: endpoint_process_telemetry
+      required_fields:
+      - timestamp
+      - destination_host
+      - process_id
+      - parent_process_id
+      - account
+      - session_or_channel_id
+      - executable
+      - command_line
+    - source_type: approved-ssh-sharing-inventory
+      channel: null
+      required_fields:
+      - approval_id
+      - jump_host
+      - destination_host
+      - account
+      - allowed_process_or_role
+      - control_path
+      - valid_from
+      - valid_to
+    observables:
+    - zh: 旧认证连接上出现新的 shell/exec channel，跳板同时有非原客户端谱系的进程访问其控制套接字或客户端进程。
+      en: A new shell or exec channel appears on an old authenticated connection while a jump-host process outside the original
+        client lineage accesses its control socket or process.
+    - zh: 目标 SSH 会话以原账户产生新命令或资源访问，但无对应的新目标认证且本地发起进程与原所有者不符。
+      en: A destination SSH session runs a new command or resource action as the original account without new destination
+        authentication, while the local initiator diverges from the owner.
+    correlation_window:
+      zh: 本地访问到新通道默认两分钟，连接建立到后继通道按实际传输寿命追踪，最多二十四小时并按环境调优。
+      en: Default two minutes from local access to new channel; track original connection through its actual transport lifetime,
+        capped at twenty-four hours and tuned to the environment.
+    dimensions:
+    - jump_host
+    - destination_host
+    - connection_id
+    - channel_id
+    - account
+    - original_client_process
+    - new_initiator_process
+    - socket_path
+    - approval_id
+    false_positives:
+    - authorized_ControlMaster_multiplexing
+    - same_user_multiple_terminals
+    - backup_or_deployment_over_ssh
+    - authorized_debugging
+    blind_spots:
+    - no_channel_level_instrumentation
+    - no_control_socket_or_ptrace_telemetry
+    - host_clock_skew
+    - compromised_jumphost_sensor
+    - process_attachment_without_visible_socket
+    tuning:
+      zh: 先在受管跳板试点标定每个 sshd 版本能稳定输出的连接/通道标识；不能取得 channel_id 时不声称精确归因。批准复用只按具体账户、跳板、目标、控制路径、进程角色和有效期允许，不永久放行所有 ssh。将正常调试器和自动化映射到工单；对
+        root 跨用户附着和目标高权限命令提升优先级，但仍要求控制者差异和实际目标结果。
+      en: Pilot each managed jump-host and sshd version to validate stable connection and channel identifiers; do not claim
+        exact attribution without a channel ID. Allow approved sharing only for a specific account, jump host, target, control
+        path, process role, and validity period, not all ssh activity. Map legitimate debugging and automation to tickets.
+        Prioritize root cross-user attachment and sensitive destination commands while still requiring controller divergence
+        and an actual destination result.
+    evidence_keys:
+    - B8B-T1563-REF-OPENSSH-CONFIG
+    - B8B-T1563-REF-OPENSSH-MUX
+    - B8B-T1563-REF-ISSHD
+    - REF-000370
+  - key: B8B-T1563-NJA-RDP-ATTACH
+    name:
+      zh: RDS 原登录—客户端重附着—操作发起者关联
+      en: RDS Original Logon to Client Reattachment and Initiator Correlation
+    platforms:
+    - Windows
+    logic:
+      zh: 在每台 RDS 会话主机按 host 与 LogonID 将原 4624 Type 10 的用户和来源、4779 断开及后来的 4778 重连连接，比较 ClientName/ClientAddress 和会话名。以 4778
+        前后两分钟的 4688 进程创建寻找 tscon 或经批准的会话管理程序，并把创建者 LogonID、进程谱系及权限与原会话用户区分；同一目标会话随后十分钟的敏感进程或资源动作提供结果门。若重附着来源是不同资产/操作者、发起者非原用户且无有效支持工单或本人设备迁移，输出待调查交接；仅
+        4778 或无新 4624 不能定为劫持。原 4624 不在保留期时只报告来源异常而不作精确原所有者结论。
+      en: On each RDS session host, join the original 4624 type-10 user and origin, a 4779 disconnect, and later 4778 reconnect
+        by host and LogonID, comparing ClientName, ClientAddress, and session name. Search a two-minute window around 4778
+        for 4688 creation of tscon or an approved session manager, and separate its creator LogonID, process lineage, and
+        rights from the original session owner. Sensitive process or resource actions within ten minutes of the same destination
+        session provide the result gate. A different source asset or operator, non-owner initiator, and no valid support ticket
+        or owner device migration produce a reviewable handoff. Neither 4778 alone nor absence of new 4624 establishes hijacking.
+        If the original 4624 aged out, report an origin anomaly without claiming exact original ownership.
+    data_requirements:
+    - source_type: windows-rds-session-transition
+      channel: Security/4778_4779
+      required_fields:
+      - TimeCreated
+      - Computer
+      - EventID
+      - AccountName
+      - AccountDomain
+      - LogonID
+      - SessionName
+      - ClientName
+      - ClientAddress
+    - source_type: windows-remote-interactive-logon
+      channel: Security/4624
+      required_fields:
+      - TimeCreated
+      - Computer
+      - TargetLogonId
+      - TargetUserName
+      - LogonType
+      - IpAddress
+      - WorkstationName
+    - source_type: windows-process-creation
+      channel: Security/4688_with_command_line_enabled
+      required_fields:
+      - TimeCreated
+      - Computer
+      - SubjectLogonId
+      - NewProcessId
+      - NewProcessName
+      - CreatorProcessId
+      - ProcessCommandLine
+    - source_type: rds-approval-and-asset-context
+      channel: null
+      required_fields:
+      - approval_id
+      - session_owner
+      - support_operator
+      - source_device
+      - destination_host
+      - valid_from
+      - valid_to
+    observables:
+    - zh: 同一 LogonID 的 4779 后出现来自不同客户端的 4778，而会话主机上另一个主体启动了连接操作。
+      en: A 4778 from a different client follows 4779 for the same LogonID while another principal launches a connect operation
+        on the session host.
+    - zh: 被重附着的原用户会话随后执行与历史职责不符的命令或访问新的内部资源。
+      en: The reattached original-user session subsequently runs commands or accesses internal resources inconsistent with
+        its role.
+    correlation_window:
+      zh: 原登录按 LogonID 保留至会话结束；连接进程到 4778 默认两分钟，重附着到敏感结果十分钟，按排障流程调优。
+      en: Retain the original logon by LogonID until session end; use two minutes from connect process to 4778 and ten minutes
+        from reattachment to sensitive result, tuned to support workflows.
+    dimensions:
+    - session_host
+    - logon_id
+    - session_name
+    - session_owner
+    - prior_client
+    - new_client
+    - initiating_process
+    - initiating_principal
+    - approval_id
+    false_positives:
+    - user_reconnect_after_network_loss
+    - owner_switching_devices
+    - approved_helpdesk_session_takeover
+    - authorized_administrator_handoff
+    - Hyper_V_enhanced_session_or_fast_user_switching
+    blind_spots:
+    - 4778_4779_audit_disabled
+    - 4688_command_line_disabled
+    - non_tscon_API_or_service_path
+    - original_4624_expired
+    - NAT_or_gateway_hides_client
+    - compromised_session_host_logs
+    tuning:
+      zh: 将已批准接管限定具体工单、操作者、会话所有者、主机和时段；不能仅因 tscon 为签名系统程序或客户端为内网地址而放行。区分 RDP-Tcp 会话与 Console/Hyper-V 增强会话，按来源资产的真实所有者而非 IP
+        独断；网络断线引起的自动重连和正常班次移交应降级，后继高风险资源结果升高置信度。
+      en: Bind approved takeovers to a ticket, operator, session owner, host, and time window; do not allowlist a signed tscon
+        image or internal client address alone. Separate RDP-Tcp from Console and Hyper-V enhanced sessions, and resolve source
+        asset ownership rather than judging IP alone. Lower confidence for automatic reconnection after network loss and normal
+        shift handoff, while a high-risk downstream resource result raises it.
+    evidence_keys:
+    - B8B-T1563-REF-TSCON
+    - B8B-T1563-REF-4778
+    - B8B-T1563-REF-4779
+    - B8B-T1563-REF-4624
+    - B8B-T1563-REF-4688
+  - key: B8B-T1563-NJA-RDP-SHADOW
+    name:
+      zh: RDS 影子控制策略—请求—结果链
+      en: RDS Shadow-Control Policy, Request, and Outcome Chain
+    platforms:
+    - Windows
+    logic:
+      zh: 在 RDS 会话主机记录每个活动会话的所有者、SessionID 和控制权限/同意策略。以进程创建事件识别 mstsc 或其他远程控制客户端的 shadow/control 请求，将发起账户、主机、目标 SessionID、控制而非仅查看模式与当时的
+        Shadow 策略快照相连。若经本环境验证的 RDS 远程控制操作日志或传感器报告请求成功，且发起者不同于原用户、未获批并随后出现原会话中的目标资源动作，则报告成功的控制端并存；只有命令行或策略变更时报告尝试或风险，不把它当成功。原用户继续在线的情形不能强制要求
+        4779/4778。
+      en: Record each active RDS session's owner, SessionID, control rights, and consent policy on the host. Identify mstsc
+        or another remote-control client's shadow and control request from process-creation telemetry, then join initiator
+        account, source host, target SessionID, control rather than view-only mode, and the contemporaneous Shadow policy
+        snapshot. If an environment-validated RDS remote-control operation log or sensor confirms acceptance, the initiator
+        differs from the original user, no approval exists, and a destination-resource action follows in the original session,
+        report successful parallel control. Command line or policy change alone is an attempt or exposure. Do not require
+        4779 or 4778 when the original user remains connected.
+    data_requirements:
+    - source_type: windows-process-creation
+      channel: Security/4688_with_command_line_enabled
+      required_fields:
+      - TimeCreated
+      - Computer
+      - SubjectLogonId
+      - NewProcessId
+      - NewProcessName
+      - CreatorProcessId
+      - ProcessCommandLine
+    - source_type: rds-session-control-operation
+      channel: validated_TerminalServices_RemoteConnectionManager_or_endpoint_sensor
+      required_fields:
+      - timestamp
+      - session_host
+      - target_session_id
+      - target_session_owner
+      - controller_account
+      - controller_host
+      - operation
+      - result
+    - source_type: rds-shadow-policy-state
+      channel: group_policy_or_registry_inventory
+      required_fields:
+      - timestamp
+      - session_host
+      - Shadow_policy_value
+      - policy_source
+      - last_change_actor
+    - source_type: rds-approval-and-asset-context
+      channel: null
+      required_fields:
+      - approval_id
+      - session_owner
+      - support_operator
+      - source_device
+      - destination_host
+      - valid_from
+      - valid_to
+    observables:
+    - zh: 未获批的管理主体把影子策略改为无需用户同意，随后向另一用户活动 SessionID 发出控制请求。
+      en: An unapproved administrator changes shadow policy to omit consent and then requests control of another user's active
+        SessionID.
+    - zh: 经会话主机确认的影子控制成功后，原用户仍在线，而同一会话产生不合职责的资源动作。
+      en: After the session host confirms successful shadow control, the original user remains present while the same session
+        performs resource actions inconsistent with the owner's role.
+    correlation_window:
+      zh: 策略变化到影子请求追踪二十四小时，进程请求到会话操作默认两分钟，成功控制到后续资源动作十分钟。
+      en: Track policy change to shadow request for twenty-four hours, process request to session operation for two minutes,
+        and successful control to downstream resource action for ten minutes.
+    dimensions:
+    - session_host
+    - target_session_id
+    - target_session_owner
+    - controller_account
+    - controller_host
+    - Shadow_policy_value
+    - operation_result
+    - approval_id
+    false_positives:
+    - approved_helpdesk_shadowing
+    - instructor_or_training_session
+    - emergency_response_with_retrospective_approval
+    - policy_administration
+    blind_spots:
+    - no_validated_shadow_success_event
+    - 4688_command_line_disabled
+    - API_based_shadow_request
+    - compromised_session_host_logs
+    - shared_support_account
+    tuning:
+      zh: 先在实际 Windows/RDS 版本上验证 RemoteConnectionManager 或 EDR 何种事件明确表示 shadow 接受，不能仅按固定事件号照搬。允许规则绑定工单、支持人员、会话所有者、主机、控制/查看模式、同意要求和期限；不因管理工具签名或影子策略长期存在而忽略新请求。对仅改变策略或被阻断请求保留
+        attempt 标签，对成功且有目标结果的活动单独升级。
+      en: First validate on the actual Windows and RDS version which RemoteConnectionManager or EDR event conclusively means
+        shadow acceptance; do not transplant a fixed event ID without testing. Bind allowances to ticket, support operator,
+        session owner, host, control versus view mode, consent requirement, and expiry. Do not ignore a new request because
+        the tool is signed or the policy is longstanding. Preserve attempt for policy-only or blocked requests and separately
+        upgrade accepted control with a destination result.
+    evidence_keys:
+    - B8B-T1563-REF-CROWDSTRIKE-OVERWATCH
+    - B8B-T1563-REF-SHADOW
+    - B8B-T1563-REF-MSTSC
+    - B8B-T1563-REF-SHADOW-POLICY
+    - B8B-T1563-REF-4688
+  mitigations:
+  - key: B8B-T1563-MIT-SESSION-OWNERSHIP
+    name:
+      zh: 远程会话附着权限与寿命治理
+      en: Remote Session Attachment Rights and Lifetime Governance
+    reuse_decision: create
+    measures:
+    - key: controlled-ssh-channel-sharing
+      control_type: preventive
+      description:
+        zh: 在敏感跳板默认关闭不必要的 ControlMaster，确需共享时把 ControlPath 放入仅会话所有者可写的目录并要求确认；目标 sshd 经兼容验证对不需要并发 shell 的角色设 MaxSessions 1，防止同一传输新增
+          shell/exec 通道。
+        en: Disable unnecessary ControlMaster use on sensitive jump hosts; where sharing is required, place ControlPath in
+          an owner-only writable directory and require confirmation. After compatibility validation, set target sshd MaxSessions
+          to 1 for roles that do not need concurrent shells, blocking additional shell or exec channels on a transport.
+    - key: least-rds-connect-rights
+      control_type: preventive
+      description:
+        zh: 按支持职责限制 RDS 会话的 Full Control/Connect 权限与能发起连接的管理路径，保留跨用户口令或审批要求；按业务所需设置断开会话结束时限，避免长期悬置但避免强制断开造成数据丢失。
+        en: Limit RDS Full Control and Connect rights and session-management paths by support role, retain cross-user password
+          or approval requirements, and set disconnected-session termination periods to business need without forcing data
+          loss.
+    - key: controlled-rds-shadowing
+      control_type: preventive
+      description:
+        zh: 默认禁止无业务需要的跨用户远程控制；需支持时只对指定角色授予 Remote Control/Full Control，并保留用户同意提示，任何免同意例外须绑定高风险资产、审批和期限。
+        en: Disable unnecessary cross-user remote control by default; where support needs it, grant Remote Control or Full
+          Control only to named roles and retain user consent. Bind any no-consent exception to high-risk assets, approval,
+          and expiry.
+    - key: session-ownership-evidence
+      control_type: detective-support
+      description:
+        zh: 在高价值跳板保全 socket/ptrace 与目标通道谱系，在 RDS 主机启用 Other Logon/Logoff 与进程创建及命令行审计，并独立保留原会话所有者、附着端和授权工单。
+        en: Preserve socket or ptrace and destination-channel lineage on high-value jump hosts, enable Other Logon/Logoff
+          and process creation with command-line audit on RDS hosts, and independently retain original session owner, attached
+          client, and authorization ticket.
+    applications:
+    - target: parent
+      use:
+        zh: 对所有高价值远程会话标定原所有者、可附着主体、过期时间及批准接管流程，并采集会话交接后的目标资源结果。
+        en: Identify original owner, eligible attaching principals, expiry, and approved handoff for high-value remote sessions,
+          and collect destination-resource results after a handoff.
+      expected_effect:
+        zh: 缩短可利用会话窗口并使无授权控制端变化可追溯。
+        en: Reduce the usable session window and make unauthorized controller changes traceable.
+      limitations:
+        zh: 对已经拥有合规附着权限的恶意管理员只能提高审计与响应能力，不能宣称必然阻断。
+        en: A malicious administrator with authorized connect rights may still act; the measure improves audit and response
+          but does not guarantee prevention.
+    - target: B8B-T1563-NJS-CHANNEL
+      use:
+        zh: 对允许复用的跳板限定 socket owner、具体目标和到期窗口，在不需要多路 shell 的 sshd 上限制通道数，并与现有 MIT-000102 的 ptrace 最小权限措施配合。
+        en: Bound permitted jump-host sharing by socket owner, exact target, and expiry; limit channel count on sshd roles
+          without a multiplexing need and combine with the existing MIT-000102 least-ptrace-access measure.
+      expected_effect:
+        zh: 减少非法进程能附加到旧连接的路径，同时保留通道创建证据。
+        en: Reduce paths by which an unauthorized process can add to an old connection while preserving channel-creation evidence.
+      limitations:
+        zh: MaxSessions 1 会影响合法并发会话且不阻断已经存在的单一通道被进程接管；root 或传感器妥协仍需独立证据。
+        en: MaxSessions 1 affects legitimate multiplexing and does not stop takeover of an existing single channel; root or
+          sensor compromise still needs independent evidence.
+    - target: B8B-T1563-NJS-ATTACH
+      use:
+        zh: 在 RDS 主机仅向指定支持角色授予 Connect/Full Control 或 Remote Control 权限，按岗位清理断开会话，影子控制保留用户同意，跨用户接管留下工单和原用户可验证通知。
+        en: Grant RDS Connect, Full Control, or Remote Control only to designated support roles, end disconnected sessions
+          according to role, retain consent for shadow control, and require a ticket and verifiable owner notice for cross-user
+          handoff.
+      expected_effect:
+        zh: 降低可接管会话数量及悬置时间，并提供控制者变化的合法性基线。
+        en: Reduce the number and lifetime of attachable sessions and establish an authorization baseline for controller changes.
+      limitations:
+        zh: 断开时限可能影响未保存工作，具合法管理权的内部威胁仍可尝试接管，必须保留日志和审批复核。
+        en: Timeout can interrupt unsaved work and an insider with legitimate administrative authority may still attempt takeover,
+          so logs and approval review remain necessary.
+    evidence_keys:
+    - B8B-T1563-REF-OPENSSH-CONFIG
+    - B8B-T1563-REF-SSHD-CONFIG
+    - REF-000370
+    - B8B-T1563-REF-TSCON
+    - B8B-T1563-REF-SHADOW
+    - B8B-T1563-REF-SHADOW-POLICY
+    - B8B-T1563-REF-RDS-LIMITS
+    - B8B-T1563-REF-4778
+    - B8B-T1563-REF-4779
+    - B8B-T1563-REF-4688
+existing_library_reuse:
+  reference_refs:
+  - REF-000370
+  - REF-000179
+  claim_refs: []
+  case_refs: []
+  strategy_refs: []
+  analytic_refs: []
+  mitigation_refs:
+  - MIT-000102
+  relationship_refs: []
+  decisions:
+  - object_ref: REF-000370
+    action: reuse
+    reason: Linux Yama text explicitly identifies ptrace-enabled SSH session hijacking and its access-control conditions.
+  - object_ref: REF-000179
+    action: reuse_for_boundary_only
+    reason: UNC3886 report describes redirection of incoming SSH connections to a rogue server for credential capture; it
+      is not proof of existing-session control.
+  - object_ref: MIT-000102
+    action: extend_application_if_channel_child_accepted
+    reason: Its least cross-process access and Yama measure directly constrains client-process attachment, but it does not
+      cover ControlMaster socket sharing or RDS session-connect rights.
+  - object_ref: DET-000094
+    action: do_not_reuse
+    reason: Detects replay of remote gateway token/session state and risk-context reentry, not controller changes inside an
+      existing SSH transport or Windows RDS session.
+  - object_ref: NJA-000071
+    action: do_not_reuse
+    reason: Token lifecycle and gateway sign-in data cannot implement channel creation or RDS same-LogonID client transitions.
+library_candidates:
+  references:
+  - key: B8B-T1563-REF-ATTACK
+    title:
+      zh: ATT&CK Enterprise 19.1 远程服务会话劫持
+      en: ATT&CK Enterprise 19.1 Remote Service Session Hijacking
+    url: https://attack.mitre.org/versions/v19/techniques/T1563
+    source_type: official-documentation
+    published: null
+    locator: Fixed v19 parent behavior and TA0008 mapping; child inventory T1563.001 and T1563.002 only as breadth prior.
+    supports:
+    - parent_behavior
+    - tactic_mapping
+    limits: Does not independently establish Niji-native variables, a real intrusion, or a particular audit field.
+  - key: B8B-T1563-REF-OPENSSH-CONFIG
+    title:
+      zh: OpenBSD ssh_config ControlMaster 与 ForwardAgent 文档
+      en: OpenBSD ssh_config ControlMaster and ForwardAgent Manual
+    url: https://man.openbsd.org/ssh_config
+    source_type: official-documentation
+    published: null
+    locator: ControlMaster and ControlPath sharing existing network connection; ForwardAgent allows authentication operations
+      for a new connection; socket-directory recommendation.
+    supports:
+    - same_transport_multiple_sessions
+    - socket_boundary
+    - agent_forwarding_exclusion
+    - mitigation
+    limits: Describes product capability, not adversarial use or all SSH implementations.
+  - key: B8B-T1563-REF-OPENSSH-MUX
+    title:
+      zh: OpenSSH 多路复用协议
+      en: OpenSSH Multiplexing Protocol
+    url: https://github.com/openssh/openssh-portable/blob/master/PROTOCOL.mux
+    source_type: official-documentation
+    published: null
+    locator: MUX_C_NEW_SESSION creates new channel over ControlMaster Unix socket and existing authenticated transport.
+    supports:
+    - channel_child
+    - mechanism
+    - channel_level_detection_model
+    limits: Specification proves protocol mechanics, not malicious controller divergence or field prevalence.
+  - key: B8B-T1563-REF-SSHD-CONFIG
+    title:
+      zh: OpenBSD sshd_config MaxSessions 文档
+      en: OpenBSD sshd_config MaxSessions Manual
+    url: https://man.openbsd.org/sshd_config
+    source_type: official-documentation
+    published: null
+    locator: MaxSessions 1 prevents multiple shell, login, or subsystem sessions per network connection; does not necessarily
+      prevent forwarding.
+    supports:
+    - channel_mitigation
+    limits: Configuration choice has legitimate multiplexing cost and does not block takeover of one already existing channel.
+  - key: B8B-T1563-REF-ISSHD
+    title:
+      zh: 借 SSHD 埋点实现本地系统安全
+      en: Local System Security via SSHD Instrumentation
+    url: https://www.usenix.org/legacy/event/lisa11/tech/full_papers/Campbell.pdf
+    source_type: research-paper
+    authors:
+    - Scott Campbell
+    publisher: USENIX LISA 2011
+    published: '2011'
+    locator: Page 0 channel metadata instrumentation; page 8 section 6.1 describes SSH-Jack ptrace into running ssh client
+      and a new channel without user awareness.
+    supports:
+    - process_attach_channel_child
+    - feasible_channel_telemetry
+    - mechanism
+    limits: Technical and defensive research, not a confirmed unauthorized field incident; its iSSHD deployment is not stock
+      sshd logging.
+  - key: B8B-T1563-REF-TSCON
+    title:
+      zh: Microsoft tscon 命令文档
+      en: Microsoft tscon Command Documentation
+    url: https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/tscon
+    source_type: official-documentation
+    published: '2024-11-01'
+    locator: Connects to another RDS session, requires Full Control or Connect right, cross-user password rule, and /dest
+      behavior.
+    supports:
+    - reattachment_child
+    - permission_prerequisite
+    - mitigation
+    limits: Documents normal command contract; it does not say every administrative context bypasses password.
+  - key: B8B-T1563-REF-CROWDSTRIKE-OVERWATCH
+    title:
+      zh: CrowdStrike 2020 OverWatch 威胁狩猎报告
+      en: CrowdStrike 2020 OverWatch Threat Hunting Report
+    url: https://www.crowdstrike.com/wp-content/uploads/2022/12/2020-overwatch-threat-hunting-report.pdf
+    source_type: incident-report
+    publisher: CrowdStrike Falcon OverWatch
+    published: '2020-09-15'
+    locator: Printed pages 38–39, APAC transport/logistics intrusion; qwinsta enumeration, tscon attempt blocked, Shadow policy
+      change, mstsc /control /noConsentPrompt /shadow success.
+    supports:
+    - field_attempt_exclusive_transfer
+    - field_success_parallel_shadow
+    - controller_rebinding_variable
+    - stealth_intent_in_this_event
+    limits: The tscon branch was blocked and cannot be called a successful hijack; the later shadow branch succeeded, but
+      the report does not publish Windows event IDs or every downstream action's exact session binding.
+  - key: B8B-T1563-REF-SHADOW
+    title:
+      zh: Microsoft shadow 命令文档
+      en: Microsoft shadow Command Documentation
+    url: https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/shadow
+    source_type: official-documentation
+    published: '2024-11-01'
+    locator: Remote control of another active RDS session, control-right requirement, and user warning unless disabled.
+    supports:
+    - parallel_controller_child
+    - shadow_permission_boundary
+    - mitigation
+    limits: Product behavior and policy contract only; not incident success evidence.
+  - key: B8B-T1563-REF-MSTSC
+    title:
+      zh: Microsoft mstsc 会话影子控制参数
+      en: Microsoft mstsc Shadow Control Parameters
+    url: https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/mstsc
+    source_type: official-documentation
+    published: '2026-09-08'
+    locator: /shadow session ID, /control, and /noConsentPrompt syntax.
+    supports:
+    - shadow_process_detection
+    - parallel_controller_child
+    limits: A process invocation is an attempt; success requires separate session-operation or outcome evidence.
+  - key: B8B-T1563-REF-SHADOW-POLICY
+    title:
+      zh: Microsoft RDS 用户会话远程控制策略
+      en: Microsoft RDS User Session Remote Control Policy
+    url: https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-admx-terminalserver
+    source_type: official-documentation
+    published: null
+    locator: Set rules for remote control of Remote Desktop Services user sessions; no remote control, view-only, and control
+      with or without user consent.
+    supports:
+    - shadow_policy_detection
+    - shadow_mitigation
+    limits: Policy defines allowed behavior; it does not itself prove a particular shadow operation succeeded.
+  - key: B8B-T1563-REF-RDP-POC
+    title:
+      zh: Korznikov 远程桌面会话接管技术演示
+      en: Korznikov Passwordless RDP Session Hijacking Technical Demonstration
+    url: https://www.korznikov.com/2017/03/0-day-or-feature-privilege-escalation.html
+    source_type: security-research
+    authors:
+    - Alexander Korznikov
+    published: '2017-03-17'
+    locator: Original demonstrations of SYSTEM-context connection to another active or disconnected RDS session; author notes
+      normal local-admin attempt prompted for password.
+    supports:
+    - specific_system_context_takeover_path
+    - user_notification_limit
+    - reattachment_child
+    limits: Controlled demonstration and operator experience, not a documented victim intrusion; sweeping all-version wording
+      must not be carried into Niji conclusions.
+  - key: B8B-T1563-REF-4778
+    title:
+      zh: Microsoft 安全事件 4778
+      en: Microsoft Security Event 4778
+    url: https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-10/security/threat-protection/auditing/event-4778
+    source_type: official-documentation
+    published: null
+    locator: Existing Terminal Services session reconnect with AccountName, LogonID, SessionName, ClientName, and ClientAddress.
+    supports:
+    - reattachment_trace
+    - rdp_analytic
+    limits: Also occurs for Fast User Switching and Hyper-V Enhanced Session; event alone cannot establish malicious control.
+  - key: B8B-T1563-REF-4779
+    title:
+      zh: Microsoft 安全事件 4779
+      en: Microsoft Security Event 4779
+    url: https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-10/security/threat-protection/auditing/event-4779
+    source_type: official-documentation
+    published: null
+    locator: Existing Terminal Services session disconnect with AccountName, LogonID, SessionName, ClientName, and ClientAddress.
+    supports:
+    - prior_client_trace
+    - rdp_analytic
+    limits: Legitimate disconnection and Fast User Switching also produce this event.
+  - key: B8B-T1563-REF-4624
+    title:
+      zh: Microsoft 安全事件 4624
+      en: Microsoft Security Event 4624
+    url: https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-10/security/threat-protection/auditing/event-4624
+    source_type: official-documentation
+    published: null
+    locator: LogonID joins same-host events; LogonType 10 is RemoteInteractive and initial logon context.
+    supports:
+    - original_rdp_logon
+    - rdp_analytic
+    limits: Absence of a new 4624 is not sufficient to establish session hijacking; fields vary by protocol.
+  - key: B8B-T1563-REF-4688
+    title:
+      zh: Microsoft 安全事件 4688 与命令行审计
+      en: Microsoft Security Event 4688 and Command-Line Auditing
+    url: https://learn.microsoft.com/en-us/windows-server/identity/ad-ds/manage/component-updates/command-line-process-auditing
+    source_type: official-documentation
+    published: null
+    locator: 4688 process creation and separately enabled command-line field.
+    supports:
+    - rdp_initiator_process
+    - rdp_analytic
+    - mitigation_audit
+    limits: Process creation auditing and command line are disabled or incomplete unless configured; APIs may avoid tscon.exe.
+  - key: B8B-T1563-REF-RDS-LIMITS
+    title:
+      zh: Microsoft 远程桌面会话时限策略
+      en: Microsoft Remote Desktop Session Time-Limit Policy
+    url: https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-admx-terminalserver
+    source_type: official-documentation
+    published: null
+    locator: Active and disconnected RDS session time-limit settings and default unlimited lifetime where not configured.
+    supports:
+    - session_lifetime_mitigation
+    limits: Short timeouts risk legitimate unsaved work and do not replace connect-right controls.
+  - key: B8B-T1563-REF-MAZE
+    title:
+      zh: Mandiant MAZE 勒索事件技战术分析
+      en: Mandiant Navigating the MAZE Ransomware Incidents
+    url: https://cloud.google.com/blog/topics/threat-intelligence/tactics-techniques-procedures-associated-with-maze-ransomware-incidents/
+    source_type: incident-report
+    authors:
+    - Jeremy Kennelly
+    - Kimberly Goody
+    - Joshua Shilko
+    published: '2020-07-05'
+    locator: Lateral Movement section directly states tscon was used to hijack legitimate RDP sessions for lateral movement
+      and privilege escalation across MAZE investigations.
+    supports:
+    - rdp_reattachment_in_field
+    - parent_behavior
+    - child_existence
+    limits: Aggregated incident reporting omits per-session IDs, client transition chronology, and exact post-hijack outcome
+      for each victim; do not infer all MAZE actors used this method or every session was promptless.
+  - key: B8B-T1563-REF-MATRIX-2019
+    title:
+      zh: Matrix.org 2019 年 4 月事件复盘
+      en: Matrix.org Post-mortem for April 11 Security Incident
+    url: https://matrix.org/blog/2019/05/08/post-mortem-and-remediations-for-apr-11-security-incident/
+    source_type: incident-report
+    authors:
+    - Matthew Hodgson
+    published: '2019-05-08'
+    locator: Forwarded SSH agent trap on Jenkins worker installed attacker public key on other hosts; agent forwarding and
+      later host access.
+    supports:
+    - agent_forwarding_exclusion
+    - t1550_or_t1021_adjacent_case
+    limits: Does not identify hijack of original PTY, original authenticated transport, or target session channel.
+  claims:
+  - key: B8B-T1563-CLM-BOUNDARY
+    statement:
+      zh: T1563 的 Niji 准入要求可识别的既有会话/传输、另一控制者的附着动作及目标结果；仅复用认证材料建立新连接属于相邻技术。
+      en: Niji admission for T1563 requires an identifiable existing session or transport, attachment by another controller,
+        and a destination result; reused authentication material establishing a new connection belongs to adjacent techniques.
+    evidence_keys:
+    - B8B-T1563-REF-ATTACK
+    - B8B-T1563-REF-OPENSSH-CONFIG
+    - B8B-T1563-REF-TSCON
+    - B8B-T1563-REF-MATRIX-2019
+    confidence: medium
+  - key: B8B-T1563-CLM-CHANNEL
+    statement:
+      zh: OpenSSH 可经受保护的控制套接字或运行中客户端在同一已认证传输上建立另一逻辑会话通道，不产生另一 TCP 建连；控制者差异与目标结果须另证。
+      en: OpenSSH can create another logical session channel on the same authenticated transport through a control socket
+        or running client without another TCP connection; changed controller and destination result require separate proof.
+    evidence_keys:
+    - B8B-T1563-REF-OPENSSH-CONFIG
+    - B8B-T1563-REF-OPENSSH-MUX
+    - B8B-T1563-REF-ISSHD
+    confidence: medium
+  - key: B8B-T1563-CLM-ATTACH
+    statement:
+      zh: 有足够权限的主体可把既有 RDS 会话接到另一端点，原会话的 4779/4778 与相同 LogonID 可支撑控制端交接调查，单个事件不证明恶意。
+      en: An appropriately authorized principal can attach an existing RDS session to another endpoint; 4779 and 4778 with
+        the same original LogonID support investigation of the controller handoff, while no single event proves malice.
+    evidence_keys:
+    - B8B-T1563-REF-TSCON
+    - B8B-T1563-REF-RDP-POC
+    - B8B-T1563-REF-MAZE
+    - B8B-T1563-REF-CROWDSTRIKE-OVERWATCH
+    - B8B-T1563-REF-SHADOW
+    - B8B-T1563-REF-4778
+    - B8B-T1563-REF-4779
+    confidence: medium
+  - key: B8B-T1563-CLM-AGENT-EXCLUSION
+    statement:
+      zh: Matrix.org 2019 年事件证明转发 SSH agent 可被用于代表用户认证及植入攻击者公钥，但来源未证明原已认证传输或 PTY 被接管。
+      en: The 2019 Matrix.org incident proves misuse of a forwarded SSH agent for authentication and installation of attacker
+        keys, but does not establish takeover of the original authenticated transport or PTY.
+    evidence_keys:
+    - B8B-T1563-REF-MATRIX-2019
+    - B8B-T1563-REF-OPENSSH-CONFIG
+    confidence: high
+  - key: B8B-T1563-CLM-DEFENSE
+    statement:
+      zh: 通道级埋点加本机 socket/ptrace 来源关联，以及 Windows 同 LogonID 会话转换加进程创建关联，是两种不同且可实施的检测路径；无对应遥测时须降低结论层级。
+      en: Channel instrumentation joined to local socket or ptrace provenance and Windows same-LogonID session transitions
+        joined to process creation are distinct implementable detection paths; conclusions must be downgraded when the relevant
+        telemetry is missing.
+    evidence_keys:
+    - B8B-T1563-REF-ISSHD
+    - B8B-T1563-REF-4778
+    - B8B-T1563-REF-4779
+    - B8B-T1563-REF-4688
+    confidence: medium
+  cases:
+  - key: B8B-T1563-CASE-OVERWATCH-SHADOW
+    title:
+      zh: OverWatch 事件中受阻的 tscon 与成功的影子控制
+      en: Blocked tscon and Successful Shadow Control in an OverWatch Intrusion
+    event:
+      zh: CrowdStrike 记录攻击者在 2020 年 6 月一处亚太物流环境中先以 qwinsta 枚举并尝试 tscon，该尝试被 Falcon 阻断；攻击者随后修改影子控制策略，以 mstsc 对活动会话实施无同意提示的控制，报告明确称成功。
+      en: CrowdStrike records an actor in a June 2020 APAC logistics intrusion enumerating with qwinsta and attempting tscon,
+        which Falcon blocked; the actor then changed shadow-control policy and used mstsc to take control of an active session
+        without a consent prompt, a step the report expressly calls successful.
+    evidence_keys:
+    - B8B-T1563-REF-CROWDSTRIKE-OVERWATCH
+    conclusion_limit:
+      zh: tscon 只能作为受阻尝试；成功的是后续影子控制，不可混成一次成功 tscon。来源未公布逐条 4778/4779、shadow 成功事件字段或每个后续命令的会话关联，故这些细节仍属检测设计而非事件事实。
+      en: tscon is a blocked attempt only; the successful operation is later shadow control, not a successful tscon. The source
+        does not publish 4778 or 4779, shadow success-event fields, or a session join for every later command; these remain
+        detection design rather than incident facts.
+    confidence: high
+  - key: B8B-T1563-CASE-MAZE-RDP
+    title:
+      zh: MAZE 行动中的既有 RDP 会话接管
+      en: Existing RDP Session Hijacking in MAZE Intrusions
+    event:
+      zh: Mandiant 在多起 MAZE 事件的横向移动综述中直接记录攻击者使用 tscon 接管合法 RDP 会话，并将其用于横向移动和权限提升。
+      en: In its synthesis of multiple MAZE intrusions, Mandiant directly reports attackers using tscon to hijack legitimate
+        RDP sessions for lateral movement and privilege escalation.
+    evidence_keys:
+    - B8B-T1563-REF-MAZE
+    conclusion_limit:
+      zh: 报告未公开逐受害者会话 ID、旧/新客户端、4778/4779 或单次命令后的资源结果；可支持父级与重附着子项实际出现，不能支持特定日志链、无提示方式或确定攻击者意在匿迹。
+      en: The report does not disclose per-victim session IDs, old and new clients, 4778 or 4779, or a resource result after
+        each command. It supports field occurrence of the parent and reattachment child, not a specific log chain, promptless
+        method, or established stealth intent.
+    confidence: medium
+  detection_strategies:
+  - B8B-T1563-DET-SESSION-CONTROLLER
+  detection_analytics:
+  - B8B-T1563-NJA-SSH-CHANNEL
+  - B8B-T1563-NJA-RDP-ATTACH
+  - B8B-T1563-NJA-RDP-SHADOW
+  mitigations:
+  - B8B-T1563-MIT-SESSION-OWNERSHIP
+  relationships: []
+research:
+  taxonomy_breadth_review:
+    attack_subtechnique_count: 2
+    attack_subtechnique_ids:
+    - T1563.001
+    - T1563.002
+    represented_dimensions:
+    - SSH_authenticated_transport_or_agent_implementation
+    - RDS_existing_interactive_session_implementation
+    breadth_trigger: ordinary
+    coverage_resolutions:
+    - attack_id: T1563.001
+      resolution: niji-variable-candidate
+      note:
+        zh: SSH 名称不是子项；真正可迁移变量是他人已认证传输上新增通道。ATT&CK 页同时包含代理转发签名新连接，此部分按 T1550/T1021 边界排除。
+        en: SSH is not the child; the transferable variable is a new channel on another principal's authenticated transport.
+          Agent forwarding that signs a new connection is excluded to the T1550 or T1021 boundary despite sharing ATT&CK's
+          SSH page.
+    - attack_id: T1563.002
+      resolution: niji-variable-candidate
+      note:
+        zh: RDP 名称不是子项；真正变量是既有交互会话的控制端集合改变。tscon 迁移与 shadow 并存均属此变量，分别产生断开/重连或控制请求痕迹。
+        en: RDP is not the child; the variable is a changed controller set for an existing interactive session. tscon transfer
+          and parallel shadowing both express it, with different disconnect or reconnect versus control-request traces.
+    candidate_stealth_axes_examined:
+    - key: B8B-T1563-AXIS-TRANSPORT-CHANNEL
+      disposition: propose_formal_with_primary_review
+      zh: 已认证传输承载新逻辑通道，目标无新传输握手或同连接的新用户认证；OpenSSH 原始规范和 iSSHD/SSH-Jack 技术研究支持可实施，但目前未找到能证明此具体链的野外事件，正式置信度不得高于 medium。
+      en: An authenticated transport carries a new logical channel without a fresh transport handshake or new user authentication
+        on that connection. OpenSSH primary specifications and iSSHD/SSH-Jack technical research support feasibility, but
+        no field incident proving this precise chain was found, so formal confidence must not exceed medium.
+    - key: B8B-T1563-AXIS-INTERACTIVE-CONTROLLER
+      disposition: propose_formal
+      zh: 既有交互会话由新端独占迁移或并行控制，原用户上下文持续；Microsoft 功能文档、Korznikov 实验、Mandiant MAZE 成功野外事件与 CrowdStrike 成功 shadow 野外事件支持。tscon
+        与 shadow 不分子项，因为两者可顺序出现且均改变同一会话控制者集合；检测分析仍须分支。
+      en: An existing interactive session is exclusively transferred or controlled in parallel while the original user context
+        persists. Microsoft functional documentation, Korznikov's demonstration, Mandiant's successful MAZE field observation,
+        and CrowdStrike's successful shadow field observation support it. tscon and shadow are not separate children because
+        they can occur sequentially and both change the same session controller set; analytics still need separate branches.
+    - key: B8B-T1563-AXIS-AGENT-SIGNING
+      disposition: adjacent_technique
+      zh: 代理为新 SSH 连接签名改变的是认证材料可用性，不是已有传输或交互会话的控制者；Matrix.org 事件直接支持该边界。
+      en: An agent signing for a new SSH connection changes authentication-material availability, not the controller of an
+        existing transport or interactive session; the Matrix.org incident directly supports this boundary.
+    - key: B8B-T1563-AXIS-PTY-OR-TMUX
+      disposition: evidence_deferred
+      zh: 附着同机 tmux/screen 或直接 PTY 可能是交互接管，但需证明其为跨内部主机的原远程服务会话及目标结果，不能凭本地复用终端自动列入。
+      en: Attaching to local tmux, screen, or a PTY may be interactive takeover, but it needs evidence of the original cross-host
+        remote-service session and destination result; local terminal reuse alone does not qualify.
+    - key: B8B-T1563-AXIS-NO-CONSENT
+      disposition: parent_core_not_child
+      zh: 是否无需提示取决于权限和策略；CrowdStrike 具体事件有此效果，但它不是跨实现稳定的独立会话所有权变量。
+      en: Promptless operation depends on rights and policy. CrowdStrike's specific event had that effect, but it is not an
+        independent cross-implementation session-ownership variable.
+    - key: B8B-T1563-AXIS-LIFETIME
+      disposition: evidence_deferred
+      zh: 长时间保留的传输或断开桌面增加暴露窗口，但现有证据未证明攻击者稳定控制保留时长以改变检测痕迹，故不单设时序 NJS。
+      en: Long-lived transports or disconnected desktops increase exposure, but current evidence does not show stable attacker
+        control over lifetime as a distinct trace-shaping variable, so no timing child is proposed.
+    second_pass_required: false
+    second_pass_completed: false
+    proposed_niji_child_count: 2
+    breadth_gap_explained: true
+    reviewer_notes:
+      zh: 两个 ATT&CK 子项按协议划分，Niji 的两项建议按被改变的关系划分。增附通道可迁移至具多通道已认证连接的服务，但目前仅 OpenSSH 有直接证据；控制端重绑定可迁移至允许既有会话控制端迁移/并存的远程桌面或管理服务，但目前仅
+        RDS 有直接证据。主 Agent 应独立裁定通道项的实验级证据足以正式 review，还是标为 deferred；不允许以 RDP 的野外 CASE 填补 SSH 轴。
+      en: ATT&CK's two children divide protocols; Niji's two proposals divide the relationship changed. Channel addition could
+        apply to another multichannel authenticated service, but direct evidence here is limited to OpenSSH. Controller rebinding
+        could apply to another remote desktop or management service that allows transfer or co-control of an existing session,
+        but direct evidence here is limited to RDS. The primary reviewer must independently decide whether technical evidence
+        suffices for formal review of the channel child or whether it should be deferred; RDP field cases cannot fill the
+        SSH evidence gap.
+  session_identity_and_authentication_checks:
+  - axis: B8B-T1563-NJS-CHANNEL
+    same_existing_state:
+      zh: 必须是同一已认证 SSH transport/connection_id；会有新的逻辑 session channel，故不可写成“接管了原交互 PTY”。
+      en: It must be the same authenticated SSH transport or connection_id. A new logical session channel exists, so do not
+        claim takeover of the original interactive PTY.
+    new_authentication:
+      zh: 规范路径无需在该 transport 上再次 SSH userauth；若客户端因 socket 失败回退到新 TCP 连接及新认证，转 T1021/T1550 分析。
+      en: The specified path needs no new SSH userauth on that transport. If socket failure causes fallback to a new TCP connection
+        and authentication, assess under T1021 or T1550 instead.
+    evidence_grade: technical_capability_without_confirmed_field_case
+    admission_judgment:
+      zh: 建议作为 medium 置信度正式子项接受原始协议规范加安全研究的可重复技术证据，并在限制中明示无野外案例；若本批规定必须有事件级控制者差异与目标结果，则本项应 deferred，父级仍可保留。
+      en: Recommend a medium-confidence formal child on reproducible primary protocol and security-research evidence with
+        the absence of a field case explicit. If this batch requires an event-level changed-controller and destination-result
+        chain, defer this child while retaining the parent.
+  - axis: B8B-T1563-NJS-ATTACH
+    same_existing_state:
+      zh: 必须是同一目标 RDS SessionID/原用户登录上下文；tscon 迁移控制端，shadow 增加并行控制端，不新建一个属于被害用户的桌面。
+      en: It must be the same target RDS SessionID and original-user logon context. tscon transfers the controller and shadow
+        adds a parallel controller rather than creating a new victim desktop.
+    new_authentication:
+      zh: 被害会话无需再次提交原用户口令；操作者可能为进入会话主机先建立自己的登录或经网关认证，因此“没有任何 4624”并非必要条件。具体 tscon 跨用户口令与 shadow 同意提示按权限/策略判断。
+      en: The victim session need not resubmit the owner's password, but the operator may log on separately to reach the session
+        host or authenticate through a gateway, so absence of every 4624 is not a required condition. Cross-user tscon password
+        and shadow consent depend on rights and policy.
+    evidence_grade: primary_functional_docs_plus_controlled_demo_plus_confirmed_field_cases
+    admission_judgment:
+      zh: 建议正式成立，置信度 medium 至 high；MAZE 明确报告成功 tscon 接管，CrowdStrike 明确报告成功 shadow 接管，后者的 tscon 操作须单列为受阻尝试。不能把规范能力或受阻尝试升格成另一成功事件。
+      en: 'Recommend formal admission at medium to high confidence: MAZE explicitly reports successful tscon hijacking and
+        CrowdStrike explicitly reports successful shadow hijacking. CrowdStrike''s tscon operation remains a separate blocked
+        attempt. Do not promote a specification or blocked attempt into another successful field event.'
+  evidence_coverage:
+    parent_behavior_keys:
+    - B8B-T1563-REF-ATTACK
+    - B8B-T1563-REF-MAZE
+    - B8B-T1563-REF-CROWDSTRIKE-OVERWATCH
+    boundary_keys:
+    - B8B-T1563-REF-OPENSSH-CONFIG
+    - B8B-T1563-REF-MATRIX-2019
+    - REF-000179
+    - B8B-T1563-REF-TSCON
+    mechanism_support:
+    - axis: B8B-T1563-NJS-CHANNEL
+      keys:
+      - B8B-T1563-REF-OPENSSH-CONFIG
+      - B8B-T1563-REF-OPENSSH-MUX
+      - B8B-T1563-REF-ISSHD
+      - REF-000370
+      mode: official_specification_and_technical_research
+    - axis: B8B-T1563-NJS-ATTACH
+      keys:
+      - B8B-T1563-REF-TSCON
+      - B8B-T1563-REF-SHADOW
+      - B8B-T1563-REF-MAZE
+      - B8B-T1563-REF-CROWDSTRIKE-OVERWATCH
+      mode: functional_docs_and_first_party_field_cases
+    child_existence_support:
+    - axis: B8B-T1563-NJS-CHANNEL
+      keys:
+      - B8B-T1563-REF-OPENSSH-MUX
+      - B8B-T1563-REF-ISSHD
+      field_case: false
+    - axis: B8B-T1563-NJS-ATTACH
+      keys:
+      - B8B-T1563-REF-MAZE
+      - B8B-T1563-REF-CROWDSTRIKE-OVERWATCH
+      field_case: true
+    unsupported_or_deferred:
+    - Matrix_org_original_PTY_takeover
+    - UNC3886_existing_ssh_session_takeover
+    - SSH_channel_field_incident
+    - CrowdStrike_tscon_success
+    - all_RDS_shadow_operations_emit_4778_or_4779
+    - universal_promptless_RDP
+  content_depth_review:
+    compared_with_njt_0001: true
+    field_responsibilities_complete: true
+    candidate_specific_prose: true
+    repeated_prose_reviewed: true
+    notes:
+      zh: 父级与两子项分别回答定义、痕迹差异、相邻边界、具体场景、控制与审计前提及残余证据；RDP 两种控制端模式由独立分析覆盖。正式编写须把实验、规范、野外报告的证明层级逐段保持，不能用 MAZE/CrowdStrike 支撑 SSH
+        的特定机理。
+      en: Parent and both child proposals cover definition, trace differential, adjacent boundaries, scenarios, control and
+        audit prerequisites, and residual evidence. Separate analytics cover the two RDP controller modes. Canonical writing
+        must preserve the different proof levels of specification, experiment, and field reporting, and must not use MAZE
+        or CrowdStrike to support the specific SSH mechanism.
+  automation_review:
+    canonical_prose_bulk_generated: false
+    mechanical_uses:
+    - library_lookup
+    - URL_duplicate_search
+    - YAML_parse_check
+  limitations:
+    paragraphs:
+    - zh: 现有 SSH 证据为 OpenSSH 原始规范、内核权限文档和 iSSHD/SSH-Jack 技术研究，足以说明旧认证传输增通道的技术可行性与可观察点，但未找到公开的逐会话野外入侵证据。因此本轮不建立 SSH 成功 CASE，也不把
+        Matrix.org 代理转发或 UNC3886 新 SSH 流重定向叙述代入。ControlMaster 新建的是同一传输内的新逻辑通道，不是原 PTY 的键盘接管；若主评审要求字段级野外案例，应延期这个子项。
+      en: The SSH evidence consists of primary OpenSSH specifications, kernel access-control documentation, and iSSHD or SSH-Jack
+        technical research. It establishes feasibility and observable points for adding a channel to an old authenticated
+        transport, but no published per-session field intrusion chain was found. No successful SSH case should be created,
+        and neither Matrix.org agent forwarding nor UNC3886 redirection of new incoming SSH traffic may be substituted. ControlMaster
+        opens a new logical channel on the same transport rather than taking the keyboard of the original PTY. If primary
+        review requires field incident evidence, defer this child.
+    - zh: RDS 的规范文档说明连接/远程控制所需权限、命令能力和事件字段，不证明任何特定攻击。Korznikov 提供受控演示，Mandiant 在 MAZE 响应综述中报告成功 tscon 劫持，CrowdStrike 报告则明确区分被阻断的
+        tscon 尝试与成功的 shadow 接管；后者还给出该事件未提示用户的具体策略条件。两份野外来源均未公开完整 4778/4779、原/新控制端和每个目标结果的日志链，所以 Analytic 的关联模式是可实施的防守设计，不是事件原文。
+      en: RDS specifications establish required rights, command capabilities, and event fields, not an attack in any particular
+        environment. Korznikov provides a controlled demonstration. Mandiant's MAZE response synthesis reports successful
+        tscon hijacking, while CrowdStrike expressly separates a blocked tscon attempt from successful shadow control under
+        a no-consent policy in that event. Neither field source publishes a complete 4778 or 4779, old and new controller,
+        and per-result log chain, so analytic correlation is an implementable defender design rather than a quotation of case
+        telemetry.
+  rejected_mechanisms:
+  - mechanism_ref: NM-DO
+    reason_zh: 未见独立载荷或会话内容数据遮蔽；SSH 加密是服务固有属性而非该劫持新变量
+    reason_en: No separate payload or session-content data obscuration is established; SSH encryption is an inherent service
+      property
+    not this takeover variable: null
+  - mechanism_ref: NM-BT
+    reason_zh: 合法服务工具外观可出现但独立“行为透明”机理缺额外因果证据，与本轮已支持的来源/身份特征差异重复
+    reason_en: Legitimate service-tool appearance may occur, but a separate behavioral-transparency mechanism lacks independent
+      causal evidence beyond the supported origin and identity differential
+  open_questions:
+  - zh: 主 Agent 是否接受 SSH 同一认证 transport 上的新逻辑通道作为 T1563 的“既有会话”而非 T1021？建议以 connection_id 与新 userauth 有无为硬边界。
+    en: Does primary review accept a new logical channel on the same authenticated SSH transport as T1563's existing session
+      rather than T1021? Use connection_id and fresh userauth as hard boundaries.
+  - zh: 能否取得 SSH-Jack 原始演示和一个野外事件的原连接、新通道与目标结果链，以将通道项从技术可行性提升到事件级证据？
+    en: Can the original SSH-Jack demonstration and a field incident provide original connection, new channel, and destination-result
+      linkage, raising the channel child from technical feasibility to incident-level evidence?
+  - zh: RDS 影子控制的成功事件号及字段需在目标 Windows 构建上实测；未经本地确认不得把 4778/4779 用作 shadow 必经事件。
+    en: Validate shadow success event IDs and fields on the deployed Windows build; do not treat 4778 or 4779 as necessary
+      shadow events without local validation.
+integration:
+  status: pending
+  resolutions: []

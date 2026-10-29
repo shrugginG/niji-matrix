@@ -1,0 +1,44 @@
+schema_version: "2.0.0"
+type: mitigation
+id: MIT-000081
+name: {zh: 容器 Exec 权限、会话与运行时治理, en: Container Exec Authority Session and Runtime Governance}
+summary: {zh: 以最小 subresource 权限、禁用匿名 kubelet、临时调试身份、不可交互工作负载和跨层审计减少既有容器命令滥用。, en: Reduce command abuse in existing containers through least subresource authority disabled anonymous kubelet temporary debug identity noninteractive workloads and cross-plane audit.}
+description:
+  paragraphs:
+  - zh: 本缓解将 exec/attach 权限从普通 Pod read/update 和广泛运维角色中拆分，按 namespace、workload 与用途授予短期身份；禁用 kubelet 匿名认证和暴露 Docker socket，限制 API/kubelet/daemon 管理网络。生产镜像尽量移除 shell、包管理器和无业务工具，使用只读根、最小 volume/secrets 与 egress，使成功 exec 也难以扩展能力。
+    en: This mitigation separates exec or attach authority from ordinary Pod read or update and broad operations roles and grants short-lived identity by namespace workload and purpose. Disable kubelet anonymous authentication and exposed Docker sockets and restrict API kubelet and daemon management networks. Remove shells package managers and unnecessary tools from production images where practical and use read-only root minimal volumes or secrets and egress so a successful exec has limited capability.
+  - zh: 每次调试必须携带工单、主体、来源、目标、有效期和预期命令，audit ID/exec session 与 runtime process 被集中保留。异常时先冻结 exec 会话和 token、保存容器 namespace/文件/网络与 API 日志，再隔离 Pod、轮换挂载凭据并从批准镜像重建；只删除容器内文件会丢失入口原因。
+    en: Every debug action carries ticket principal source target expiry and expected command and audit ID or exec session is centrally retained with runtime process. On anomaly freeze exec session and token preserve container namespace files network and API logs then isolate the Pod rotate mounted credentials and rebuild from an approved image. Deleting only in-container files loses the entry cause.
+domains: [enterprise]
+measures:
+- key: least-exec-subresource-authority
+  name: {zh: Exec 子资源最小权限, en: Least Exec Subresource Authority}
+  description: {paragraphs: [{zh: 按 namespace、workload 与时限单独授予 pods/exec 等权限，移除 wildcard 与长期 cluster-admin 调试，并审计 Role/Binding 变化。, en: Grant pods or exec-like authority separately by namespace workload and time remove wildcard and durable cluster-admin debugging and audit Role or Binding changes.}]}
+  control_type: preventive
+- key: management-endpoint-and-token-hardening
+  name: {zh: 管理端点与自动化 Token 加固, en: Management Endpoint and Automation Token Hardening}
+  description: {paragraphs: [{zh: 禁用匿名 kubelet、保护 Docker socket 与 API 管理网，使用短期 audience-bound token/Pod identity 并限制 service account 来源和目标。, en: Disable anonymous kubelet protect Docker sockets and API management networks use short-lived audience-bound tokens or Pod identity and constrain service-account origins and targets.}]}
+  control_type: exposure-reduction
+- key: noninteractive-runtime-minimization
+  name: {zh: 不可交互运行时与最小容器能力, en: Noninteractive Runtime and Minimal Container Capability}
+  description: {paragraphs: [{zh: 生产镜像移除非必要 shell、下载器和包管理器，启用只读根、最小 secrets/volumes 与 egress，并为必要调试使用独立临时容器和审批。, en: Remove unnecessary shells downloaders and package managers from production images use read-only root minimal secrets or volumes and egress and use separate ephemeral debug containers with approval when needed.}]}
+  control_type: cost-increasing
+- key: exec-session-audit-response
+  name: {zh: Exec 会话审计与证据化响应, en: Exec Session Audit and Evidence-Preserving Response}
+  description: {paragraphs: [{zh: 连接 API audit、kubelet/Docker exec 与 runtime 进程并保留至销毁后；异常时冻结 token/session、保存证据、隔离 Pod、轮换凭据并从镜像重建。, en: Join API audit kubelet or Docker exec and runtime processes and retain after destruction; on anomaly freeze token or session preserve evidence isolate the Pod rotate credentials and rebuild from image.}]}
+  control_type: containment
+applications:
+- target_ref: NJT-0066
+  use: {paragraphs: [{zh: 为所有容器管理命令实施独立 exec 权限、临时调试审批、端点隔离与 API—runtime 审计；生产 workload 默认无永久交互路径，必要例外绑定主体、源、目标、命令目的和有效期。, en: Apply separate exec authority temporary debug approval endpoint isolation and API-to-runtime audit to all container administration commands. Production workloads have no durable interactive path by default and necessary exceptions bind principal source target command purpose and expiry.}]}
+  expected_effect: {paragraphs: [{zh: 减少攻击者进入既有容器的身份和入口，限制成功会话可用工具/秘密/网络，并使每次 runtime 结果可追溯到请求主体。, en: Reduces identities and entries able to reach existing containers limits tools secrets and network available to successful sessions and attributes every runtime outcome to a requesting principal.}]}
+  limitations: {paragraphs: [{zh: 生产排障可能需要紧急 exec，distroless 与只读设计会增加运维成本；应用本身已有解释/网络能力时仍可能被滥用，需 runtime 行为检测。, en: Production troubleshooting may require emergency exec and distroless or read-only design increases operations cost. Existing application interpretation or network capability can still be abused and needs runtime behavior detection.}]}
+- target_ref: NJS-0066-001
+  use: {paragraphs: [{zh: 将新进程与 image/SBOM 声明和 workload 行为基线比较，禁止未审批 exec 向长期业务 Pod 注入 shell；对挂载高价值 secrets、云身份或宽 egress 的 Pod 使用更严格审批和不可交互镜像。, en: Compare new processes to image or SBOM declarations and workload baselines and block unapproved shell injection into long-lived business Pods. Apply stricter approval and noninteractive images to Pods with high-value secrets cloud identity or broad egress.}]}
+  expected_effect: {paragraphs: [{zh: 使“定义未变”不再等于“运行时可信”，并缩小攻击者借应用网络和身份的能力。, en: Prevents unchanged definition from implying trusted runtime and narrows adversary borrowing of application network and identity.}]}
+  limitations: {paragraphs: [{zh: 合法 sidecar/应用可动态派生进程，镜像声明不总完整；需要按 workload 学习且不能仅按新 shell 阻断。, en: Legitimate sidecars and applications can dynamically spawn processes and image declarations are incomplete requiring workload tuning rather than blocking every new shell alone.}]}
+- target_ref: NJS-0066-002
+  use: {paragraphs: [{zh: 自动化身份使用短期 audience-bound token、固定 source workload/IP、namespace/Pod 范围和允许用途；每次 exec 需要不可复用 session 与审批，偏离来源、时间、目标或命令立即收紧。, en: Automation identities use short-lived audience-bound tokens fixed source workload or IP namespace or Pod scope and allowed purpose. Every exec requires a non-reusable session and approval with deviations in source time target or command constrained.}]}
+  expected_effect: {paragraphs: [{zh: 即使身份被盗，攻击者也难沿全部正常维度重放，身份名称和 RBAC allow 不再足以获得信任。, en: Even with a stolen identity the adversary cannot easily replay every normal dimension and identity name or RBAC allow no longer confers trust.}]}
+  limitations: {paragraphs: [{zh: 某些旧自动化不支持短期或 audience 绑定 token，紧急机器人目标会动态变化；迁移需审计模式与到期例外。, en: Some legacy automation lacks short-lived or audience-bound tokens and emergency robot targets change dynamically requiring audit mode and expiring exceptions during migration.}]}
+evidence_refs: [REF-000211, REF-000212, REF-000217, REF-000218]
+lifecycle: {status: review, version: 0.1.0, created: '2026-09-12', modified: '2026-09-12', contributors: [Niji Matrix Research], reviewers: []}

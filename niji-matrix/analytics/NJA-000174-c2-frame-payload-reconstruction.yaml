@@ -1,0 +1,111 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000174
+strategy_ref: DET-000163
+name:
+  zh: C2 帧有效语义与载体恢复
+  en: C2 Frame Semantic and Carrier Reconstruction
+summary:
+  zh: 通过帧长、可丢弃字段和载体恢复差异，将外层消息关联到真实控制结果。
+  en: Correlate frame length, inert fields, and carrier recovery with actual control outcomes.
+domains:
+- enterprise
+platforms:
+- Windows
+- Linux
+- macOS
+logic:
+  paragraphs:
+  - zh: 按 Zeek uid 配对 HTTP 请求和响应，将 fuid 或邮件附件 ID 接到文件记录，并在有授权的内容留存面保存原始对象摘要、长度与解析状态。按识别出的协议或格式校验声明长度和实际解码长度、未消费字段占比以及重复会话的可变位置；对
+      XML GUID、JSON 步骤或 BMP 像素只调用相应解析器，不把未知内容强行解码。标记帧与恢复消息不一致的候选，并以同进程五分钟内的命令、下载或回传结果提升置信度。
+    en: Pair HTTP requests and responses by Zeek uid, join fuid or mail attachment ID to file records, and retain
+      raw-object digest, length, and parse status where content retention is authorized. Validate declared versus
+      decoded length, unused-field share, and changing positions across repeated sessions for the identified protocol
+      or format. Invoke format-specific extractors for XML GUIDs, JSON steps, or BMP pixels without forcing unknown
+      content through a decoder. Mark frame-to-recovered-message differences as candidates and raise confidence
+      with a command, download, or return result from the same process within five minutes.
+  - zh: 输出区分恢复出的控制语义、仅有格式差分和仅有流量形态三层。SUNBURST 的真实长度与可选 junk bytes 提供一个校验实例；RDAT 仅证明载体处理能力，若没有接收端或后继行为证据，不把入站命令写成已观察结果。
+    en: Keep separate outcomes for recovered control semantics, format differential only, and traffic shape only.
+      SUNBURST's true length and optional junk bytes provide one validation instance. RDAT establishes carrier handling
+      capability, so inbound command delivery is not asserted as observed without receiver or successor evidence.
+data_requirements:
+- source_type: network-http
+  name:
+    zh: HTTP 会话日志
+    en: HTTP session log
+  channel: Zeek http.log
+  required_fields:
+  - ts
+  - uid
+  - id.orig_h
+  - id.resp_h
+  - method
+  - host
+  - uri
+  - request_body_len
+  - response_body_len
+- source_type: network-file
+  name:
+    zh: 网络文件与附件日志
+    en: Network file and attachment log
+  channel: Zeek files.log or mail audit
+  required_fields:
+  - ts
+  - fuid
+  - uid
+  - mime_type
+  - seen_bytes
+  - total_bytes
+- source_type: endpoint-process-network
+  name:
+    zh: 端点进程与外联结果
+    en: Endpoint process and outbound outcome
+  channel: null
+  required_fields:
+  - event_time
+  - device_id
+  - process_id
+  - remote_ip
+  - remote_port
+  - action
+observables:
+- zh: 声明长度之外的可丢弃字节与重复消息中的可变噪声位置
+  en: Discardable bytes beyond declared length and changing noise positions across repeated messages
+- zh: 外层良性格式与可恢复控制内容及后继端点动作相连
+  en: Benign outer format linked to recoverable control content and a successor endpoint action
+correlation:
+  window:
+    zh: 网络至端点结果五分钟；同进程形态基线二十四小时。
+    en: Five minutes from network event to endpoint result; twenty-four hours for the same-process shape baseline.
+  dimensions:
+  - device_id
+  - process_id
+  - uid
+  - fuid
+  - destination
+  - time
+false_positives:
+- zh: 合法产品遥测的可选字段、媒体处理与测试夹具
+  en: Optional fields in legitimate product telemetry, media processing, and test harnesses
+blind_spots:
+- zh: TLS 或邮件不可见、原始载体未保留、未知提取规则或无进程谱系
+  en: Opaque TLS or mail, missing raw carrier, unknown extraction rule, or absent process lineage
+tuning_guidance:
+  paragraphs:
+  - zh: 按软件版本及格式建立长度和字段基线，抽样留存原件时遵守隐私与期限。高熵、较大文件或异常长度只能触发复核；只有经可复核提取或后继行为闭合才输出控制内容结论。
+    en: Build versioned length and field baselines by application and format, with privacy and retention limits
+      for sampled originals. High entropy, large files, or unusual lengths only open review; claim recovered control
+      content only after reproducible extraction or a closed successor-behavior chain.
+evidence_refs:
+- REF-000626
+- REF-000627
+- REF-000632
+- REF-000633
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-09-22'
+  modified: '2026-09-22'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

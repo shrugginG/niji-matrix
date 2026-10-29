@@ -1,0 +1,370 @@
+schema_version: 2.0.0
+type: mitigation
+id: MIT-000088
+name:
+  zh: 调度定义、权限与全生命周期治理
+  en: Scheduler Definition Privilege and Full-Lifecycle Governance
+summary:
+  zh: 通过最小调度与运行权限、版本化动作、独立盘点、权限谱系审计和结果回收，降低匿迹化计划执行及其提权机会
+  en: Reduce stealth-conforming scheduled execution and its elevation opportunities through least scheduler and runtime
+    authority versioned actions independent inventory authority-lineage audit and outcome recovery
+description:
+  paragraphs:
+  - zh: 本缓解控制谁能创建或修改任务、任务可以执行什么、平台如何保存其完整生命周期，以及日常管理视图是否能被独立原始状态验证。措施跨 Windows task、cron、systemd timer 和 Kubernetes
+      CronJob 抽象相同责任，但部署时必须映射到各平台的权限、定义、事件和控制器语义。目标不是关闭调度器，而是让普通代码执行权限不能自动获得持久或具权调度能力。
+    en: This mitigation controls who can create or modify tasks what tasks may execute how platforms retain complete
+      lifecycles and whether ordinary management views can be verified against independent raw state. Measures abstract
+      common responsibilities across Windows tasks cron systemd timers and Kubernetes CronJobs but deployment maps
+      them to platform-specific permissions definitions events and controller semantics. The objective is not disabling
+      schedulers but preventing ordinary code-execution authority from automatically gaining durable or privileged
+      scheduling.
+  - zh: 控制同时保留检测能力。每次创建、定义变化、触发、执行、失败和删除都应集中传输并绑定稳定对象身份；关键资产的 future trigger 必须保留到运行后，独立盘点必须比较原始状态和支持 API。例外需绑定具体维护主体、动作、时间和期限，不能永久放行系统账户、更新名称或调度器父进程。
+    en: Controls also preserve detection. Every creation definition change trigger execution failure and deletion
+      is centrally forwarded and bound to stable object identity. Future triggers on critical assets remain indexed
+      through execution and independent inventory compares raw state with supported APIs. Exceptions bind concrete
+      maintenance principals actions times and expiry and never permanently allow system accounts update names or
+      scheduler parents.
+  - zh: 对 Privilege Escalation，控制包必须同时约束 submitter 能影响的定义、调度器准入与实际 runtime identity 的有效权限，并保留首个受保护资源授权结果。Windows 的
+      task principal、cron 的 owner/username、systemd service credentials 与 Kubernetes ServiceAccount 都按最小权限和明确资源范围配置；root、SYSTEM、RunLevel
+      或账户名称不作为合规证明。发生未批准正权限差时，响应不仅删除任务，还撤销其产生的进程、token、session、文件、ACL、secret 和控制面副作用。
+    en: For Privilege Escalation the control package constrains definitions a submitter can influence scheduler admission
+      and effective authority of the actual runtime identity while retaining the first protected-resource authorization
+      result. Windows task principals cron owners or usernames systemd service credentials and Kubernetes ServiceAccounts
+      receive least authority and explicit resource scopes. Root SYSTEM RunLevel or account names are not compliance
+      evidence. On an unapproved positive authority difference response removes not only the task but also its resulting
+      processes tokens sessions files ACLs secrets and control-plane side effects.
+domains:
+- enterprise
+measures:
+- key: least-privilege-scheduler-admission
+  name:
+    zh: 最小权限调度准入
+    en: Least-Privilege Scheduler Admission
+  description:
+    paragraphs:
+    - zh: 按角色限制任务创建、修改、运行身份、远程调度和后端元数据写权限；高权限任务要求 JIT 管理、双人审批或受管控制器，并禁止普通用户把任务设为 SYSTEM/root、特权 service account 或生产
+        namespace。
+      en: Restrict task creation modification execution identity remote scheduling and backend metadata write authority
+        by role. Privileged tasks require JIT administration two-person approval or managed controllers and ordinary
+        users cannot schedule as SYSTEM root privileged service accounts or production namespaces.
+  control_type: preventive
+- key: versioned-actions-and-integrity
+  name:
+    zh: 版本化任务定义与动作完整性
+    en: Versioned Task Definitions and Action Integrity
+  description:
+    paragraphs:
+    - zh: 保存任务定义每个版本，规范化名称、作者、账户、触发器、动作路径、参数、payload digest、unit/CronJob template 和权限；执行前验证动作位于批准位置且与软件/包或镜像来源一致，对用户可写路径、代理二进制和不存在产品的更新名称拒绝或升级审批。
+      en: Version every task definition and normalize name author account trigger action path arguments payload digest
+        unit or CronJob template and permissions. Before execution verify actions are in approved locations and consistent
+        with software package or image provenance and reject or escalate user-writable paths proxy binaries and update
+        names for absent products.
+  control_type: preventive
+- key: independent-enumeration-and-lifecycle-audit
+  name:
+    zh: 独立状态枚举与不可变生命周期审计
+    en: Independent State Enumeration and Immutable Lifecycle Audit
+  description:
+    paragraphs:
+    - zh: 由独立高权只读主体周期比较标准管理 API 与原始注册表、任务文件、cron/unit 或集群状态，并把创建、修改、触发、执行和删除事件实时发送到攻击者不能同时清除的集中存储；任何视图差分或未关联执行都进入调查。
+      en: Use an independent privileged read-only principal to compare standard management APIs periodically with
+        raw registry task files cron or units or cluster state and stream create modify trigger execute and delete
+        events to centralized storage the task writer cannot simultaneously clear. Investigate every view differential
+        or unlinked execution.
+  control_type: detective-support
+- key: cross-window-retention-and-analysis
+  name:
+    zh: 跨观察窗口保留与动态分析
+    en: Cross-Window Retention and Dynamic Analysis
+  description:
+    paragraphs:
+    - zh: 在创建时索引 next-run 并确保日志保留覆盖未来执行；关键任务至少保存完整定义和生命周期九十天。沙箱解析未来触发、推进虚拟时间和模拟重启/登录，端点侧以分钟级延迟关联一次性 create-run-delete，避免固定短窗口。
+      en: Index next-run at creation and ensure log retention covers future execution while retaining complete definitions
+        and lifecycles for critical tasks for at least ninety days. Sandboxes parse future triggers advance virtual
+        time and simulate reboot or logon and endpoints correlate one-shot create-run-delete with minute-scale latency
+        rather than fixed short windows.
+  control_type: detective-support
+- key: runtime-principal-and-service-account-least-authority
+  name:
+    zh: 运行主体与 ServiceAccount 最小权限
+    en: Runtime Principal and ServiceAccount Least Authority
+  description:
+    paragraphs:
+    - zh: 对每类调度器明确允许的 submitter→runtime identity 映射，并把任务 principal、cron system username、systemd User/capability/sandbox、Pod
+        ServiceAccount/RBAC 限制到动作所需最小资源和操作。低权主体不得经通用队列选择更高身份；受管委托必须绑定 object/version、批准者、资源范围和期限。
+      en: Define allowed submitter-to-runtime identity mappings for every scheduler and constrain task principals
+        cron system usernames systemd User capability and sandbox and Pod ServiceAccount or RBAC to the minimum resources
+        and operations needed by the action. Lower-authority principals cannot select stronger identities through
+        generic queues and managed delegation binds object and version approver resource scope and expiry.
+  control_type: exposure-reduction
+- key: definition-trigger-authority-lineage-retention
+  name:
+    zh: 定义、触发与权限谱系保留
+    en: Definition Trigger and Authority Lineage Retention
+  description:
+    paragraphs:
+    - zh: 在准入时保存 submitter 权限前态、完整 definition digest、审批和预计运行身份；触发时追加实际 token/capability/ServiceAccount、首个攻击者动作和资源
+        allow/deny，并在任务删除或跨周运行后继续保留。无法连接任一端点时明确标记 authority unresolved，禁止从高权名称补推。
+      en: At admission retain submitter authority pre-state full definition digest approval and expected runtime identity.
+        At trigger append actual token capability or ServiceAccount first adversary action and resource allow or deny
+        and preserve the chain after task deletion or execution weeks later. Mark authority unresolved when either
+        endpoint cannot be joined and prohibit inference from privileged names.
+  control_type: detective-support
+- key: authority-effect-containment-and-recovery
+  name:
+    zh: 权限效果遏制与恢复
+    en: Authority-Effect Containment and Recovery
+  description:
+    paragraphs:
+    - zh: 对未经批准的正权限差先保全定义、准入、运行凭据和首个资源结果，再禁用任务并终止关联进程或 Pod，撤销新建 session、token、账户、凭据、文件、ACL、secret 与控制面变更。用同一 submitter
+        和资源重放 expected deny，确认权限边已经关闭后才恢复调度。
+      en: For an unapproved positive authority difference preserve definition admission runtime credentials and the
+        first resource result before disabling the task and terminating related processes or Pods. Revoke created
+        sessions tokens accounts credentials files ACLs secrets and control-plane changes and replay expected deny
+        for the same submitter and resource before restoring scheduling.
+  control_type: containment
+applications:
+- target_ref: NJT-0075
+  use:
+    paragraphs:
+    - zh: 对匿迹化计划执行，将调度权限、定义版本、独立枚举、生命周期日志和进程/工作负载结果作为一个控制包部署。所有新任务在准入时记录 creator、完整动作、execution principal、next-run
+        和来源，关键环境只允许运行来自受控包、镜像或路径的动作，并在删除后继续保存对象历史。
+      en: For Stealth-Conforming Scheduled Execution deploy scheduler authority definition versioning independent
+        enumeration lifecycle logs and process or workload outcomes as one control package. At admission every new
+        task records creator full action execution principal next-run and provenance. Critical environments allow
+        actions only from controlled packages images or paths and retain object history after deletion.
+    - zh: 对 TA0004，再为每个 object/version 保存 submitter authorization、准入结果、实际 runtime principal/token/capability/ServiceAccount
+        和首个 protected-resource decision。按平台验证真实凭据而非声明字段，并只允许审批表中明确的 submitter→runtime→resource/operation 路径；出现未批准正差时执行任务与副作用联合撤销。
+      en: For TA0004 additionally retain submitter authorization admission result actual runtime principal token capability
+        or ServiceAccount and the first protected-resource decision for each object and version. Validate actual credentials
+        rather than declared fields per platform and permit only explicit submitter-to-runtime-to-resource-and-operation
+        paths in the approval record. Revoke the task and resulting side effects together on an unapproved positive
+        difference.
+  expected_effect:
+    paragraphs:
+    - zh: 攻击者更难只凭现有代码执行建立具权调度对象，名称合形、延期、隐藏状态和短驻删除都留下可被独立检查的控制或审计证据。稳定对象身份把最初 writer 与数周后的进程连接起来，并允许在载荷启动前撤销尚未触发的恶意任务。
+      en: Existing code execution alone is less able to establish privileged scheduler objects and name conformity
+        delay hidden state and rapid deletion all leave independently verifiable control or audit evidence. Stable
+        object identity joins the original writer to processes weeks later and supports revocation of malicious tasks
+        before payload start.
+    - zh: 最小 runtime authority 直接缩小可获得的权限差，权限谱系使任务存在、实际执行和 elevation confirmed 可分级；即使匿迹轴绕过单点规则，资源结果仍能连接回低权控制边。回收措施降低高权任务已执行后的持续访问和残留授权。
+      en: Least runtime authority directly shrinks obtainable authority differences and authority lineage tiers task
+        existence actual execution and elevation confirmed. Even when a stealth axis evades point rules the resource
+        result can still join back to the lower-authority control edge. Recovery measures reduce continuing access
+        and residual authorization after a privileged task has run.
+  limitations:
+    paragraphs:
+    - zh: 大型环境的任务数量、跨平台字段和长期保留成本较高，集中编排工具需要广泛合法权限。若受管控制器、软件供应链和审计根同时失陷，恶意任务仍可满足策略；严格阻断还可能影响补丁、备份和灾难恢复，因此例外治理不可缺少。
+      en: Large environments face high task volume cross-platform mapping and retention cost and centralized orchestrators
+        require broad legitimate authority. If managed controllers software supply chain and audit roots are compromised
+        together malicious tasks may still satisfy policy. Strict blocking can disrupt patching backup and disaster
+        recovery so exception governance is essential.
+    - zh: 平台可能只记录声明 principal 而不暴露实际 token，资源也可能缺少 deny/allow；此时控制能降低暴露面却不能证明没有提权。受管自动化合法跨权限，过度收紧会中断运维；例外必须精确到版本、资源和操作，而不是永久放行
+        root、SYSTEM、ServiceAccount 或调度器父进程。
+      en: Platforms may record only a declared principal without actual token and resources may omit deny or allow
+        so controls reduce exposure without proving absence of elevation. Managed automation legitimately crosses
+        authority boundaries and excessive restriction can disrupt operations. Exceptions must bind exact versions
+        resources and operations instead of permanently allowing root SYSTEM ServiceAccounts or scheduler parents.
+- target_ref: NJS-0075-001
+  use:
+    paragraphs:
+    - zh: 对基线合形计划激活，把允许定义绑定到资产软件清单、包或镜像来源和任务角色；同名更新任务必须解析到该资产实际安装产品的批准路径、签名和 cadence。新作者、用户目录动作、代理二进制或不符合角色的账户进入审批和隔离执行，而不是因名称或
+        SYSTEM 自动放行。
+      en: For Baseline-Conforming Scheduled Activation bind allowed definitions to asset software inventory package
+        or image provenance and task role. Same-name update tasks must resolve to approved paths signatures and cadence
+        for products actually installed on the asset. New authors user-directory actions proxy binaries or role-inconsistent
+        principals require approval and isolated execution rather than automatic allowance from names or SYSTEM.
+    - zh: 同时把角色基线扩展为允许的 writer、runtime identity 和 resource/operation 集合。合形任务若使用维护账户，只能访问该任务角色声明的路径、namespace、secret
+        或 API；准入记录冻结 definition digest 与 submitter pre-state，实际运行后验证 token/ServiceAccount 和首个资源结果。
+      en: Extend the role baseline to allowed writers runtime identities and resource or operation sets. A conforming
+        task using a maintenance account may access only paths namespaces secrets or APIs declared for that task role.
+        Admission freezes definition digest and submitter pre-state and runtime validation checks the actual token
+        or ServiceAccount and first resource result.
+  expected_effect:
+    paragraphs:
+    - zh: 恶意任务不能仅复制 Firefox、Windows Update 或备份名称获得信誉，必须同时伪造软件存在、动作完整性和历史语义。防守方获得可解释的局部差异，减少全局稀有度和名称黑名单造成的误报与漏报。
+      en: Malicious tasks cannot gain reputation by copying Firefox Windows Update or backup names alone and must
+        also forge software presence action integrity and historical semantics. Defenders receive explainable local
+        differences reducing false positives and negatives from global rarity and name blocklists.
+    - zh: 即使可见元数据全部合形，未批准 writer、过强 runtime identity 或越出角色资源范围的 observed allow 仍会打破伪装。最小权限把仿冒任务可借用的维护权限限制在必要范围，权限谱系则防止高权资源事件只被归因给正常账户。
+      en: Even when all visible metadata conforms an unapproved writer excessive runtime identity or observed allow
+        outside the role's resource scope still breaks the disguise. Least privilege limits maintenance authority
+        available to the imitating task and authority lineage prevents privileged resource events from being attributed
+        only to a normal account.
+  limitations:
+    paragraphs:
+    - zh: 企业软件更新会合法改变路径、版本和频率，动态任务名称也可能无法预注册。资产清单过时会制造误报，攻击者若已控制合法更新包可能获得一致元数据；例外必须短期并在新版本稳定后收敛到新基线。
+      en: Enterprise updates legitimately change paths versions and cadence and dynamic task names may resist preregistration.
+        Stale asset inventory creates false positives and an adversary controlling legitimate update packages may
+        obtain consistent metadata. Exceptions must be short-lived and converge to a new baseline after version stabilization.
+    - zh: 某些备份或部署任务确需广泛资源权限，角色范围过窄会导致失败，过宽又会保留提权边。已失陷的签名供应链和受管控制器可同时满足外观与审批；因此还需独立资源结果监控，缺 submitter 或 actual token
+        时不能从合形程度判断权限安全。
+      en: Some backup or deployment tasks require broad resource authority and a role scope that is too narrow fails
+        while one too broad preserves an elevation edge. A compromised signed supply chain or managed controller may
+        satisfy both appearance and approval. Independent resource-outcome monitoring remains necessary and conformity
+        cannot determine authority safety when submitter or actual token is missing.
+- target_ref: NJS-0075-002
+  use:
+    paragraphs:
+    - zh: 对观察窗口外延期激活，在任务创建时计算所有可能 next-run、重启/登录条件和任务链依赖，将可疑或高权对象登记到 future-trigger 队列并在运行后自动回溯原始 creator、定义与相关告警。沙箱对分钟以上触发推进时间，对跨日计数模拟日期和重启，同时限制任务等待期间的网络和秘密权限。
+      en: For Observation-Window-Deferred Activation compute all possible next-runs reboot or logon conditions and
+        task-chain dependencies at creation and place suspicious or privileged objects in a future-trigger queue that
+        automatically retrieves original creator definition and alerts after execution. Sandboxes advance time for
+        delayed triggers and simulate dates and reboots for counters while limiting network and secret authority during
+        dormancy.
+    - zh: future-trigger 项同时保存 submitter authorization set、admission 和 definition digest，并将预计 runtime identity 的权限压到必要范围；触发后追加实际
+        token/ServiceAccount 及首个资源 allow/deny。凭据或 RBAC 在等待期间改变时重新评估准入，禁止旧审批自动授权更强的新权限。
+      en: A future-trigger entry also retains submitter authorization set admission and definition digest and constrains
+        expected runtime identity to minimum authority. After trigger it appends actual token or ServiceAccount and
+        first resource allow or deny. Re-evaluate admission when credentials or RBAC change during the wait so an
+        old approval cannot automatically authorize stronger new authority.
+  expected_effect:
+    paragraphs:
+    - zh: 延迟不再使注册与执行落入互不相干的调查，Nitrokod 式十五天链会在关键下载前保持可见和可撤销。动态分析也更可能暴露只在真实时间/重启后运行的下一阶段，迫使攻击者延长等待或采用更复杂条件。
+      en: Delay no longer places registration and execution in unrelated investigations and a Nitrokod-style fifteen-day
+        chain remains visible and revocable before critical download. Dynamic analysis is more likely to expose stages
+        running only after real time or reboot forcing longer waits or more complex conditions.
+    - zh: 权限前态随 watchlist 延续到实际结果，低权 writer 与数周后高权行为不会因工单或日志窗口关闭而脱钩。等待期间的权限收敛可在执行前关闭边，执行后的真实 deny/allow 又能把同权限计划作业与确认提权分开。
+      en: Authority pre-state travels with the watchlist through actual outcome so a lower-authority writer does not
+        detach from privileged behavior weeks later when tickets or log windows close. Authority convergence during
+        the wait can close the edge before execution and actual deny or allow afterward separates same-authority jobs
+        from confirmed elevation.
+  limitations:
+    paragraphs:
+    - zh: 无限推进时间不可行，恶意逻辑还可依赖外部状态、用户行为或长期密钥。future watchlist 和九十天保留消耗存储，离线补跑会产生正常长延迟；必须结合 writer、动作与结果，不得阻止全部远期任务。
+      en: Infinite time advancement is impossible and malicious logic may depend on external state user behavior or
+        long-lived keys. Future watchlists and ninety-day retention consume storage and offline catch-up creates benign
+        long delay. Writer action and outcome context is required rather than blocking all future tasks.
+    - zh: submitter 组、runtime 凭据和资源策略可能在长等待中合法变化，创建时快照不足以代表触发时授权；必须版本化身份与策略。对象 ID 重建、日志轮转或跨集群执行仍会断链，断链时控制只能阻止明显越权，不能证明
+        elevation absent。
+      en: Submitter groups runtime credentials and resource policies can legitimately change during a long wait so
+        creation-time snapshots alone do not represent trigger-time authorization and identities plus policy must
+        be versioned. Object-ID rebuild log rotation or cross-cluster execution can still break lineage. With a broken
+        chain controls can block obvious excess but cannot prove elevation absent.
+- target_ref: NJS-0075-003
+  use:
+    paragraphs:
+    - zh: 对状态枚举抑制型计划注册，限制 TaskCache、任务文件、cron spool、systemd unit 与编排后端的直接写入和 ACL/索引修改；由独立账户比较支持 API 结果与原始状态，并把任何“原始对象存在但标准视图缺失”连接到
+        writer 和实际 scheduler run。发现差分时先保全证据再通过支持接口或受控后端修复。
+      en: For State-Enumeration-Suppressed Scheduled Registration restrict direct writes and ACL or index changes
+        to TaskCache task files cron spools systemd units and orchestration backends. An independent account compares
+        supported API results with raw state and joins every raw-present standard-missing differential to writer and
+        actual scheduler runs. Preserve evidence before remediation through supported interfaces or controlled backend
+        repair.
+    - zh: 权限应用再从原始状态保存 owner/ACL 与精确 definition digest，连接 scheduler admission、actual runtime token 和 protected-resource
+        decision。若隐藏步骤本身由已有 SYSTEM/root 完成，标记为匿迹而不当作提权；只有另有低权控制边和新增获准结果时启动权限遏制与副作用回收。
+      en: The authority application additionally preserves owner or ACL and exact definition digest from raw state
+        and joins scheduler admission actual runtime token and protected-resource decision. If hiding itself is performed
+        with preexisting SYSTEM or root authority classify stealth without treating it as elevation. Authority containment
+        and side-effect recovery begin only when another lower-authority control edge and a newly allowed result exist.
+  expected_effect:
+    paragraphs:
+    - zh: Tarrask 式 SD 删除变成高信号完整性事件，单一管理视图不再是对象存在性的唯一依据。攻击者需要同时突破调度后端、独立采集主体和集中日志，显著提高持续隐藏成本并缩短未发现时间。
+      en: Tarrask-style SD deletion becomes a high-signal integrity event and one management view no longer determines
+        object existence. The adversary must compromise scheduler backend independent collector and centralized audit
+        together materially raising durable hiding cost and reducing undetected time.
+    - zh: 四方视图把 standard missing、raw present、actual privileged runtime 与资源结果连接，防止隐藏定义切断低权 writer 的归因；同时保留 non-elevating
+        分支，避免把依赖既有 SYSTEM 的 Tarrask 式隐藏误报为新提权。发现真实正差时可以同时修复对象完整性与撤销权限副作用。
+      en: The four-way view joins standard missing raw present actual privileged runtime and resource outcome so a
+        hidden definition cannot sever attribution to a lower-authority writer. It retains a non-elevating branch
+        to avoid mislabeling Tarrask-style hiding that depends on preexisting SYSTEM as a new elevation. A real positive
+        difference triggers both object-integrity repair and authority-side-effect revocation.
+  limitations:
+    paragraphs:
+    - zh: 高权原始采集本身扩大敏感访问面，跨平台后端格式可能不受支持；合法 RBAC 会产生预期视图差分。采集账户必须只读、凭据隔离且查询主体被记录，差分规则需按租户和职责模型调优。
+      en: Privileged raw collection expands sensitive access and some platform backend formats may be unsupported
+        while legitimate RBAC creates expected view differences. Collectors must be read-only credential-isolated
+        and record query principal and differential rules require tenant and role tuning.
+    - zh: 独立采集者若与调度 writer 或资源审计共享失陷域，攻击者仍可伪造对象与权限结果；底层格式变化也可能破坏 definition digest。正常权限分层会让视图不同，必须验证查询主体和 expected
+        ACL；只有 access denied 而无 raw/runtime/result 链时不能采取提权级处置。
+      en: If the independent collector shares a compromise domain with the scheduler writer or resource audit an adversary
+        can still falsify object and authority outcomes and backend-format changes may break definition digests. Normal
+        privilege separation creates different views so query identity and expected ACL must be validated. Access
+        denied without a raw runtime and outcome chain does not justify elevation-level response.
+- target_ref: NJS-0075-004
+  use:
+    paragraphs:
+    - zh: 对短驻一次性计划代理，实时转发 create/register、trigger、run、child/Pod 和 delete 事件，并在删除后保留完整定义；对同一 actor/device/object 的
+        create-run-delete 设置分钟级事务策略，高权远程一次性任务要求 JIT 审批。调度器启动的代理二进制或用户可写路径不能因父进程受信而放行。
+      en: For Ephemeral One-Shot Scheduled Brokerage stream create or register trigger run child or Pod and delete
+        events in real time and retain the full definition after deletion. Apply minute-scale transaction policy to
+        create-run-delete by actor device and object and require JIT approval for privileged remote one-shot tasks.
+        Proxy binaries or user-writable paths launched by schedulers are not allowed merely because the parent is
+        trusted.
+    - zh: 同一短事务还必须记录 submitter pre-state、admission、actual token/ServiceAccount 与首个 resource allow/deny，并在 delete 后保留；高权一次性队列只接受绑定目标资源和操作的
+        JIT 请求。若提交者本已具同等权限，保留代理告警但不启动提权回收。
+      en: The same short transaction records submitter pre-state admission actual token or ServiceAccount and first
+        resource allow or deny and retains them after delete. A privileged one-shot queue accepts only JIT requests
+        bound to target resources and operations. When the submitter already holds equal authority brokerage remains
+        alertable but elevation recovery does not begin.
+  expected_effect:
+    paragraphs:
+    - zh: Serpent 式链无法在周期盘点之间完全消失，taskhost 父级会被还原到创建者、合成事件和已删除定义。未经批准的一次性代理可以在子进程或网络结果出现时快速阻断，并为后续调查保留对象内容。
+      en: Serpent-style chains cannot disappear completely between periodic inventories and taskhost parentage is
+        resolved back to creator synthetic event and deleted definition. Unapproved one-shot brokerage can be blocked
+        when the child or network outcome appears and object content remains for later investigation.
+    - zh: 资源事件不再只显示受信 scheduler identity，而可还原到低权提交者和已删除版本；最小运行权限限制单次任务可造成的正差，分钟级结果门可在高权动作后立即终止进程、撤销 token 或回滚资源副作用。已有管理员提交的合法事务则通过精确审批降噪。
+      en: Resource events no longer show only a trusted scheduler identity and resolve to the lower-authority submitter
+        and deleted version. Least runtime authority limits the positive difference one task can create and the minute-scale
+        outcome gate can terminate processes revoke tokens or roll back resource side effects immediately after a
+        privileged action. Legitimate transactions from existing administrators are suppressed through exact approval.
+  limitations:
+    paragraphs:
+    - zh: 安装器、补丁、备份恢复和 Kubernetes Job 会合法产生大量短驻事务，严格实时阻断可能造成业务中断。事件顺序受日志延迟影响，控制器自动删除与攻击者删除需用 actor 和 ownerRef 区分；缺失
+        task ID 时只能降低置信度。
+      en: Installers patching backup recovery and Kubernetes Jobs legitimately create many ephemeral transactions
+        and strict real-time blocking can disrupt business. Log delay may reorder events and actor plus owner references
+        must distinguish controller cleanup from adversary deletion. Missing task IDs require lower confidence.
+    - zh: 在资源 allow 到达前阻断可能误杀合法部署，到达后再响应又可能已有不可逆副作用；控制应按资源敏感度选择预执行隔离或事后回收。事件乱序、短驻 Pod 无 runtime telemetry 或提交者通过受管代理间接出现时，必须保持
+        authority_unresolved，不能从 SYSTEM/root 或 ServiceAccount 名称补齐。
+      en: Blocking before resource allow arrives can disrupt legitimate deployment while responding afterward may
+        leave irreversible side effects so controls choose pre-execution isolation or post-event recovery by resource
+        sensitivity. Event reordering short-lived Pods without runtime telemetry or submitters appearing through managed
+        proxies require authority-unresolved rather than filling gaps from SYSTEM root or ServiceAccount names.
+- target_ref: NJS-0200-001
+  use:
+    paragraphs:
+    - zh: 对 shutdown 或 reboot 任务限制 writer 与 runtime authority，保存 definition digest、creator、next run、target、approval
+        和 expiry，并在未来触发前撤销异常定义。
+      en: Restrict writer and runtime authority for shutdown or reboot tasks, retain definition digest, creator, next
+        run, target, approval, and expiry, and revoke anomalous definitions before future execution.
+    - zh: 关键系统只允许短期调度权限和双人批准，并把任务注册、调度器子进程、Event 1074、boot ID 与业务健康保存为不同权的长期谱系。
+      en: Critical systems permit only time-bound scheduling authority and dual approval and preserve task registration,
+        scheduler child, Event 1074, boot ID, and business health as differently authorized long-lived lineage.
+  expected_effect:
+    paragraphs:
+    - zh: 调度对象准入和长期定义保留把原始 writer 与后来 lifecycle 结果重新连接，使 SYSTEM 或 scheduler runtime 不再掩盖最初决定。
+      en: Scheduler-object admission and long-term definition retention reconnect the original writer to the later
+        lifecycle outcome so SYSTEM or scheduler runtime no longer obscures the initiating decision.
+    - zh: 异常未来 action 可在关机或重启发生前被发现、审批拒绝或撤销，关键业务的非预期中断范围和持续时间随之下降。
+      en: An anomalous future action can be detected, denied approval, or revoked before shutdown or reboot, reducing
+        the scope and duration of unexpected interruption to critical business.
+  limitations:
+    paragraphs:
+    - zh: 合法补丁、安装、恢复和运维高度依赖同一调度器，审计缺口、TaskCache 或 provider 后端直接修改以及受陷 controller 仍可绕过治理。
+      en: Legitimate patching, installation, recovery, and operations rely heavily on the same scheduler, while audit
+        gaps, direct TaskCache or provider-backend mutation, and compromised controllers can bypass governance.
+    - zh: 时钟变化、离线补跑、task ID 重用和紧急 authority 会改变实际触发时点或削弱 creator lineage，因此必须保留 definition digest、run instance 和外部审批。
+      en: Clock changes, offline catch-up, task ID reuse, and emergency authority can change actual trigger time or
+        weaken creator lineage, requiring retention of definition digest, run instance, and external approval.
+evidence_refs:
+- REF-000259
+- REF-000263
+- REF-000264
+- REF-000265
+- REF-000266
+- REF-000372
+- REF-000373
+- REF-000374
+- REF-000375
+- REF-000601
+- REF-000977
+- REF-000980
+lifecycle:
+  status: review
+  version: 0.3.0
+  created: '2026-09-12'
+  modified: '2026-10-04'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

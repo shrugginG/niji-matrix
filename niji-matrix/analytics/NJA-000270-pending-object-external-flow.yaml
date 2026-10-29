@@ -1,0 +1,120 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000270
+strategy_ref: DET-000219
+name:
+  zh: 跨进程待发对象到外部流关联
+  en: Cross-Process Pending Object to External Flow Correlation
+summary:
+  zh: 连接跨进程待发对象与外部发送，输出未登记自动外传流水线。
+  en: Join a pending object across processes to external sending and emit an unregistered automated exfiltration
+    pipeline.
+domains:
+- enterprise
+platforms:
+- Windows
+- Linux
+- macOS
+logic:
+  paragraphs:
+  - zh: 以 object identity、path 或 hash 为中心，在 producer 写入后 15 分钟至 24 小时内寻找不同进程对同一对象的读取、移动、重命名或删除，并将 reader 的稳定 process
+      identity 连接到外部网络事件。只有 writer 与 reader 不同、目标不在批准流水线内，且同时存在敏感源目录/采集进程、首次或未批准外部目的地、重复消费同一待发 namespace 中至少一项时升级。输出分为
+      pending-object-created、handoff-observed、external-send-observed 和 content-sensitive-confirmed，不以目录名或 uploader
+      名称直接定恶意。
+    en: Center on object identity, path, or hash and, from 15 minutes to 24 hours after producer write, find read,
+      move, rename, or delete of the same object by a different process, then join the reader's stable process identity
+      to an external network event. Elevate only when writer and reader differ, the target is outside an approved
+      pipeline, and at least one of sensitive source directory or collection process, first-seen or unapproved external
+      destination, or repeated consumption from the same pending namespace is present. Output pending-object-created,
+      handoff-observed, external-send-observed, and content-sensitive-confirmed separately; do not classify from
+      directory or uploader name alone.
+data_requirements:
+- source_type: endpoint-file-event
+  name:
+    zh: 端点文件或对象事件
+    en: Endpoint file or object events
+  channel: Microsoft Defender XDR DeviceFileEvents or equivalent
+  required_fields:
+  - timestamp
+  - deviceid
+  - actiontype
+  - filename
+  - folderpath
+  - sha1
+  - filesize
+  - initiatingprocessuniqueid
+  - initiatingprocessfilename
+- source_type: endpoint-network-event
+  name:
+    zh: 端点发起进程网络事件
+    en: Endpoint initiating-process network events
+  channel: Microsoft Defender XDR DeviceNetworkEvents or equivalent
+  required_fields:
+  - timestamp
+  - deviceid
+  - remoteip
+  - remoteurl
+  - remoteport
+  - protocol
+  - initiatingprocessuniqueid
+  - initiatingprocessfilename
+- source_type: approved-transfer-pipeline
+  name:
+    zh: 批准自动传输流水线清单
+    en: Approved automated-transfer pipeline inventory
+  channel: change and asset management
+  required_fields:
+  - pipeline-id
+  - owner
+  - producer-identity
+  - pending-namespace
+  - uploader-identity
+  - approved-destination
+  - valid-from
+  - valid-to
+  - data-purpose
+observables:
+- zh: 生产者写入待发对象，另一进程读取后建立外部连接
+  en: A producer writes a pending object and another process reads it before external connection
+- zh: 同一待发命名空间反复被消费并在发送后清空
+  en: One pending namespace is repeatedly consumed and drained after sending
+correlation:
+  window:
+    zh: 以十五分钟作为高置信分支，并按合法队列 SLA 扩展至二十四小时。
+    en: Use fifteen minutes for the high-confidence branch and extend to twenty-four hours for legitimate queue
+      SLAs.
+  dimensions:
+  - device-id
+  - object-identity-or-hash
+  - writer-process
+  - reader-process
+  - pending-namespace
+  - destination
+  - pipeline-id
+false_positives:
+- zh: 批准的备份、云同步、邮件队列、日志运输与 DLP 隔离流水线
+  en: Approved backup, cloud sync, mail queue, log shipping, and DLP quarantine pipelines
+blind_spots:
+- zh: 内存队列缺少稳定对象标识，或未记录文件读取
+  en: Memory queues lack stable object identity or file reads are not recorded
+- zh: 共享代理或既有连接丢失逐对象进程归属
+  en: A shared proxy or existing connection loses per-object process attribution
+tuning_guidance:
+  paragraphs:
+  - zh: 为合法流水线固定 writer、namespace、reader、目的地与 owner，按对象关系而非进程名白名单；新 writer、新目的地或源目录变化仍应触发复核。先用 15 分钟高置信窗口，按实际队列
+      SLA 扩展到 24 小时。
+    en: Pin writer, namespace, reader, destination, and owner for legitimate pipelines and allowlist relationships
+      rather than process names. A new writer, destination, or source-directory change remains reviewable. Start
+      with a 15-minute high-confidence window and extend to 24 hours according to real queue SLAs.
+evidence_refs:
+- REF-000484
+- REF-000475
+- REF-000604
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-10-04'
+  modified: '2026-10-04'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

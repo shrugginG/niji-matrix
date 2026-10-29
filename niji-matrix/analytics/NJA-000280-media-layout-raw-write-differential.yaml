@@ -1,0 +1,113 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000280
+strategy_ref: DET-000225
+name:
+  zh: 声明介质布局与原始区域差分分析
+  en: Declared Media Layout and Raw-Region Differential Analytic
+summary:
+  zh: 比较介质声明布局、物理容量和原始写入，发现宿主不可见数据区域。
+  en: Compare declared layout, physical capacity, and raw writes to find host-opaque media regions.
+domains:
+- enterprise
+platforms: []
+logic:
+  paragraphs:
+  - zh: 在受管检查站为每个批准介质记录物理容量、逻辑扇区大小、分区类型与起止、可见卷总量、分区表摘要、文件清单和声明外区域摘要。每次跨区前后重新采集，识别可见分区被缩小而物理容量不变、新增未声明尾部区域、异常分区偏移、声明外块由全零转为非零或高熵、或未批准进程打开物理磁盘/卷句柄并在断开前执行原始写入的情况。只有布局差异、原始写入或声明外内容与保管链相连时才升级，不能把加密盘、高熵或预留分区单独判为恶意。
+    en: At a managed checkpoint, record each approved medium's physical capacity, logical sector size, partition
+      types and extents, total visible volume, partition-table digest, file manifest, and digest of regions outside
+      the declaration. Reacquire before and after every zone crossing. Identify a visible partition shrinking while
+      physical capacity stays constant, a new undeclared tail, anomalous partition offsets, outside-declaration
+      blocks changing from zero to nonzero or high entropy, or an unapproved process opening a physical disk or
+      volume handle and performing raw writes before disconnection. Escalate only when layout difference, raw write,
+      or undeclared content is linked to the custody chain; an encrypted disk, high entropy, or a reserved partition
+      alone is not malicious.
+data_requirements:
+- source_type: raw-media-layout-inventory
+  name:
+    zh: 原始介质布局与区域清单
+    en: Raw Media Layout and Region Inventory
+  channel: managed media inspection station
+  required_fields:
+  - timestamp
+  - station-id
+  - asset-id
+  - observed-serial
+  - physical-capacity-bytes
+  - logical-sector-size
+  - partition-table-hash
+  - partition-extents
+  - visible-volume-bytes
+  - undeclared-region-hash
+  - undeclared-region-nonzero-bytes
+- source_type: raw-device-access
+  name:
+    zh: 原始设备访问与写入
+    en: Raw Device Access and Writes
+  channel: EDR/minifilter/storage telemetry with deployment-validated raw-write attribution
+  required_fields:
+  - timestamp
+  - device-id
+  - process-id-or-unique-key
+  - image
+  - raw-device-path
+  - access-type
+  - byte-offset
+  - byte-length
+- source_type: media-transfer-ledger
+  name:
+    zh: 介质保管与基线版本
+    en: Media Custody and Baseline Version
+  channel: null
+  required_fields:
+  - asset-id
+  - custodian
+  - source-zone
+  - destination-zone
+  - scan-time
+  - baseline-version
+  - approver
+observables:
+- zh: 认可介质的物理容量与分区/文件系统声明容量不一致
+  en: A recognized medium has a mismatch between physical and partition or file-system capacity
+- zh: 非批准进程执行原始磁盘写入，隐藏区域摘要在流转前后改变
+  en: An unapproved process performs raw disk writes and an undeclared-region digest changes across custody
+correlation:
+  window:
+    zh: 在每次介质准入和离区前后比较布局与摘要，并保留到保管周期结束。
+    en: Compare layout and digest at every admission and before zone exit, retaining them through the custody cycle.
+  dimensions:
+  - organizational-media-asset
+  - observed-serial
+  - physical-capacity
+  - partition-table-hash
+  - undeclared-region-hash
+  - writer-process
+  - custody-record
+false_positives:
+- zh: 批准磁盘成像、分区修复、加密卷和设备初始化
+  en: Approved disk imaging, partition repair, encrypted volumes, and device initialization
+blind_spots:
+- zh: 固件级隐藏区不响应标准原始读取
+  en: Firmware-hidden areas do not respond to standard raw reads
+- zh: 检查站未获取完整介质或擦除破坏了证据
+  en: The checkpoint does not acquire the full medium or sanitization destroys evidence
+tuning_guidance:
+  paragraphs:
+  - zh: 为每个批准资产和固件版本保存签名布局与区域摘要，并把合法重分区绑定到工单和重新基线；在隔离区入口与出口均扫描，优先调查布局变化与未批准原始写入同时出现的事件，不用全局熵阈值替代资产差分。
+    en: Keep a signed layout and region digest for every approved asset and firmware version, binding legitimate
+      repartitioning to a ticket and new baseline. Scan at both entry and exit of isolated zones, prioritize events
+      combining layout change with unapproved raw writes, and use per-asset differences rather than a universal
+      entropy threshold.
+evidence_refs:
+- REF-000917
+- REF-000419
+- REF-000597
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-10-04'
+  modified: '2026-10-04'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

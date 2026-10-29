@@ -1,0 +1,63 @@
+schema_version: "2.0.0"
+type: evasion-subtechnique
+id: NJS-0170-001
+name: {zh: 会话历史持久化整体抑制, en: Whole-Session History Persistence Suppression}
+summary: {zh: 攻击者使一个交互会话的全部或近全部命令写往无效 sink 或完全不保存，同时保持解释器和命令正常运行。, en: "Adversaries send all or nearly all commands in an interactive session to an ineffective sink or disable persistence entirely while preserving normal interpreter and command operation."}
+aliases: []
+parent_ref: NJT-0170
+lineage: {attck_subtechnique_inherited: false}
+definition_and_concept:
+  paragraphs:
+    - zh: 会话历史持久化整体抑制是攻击者在一个可界定的交互 session 中，将 history path 置空或指向 /dev/null 等无效 sink、将历史容量降为零、选择 SaveNothing 或使用等价全局开关，使该时间窗内全部或近全部应记录命令不形成持久条目。直接对象是 session_id—history_state—expected write—store outcome。
+      en: Whole-Session History Persistence Suppression is adversary use within a bounded interactive session of an unset history path, an ineffective sink such as /dev/null, zero history capacity, SaveNothing, or an equivalent global switch so all or nearly all commands expected in that interval fail to become durable entries. Its direct object is session ID to history state to expected write to store outcome.
+    - zh: “近全部”只允许由 shell 自身固定例外或状态切换边界解释，不能用来吸收选择性过滤。完成需要独立证明 session 中存在命令、全局状态在其前生效、正常 flush/退出已经发生且 store 没有对应区间。只有配置变化尚未运行命令属于 exposure。
+      en: “Nearly all” permits only fixed shell exceptions or a state-transition boundary and cannot absorb selective filtering. Completion requires independent proof that commands occurred in the session, the global state took effect beforehand, the normal flush or exit occurred, and the store lacks the corresponding interval. A configuration change before any command remains exposure.
+stealth_characteristics:
+  paragraphs:
+    - zh: 会话历史持久化整体抑制产生连续时间窗缺口：shell 可显示 prompt、执行子进程并产生结果，但 history 文件 size/mtime/entry count 不随 session 预期变化，或 write 目标解析到空设备、不可持久位置。BPFDoor 同时设置 HISTFILE 和 MYSQL_HISTFILE，展示攻击者在进入 shell 前覆盖多个客户端 sink。
+      en: Whole-Session History Persistence Suppression creates a contiguous time-window gap. The shell can show prompts, execute child processes, and produce outcomes while history-file size, modification time, or entry count does not change as expected, or writes resolve to a null or nonpersistent location. BPFDoor setting both HISTFILE and MYSQL_HISTFILE demonstrates an adversary overriding multiple client sinks before entering the shell.
+    - zh: 可恢复残余包括登录/session 生命周期、环境变量与 PSReadLine option、打开文件/设备、write syscall、文件 inode/ACL/容量、进程树和远程 TTY 录制。只检查最终 history 文件容易把合法 no-history、崩溃和权限错误混为攻击。
+      en: Recoverable residue includes login and session lifecycle, environment variables and PSReadLine options, opened files or devices, write syscalls, file inode, ACL, and capacity, process trees, and remote TTY recording. Inspecting only the final history file confuses legitimate no-history operation, crashes, and permission errors with attack.
+scope_boundary_definition:
+  paragraphs:
+    - zh: 纳入要求 session 为交互式、基线要求保存、未批准全局状态覆盖整个相关区间、存在独立命令证据且 store 在应有 flush 后缺少该区间。HISTFILE=/dev/null、unset、HISTSIZE/HISTFILESIZE=0、SaveNothing 和等价设备 CLI no-history 是实现，不是独立子项。
+      en: Include only when the session is interactive, the baseline requires persistence, an unapproved global state covers the relevant interval, independent command evidence exists, and the store lacks that interval after expected flush. HISTFILE to /dev/null, unset values, HISTSIZE or HISTFILESIZE zero, SaveNothing, and equivalent device-CLI no-history settings are implementations rather than separate children.
+    - zh: 只漏掉命中空格/模式的条目归 NJS-0170-002；退出前崩溃、容器默认短暂 shell、只读 home、磁盘满、批准隐私 session 和历史写到另一合法路径是反例。已有文件被删除或截断归 NJT-0112。
+      en: Omission only for entries matching a space or pattern belongs to NJS-0170-002. A crash before exit, an ephemeral shell that does not save by default, read-only home, full disk, an approved privacy session, or history written to another legitimate path is a counterexample. Deletion or truncation of an existing file belongs to NJT-0112.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+      - zh: Linux 后门在启动 root shell 前导出 HISTFILE=/dev/null，并对 MySQL 客户端设置相同 sink，随后执行枚举、数据库和清理命令；PowerShell 操作者把 PSReadLine HistorySaveStyle 设为 SaveNothing 后继续交互。防守需要以 session 为单位验证状态和最终写入，而不是仅匹配变量名。
+        en: A Linux backdoor exports HISTFILE=/dev/null and the same sink for a MySQL client before starting a root shell, then runs enumeration, database, and cleanup commands. A PowerShell operator changes PSReadLine HistorySaveStyle to SaveNothing and continues interactively. Defenders validate state and final writes per session rather than matching variable names alone.
+  threat_model:
+    attacker_model:
+      paragraphs:
+        - zh: 需要在首个敏感命令前控制 session 环境或历史 API 并保持至 flush 边界。强制 wrapper、只读 profile、远程 session broker 和内核/平台审计可在不同信任面保留证据；全局关闭也比单条遗漏更容易形成连续异常。
+          en: The adversary must control the session environment or history API before the first sensitive command and maintain it through the persistence boundary. Mandatory wrappers, read-only profiles, remote session brokers, and kernel or platform audit retain evidence in a different trust plane. Global disablement also creates a more continuous anomaly than single-entry omission.
+    defender_model:
+      paragraphs:
+        - zh: 防守方连接 authentication/session_id、interactive flag、shell/version、history state old-new、sink canonical path/type、write/close/exit、最终 inode/entry count 与独立命令/进程。并发 session 必须按 session 与 inode 分离，避免把其他 session 的 flush 当作本项结果。
+          en: Defenders join authentication and session ID, interactive flag, shell and version, history-state old and new, canonical sink path and type, write, close, and exit, final inode and entry count, and independent command or process evidence. Concurrent sessions must be separated by session and inode so another session's flush is not mistaken for this outcome.
+stealth_mechanisms:
+  - mechanism_ref: NM-BT
+    role: primary
+    summary: {zh: 整段交互活动存在而默认历史时间窗为空, en: An entire interval of interactive activity exists while the default history window is empty}
+    analysis:
+      paragraphs:
+        - zh: 攻击者让命令沿正常执行路径运行，只把 history consumer 的全局输出导向无效或禁用状态。默认历史观察面因此看不到连续行为；session 与进程证据、状态变化和 sink write 差分可重建该区间。
+          en: The adversary keeps commands on their normal execution path and directs only the history consumer's global output to an ineffective or disabled state. The default history plane then misses a contiguous interval, which session and process evidence plus state and sink-write differentials can reconstruct.
+    evidence_refs: [REF-000453, REF-000737, REF-000738, REF-000739]
+    confidence: high
+defense:
+  detections: {coverage: available, strategy_refs: [DET-000195]}
+  mitigations: {coverage: available, mitigation_refs: [MIT-000176]}
+evidence:
+  claim_refs: [CLM-000837, CLM-000839, CLM-000840]
+  case_refs: [CASE-000240]
+  reference_refs: [REF-000453, REF-000737, REF-000738, REF-000739]
+research:
+  limitations:
+    paragraphs:
+      - zh: BPFDoor 提供直接恶意 sink 案例，GNU/Microsoft 提供平台语义，但不同 shell 可能在每条命令、退出或显式调用时写历史。共享 history、histappend、远程 home 和异常终止会改变预期，因此 analytic 必须加载版本化基线，不能用固定“退出后写入”假设覆盖所有平台。
+        en: BPFDoor provides a direct malicious-sink case and GNU or Microsoft provides platform semantics, but shells can write after every command, on exit, or through an explicit call. Shared history, histappend, remote homes, and abnormal termination change expectations, so analytics require versioned baselines rather than one fixed assumption that all history writes at exit.
+lifecycle: {status: review, version: "0.1.0", created: "2026-09-23", modified: "2026-09-23", contributors: [Niji Matrix Research], reviewers: []}

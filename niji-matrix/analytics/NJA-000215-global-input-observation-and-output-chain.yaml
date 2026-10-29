@@ -1,0 +1,123 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000215
+strategy_ref: DET-000192
+name:
+  zh: 全局输入观察与输出链分析
+  en: Global Input Observation and Output-Chain Analytic
+summary:
+  zh: 关联未批准输入观察权限、设备读取与同一进程的缓冲或外联结果，并把能力线索与实际捕获分级。
+  en: Correlate unapproved input-observation authority or device reads with buffers or egress from the same process and grade
+    capability separately from actual capture.
+domains:
+- enterprise
+platforms:
+- Windows
+- Linux
+- macOS
+logic:
+  paragraphs:
+  - zh: 以 host、user、session 和 process 为键，识别首次或未批准的全局键盘/鼠标 Hook、event tap、Input Monitoring 授权、/dev/input open/read 或等效输入观察；在三十分钟内关联同进程或子进程的字符缓冲文件、重复小写入、剪贴板/窗口上下文读取和新外联。只有出现输入内容结果或经实验验证的捕获输出才标为
+      capture；单独权限或 API 调用标为 exposure。Windows API 分支要求 EDR 已验证提供调用及参数，不能用 Sysmon Event 10 冒充 Hook 日志。
+    en: Join host, user, session, and process to identify first-seen or unapproved global keyboard or mouse hooks, event taps,
+      Input Monitoring authority, /dev/input open or read activity, or equivalent observation. Within thirty minutes, correlate
+      same-process or child-process character buffers, repeated small writes, clipboard or window-context reads, and new egress.
+      Label capture only with an input-content result or lab-validated capture output; permission or an API call alone is
+      exposure. The Windows API branch requires EDR-validated call and parameter telemetry and must not treat Sysmon Event
+      10 as a hook log.
+data_requirements:
+- source_type: endpoint-input-observation
+  name:
+    zh: 端点输入观察与权限事件
+    en: Endpoint input observation and authority events
+  channel: validated EDR API telemetry, macOS TCC/unified log, or Linux auditd input-device rules
+  required_fields:
+  - timestamp
+  - host_id
+  - user_id
+  - session_id
+  - process_guid
+  - image_path
+  - signer
+  - operation
+  - target_surface
+  - result
+- source_type: endpoint-file-network
+  name:
+    zh: 观察进程文件与网络结果
+    en: Observer process file and network outcomes
+  channel: EDR file and network telemetry
+  required_fields:
+  - timestamp
+  - host_id
+  - process_guid
+  - parent_process_guid
+  - file_path
+  - bytes_written
+  - destination
+  - bytes_out
+- source_type: approved-input-software-inventory
+  name:
+    zh: 获批输入软件与用途清单
+    en: Approved input software and purpose inventory
+  channel: endpoint management or CMDB
+  required_fields:
+  - image_path
+  - signer
+  - version
+  - approved_scope
+  - owner
+  - expiry
+observables:
+- zh: 未批准的全局输入观察者
+  en: Unapproved global input observer
+- zh: 输入设备读取
+  en: Input-device read
+- zh: 新输入监控授权
+  en: New input-monitoring grant
+- zh: 字符缓冲输出
+  en: Character-buffer output
+- zh: 观察进程外联
+  en: Observer-process egress
+correlation:
+  window:
+    zh: 以输入观察事件为起点关联后三十分钟内同一主机、用户、会话与进程的缓冲和外联结果。
+    en: Starting at the input-observation event, join buffers and egress from the same host, user, session, and process during
+      the following thirty minutes.
+  dimensions:
+  - host_id
+  - user_id
+  - session_id
+  - process_guid
+  - signer
+  - target_surface
+  - destination
+false_positives:
+- zh: 输入法、屏幕阅读器、远程支持、游戏覆盖层、自动化测试、密码管理器和安全代理可合法观察输入；必须核对精确签名、版本、会话、目标范围、工单与期限，不能按产品名整体放行。
+  en: Input methods, screen readers, remote support, game overlays, automation tests, password managers, and security agents
+    can legitimately observe input. Check exact signer, version, session, target scope, ticket, and expiry rather than allowlisting
+    a product name.
+blind_spots:
+- zh: Windows 默认日志不记录低层 Hook，内核或同进程路径可绕开 API 传感器；TCC 只表示授权，auditd 未预置规则就没有历史事件；内存缓冲且随正常进程外传时可能没有文件。
+  en: Default Windows logs do not record low-level hooks, and kernel or in-process paths can bypass API sensors. TCC shows
+    authority only, auditd has no historical event without prior rules, and an in-memory buffer leaving with a normal process
+    may create no file.
+tuning_guidance:
+  paragraphs:
+  - zh: 先在试点验证每个平台的 operation 与 process 字段，再按用户、session 和目标应用建立批准图；对新签名、无工单授权、后台服务观察交互会话及观察后外联提高权重，同时保留最小化且不含真实按键内容的元数据。
+    en: Pilot-validate operation and process fields per platform, then baseline approved users, sessions, and target apps.
+      Raise weight for new signers, unticketed grants, background services observing interactive sessions, and post-observation
+      egress, while retaining only minimized metadata without actual keystroke content.
+evidence_refs:
+- REF-000726
+- REF-000727
+- REF-000728
+- REF-000733
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-09-23'
+  modified: '2026-09-23'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

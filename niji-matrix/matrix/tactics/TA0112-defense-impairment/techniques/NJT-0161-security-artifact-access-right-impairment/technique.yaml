@@ -1,0 +1,76 @@
+schema_version: "2.0.0"
+type: technique
+id: NJT-0161
+name: {zh: 安全工件访问权限削弱, en: Security-Artifact Access-Right Impairment}
+summary: {zh: 攻击者改变安全二进制、规则、配置或审计工件的有效权限，使其真实防御消费者无法继续履行保护职责。, en: "Adversaries change effective permissions on security binaries, rules, configuration, or audit artifacts so their real defensive consumers cannot continue their protective duties."}
+aliases: [File and Directory Permissions Modification, T1222]
+classification:
+  tactic_refs: [TA0112]
+  origin: {kind: attack-adapted, source_attack_id: T1222, source_attack_version: "19.1"}
+  decision_ref: DEC-TA0112-T1222
+definition_and_concept:
+  paragraphs:
+    - zh: 安全工件访问权限削弱是攻击者修改安全产品二进制、驱动、规则库、保护性配置或本地审计工件的 owner、DACL、POSIX 权限或继承关系，使承担防御职责的真实服务、进程或代理失去所需的执行、读取、写入或更新权。直接目标是权限裁决造成的防御能力下降，而不是获得任意文件访问、运行 cacls/chmod 命令或改变一个普通文件的属性。
+      en: Security-Artifact Access-Right Impairment is adversary modification of owner, DACL, POSIX permissions, or inheritance on a security-product binary, driver, rule store, protective configuration, or local audit artifact so the real service, process, or agent with defensive duties loses required execute, read, write, or update access. Its direct target is defensive decline caused by an access decision, not arbitrary file access, execution of a cacls or chmod command, or an attribute change on an ordinary file.
+    - zh: 概念链由 writer、版本化对象、旧新权限、消费者身份、有效访问结果和防御功能组成。文件仍存在且内容 hash 可完全不变，操作系统却会以正常访问控制机制拒绝安全消费者；因此必须把权限状态与消费结果一起判断。不同操作系统使用不同语法和审计通道，但只要观察链相同，它们仍属于同一父级行为。
+      en: The concept chain contains writer, versioned object, old and new permissions, consumer identity, effective access result, and defensive function. The file can remain present with an unchanged content hash while the operating system ordinarily denies the security consumer, so permission state and consumption outcome must be evaluated together. Operating systems use different syntax and audit channels, but implementations with the same observation chain remain one parent behavior.
+stealth_characteristics:
+  paragraphs:
+    - zh: 安全工件访问权限削弱可保留安全服务条目、进程调度和文件路径，使资产清单看起来完整；真正变化发生在消费者访问时，由操作系统返回正常的拒绝或缺权结果。writer 事件与产品下一次启动、规则刷新或更新可能相隔较久，单独查看工具健康或 ACL 变化都难以恢复因果。Grandoreiro 以普通 cacls 和拒绝 ACE 针对 Trusteer，展示了防御对象被正常访问裁决反向利用的路径。
+      en: Security-Artifact Access-Right Impairment can preserve security service entries, process scheduling, and file paths so asset inventory appears complete. The material change occurs only when the consumer accesses the object and receives an ordinary denial or insufficient-rights result from the operating system. Writer activity and the product's next launch, rule refresh, or update may be separated in time, making causation difficult from either health or ACL changes alone. Grandoreiro's ordinary cacls denial entries against Trusteer illustrate use of normal access decisions against a defensive object.
+    - zh: 可观察残余包括 writer SID/session、旧新 security descriptor 或 mode/ACL、owner 与继承源、稳定 object ID、消费者 token、访问拒绝错误、产品启动/规则读取结果和独立 canary。内容完整性监控若只验证 hash 会漏报，预配置权限审计与不同权 ACL 基线可压缩盲区。若产品以其他身份、缓存副本或内核路径继续工作，匿迹和损伤均会受到限制。
+      en: Observable residue includes writer SID and session, old and new security descriptor or mode and ACL, owner and inheritance source, stable object ID, consumer token, denial error, product launch or rule-read result, and independent canary. Content-integrity monitoring that verifies only hashes can miss the condition, while preconfigured permission audit and a separately authorized ACL baseline narrow the gap. Alternative identity, cached copy, or kernel path that keeps the product working limits both stealth and damage.
+scope_boundary_definition:
+  paragraphs:
+    - zh: 纳入攻击者控制的权限或所有权变更，要求目标对象承担明确防御职责、新权限相对批准基线改变真实消费者的有效访问，并出现可复现的组件启动、规则读取、更新、日志写入或保护功能失败。只见命令、权限审计或新增攻击者写权而尚无消费者结果时，分别记录 attempt、mutation_only 或 consumer_denied_pending，不宣称完成失防。
+      en: Include adversary-controlled permission or ownership changes only when the target object has a defined defensive duty, new permissions change effective access for the real consumer relative to the approved baseline, and repeatable component launch, rule read, update, log write, or protective-function failure follows. A command, permission audit, or newly granted adversary write access without a consumer outcome remains attempt, mutation_only, or consumer_denied_pending rather than completed impairment.
+    - zh: 通过权限获得载荷替换能力但未造成防御结果，归相应执行、持久化或映像对象；已持久化日志被删除归证据擦除；工具最终功能削弱可并记 NJT-0123，但本项拥有权限原因链。批准的软件升级、灾备恢复、隔离恶意文件、取证封存和 owner 修复是正常反例，需要工单、产品版本、目标集合、期限以及升级后功能验证。
+      en: Permission changes that enable payload replacement without a defensive outcome belong to the relevant execution, persistence, or image object. Deletion of stored logs belongs to evidence erasure. Final tool-function impairment may also map to NJT-0123, while this object owns the permission cause chain. Approved software upgrade, disaster recovery, malicious-file quarantine, forensic preservation, and ownership repair are normal counterexamples requiring a ticket, product version, target set, expiry, and post-change functional validation.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+      - zh: 攻击者在银行木马、自保护载荷或勒索准备阶段发现会阻断其行为的本地安全产品后，可向核心二进制或规则路径施加消费者拒绝权限，等待服务重启或规则刷新后再继续恶意活动。Grandoreiro 样本对 Trusteer RapportGH.dll 写入 Everyone/对应主体的拒绝权限，直接支持目标选择和恶意权限状态；公开材料没有提供每个目标的最终功能测试，因此场景不扩大为普遍成功。
+        en: During banking-malware self-protection or ransomware preparation, an adversary that identifies a local security product likely to block activity can apply consumer-denial permissions to a core binary or rule path, wait for service restart or rule refresh, and then continue. A Grandoreiro sample wrote denial permissions for Everyone or corresponding trustees to Trusteer RapportGH.dll, directly supporting target selection and malicious permission state. Public reporting lacks final functional tests for every target, so the scenario is not generalized to universal success.
+  threat_model:
+    attacker_model:
+      paragraphs:
+        - zh: 攻击者需要修改目标权限或 owner 的权力，能识别真实防御消费者身份、关键工件及下一次消费时机。它可避免修改文件内容，从而绕开仅 hash 的监控，但仍会暴露权限工具、writer 会话、对象审计和访问错误。受保护安装器、不同权 owner、继承锁定、PPL/内核防护及自修复产品会提高成本或恢复权限。
+          en: The adversary needs authority to change target permissions or owner and knowledge of the real defensive consumer, critical artifact, and next consumption time. Avoiding content changes can bypass hash-only monitoring but still exposes the permission utility, writer session, object audit, and access errors. Protected installers, separately controlled ownership, locked inheritance, PPL or kernel protection, and self-healing products raise cost or restore access.
+    defender_model:
+      paragraphs:
+        - zh: 防守方保存关键工件的版本化 owner/ACL、消费者 SID/token、权限 writer 与登录会话、对象稳定身份、访问结果和不同权产品 canary。Windows 4670 依赖事先配置 SACL，POSIX audit 也需要覆盖属性变更；缺少这些前置时，可能只能从产品启动失败倒查当前 ACL。防守模型必须区分权限变化、有效拒绝和功能损伤，不能把三者合并成一条粗粒度告警。
+          en: Defenders retain versioned owner and ACL, consumer SID or token, permission writer and logon session, stable object identity, access result, and separately authorized product canary for critical artifacts. Windows 4670 requires a preconfigured SACL, and POSIX audit likewise needs attribute-change coverage; without those prerequisites defenders may only work backward from product launch failure to current ACL. The model must separate permission change, effective denial, and functional damage rather than merge them into one coarse alert.
+stealth_mechanisms:
+  - mechanism_ref: NM-BT
+    role: primary
+    summary: {zh: 正常访问控制裁决使防御工件存在却无法被消费者使用, en: Ordinary access-control decisions leave a defensive artifact present but unusable by its consumer}
+    analysis:
+      paragraphs:
+        - zh: 攻击者写入针对安全消费者的权限后，不必删除或修改防御工件内容；操作系统在后续消费时以正常 DACL/POSIX 规则拒绝访问。痕迹从显眼的工具关停变成较早的权限 writer 和稍后的普通 access denied，防守方若只检查文件存在、hash 或服务注册，会把实际失防理解为产品故障。连接有效权限、真实消费者和功能结果可以打破这种行为透明。
+          en: After writing permissions against a security consumer, the adversary need not delete or alter the defensive artifact's content. The operating system later denies consumption through ordinary DACL or POSIX rules. Traces shift from conspicuous tool shutdown to an earlier permission writer and later ordinary access denied. Defenders checking only file presence, hash, or service registration can interpret real impairment as product failure. Joining effective access, real consumer, and functional outcome breaks this behavioral transparency.
+    evidence_refs: [REF-000688, REF-000689, REF-000690]
+    confidence: medium
+subtechnique_taxonomy:
+  narrative:
+    paragraphs:
+      - zh: 当前不建立 NJS。ATT&CK T1222.001 与 T1222.002 分别描述 Windows 及 Linux/macOS 权限实现，但 DACL、mode bits、POSIX ACL 和 owner 只是不同介质。开放搜索审查了拒绝安全组件执行、扩大攻击者写权、限制审计工件访问、继承 ACL 漂移和符号链接权限；现有直接案例只支持父级“有效权限阻断防御消费者”，没有结论级证据证明这些轴各有稳定、不可互换的残余和防御方法。
+        en: No NJS is established now. ATT&CK T1222.001 and T1222.002 describe Windows and Linux or macOS permission implementations, while DACLs, mode bits, POSIX ACLs, and ownership are different media. Open search examined denial of security-component execution, added adversary write access, restricted audit-artifact access, inherited-ACL drift, and symbolic-link permission. The direct case supports the parent effective-permission denial of a defensive consumer, not stable non-interchangeable residue and defensive methods for each axis.
+      - zh: “拒绝执行”与“扩大写权”可能在未来形成不同结果轴，但目前后者通常只是后继篡改前提，前者公开来源又未给出完整消费者结果，强行拆分会制造证据越级。平台、工具名、权限位与对象类别不得成为子项；出现能证明不同前态、痕迹和恢复动作的直接案例时再重开 taxonomy。
+        en: Execute denial and added write access may become different outcome axes in future, but the latter is usually a prerequisite for later tampering and public evidence for the former lacks a complete consumer result. Splitting now would overstate evidence. Platform, utility name, permission bit, and object category cannot define children; taxonomy should reopen when direct cases establish different prior state, residue, and recovery action.
+  coverage: none-justified
+  subtechnique_refs: []
+defense:
+  detections: {coverage: available, strategy_refs: [DET-000182]}
+  mitigations: {coverage: available, mitigation_refs: [MIT-000164]}
+evidence:
+  claim_refs: [CLM-000796, CLM-000797, CLM-000798]
+  case_refs: [CASE-000223]
+  reference_refs: [REF-000687, REF-000688, REF-000689, REF-000690]
+research:
+  limitations:
+    paragraphs:
+      - zh: ESET 样本分析直接记录 Grandoreiro 的拒绝 ACL 命令与 Trusteer 目标，并以“尝试破坏”描述意图；它没有发布每个感染端点的有效 token 计算、启动错误或保护 canary，故案例不能单独证明完成失防。Microsoft 文档定义 DACL 语义和 4670 数据，但只支持数据要求与判定方式，不证明在野恶意使用。
+        en: ESET's sample analysis directly records Grandoreiro denial-ACL commands and the Trusteer target and describes intent as an attempt to break the product. It does not publish effective-token calculations, launch errors, or protection canaries for every infected endpoint, so the case cannot alone prove completed impairment. Microsoft documentation defines DACL semantics and event 4670 data but supports data requirements and decision method rather than in-the-wild malicious use.
+      - zh: 4670 依赖目标 SACL，权限继承、组成员、服务 SID、容器挂载和符号链接会使有效权计算复杂；产品自修复或缓存可能让拒绝 ACL 不产生功能损伤。缺少旧值、真实消费者身份和可复现结果时，只报告 mutation 或 denial risk。Linux/macOS 平台没有本批直接恶意案例，不能从 Windows 样本外推同等置信度；人工评审需重点审查零子项与 NJT-0123 双重记录边界。
+        en: Event 4670 depends on the target SACL, while inheritance, group membership, service SIDs, container mounts, and symbolic links complicate effective-access calculation. Product self-healing or caching can prevent a denial ACL from causing functional loss. Without old state, real consumer identity, and repeatable outcome, report mutation or denial risk only. This batch has no direct malicious Linux or macOS case and cannot extrapolate Windows confidence; human review should focus on the zero-child result and coexistence boundary with NJT-0123.
+lifecycle: {status: review, version: "0.1.0", created: "2026-09-23", modified: "2026-09-23", contributors: [Niji Matrix Research], reviewers: []}

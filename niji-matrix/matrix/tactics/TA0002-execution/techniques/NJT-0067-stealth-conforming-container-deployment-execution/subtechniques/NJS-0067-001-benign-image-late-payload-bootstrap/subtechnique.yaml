@@ -1,0 +1,39 @@
+schema_version: "2.0.0"
+type: evasion-subtechnique
+id: NJS-0067-001
+parent_ref: NJT-0067
+name: {zh: 良性镜像后置载荷引导, en: Benign-Image Late-Payload Bootstrap}
+summary: {zh: 攻击者部署通用或批准基础镜像并在启动后下载、构造或挂载恶意代码，使镜像扫描与实际运行时内容分离。, en: Adversaries deploy a generic or approved base image and retrieve construct or mount malicious code after start separating image scanning from actual runtime content.}
+aliases: []
+lineage: {attck_subtechnique_inherited: false}
+definition_and_concept:
+  paragraphs:
+  - zh: 良性镜像后置载荷引导固定“镜像内容与启动后执行内容分离”变量：新容器引用在部署时可通过扫描、签名或 SBOM 检查的通用基础镜像，攻击者把下载、解码、生成或挂载恶意载荷的动作放在 entrypoint、args 或启动后命令中。直接结果是新容器内攻击者代码开始运行，独立匿迹效果是预运行镜像检查没有看到真实载荷。
+    en: Benign-Image Late-Payload Bootstrap fixes separation between image content and post-start execution content. A new container references a generic base image that can pass deployment-time scanning signature or SBOM checks while the adversary puts retrieval decoding generation or mounting of the malicious payload in entrypoint args or a post-start command. The direct outcome is adversary code running in the new container; the independent stealth effect is that pre-runtime image inspection never saw the real payload.
+  - zh: 基础镜像必须在检查时不包含决定性的恶意载荷；若恶意代码已预装但镜像名看似合法，主要属于 NJS-0067-002。容器可写下载文件，不要求纯内存；判定点是载荷在部署检查后才形成，而不是文件是否存在。
+    en: The base image must lack the decisive malicious payload at inspection time. If malicious code is preloaded but the image name appears legitimate, classification primarily belongs to NJS-0067-002. The container may download files and need not remain memory-only; the decision point is payload formation after deployment inspection rather than file absence.
+stealth_characteristics:
+  paragraphs:
+  - zh: 良性镜像后置载荷引导使 admission 看到批准 digest、签名或无已知漏洞，runtime 却通过 egress、shell、包管理器、mounted secret/config 或 stdin 形成新内容。TeamTNT 明确从预装恶意镜像转向 Alpine/Ubuntu 等“安全”镜像后再运行恶意脚本以规避初始检测，直接证明攻击者意图与观察差异。image pull、entrypoint、first process、DNS/HTTP、文件 hash 与运行时模块仍是残余。
+    en: Benign-Image Late-Payload Bootstrap leaves admission with an approved digest signature or no known vulnerability while runtime forms new content through egress shell package manager mounted secret or config or standard input. TeamTNT explicitly moved from preloaded malicious images to safe Alpine or Ubuntu and ran malicious scripts afterward to evade initial detection, directly establishing intent and observation difference. Image pull entrypoint first process DNS or HTTP file hash and runtime modules remain residuals.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 必须存在新容器部署、部署时可识别的基础 image/digest、启动后才出现的攻击者载荷或主要语义，以及相应执行结果。合法 init 下载、插件安装与模型/配置拉取同形，需要批准目的地、hash、entrypoint 与预期结果区分。仅使用小镜像、仅有 egress 或仅运行 shell 均不足。
+    en: Scope requires a new deployment, identifiable base image or digest at deployment time, adversary payload or primary semantics appearing only after start, and an execution outcome. Legitimate initialization downloads plug-in installation and model or configuration retrieval share the shape and require approved destination hash entrypoint and expected outcome. A small image egress or shell alone is insufficient.
+application_scenarios_and_threat_model:
+  application_scenarios: {paragraphs: [{zh: 攻击者拥有 create 权限但镜像 admission 严格时，使用批准 Alpine/Ubuntu、内部工具镜像或 distroless 辅助容器，在启动命令中从外部/内部服务获取矿工、后门或脚本，并继承合法 registry 信誉。, en: When the adversary has create authority but image admission is strict it uses approved Alpine or Ubuntu internal utility images or helper containers and retrieves miners backdoors or scripts from external or internal services at start inheriting legitimate registry reputation.}]}
+  threat_model:
+    attacker_model: {paragraphs: [{zh: 需要基础镜像具备 shell/下载/解释能力或可挂载输入，并具有 egress/可写目录。默认拒绝 egress、只读根、固定 entrypoint、runtime allowlist 和首行为策略会限制；下载失败会留下崩溃与重启。, en: Requires a base image with shell retrieval or interpretation capability or a mountable input plus egress or writable storage. Default-deny egress read-only root fixed entrypoint runtime allowlists and first-action policy constrain it. Failed retrieval leaves crashes and restarts.}]}
+    defender_model: {paragraphs: [{zh: 需把 resolved digest 和 SBOM 声明与启动后一段时间的实际进程、模块、网络和文件比较，并保留短命容器；不能把签名或扫描通过当作运行时放行。, en: Defenders compare resolved digest and SBOM declaration with actual process module network and file behavior after start and retain short-lived containers. Signature or scan success must not become a runtime allowance.}]}
+stealth_mechanisms:
+- mechanism_ref: NM-BT
+  role: primary
+  summary: {zh: 真实载荷在镜像检查完成后才进入运行时, en: The real payload enters runtime only after image inspection completes}
+  analysis: {paragraphs: [{zh: 检查面只理解基础 image，恶意语义在启动后生成，使关键行为落在预运行监控之外，符合行为透明。TeamTNT 直接说明此转变用于规避初始检测，支持 high；first-action 与 image 声明、网络和文件关联可恢复。, en: Inspection understands only the base image while malicious semantics form after start leaving critical behavior outside pre-runtime monitoring and producing Behavioral Transparency. TeamTNT explicitly states the transition evaded initial detection supporting high confidence; joining first action to image declaration network and files restores it.}]}
+  evidence_refs: [REF-000186, REF-000215, REF-000216, REF-000220]
+  confidence: high
+defense: {detections: {coverage: available, strategy_refs: [DET-000082]}, mitigations: {coverage: available, mitigation_refs: [MIT-000082]}}
+evidence: {claim_refs: [CLM-000261, CLM-000412, CLM-000416], case_refs: [CASE-000075], reference_refs: [REF-000186, REF-000215, REF-000216, REF-000220]}
+research:
+  limitations: {paragraphs: [{zh: 直接案例集中于 TeamTNT 挖矿生态；向其他载荷推广只依赖等价 image-to-runtime 内容差异。很多合法容器按设计在启动时取配置、插件或包，必须使用批准来源、不可变 hash 与预期行为，不能按 curl/wget 单独定性。, en: The direct case concentrates on TeamTNT cryptomining. Generalization to other payloads relies only on equivalent image-to-runtime content difference. Many legitimate containers retrieve configuration plug-ins or packages at start and require approved origin immutable hash and expected behavior; curl or wget alone is not a verdict.}]}
+lifecycle: {status: review, version: 1.1.0, created: '2026-09-10', modified: '2026-09-12', contributors: [Niji Matrix Research], reviewers: []}

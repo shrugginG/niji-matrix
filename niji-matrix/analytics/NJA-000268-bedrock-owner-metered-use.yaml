@@ -1,0 +1,125 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000268
+strategy_ref: DET-000218
+name:
+  zh: Bedrock 主体—模型—令牌计量分析
+  en: Bedrock Principal–Model–Token Metering Analytic
+summary:
+  zh: 输出新来源或未归属主体的成功模型调用、令牌用量和成本范围。
+  en: Emit successful model calls, token use, and cost scope from new origins or unowned principals.
+domains:
+- enterprise
+platforms:
+- IaaS
+logic:
+  paragraphs:
+  - zh: 启用每区域 Bedrock invocation logging，采集 timestamp、accountId、region、requestId、operation、modelId、identity.arn、requestMetadata、input/output
+      token。按 request/principal/time 与 CloudTrail 的 eventName、ARN/access key、source IP、user-agent、model、error 和 eventID
+      连接，并保留此前日志配置查询和服务探测。
+    en: Enable per-Region Bedrock invocation logging and collect timestamp, accountId, region, requestId, operation,
+      modelId, identity ARN, requestMetadata, and input/output tokens. Join by request, principal, and time to CloudTrail
+      eventName, ARN or access key, source IP, user-agent, model, error, and eventID and preserve preceding logging-configuration
+      queries and service probes.
+  - zh: 按主体、应用/profile、模型和区域在十五分钟与 24 小时聚合调用/token，比较批准主体—来源—agent—模型组合与预算。成功调用和 token 证明消费；ValidationException 仅为侦察。Cost
+      Anomaly 在后续关联根因而不替代交易。
+    en: Aggregate calls and tokens by principal, application or profile, model, and Region over fifteen minutes and
+      24 hours and compare approved principal-source-agent-model tuples and budgets. Successful calls and tokens establish
+      consumption; ValidationException is reconnaissance only. Cost Anomaly later joins root cause without replacing
+      transactions.
+data_requirements:
+- source_type: bedrock-invocation-log
+  name:
+    zh: Bedrock 模型调用日志
+    en: Bedrock model invocation log
+  channel: Model invocation logging
+  required_fields:
+  - timestamp
+  - account.id
+  - aws.region
+  - request.id
+  - operation
+  - model.id
+  - identity.arn
+  - request.metadata
+  - input.token.count
+  - output.token.count
+- source_type: cloudtrail-service-call
+  name:
+    zh: CloudTrail 服务调用
+    en: CloudTrail service calls
+  channel: CloudTrail
+  required_fields:
+  - event.time
+  - event.name
+  - user.identity.arn
+  - access.key.id
+  - source.ip
+  - user.agent
+  - aws.region
+  - request.id
+  - model.id
+  - error.code
+  - event.id
+- source_type: resource-owner-budget
+  name:
+    zh: 服务 owner 与预算基线
+    en: Service owner and budget baseline
+  channel: null
+  required_fields:
+  - account.id
+  - application.id
+  - owner.id
+  - principal.arn
+  - model.id
+  - allowed.region
+  - daily.token.budget
+  - approval.id
+observables:
+- zh: 新来源或反向代理 user-agent 的成功高令牌调用
+  en: Successful high-token calls from a new origin or reverse-proxy user-agent
+- zh: 未登记 owner 的主体、模型或区域持续产生计量用量
+  en: An unowned principal, model, or Region creates sustained metered usage
+correlation:
+  window:
+    zh: CloudTrail 到调用日志正负五分钟，请求 burst 十五分钟，owner/成本二十四小时，基线三十天。
+    en: Use plus or minus five minutes from CloudTrail to invocation, fifteen minutes for bursts, 24 hours for owner
+      and cost, and a 30-day baseline.
+  dimensions:
+  - account.id
+  - aws.region
+  - identity.arn
+  - access.key.id
+  - source.ip
+  - user.agent
+  - request.id
+  - model.id
+false_positives:
+- zh: 新 AI 应用、负载测试、批推理、跨区故障转移、模型迁移、共享开发角色和批准代理
+  en: New AI app, load test, batch inference, cross-Region failover, model migration, shared developer role, and approved
+    proxy
+blind_spots:
+- zh: 调用日志默认未启用、端点不支持、共享角色、成本延迟、跨账户代理或批准高流量应用内滥用
+  en: Invocation logging disabled by default, unsupported endpoint, shared role, delayed cost, cross-account proxy,
+    or abuse inside an approved high-volume app
+tuning_guidance:
+  paragraphs:
+  - zh: 要求每应用 identity/profile/request metadata、短期角色、owner、允许来源/agent 和分主体/模型预算。不得全局抑制共享生产角色；缺详细日志时用 Invocations/InputTokenCount/OutputTokenCount
+      总量并标记归因丢失。
+    en: Require per-app identity, profile or request metadata, short-lived roles, owner, allowed origin and agent,
+      and per-principal/model budgets. Never globally suppress a shared production role. When detailed logs are absent,
+      use Invocations and token totals while marking attribution loss.
+evidence_refs:
+- REF-000901
+- REF-000903
+- REF-000904
+- REF-000908
+- REF-000524
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-10-04'
+  modified: '2026-10-04'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

@@ -1,0 +1,109 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000304
+strategy_ref: DET-000237
+name:
+  zh: 邮件传输、接收限额与邮箱可用性分析
+  en: Mail Transport, Receive Limits, and Mailbox Availability Analytic
+summary:
+  zh: 输出 recipient 接收限制、队列/NDR、投递阻断与业务邮件失败的邮件服务影响。
+  en: Emit mail-service impact from recipient receive limits, queue or NDR, delivery blocking, and business-mail failure.
+domains:
+- enterprise
+platforms:
+- SaaS
+logic:
+  paragraphs:
+  - zh: 从 Exchange receive-limit report/message trace/NDR 采集 mailbox、rolling receive count、limit state、fromIP、messageId、time、recipient/sender、size、status、enhanced
+      SMTP code、queue expiration 和 delivery lifecycle。按 recipient/tenant 1 小时和 24 小时聚合。
+    en: Collect mailbox, rolling receive count, limit state, fromIP, messageId, time, recipient or sender, size, status,
+      enhanced SMTP code, queue expiration, and delivery lifecycle from Exchange receive-limit reports, message trace,
+      and NDR. Aggregate by recipient and tenant over one hour and 24 hours.
+  - zh: 连接 legitimate sender test、critical business mail delivery、mailbox/client responsiveness 和 user reports。确认需
+      bombing candidate volume、limit/queue/delivery outcome 及业务影响；只有 warm risk 或 SMTP 错误不够。
+    en: Join legitimate-sender tests, critical-business-mail delivery, mailbox or client responsiveness, and user
+      reports. Confirmation needs bombing-candidate volume, limit, queue, or delivery outcome, and business impact;
+      warm risk or an SMTP error alone is insufficient.
+data_requirements:
+- source_type: mail-receive-limit
+  name:
+    zh: 邮箱接收限额报告
+    en: Mailbox receive-limit report
+  channel: Exchange receive limits
+  required_fields:
+  - event.time
+  - mailbox.id
+  - recipient.address
+  - rolling.message.count
+  - limit.type
+  - limit.state
+  - blocked.until
+- source_type: message-transport-trace
+  name:
+    zh: 消息传输 trace 与 NDR
+    en: Message transport traces and NDRs
+  channel: exchangeMessageTrace and NDR
+  required_fields:
+  - event.time
+  - message.id
+  - from.ip
+  - sender.address
+  - recipient.address
+  - message.size
+  - status
+  - smtp.enhanced.code
+  - queue.expiration
+  - delivery.stage
+- source_type: mail-service-health
+  name:
+    zh: 邮件服务与业务健康
+    en: Mail service and business health
+  channel: null
+  required_fields:
+  - event.time
+  - mailbox.id
+  - probe.message.id
+  - probe.delivery.result
+  - client.responsive
+  - user.report.id
+  - business.impact
+observables:
+- zh: recipient rolling count 接近/超过限额并出现 block/queue/NDR
+  en: Recipient rolling count approaches or exceeds limit with blocking, queueing, or NDR
+- zh: 合法测试/业务邮件投递失败并形成业务影响
+  en: Legitimate test or business mail fails delivery with business impact
+correlation:
+  window:
+    zh: 滚动一小时和 24 小时，queue/NDR 按 provider 生命周期保留。
+    en: Use rolling one-hour and 24-hour windows and retain queue or NDR by provider lifecycle.
+  dimensions:
+  - mailbox.id
+  - recipient.address
+  - message.id
+  - limit.type
+  - smtp.enhanced.code
+  - event.time
+false_positives:
+- zh: 合法大规模通知、迁移、导入、告警 storm、邮箱规则错误和 provider outage
+  en: Legitimate mass notification, migration, import, alert storm, mailbox-rule error, and provider outage
+blind_spots:
+- zh: provider 限额不可见、跨租户投递、alias/list 扩散、queue 指标延迟或客户端问题与 server 影响混淆
+  en: Invisible provider limits, cross-tenant delivery, alias or list expansion, delayed queue metrics, or client
+    issues confused with server impact
+tuning_guidance:
+  paragraphs:
+  - zh: 按 mailbox/role 设置预警和 critical probe，避免仅按固定 1,000/h 当恶意阈值。保留 NDR/trace 与业务 test，区分 warm risk、实际 block 和 outage。
+    en: Set warnings and critical probes by mailbox and role rather than treating a fixed 1,000 per hour as malicious.
+      Retain NDR or trace and business tests and separate warm risk, actual block, and outage.
+evidence_refs:
+- REF-001021
+- REF-001022
+- REF-001023
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-10-04'
+  modified: '2026-10-04'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

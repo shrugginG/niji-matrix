@@ -1,0 +1,209 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000260
+strategy_ref: DET-000212
+name:
+  zh: 上游材料兑换—新证明—资源使用谱系
+  en: Upstream-Material Redemption–Fresh Proof–Resource Use Lineage
+summary:
+  zh: 将 TGT 或 refresh/sign-in-session material 的当前兑换连接到新目标证明及资源结果，寻找缺少当前原始认证、绑定异常或真实操作者分离。
+  en: Join current redemption of a TGT or refresh or sign-in-session material to fresh target proof and resource outcomes,
+    looking for missing current original authentication, binding anomalies, or separation of the actual operator.
+domains:
+- enterprise
+platforms:
+- Active Directory
+- Identity Provider
+- IaaS
+- SaaS
+- Containers
+logic:
+  paragraphs:
+  - zh: 规范 authority 的 proof-redemption transaction：Kerberos 保留 client、principal、TGT/安全 ticket 标识（若可用）、requested SPN、ClientAddress、ticket
+      options、encryption、request/result time；OAuth/云身份保留 grant_type、subject、client_id、token family/reference、issuer、requested
+      audience/scope、source IP/device、sender-binding key thumbprint、request ID 和结果。把返回的 service/access token 以安全 ID、request/correlation
+      ID 或提供方 lineage 连接到目标资源的 first accepted use，再连接会话/API 结果。回溯当前源设备和 identity 的原 interactive/MFA/device authentication、material
+      issuance 与批准 client/workload；若上游材料从非许可 client/device/source 兑换、binding 缺失/改变、同一 family 并发跨设备、没有可解释的原认证，且新 proof 到达异常资源，则输出
+      suspected_upstream_material_reuse。若只有 token refresh 无攻击者控制或异常结果，保持 normal_or_unresolved；后继成功不能说明材料如何取得。
+    en: Normalize proof-redemption transactions at the authority. For Kerberos retain client, principal, TGT or safe ticket
+      identifier where available, requested SPN, ClientAddress, ticket options, encryption, request and result time. For OAuth
+      or cloud identity retain grant_type, subject, client_id, token family or reference, issuer, requested audience and scope,
+      source IP and device, sender-binding key thumbprint, request ID, and result. Join the returned service or access token
+      by safe identifier, request or correlation ID, or provider lineage to first accepted use at the target resource and
+      then to session or API outcome. Look back to original interactive, MFA, and device authentication, material issuance,
+      and approved client or workload for the current source device and identity. Emit suspected_upstream_material_reuse when
+      upstream material is redeemed from an unauthorized client, device, or origin; binding is missing or changes; one family
+      is concurrently used across devices; no original authentication explains it; and fresh proof reaches an anomalous resource.
+      A token refresh without adversary-control or anomalous-result evidence remains normal_or_unresolved, and downstream
+      success does not reveal how material was acquired.
+data_requirements:
+- source_type: authority-proof-redemption
+  name:
+    zh: KDC 或 token endpoint 证明兑换事务
+    en: KDC or token-endpoint proof redemption
+  channel: null
+  required_fields:
+  - timestamp
+  - authority_id
+  - request_id
+  - principal_id
+  - material_family_or_safe_id
+  - grant_or_ticket_request_type
+  - client_id
+  - source_ip
+  - source_device_id
+  - requested_audience_or_spn
+  - requested_scope
+  - binding_key_id
+  - outcome
+- source_type: issued-proof-lineage
+  name:
+    zh: 新签发 ticket/token 谱系
+    en: Freshly issued ticket or token lineage
+  channel: null
+  required_fields:
+  - issued_at
+  - authority_id
+  - request_id
+  - proof_safe_id
+  - subject_id
+  - client_id
+  - audience_or_spn
+  - scope_or_authorization
+  - expiry
+  - binding_key_id
+- source_type: resource-proof-acceptance
+  name:
+    zh: 资源侧证明接受与操作
+    en: Resource-side proof acceptance and action
+  channel: null
+  required_fields:
+  - timestamp
+  - resource_id
+  - proof_safe_id_or_request_id
+  - subject_id
+  - client_id
+  - session_id
+  - source_ip
+  - source_device_id
+  - operation
+  - authorization_decision
+  - result
+- source_type: original-authentication-and-binding
+  name:
+    zh: 原认证、材料签发与绑定状态
+    en: Original authentication, material issuance, and binding state
+  channel: null
+  required_fields:
+  - timestamp
+  - principal_id
+  - material_family_or_safe_id
+  - original_authentication_id
+  - authentication_methods
+  - mfa_result
+  - client_id
+  - source_device_id
+  - binding_key_id
+  - approved_audiences
+  - approved_scopes
+- source_type: client-workload-approval
+  name:
+    zh: Client/workload 所有者与用途基线
+    en: Client or workload owner and purpose baseline
+  channel: null
+  required_fields:
+  - client_or_workload_id
+  - owner_id
+  - permitted_principals
+  - permitted_devices
+  - permitted_sources
+  - permitted_audiences
+  - permitted_scopes
+  - valid_from
+  - valid_to
+observables:
+- zh: 同一 refresh/TGT family 从与原签发不同且未获批的设备/客户端请求新 proof，并在敏感资源成功使用。
+  en: The same refresh or TGT family requests fresh proof from a device or client different from original issuance and not
+    approved, followed by successful use at a sensitive resource.
+- zh: 新 service/access token 的签名、issued-at 和 audience 正常，但没有相邻原认证，且兑换来源与 client/workload 基线不符。
+  en: A fresh service or access token has valid signature, issue time, and audience but no adjacent original authentication,
+    while the redemption origin conflicts with client or workload baseline.
+- zh: 绑定键/设备应存在却缺失或变化，或同一材料 family 在多个设备并发兑换并产生不同目标结果。
+  en: An expected binding key or device is absent or changes, or one material family is redeemed concurrently across devices
+    with different destination outcomes.
+correlation:
+  window:
+    zh: 从上游材料原签发持续到过期/撤销，默认最长九十日；兑换到 proof 返回五分钟，proof 到首次资源使用一小时，并按 Kerberos ticket 或 provider token lifetime 调优。
+    en: Follow upstream material from original issuance through expiry or revocation, capped by default at ninety days; use
+      five minutes from redemption to proof return and one hour from proof to first resource use, tuned to Kerberos ticket
+      or provider token lifetime.
+  dimensions:
+  - authority
+  - principal
+  - material_family
+  - original_authentication
+  - request
+  - client_or_workload
+  - source_device
+  - binding_key
+  - audience_or_spn
+  - scope
+  - issued_proof
+  - resource
+  - session
+  - operation
+  - time
+false_positives:
+- zh: normal silent refresh
+  en: normal silent refresh
+- zh: mobile device roaming
+  en: mobile device roaming
+- zh: approved multi device client
+  en: approved multi device client
+- zh: service account rotation
+  en: service account rotation
+- zh: kerberos ticket cache and domain controller failover
+  en: kerberos ticket cache and domain controller failover
+- zh: disaster recovery
+  en: disaster recovery
+blind_spots:
+- zh: provider hides refresh or ticket id
+  en: provider hides refresh or ticket id
+- zh: no binding telemetry
+  en: no binding telemetry
+- zh: resource omits proof or request id
+  en: resource omits proof or request id
+- zh: cross tenant logs unavailable
+  en: cross tenant logs unavailable
+- zh: long lived offline client
+  en: long lived offline client
+- zh: attacker operates on original device
+  en: attacker operates on original device
+tuning_guidance:
+  paragraphs:
+  - zh: 按 provider/protocol 验证 stable family/request/proof 标识和 silent refresh 正常语义，不把所有无 MFA refresh 判为重放。批准项绑定 client/workload
+      owner、device class、audience/scope、来源和期限；对 confidential client、移动漫游、离线同步分别建模。binding 降级只增加一个信号，必须再有非许可来源、并发、异常资源或攻击者控制。不得记录
+      raw refresh token、TGT 或 access token。
+    en: Validate stable family, request, and proof identifiers and normal silent-refresh semantics per provider and protocol;
+      do not classify every refresh without MFA as replay. Bind approval to client or workload owner, device class, audience
+      and scope, origin, and expiry, with separate models for confidential clients, mobile roaming, and offline sync. Binding
+      downgrade adds only one signal and still needs unauthorized origin, concurrency, anomalous resource, or adversary control.
+      Never record a raw refresh token, TGT, or access token.
+evidence_refs:
+- REF-000851
+- REF-000852
+- REF-000855
+- REF-000815
+- REF-000816
+- REF-000859
+- REF-000376
+- REF-000380
+- REF-000790
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-09-27'
+  modified: '2026-09-27'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

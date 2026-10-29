@@ -1,0 +1,81 @@
+schema_version: "2.0.0"
+type: technique
+id: NJT-0073
+name: {zh: 匿迹化原生 API 执行, en: Stealth-Conforming Native API Execution}
+summary: {zh: 攻击者通过操作系统原生 API 或 syscall 实现进程、线程与内存等执行动作，并以非标准调用路径或运行时解析降低用户态监控和静态导入分析的可见性。, en: Adversaries perform process thread memory or related execution through native OS APIs or syscalls and reduce visibility to user-mode monitoring and static import analysis through nonstandard call paths or runtime resolution.}
+aliases: [Native API]
+classification:
+  tactic_refs: [TA0002]
+  origin: {kind: attack-adapted, source_attack_id: T1106, source_attack_version: '19.1'}
+  decision_ref: DEC-TA0002-T1106
+definition_and_concept:
+  paragraphs:
+  - zh: 匿迹化原生 API 执行是攻击者从用户态代码调用操作系统提供的底层进程、线程、内存、模块、文件或其他原生服务，使攻击者控制的代码或程序开始运行，并有意改变该调用在防守监控或静态分析中的呈现方式。直接目标是利用与正常软件相同的内核能力完成执行，同时减少高层 API 包装、显式导入或常规监控入口暴露的意图。
+    en: Stealth-Conforming Native API Execution invokes low-level operating-system process thread memory module file or other native services from user-mode code so adversary-controlled code or programs begin running while deliberately changing how the invocation appears to defensive monitoring or static analysis. Its direct objective is execution through the same kernel capabilities used by legitimate software while reducing intent exposed by higher-level wrappers explicit imports or conventional monitoring entry points.
+  - zh: 概念锚是“调用代码—原生服务解析/过渡—内核或运行时结果”的路径，不是某个 API 名称、编程语言或恶意目的。单纯调用 CreateProcess、fork 或 Nt* 函数而未改变防守观察只属于 T1106 父行为，不足以成为 Niji 匿迹实例。解释器解析归 NJT-0065，改变库搜索/依赖使代码被加载归 NJT-0070，共享模块加载归 NJT-0077；Native API 产生的注入、凭据或文件效果可同时属于相应技术，但不改变本对象的调用路径边界。
+    en: The conceptual anchor is the path from calling code through native-service resolution or transition to kernel or runtime outcome, not an API name programming language or malicious purpose. Merely calling CreateProcess fork or an Nt function without changing defender observation is T1106 parent behavior but not a Niji stealth instance. Interpreter parsing belongs to NJT-0065, altered library search or dependency loading to NJT-0070, and shared-module loading to NJT-0077. Injection credential or file outcomes can also instantiate their respective techniques without changing this call-path boundary.
+stealth_characteristics:
+  paragraphs:
+  - zh: 核心匿迹矛盾是攻击者必须请求内核完成可见状态变化，却希望安全产品看不到预期的用户态函数入口或在执行前不知道真实 API 集合。直接/间接 syscall 可从自有或非标准代码区进入内核，绕过挂在 NTDLL/高层库上的 hook；动态解析可在运行时遍历导出、调用 GetProcAddress 或用哈希恢复地址，使 PE 导入表与字符串分析缺少名称。两者分别改变动态调用路径和静态可检查性。
+    en: The central stealth tension is that an adversary must ask the kernel to perform visible state change while security products miss the expected user-mode function entry or do not know the actual API set before execution. Direct or indirect syscalls can enter the kernel from private or nonstandard code and bypass hooks on NTDLL or higher libraries. Dynamic resolution can traverse exports call GetProcAddress or recover addresses from hashes at runtime so PE imports and strings omit names. The two variables change dynamic call path and static inspectability respectively.
+  - zh: 内核并未停止产生结果：syscall 指令来源、完整调用栈、调用号与 OS build 的一致性、可执行非映像内存、导出表遍历、哈希循环、模块加载、内存权限变化、线程/进程创建及文件/网络结果仍可关联。Rhadamanthys、Lumma 与 Elastic 研究都说明非系统模块或异常调用栈可暴露 syscall；SplatDropper 的服务与驱动链可反推被隐藏 API。内核遥测、调用栈采集和结果策略会显著削弱匿迹。
+    en: The kernel still produces outcomes. Syscall instruction origin, full call stack, syscall-number consistency with OS build, executable unbacked memory, export traversal, hashing loops, module loads, memory protection changes, thread or process creation, and file or network results remain correlatable. Rhadamanthys, Lumma, and Elastic research show non-system origin or abnormal call stacks exposing syscalls, while SplatDropper's service and driver chain reveals hidden APIs. Kernel telemetry call-stack capture and outcome policy materially weaken stealth.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 纳入攻击者有意选择非标准原生调用过渡、直接/间接 syscall 或运行时地址解析，并由此削弱实际防守观察且产生执行结果的行为。必须能指出调用路径/解析方式和至少一个内核或运行时结果；仅看到 ntdll、libc 或 GetProcAddress 被使用只是线索。Windows、Linux、macOS 和 API 功能类别不形成子项。
+    en: Scope includes deliberate adversary selection of a nonstandard native transition, direct or indirect syscall, or runtime address resolution that weakens actual defensive observation and produces an execution outcome. Classification requires a call path or resolution method plus at least one kernel or runtime result. Use of ntdll libc or GetProcAddress alone is only a lead. Windows Linux macOS and API function categories do not form children.
+  - zh: API 名称编码/哈希只有在运行时解析真实地址并降低导入可检查性时属于 NJS-0073-002；普通字符串混淆但调用路径不变归表示层对象。替换/还原 ntdll 以移除安全 hook 还可能属于防御削弱；本技术只描述随后原生调用路径。JIT、浏览器、游戏、反作弊、性能运行时和安全软件也可能使用动态代码或直接调用，必须结合签名、模块来源、调用栈与结果，不能按 syscall 本身定性。
+    en: Encoded or hashed API names belong to NJS-0073-002 only when they resolve real addresses at runtime and reduce import inspectability. Ordinary string obfuscation with an unchanged call path belongs to representation-focused objects. Replacing or restoring ntdll to remove security hooks can also be defense impairment; this technique describes only the subsequent native invocation path. JIT engines browsers games anti-cheat performance runtimes and security software can use dynamic code or direct calls and require signature module origin call stack and outcome rather than a syscall verdict.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: 攻击者在加载器、信息窃取程序、注入器或后渗透模块中需要分配/保护内存、写入其他进程、创建线程/进程、加载模块或调用敏感系统服务，同时预期 EDR 依赖用户态 hook、静态导入或 API 名称特征时使用。直接 syscall 适合已知 OS build 或能动态取得调用号的环境；动态解析适合希望减小导入和字符串暴露的可执行体。
+      en: Adversaries use this in loaders stealers injectors or post-exploitation modules that need memory allocation or protection cross-process writes thread or process creation module loading or sensitive system services when EDR is expected to rely on user-mode hooks static imports or API-name features. Direct syscalls suit a known OS build or dynamic syscall-number discovery; runtime resolution suits binaries that minimize import and string exposure.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 直接调用需要汇编/stub、正确 calling convention 和与 OS build 匹配的 syscall 号，间接调用还需定位可信 syscall 指令；错误编号、CFG/CET、架构差异和 EDR 内核回调会限制。动态解析需要可访问模块与导出信息、解析或哈希逻辑及调用原型知识；哈希碰撞、错误序号和导出转发会导致失败。攻击者还必须接受最终内核状态变化仍可见。
+        en: Direct invocation needs assembly or stubs correct calling conventions and syscall numbers matching the OS build; indirect invocation also needs a suitable trusted syscall instruction. Wrong numbers CFG or CET architecture differences and EDR kernel callbacks constrain it. Dynamic resolution needs accessible modules and exports resolution or hashing logic and knowledge of call prototypes; collisions wrong ordinals and forwarded exports can fail. The adversary must accept that final kernel state change remains visible.
+    defender_model:
+      paragraphs:
+      - zh: 防守方模型假定不仅有用户态 API hook，还能取得内核 ETW/回调或等价 syscall 结果、线程完整调用栈、模块/内存映射、导入表与运行时解析行为、进程实体和后继结果。若只记录高层 API 名称或只做静态扫描，本技术获得最大收益；若内核事件没有调用栈，能确认结果但难以区分正常 wrapper 与自有 stub。基线应按进程、签名、模块和 OS build 建立。
+        en: The defender model assumes more than user-mode API hooks and includes kernel ETW or callbacks or equivalent syscall outcomes, complete thread call stacks, module and memory maps, imports and runtime resolution behavior, process identity, and successor outcomes. High-level API names or static scanning alone gives maximum adversary benefit. Kernel events without call stacks confirm outcomes but struggle to distinguish normal wrappers from private stubs. Baselines should be by process signature module and OS build.
+stealth_mechanisms:
+- mechanism_ref: NM-BT
+  role: primary
+  summary: {zh: 非标准 syscall 路径绕过用户态 API 观察点, en: A nonstandard syscall path bypasses user-mode API observation points}
+  analysis:
+    paragraphs:
+    - zh: 攻击者从非系统模块或自有内存 stub 发出 syscall，内核仍执行同一服务，但挂在预期 NTDLL/高层入口的传感器没有收到调用，关键行为在 hook 的有效监控外发生，形成行为透明。Rhadamanthys 和 Lumma 是直接样本/攻击证据，Elastic 提供内核调用栈反证，支持 high。syscall 来源、调用栈和内核结果能够恢复链条。
+      en: The adversary issues a syscall from a non-system module or private-memory stub. The kernel executes the same service while a sensor attached to the expected NTDLL or higher entry misses the invocation, leaving critical behavior outside hook coverage and producing Behavioral Transparency. Rhadamanthys and Lumma provide direct sample or attack evidence and Elastic supplies kernel call-stack disconfirmation, supporting high confidence. Syscall origin call stack and kernel outcome recover the chain.
+  evidence_refs: [REF-000222, REF-000223, REF-000225]
+  confidence: high
+- mechanism_ref: NM-DO
+  role: secondary
+  summary: {zh: 运行时解析隐藏稳定导入中的真实 API 集合, en: Runtime resolution hides the actual API set from stable imports}
+  analysis:
+    paragraphs:
+    - zh: 攻击者只在运行时通过模块导出、名称/序号或哈希得到函数地址，磁盘导入表和明文字符串不再完整表达将要调用的 API，执行前数据缺少关键语义，形成数据遮蔽。SplatDropper 直接证明哈希解析，GetProcAddress 文档限定基础能力，支持 high。导出遍历、哈希循环、目标地址与后继结果仍可由动态分析恢复。
+      en: The adversary obtains function addresses only at runtime through module exports names or ordinals or hashes, so disk imports and clear strings no longer express the complete API set. Pre-execution data lacks critical semantics, producing Data Obscuration. SplatDropper directly establishes hashed resolution and GetProcAddress documentation bounds the underlying capability, supporting high confidence. Export traversal hashing loop target address and successor outcomes remain recoverable through dynamic analysis.
+  evidence_refs: [REF-000224, REF-000226]
+  confidence: high
+subtechnique_taxonomy:
+  narrative:
+    paragraphs:
+    - zh: NJS-0073-001 固定“调用过渡来源”变量：API 名称可以明文，但 syscall 指令绕过预期用户态层，检测核心是调用栈和内核结果。NJS-0073-002 固定“调用身份解析时点”变量：调用仍可经过标准导出，但函数地址/名称只在运行时恢复，检测核心是导出解析和静态—动态差分。直接 syscall 可硬编码编号而无动态 API 哈希；动态解析可正常调用 GetProcAddress 而不绕 hook，故互不包含。
+      en: "NJS-0073-001 fixes invocation-transition origin: API identity may be clear but the syscall instruction bypasses the expected user-mode layer, so detection centers on call stack and kernel outcome. NJS-0073-002 fixes when call identity is resolved: invocation may still traverse standard exports but function address or name appears only at runtime, so detection centers on export resolution and static-to-dynamic difference. Direct syscalls can hard-code numbers without API hashing and dynamic resolution can call GetProcAddress without bypassing hooks, so neither contains the other."
+    - zh: ATT&CK 无子项；开放搜索还检查了间接 syscall/proxy call 与 API 功能类别。间接调用仍由异常真实 caller 到 syscall 指令的调用栈变量覆盖，单独拆分不会产生新防御；内存、进程、文件或注册表 API 的目的属于结果技术，不形成匿迹子项。
+      en: ATT&CK has no children. Open search also examined indirect syscalls or proxy calls and API function categories. Indirect invocation remains covered by the call-stack relation from true caller to syscall instruction and would not create a new defense if split. Memory process file and registry API purposes belong to outcome techniques rather than stealth children.
+  coverage: established
+  subtechnique_refs: [NJS-0073-001, NJS-0073-002]
+defense: {detections: {coverage: available, strategy_refs: [DET-000061]}, mitigations: {coverage: available, mitigation_refs: [MIT-000083]}}
+evidence:
+  claim_refs: [CLM-000277, CLM-000278, CLM-000279, CLM-000418, CLM-000419, CLM-000420, CLM-000421, CLM-000422, CLM-000423]
+  case_refs: [CASE-000077, CASE-000078]
+  reference_refs: [REF-000125, REF-000222, REF-000223, REF-000224, REF-000225, REF-000226]
+research:
+  limitations:
+    paragraphs:
+    - zh: 直接 syscall 和动态解析的强现场/样本证据集中于 Windows；Linux/macOS 只在父级按等价调用路径概念覆盖，不能假定相同导入表、hook 或 ETW 字段。Rhadamanthys 与 SplatDropper 证明变量，Lumma 与 Elastic 支持检测，但本技术不能仅凭非标准栈或 GetProcAddress 归因；JIT、安全软件和兼容层会产生良性异常。若传感器只能看到结果无调用栈，子项区分置信度应降低。
+      en: Strong field and sample evidence for direct syscalls and dynamic resolution concentrates on Windows. Linux and macOS remain covered at the parent only through equivalent call-path concepts without assuming identical imports hooks or ETW fields. Rhadamanthys and SplatDropper establish the variables while Lumma and Elastic support detection, but nonstandard stacks or GetProcAddress alone cannot attribute maliciousness. JIT security software and compatibility layers produce benign anomalies. Without call stacks, outcome-only sensors should lower child-level confidence.
+lifecycle: {status: review, version: 1.1.0, created: '2026-09-10', modified: '2026-09-12', contributors: [Niji Matrix Research], reviewers: []}

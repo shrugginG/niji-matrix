@@ -1,0 +1,127 @@
+schema_version: 2.0.0
+type: evasion-subtechnique
+id: NJS-0178-001
+parent_ref: NJT-0178
+name:
+  zh: 签发返回面令牌取得
+  en: Issuance-Return Token Acquisition
+summary:
+  zh: 攻击者控制正规权威的 token 返回接收者，使新签发的访问或刷新材料直接落入其进程、应用或 redirect，而无需读取已有 token 工件。
+  en: An adversary controls the recipient of a legitimate authority's token return so newly issued access or refresh material
+    lands directly in a controlled process, application, or redirect without reading an existing token artifact.
+aliases: []
+lineage:
+  attck_subtechnique_inherited: false
+definition_and_concept:
+  paragraphs:
+  - zh: 签发返回面令牌取得是攻击者利用已控 workload identity、元数据服务可达性、authorization grant、用户 consent 或被接管 redirect，让授权服务器或等价 token service
+      在正常事务中把新 token 返回给攻击者控制接收者。令牌保持正规签名和 issuer，行为不等于离权威伪造；分类变量是新材料首次离开权威时的接收控制权。
+    en: Issuance-Return Token Acquisition uses a controlled workload identity, metadata-service reachability, authorization
+      grant, user consent, or captured redirect so an authorization server or equivalent token service returns a fresh token
+      to an adversary-controlled recipient in a normal transaction. The token retains legitimate signature and issuer and
+      is not off-authority forgery. The variable is recipient control when new material first leaves the authority.
+stealth_characteristics:
+  paragraphs:
+  - zh: 签发返回面令牌取得可呈现为成功 token issuance、真实 managed identity、合法 client ID 或用户完成 consent，令牌本身完全合规；异常只存在于 workload 运行代码、redirect
+      归属、app owner、request source 与业务用途不一致。仍可观察 request ID、client/workload、grant、audience/scope、recipient、response status
+      与 token reference。若平台只保留签发成功而不记录接收进程或 redirect，控制转移会落入盲区。
+    en: Issuance-Return Token Acquisition can appear as successful token issuance for a real managed identity, legitimate
+      client ID, or completed user consent, with a fully valid token. The anomaly lies in mismatch among workload code, redirect
+      ownership, application owner, request source, and business purpose. Request ID, client or workload, grant, audience
+      or scope, recipient, response status, and token reference remain observable. A platform retaining issuance success without
+      recipient process or redirect leaves control transfer blind.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 纳入要求 token response 成功返回并由攻击者控制的 process/app/redirect 接收。仅创建 app、发起 device code、显示 consent、调用 IMDS 或出现 200 以外响应是前置/尝试。批准应用按既定
+      owner、redirect、scope 和用途取得 token 是合法委派；攻击者自行计算 token 归 NJT-0166；已取得 token 的 API 提交归 T1550.001。
+    en: Inclusion requires a successful token response received by an adversary-controlled process, application, or redirect.
+      Merely creating an app, initiating a device code, displaying consent, calling IMDS, or receiving a non-success response
+      is precursor or attempt. An approved application obtaining a token for its owned redirect, scope, and purpose is legitimate
+      delegation. Adversary-computed tokens belong to NJT-0166, and API presentation of an acquired token belongs to T1550.001.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: 受侵 VM、runner 或容器可向 IMDS 请求附加身份 token；恶意 connected app 可在用户 consent 后从 authorization server 接收 access/refresh token；AiTM
+        若接管 token response 的实际 recipient，可与 NJT-0136 并列。三者共同点是材料由正规权威在当前事务中新返回。
+      en: A compromised VM, runner, or container can request an attached-identity token from IMDS. A malicious connected application
+        can receive access or refresh tokens from the authorization server after consent. An AiTM that controls the actual
+        token-response recipient may coexist with NJT-0136. All share new material returned by the legitimate authority in
+        the current transaction.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者需在可访问 token service 的环境中执行代码，或控制注册 client/redirect 并取得所需 consent/grant。它必须知道 resource/audience、client 或 managed
+          identity 选择，并让 response 到达其接收者。严格 redirect 匹配、PKCE、workload network isolation、metadata access control、管理员 consent
+          与 sender constraint 会增加成本。
+        en: The adversary needs code in an environment able to reach the token service, or control of a registered client
+          or redirect plus the required consent or grant. It must select resource or audience, client or managed identity,
+          and cause the response to reach its recipient. Exact redirect matching, PKCE, workload network isolation, metadata
+          access controls, administrator consent, and sender constraint increase cost.
+    defender_model:
+      paragraphs:
+      - zh: 防守方连接 token request/issuance 与实际 workload process、app owner、redirect 和批准用途；issuer 只看到合法 subject 时不能独自判恶。可用键包括
+          request ID、tenant、issuer、subject、client/workload、grant、audience、scope、token family/reference、source、recipient 和
+          process start key，原 token 不进入日志。
+        en: Defenders join token request and issuance to the actual workload process, application owner, redirect, and approved
+          purpose. An issuer seeing only a valid subject cannot judge malice alone. Useful keys include request ID, tenant,
+          issuer, subject, client or workload, grant, audience, scope, token family or reference, source, recipient, and process
+          start key, without logging the raw token.
+stealth_mechanisms:
+- mechanism_ref: NM-FD
+  role: primary
+  summary:
+    zh: 以正规签发和真实 workload/client 外观掩盖攻击者控制的 token 接收者
+    en: Use legitimate issuance and real workload or client appearance to mask an adversary-controlled token recipient
+  analysis:
+    paragraphs:
+    - zh: 攻击者让真实 token service 按已有身份或 grant 签发材料，token 的 issuer、签名和结构不变，签发日志也可显示成功。改变的是接收进程、redirect 或 app 控制者，导致只按 token
+        合法性判断的防守方误把取得视为正常 SDK/集成行为。Unit 42 的受侵端点 IMDS 收集与 Azure 官方返回字段支持该因果链；是否每个平台保留 recipient 归因字段仍需实测。
+      en: The adversary causes a real token service to issue material under an existing identity or grant. Issuer, signature,
+        and token structure remain valid and issuance logs may show success. The changed element is the recipient process,
+        redirect, or application controller, so a defender judging only token legitimacy can mistake acquisition for normal
+        SDK or integration behavior. Unit 42's IMDS harvesting from compromised endpoints and Azure's documented response
+        support the chain, while recipient-attribution fields require platform validation.
+  confidence: medium
+  evidence_refs:
+  - REF-000811
+  - REF-000812
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000206
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000188
+    - MIT-000052
+    - MIT-000066
+evidence:
+  claim_refs:
+  - CLM-000887
+  - CLM-000890
+  - CLM-000891
+  case_refs:
+  - CASE-000258
+  reference_refs:
+  - REF-000810
+  - REF-000811
+  - REF-000812
+  - REF-000815
+research:
+  limitations:
+    paragraphs:
+    - zh: Unit 42 直接描述从 IMDS 收集云凭据，但没有为每个云提供方逐一公布 request、response 和 token 值；Azure 文档只证明成功请求会返回 access_token。恶意 consent 的父范围由
+        ATT&CK 锚定，缺少本批单一一手事件对 app 注册、用户 consent、token response 与攻击者接收四步全部公开取证。
+      en: Unit 42 directly describes cloud-credential harvesting from IMDS but does not publish per-provider requests, responses,
+        and token values. Azure documentation only establishes that a successful request returns an access_token. ATT&CK anchors
+        malicious consent in parent scope, while this batch lacks one first-party incident exposing all four steps of application
+        registration, user consent, token response, and adversary receipt.
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-09-27'
+  modified: '2026-09-27'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

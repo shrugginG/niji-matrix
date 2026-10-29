@@ -1,0 +1,100 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000080
+strategy_ref: DET-000099
+name:
+  zh: 脆弱组件触发—权限结果分析
+  en: Vulnerable Component Trigger-to-Authority-Outcome Analytic
+summary:
+  zh: 版本化 caller 与 component state，连接 trigger、异常 transition 和 first privileged effect，并在预受信组件分支验证实际 admission、controller request 与 kernel effect。
+  en: Version caller and component state, join trigger, abnormal transition, and first privileged effect, and validate actual admission, controller request, and kernel effect in the pretrusted-component branch.
+domains: [enterprise]
+platforms: [Windows, Linux, macOS, Containers]
+logic:
+  paragraphs:
+  - zh: >-
+      分析先按 host/workload ID、boot/session/container、process start key 与 principal 建立 caller pre-state，保存 user/group/SID、integrity level、token privileges、capabilities、namespace/LSM/sandbox、可访问 resources/operations 和 snapshot validity。并按 package ID、file/module hash、product/build/architecture、install source、patch status、loaded instance、privileged execution identity、interface/device/RPC endpoint 与 start/end time 版本化组件。scanner finding 只把 component 标为 vulnerable_exposure；没有事件时不提升。
+    en: >-
+      The analytic first builds caller pre-state by host or workload ID, boot, session, or container, process start key, and principal, preserving user, group, or SID, integrity level, token privileges, capabilities, namespace, LSM, or sandbox, accessible resources and operations, and snapshot validity. It also versions components by package ID, file or module hash, product, build, architecture, install source, patch state, loaded instance, privileged execution identity, interface, device, or RPC endpoint, and start and end time. A scanner finding labels only the component as vulnerable_exposure and raises no event-level conclusion.
+  - zh: >-
+      对每个低权限 source，捕获 exec target/argc/argv/environment digest、file input/hash、RPC/API method/body digest、syscall sequence、device handle/IOCTL/request class 与 result，并以 PID/TID、handle、request/trace ID、component instance 和紧凑窗口连接 victim。记录 exploit mitigation block、exception/crash/BSOD、stack/control-flow/memory fault、kernel audit、permission-inconsistent state mutation、child/token/capability change 和 resource side effect。request 被拒绝或只有 fault 输出 exploit_attempt；只有 exact vulnerable instance、attacker-controlled trigger、transition signal 与一致 effect 都存在才输出 exploit_observed。
+    en: >-
+      For each lower-authority source, capture exec target and argc, argv, or environment digest, file input or hash, RPC or API method and body digest, syscall sequence, device handle, IOCTL or request class, and result, and join the victim through PID or TID, handle, request or trace ID, component instance, and a tight window. Record exploit-mitigation blocks, exceptions, crashes or blue screens, stack, control-flow, or memory faults, kernel audit, permission-inconsistent state mutation, child, token, or capability change, and resource side effect. A rejected request or fault alone produces exploit_attempt. Only an exact vulnerable instance, attacker-controlled trigger, transition signal, and consistent effect produce exploit_observed.
+  - zh: >-
+      对预受信组件，分析从 inventory 或 file write 起点解析 original/on-disk hash、version、signature/certificate status、package owner/source、service/registry/module definition，取 event-time ASR、Code Integrity/HVCI 或等价 allow/block policy ID/version/mode 和 decision。accepted 后把 load image/instance 与 device/interface 绑定，再按 controller process、handle open、IOCTL/request 和 kernel memory/storage/protected-process effect 连接。accepted component 但无 request/effect 输出 component_exposure；policy blocked 输出 pretrusted_component_attempt；完整 accepted→request→effect 输出 pretrusted_component_pivot。
+    en: >-
+      For a pretrusted component, the analytic starts at inventory or file write and resolves original and on-disk hash, version, signature or certificate state, package owner and source, and service, Registry, or module definition, then obtains event-time ASR, Code Integrity or HVCI, or equivalent allow or block policy ID, version, mode, and decision. After acceptance it binds the loaded image or instance to a device or interface and joins controller process, handle open, IOCTL or request, and kernel-memory, storage, or protected-process effect. An accepted component without request or effect produces component_exposure. A policy block produces pretrusted_component_attempt. A complete accepted-to-request-to-effect chain produces pretrusted_component_pivot.
+  - zh: >-
+      最后为原 caller 或可证明派生的 process/thread/token/context 构造 post-state authorization set，比较 identity、integrity/capabilities/privileges、namespace 与实际 resource operation。至少一个 operation 在 pre-state expected deny、post-state observed allow，且是 trigger 后 first newly authorized result，才输出 elevation_confirmed；否则分别输出 authority_unresolved 或 no_authority_gain。合法管理员/installer/hardware/backup/security driver、QA/fuzzing 和故障由 owner/ticket、approved package/version、caller/request、device、scope/window 排除。kernel tamper、sensor stop 或 audit gap 追加 telemetry_integrity_at_risk，不把缺日志误当无攻击。
+    en: >-
+      Finally the analytic constructs post-state authorization for the original caller or a provably derived process, thread, token, or context and compares identity, integrity, capabilities or privileges, namespace, and actual resource operation. elevation_confirmed requires at least one operation expected denied in pre-state and observed allowed in post-state and must be the first newly authorized result after the trigger. Otherwise it emits authority_unresolved or no_authority_gain. Legitimate administrators, installers, hardware, backup, or security drivers, QA or fuzzing, and faults are excluded through owner or ticket, approved package and version, caller or request, device, scope, and window. Kernel tamper, sensor stop, or audit gaps add telemetry_integrity_at_risk and never turn missing logs into no attack.
+data_requirements:
+- source_type: identity-authority-prestate
+  name: {zh: Caller 身份与权限前态, en: Caller Identity and Authority Pre-State}
+  channel: null
+  required_fields: [timestamp, host_or_workload_id, boot_or_session_id, process_start_key, principal, user_group_or_sid, integrity_level, token_privileges_or_capabilities, namespace_lsm_or_sandbox, authorized_resources_and_operations, snapshot_valid_from, snapshot_valid_to]
+- source_type: component-vulnerability-inventory
+  name: {zh: 组件、版本、补丁与接口清单, en: Component Version Patch and Interface Inventory}
+  channel: null
+  required_fields: [timestamp, host_or_workload_id, package_or_component_id, file_or_module_hash, product, build, architecture, install_source, patch_state, privileged_execution_identity, interface_or_device, reachability, loaded_instance, valid_from, valid_to]
+- source_type: exploit-trigger-request
+  name: {zh: Exploit 触发与接口请求, en: Exploit Trigger and Interface Request}
+  channel: null
+  required_fields: [timestamp, process_start_key, thread_or_handle_id, target_component_instance, exec_target, argc_argv_or_environment_digest, input_file_or_hash, rpc_api_method_or_body_digest, syscall_sequence, device_ioctl_or_request_class, result]
+- source_type: vulnerable-transition-runtime
+  name: {zh: 脆弱转换与运行时异常, en: Vulnerable Transition and Runtime Anomaly}
+  channel: null
+  required_fields: [timestamp, component_instance, exploit_mitigation_result, exception_crash_or_bsod, stack_or_control_flow, memory_or_kernel_fault, state_or_permission_inconsistency, child_or_context_change, transition_result]
+- source_type: component-admission-and-load
+  name: {zh: 预受信组件准入与装载, en: Pretrusted Component Admission and Load}
+  channel: null
+  required_fields: [timestamp, component_hash, component_version, signature_or_certificate_status, package_owner_or_source, service_registry_or_module_definition, policy_id, policy_version, policy_mode, admission_decision, load_instance, interface_or_device]
+- source_type: privileged-effect-and-resource-outcome
+  name: {zh: 高权限效果与资源结果, en: Privileged Effect and Resource Outcome}
+  channel: null
+  required_fields: [timestamp, process_thread_token_or_context, effective_identity, integrity_privileges_or_capabilities, resource_id, operation, result, protected_process_or_kernel_effect, side_effect_id]
+- source_type: change-owner-and-maintenance-context
+  name: {zh: 变更所有者与维护上下文, en: Change Owner and Maintenance Context}
+  channel: null
+  required_fields: [timestamp, actor, owner, ticket, approved_package_and_version, approved_caller_and_request, device_or_target, scope, window_start, window_end, expected_effect]
+observables:
+- {zh: 脆弱 component/build 在目标可达但没有 trigger，仅形成 exposure, en: A vulnerable component or build is reachable on the target without a trigger and forms exposure only}
+- {zh: 低权限 process 向 exact privileged component 发送异常 argument/environment、RPC、syscall 或 device request, en: A lower-authority process sends abnormal arguments or environment RPC syscall or device requests to an exact privileged component}
+- {zh: trigger 后出现 exploit mitigation、fault/control-flow/memory signal 及一致的 protected-object 或 context change, en: An exploit mitigation fault control-flow or memory signal and consistent protected-object or context change follow a trigger}
+- {zh: 受保护文件或资源在普通权限审计无对应 allow/write 的情况下发生成功变化, en: A protected file or resource changes successfully without a corresponding allow or write in ordinary permission audit}
+- {zh: signed/publisher-allowed exact vulnerable component 被写入或从 inventory 选中并获 policy accepted, en: A signed or publisher-allowed exact vulnerable component is written or selected from inventory and receives a policy-accepted decision}
+- {zh: component load 后由不寻常 controller 打开 device/interface 并发送高风险请求, en: An unusual controller opens a device or interface after component load and sends a high-risk request}
+- {zh: device request 后出现 kernel memory、unsigned mapping、security-process termination 或受保护 storage effect, en: Kernel-memory unsigned-mapping security-process-termination or protected-storage effects follow a device request}
+- {zh: exploit_observed 后同一或派生 context 首次完成 pre-state 预计拒绝的资源操作, en: The same or derived context first completes a resource operation expected denied in pre-state after exploit observed}
+- {zh: kernel effect 后 host sensor 停止、audit gap 或 policy/EDR 与独立 control-plane 记录不一致, en: A host sensor stop audit gap or disagreement between policy or EDR and independent control-plane records follows a kernel effect}
+correlation:
+  window:
+    zh: >-
+      父级 exploit 路径从 caller 权限前态最后可信快照开始，覆盖 trigger 前十分钟至 transition 后二十四小时或首个新增授权结果；预受信组件路径还要从 file write、inventory selection 或 service/module definition 开始，覆盖 event-time admission、load、controller request、kernel effect 与恢复验证。process start key、component instance、request/handle、policy version 和 side-effect ID 优先于单纯时间邻近；kernel compromise 后相关独立记录至少保留九十日。
+    en: >-
+      The parent exploit path begins at the caller's last trusted authority pre-state and spans ten minutes before the trigger through twenty-four hours after the transition or the first newly authorized result. The pretrusted-component path also begins at file write, inventory selection, or service or module definition and covers event-time admission, load, controller request, kernel effect, and recovery validation. Process start key, component instance, request or handle, policy version, and side-effect ID take precedence over temporal proximity alone. Retain relevant independent records for at least ninety days after possible kernel compromise.
+  dimensions: [host_workload, boot_session_container, principal_process_thread, prestate_authority, component_package_hash_build, patch_mitigation_reachability, trigger_input_request, handle_device_interface, fault_control_flow_memory, component_write_discovery, signature_certificate, admission_policy_version_decision, service_registry_module_load, poststate_identity_capability, protected_resource_operation, side_effect, owner_ticket_window, telemetry_integrity, time]
+false_positives:
+- {zh: 合法 vulnerability scanner、red-team 或 vendor PoC 在授权窗口探测但未产生权限结果, en: An authorized vulnerability scanner red team or vendor proof of concept probes within scope without a privileged result}
+- {zh: QA/fuzzer 或普通软件缺陷造成异常参数、crash、hang 或 BSOD, en: QA or fuzzing or an ordinary software defect causes abnormal arguments crash hang or blue screen}
+- {zh: 合法 installer、hardware、backup、anti-cheat、monitoring 或 security product 写入并加载批准 driver/component, en: A legitimate installer hardware backup anti-cheat monitoring or security product writes and loads an approved driver or component}
+- {zh: 管理员在批准维护中启用 kernel tool、debugger 或诊断 interface 并操作受保护对象, en: An administrator enables a kernel tool debugger or diagnostic interface and operates on protected objects during approved maintenance}
+blind_spots:
+- {zh: 传感器不记录 argv/environment、syscall、RPC body 或 device IOCTL，trigger 与 component 无法绑定, en: Sensors omit argv or environment syscall RPC body or device IOCTL and cannot bind the trigger to the component}
+- {zh: inventory/patch 状态无事件时版本，导致 exact vulnerable instance 无法确认, en: Inventory or patch state lacks event-time version and the exact vulnerable instance cannot be confirmed}
+- {zh: OS 不暴露 token/capability 或资源授权前态，无法计算正权限差, en: The OS does not expose token capability or resource-authorization pre-state and positive authority difference cannot be computed}
+- {zh: 预装组件没有 write 事件且 device handle/request telemetry 缺失，攻击者选择不可见, en: A preinstalled component has no write event and device-handle or request telemetry is absent hiding adversary selection}
+- {zh: kernel compromise 篡改 EDR、audit、file integrity 或 policy evidence, en: Kernel compromise alters EDR audit file-integrity or policy evidence}
+- {zh: exploit 无 crash/child/file/network，且仅短暂改变内存 authority state, en: Exploitation has no crash child file or network and changes in-memory authority state only briefly}
+tuning_guidance:
+  paragraphs:
+  - zh: >-
+      先以 component/build、patch、reachability 建 exposure 层，不因 scanner finding 告警为成功。attempt 至少要求 low-authority source 与 trigger/request 或 mitigation/fault；exploit_observed 再要求 exact vulnerable instance、transition signal 和一致 effect；elevation_confirmed 最后要求 pre/post authorization differential 与 first result。不同平台可以使用不同 signal，但输出门保持一致，避免把 root label 或 crash 提升为结论。
+    en: >-
+      Build an exposure layer from component or build, patch, and reachability without alerting a scanner finding as success. An attempt requires at least a lower-authority source and trigger or request or mitigation or fault. exploit_observed additionally requires an exact vulnerable instance, transition signal, and consistent effect. elevation_confirmed finally requires a pre-state and post-state authorization differential plus first result. Platforms can use different signals while retaining the same output gates, preventing a root label or crash from becoming a verdict.
+  - zh: >-
+      预受信组件以 exact hash/version 和 event-time policy decision 为核心，不永久信任 publisher，也不把 blocklist miss 当安全。对新写入/改名组件、临时 service、罕见 controller、危险 IOCTL 与 security/kernel effect 提高风险；对批准 package/version/caller/request/device/window 降噪。blocked 和 successful 事件分开，policy lag/unknown component 保留 uncertainty。
+    en: >-
+      Center pretrusted-component analysis on exact hash and version plus event-time policy decision without permanently trusting a publisher or treating a blocklist miss as safe. Increase risk for newly written or renamed components, temporary services, rare controllers, dangerous IOCTLs, and security or kernel effects. Suppress only approved package, version, caller, request, device, and window combinations. Keep blocked and successful events separate and preserve uncertainty for policy lag or unknown components.
+evidence_refs: [REF-000243, REF-000355, REF-000356, REF-000357, REF-000358, REF-000359, REF-000360, REF-000361]
+lifecycle: {status: review, version: 0.1.0, created: '2026-09-13', modified: '2026-09-13', contributors: [Niji Matrix Research], reviewers: []}

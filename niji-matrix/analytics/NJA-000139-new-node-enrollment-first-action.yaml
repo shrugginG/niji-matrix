@@ -1,0 +1,46 @@
+schema_version: "2.0.0"
+type: detection-analytic
+id: NJA-000139
+strategy_ref: DET-000135
+name: {zh: 新节点治理注册—首个活动差分, en: New-Node Governance Enrollment–First Action Differential}
+summary: {zh: 识别云账户或订阅创建后、必要日志和控制注册前发生的首个工作负载活动。, en: Identify the first workload activity after cloud account or subscription creation but before required logging and control enrollment.}
+domains: [enterprise]
+platforms: [IaaS]
+logic:
+  paragraphs:
+    - zh: 从管理账户或租户全局审计获取新 account/subscription/project 的 create_id、creator、ancestor_path、创建时间、支付或 owner 关系和预期注册 profile，并持续跟踪组织 trail、Control Tower/相当治理服务、检测代理、SCP/组织策略与中心资产清单各自的 enrollment_time 和 effective_state。将同一节点的首个 compute、network、identity 或 C2 相关资源创建和真实使用按 resource_id 连接，而不是以新账户名称或账单信息作为攻击特征。
+      en: Obtain create_id, creator, ancestor_path, creation time, payment or owner relationship, and expected enrollment profile for each new account, subscription, or project from management-account or tenant-wide audit. Track enrollment_time and effective_state separately for organization trail, Control Tower or equivalent governance, detection agents, SCP or organization policy, and central asset inventory. Join the same node's first compute, network, identity, or C2-related resource creation and actual use by resource_id rather than treating a new account name or billing data as an attack feature.
+    - zh: 若首个工作负载操作发生在必须具备的日志或 guardrail 实际生效前，且由未经批准的 creator 或攻击者会话触发，输出 pre_enrollment_activity_confirmed；如果只有新建节点而没有资源使用则为 node_exposure；若 Microsoft Peach Sandstorm 式新订阅使用存在，但本地缺 enrollment 证据，则保持 malicious_new_node_coverage_unresolved。注册完成后旧窗口内活动仍需调查，不能因当前控制已绿而清除历史缺口。
+      en: Emit pre_enrollment_activity_confirmed when the first workload action occurs before required logging or guardrail becomes effective and an unapproved creator or adversary session controls it. A created node without resource use is node_exposure. If new-subscription use like the Peach Sandstorm case is observed but local enrollment evidence is missing, retain malicious_new_node_coverage_unresolved. Activity in the prior interval still needs investigation after enrollment; current green control state cannot erase a historical gap.
+data_requirements:
+  - source_type: global-node-creation-audit
+    name: {zh: 管理账户或租户节点创建审计, en: Management-account or tenant node-creation audit}
+    channel: null
+    required_fields: [timestamp, resource_id, resource_type, create_id, creator_id, ancestor_path, owner_id, approval_id]
+  - source_type: security-enrollment-state
+    name: {zh: 集中日志、guardrail 与检测注册状态, en: "Central logging, guardrail, and detection-enrollment state"}
+    channel: null
+    required_fields: [timestamp, resource_id, control_id, control_type, required_state, effective_state, enrollment_time, policy_version]
+  - source_type: first-workload-action
+    name: {zh: 新节点首个工作负载创建与使用事件, en: First workload creation and use in a new node}
+    channel: null
+    required_fields: [timestamp, resource_id, workload_id, actor_id, action, result, network_destination, observation_authority]
+observables:
+  - {zh: 新订阅或账户已创建但不在要求的治理注册清单中, en: A new subscription or account exists outside required governance enrollment}
+  - {zh: 第一项资源活动早于组织 trail 或 guardrail 生效时间, en: The first resource action precedes effective organization trail or guardrail time}
+  - {zh: 新节点被异常身份创建并很快承载通向攻击者基础设施的活动, en: An unusual identity creates a new node that quickly carries activity toward actor infrastructure}
+correlation:
+  window: {zh: 从新节点创建到注册完成后七天，首个二十四小时采用细粒度事件对齐；延迟注册按组织 SLO 解释但不抹除已发生活动。, en: "Correlate from node creation through seven days after enrollment, aligning the first twenty-four hours at event granularity. Explain delayed enrollment against the organization's SLO without erasing activity that already occurred."}
+  dimensions: [resource_id, create_id, creator_id, ancestor_path, control_id, enrollment_time, workload_id, actor_id, time]
+false_positives:
+  - {zh: 经批准的沙箱、实验订阅或组织迁移过渡节点, en: "Approved sandbox, experimental subscription, or transitional migration node"}
+  - {zh: 治理服务最终一致性延迟但禁止工作负载操作, en: Governance-service eventual consistency delay while workload operations are still blocked}
+blind_spots:
+  - {zh: 中心租户无权查看新订阅的首个活动或控制注册记录, en: The central tenant lacks access to first activity or control-enrollment records for the new subscription}
+  - {zh: 攻击者跨租户创建节点并切断稳定账单/身份关系, en: The adversary creates a node across tenants and severs stable billing or identity linkage}
+tuning_guidance:
+  paragraphs:
+    - zh: 由组织定义每类新节点的必须先行控制与 enrollment SLO，并为开发/沙箱设置有时限和用途的例外；不要永久放行“测试订阅”名称或创建者。只有创建、首个动作和实际控制缺口同时闭合才称防御削弱；没有具体日志覆盖证据时，仍可优先调查可疑新节点，但标记 coverage_unresolved。
+      en: Define required controls and enrollment SLO per new-node class and give development or sandbox exceptions a purpose and expiry, not a permanent allow by test-subscription name or creator. Call it defensive impairment only when creation, first action, and a real control gap close together. Suspicious new nodes may still be prioritized for investigation without specific log-coverage proof, but must be marked coverage_unresolved.
+evidence_refs: [REF-000456, REF-000459, REF-000461]
+lifecycle: {status: review, version: "1.0.0", created: "2026-09-22", modified: "2026-09-22", contributors: [Niji Matrix Research], reviewers: []}

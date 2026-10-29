@@ -1,0 +1,258 @@
+schema_version: 2.0.0
+type: technique
+id: NJT-0178
+name:
+  zh: 应用访问令牌取得
+  en: Application Access Token Acquisition
+summary:
+  zh: 攻击者通过接管签发返回面、读取持久工件或提取易失运行态，使访问令牌或刷新材料实际进入其控制面，并借正规令牌外观和分散观察面降低获取行为的可见性。
+  en: An adversary brings an access token or refresh material under its control by taking over an issuance return, reading
+    a persisted artifact, or extracting volatile runtime state, reducing acquisition visibility through legitimate token appearance
+    and separated observation planes.
+aliases:
+- Steal Application Access Token
+- T1528
+classification:
+  tactic_refs:
+  - TA0006
+  origin:
+    kind: attack-adapted
+    source_attack_id: T1528
+    source_attack_version: '19.1'
+  decision_ref: DEC-TA0006-T1528
+definition_and_concept:
+  paragraphs:
+  - zh: 应用访问令牌取得是攻击者获得一个由应用、工作负载或用户身份使用的访问令牌，或获得能够向授权服务器换取新访问令牌的刷新材料，并使该材料落入攻击者可读、可保存或可传递的进程、文件、服务或基础设施。令牌可由正规签发权威在受控请求中返回，也可从既有持久工件或运行态中被读取；完成点是材料本身进入攻击者控制面，不要求攻击者已经向资源服务器提交。
+    en: Application Access Token Acquisition occurs when an adversary obtains an access token used by an application, workload,
+      or user identity, or refresh material capable of obtaining new access tokens from an authorization server, and brings
+      that material into an adversary-readable, storable, or transferable process, artifact, service, or infrastructure. The
+      token may be returned by a legitimate issuing authority in a controlled request or read from an existing persisted or
+      runtime location. Completion is the token material entering adversary control and does not require presentation to a
+      resource server.
+  - zh: 材料取得与材料可用性必须分开。令牌在取得时可能仍有效、已过期、已撤销、受 audience/scope 限制，或采用 sender constraint 而攻击者没有相应私钥；这些状态改变后继风险和处置优先级，但不能由后继 API
+      成功或失败反向替代取得证据。仅得到 token ID、JWT header/claims、日志中掩码或资源活动线索而没有完整可提交材料，不满足本概念。
+    en: Material acquisition and usability must remain separate. At acquisition, a token may be valid, expired, revoked, restricted
+      by audience or scope, or sender-constrained without the corresponding private key. Those states change downstream risk
+      and response priority, but later API success or failure cannot substitute for acquisition evidence. A token ID, JWT
+      header or claims, masked log entry, or resource-activity clue without complete presentable material does not meet this
+      concept.
+stealth_characteristics:
+  paragraphs:
+  - zh: 令牌取得常发生在 IdP 与资源服务常规审计之间。元数据服务或 token endpoint 看到一次由真实工作负载、合法 client 或已有 consent 发起的返回；文件系统只看到受信 runner、容器或 SDK 读取预期路径；运行进程继续完成正常构建或应用功能。攻击者控制的接收者与令牌的正规
+      issuer、subject、audience 和 scope 可同时存在，使单看签发成功、应用名称或后继 API 身份的防守方难以识别控制权已转移。
+    en: Token acquisition often occurs between identity-provider and resource-service audit planes. A metadata service or
+      token endpoint may see a return to a real workload, legitimate client, or existing consent. A filesystem may show a
+      trusted runner, container, or SDK reading an expected path, and the runtime may continue its normal build or application
+      function. An adversary-controlled recipient can coexist with a legitimate issuer, subject, audience, and scope, making
+      control transfer hard to recognize from issuance success, application name, or downstream API identity alone.
+  - zh: 残余痕迹仍分布在取得路径。签发返回面留下 request、client/workload、redirect/recipient、audience/scope 和 response；持久工件读取留下 object version、mount、reader、path、bytes
+      和结果；运行态提取留下 source-target process、memory/env/IPC 访问、job/workflow 和第二输出。短寿令牌会压缩窗口，刷新令牌或供应商集成 token 会延长风险；令牌绑定能限制后继使用，却不会撤销“材料已被复制”这一事实。
+    en: Residue remains distributed by acquisition path. Issuance returns leave request, client or workload, redirect or recipient,
+      audience or scope, and response evidence. Persisted-artifact retrieval leaves object version, mount, reader, path, bytes,
+      and outcome. Runtime extraction leaves source and target process, memory, environment or IPC access, job or workflow,
+      and a second output. Short-lived tokens compress the window, while refresh or vendor-integration tokens extend risk.
+      Token binding can restrict later use without undoing the fact that material was copied.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 纳入要求访问令牌、刷新令牌或等价应用 API 授权材料实际返回、被读取或被复制到攻击者控制接收者。T1606/NJT-0166 拥有在正规签发链之外新构造令牌、断言或 Web 认证材料；正规 issuer 返回原令牌给恶意 client、受侵工作负载或被接管
+      redirect 属本对象。T1550.001 拥有已取得应用访问令牌的提交与使用；T1078/NJT-0061 拥有身份或会话被 relying party 接受并形成入口。三者可按取得、呈现和接受分别并列，任何后继阶段都不能补写前一阶段。
+    en: Inclusion requires an access token, refresh token, or equivalent application API authorization material to be returned,
+      read, or copied into an adversary-controlled recipient. T1606/NJT-0166 owns construction of a new token, assertion,
+      or web authentication material outside the legitimate issuance chain. An original token returned by the legitimate issuer
+      to a malicious client, compromised workload, or captured redirect belongs here. T1550.001 owns presentation and use
+      of an acquired application token, while T1078/NJT-0061 owns relying-party acceptance that creates entry. Acquisition,
+      presentation, and acceptance may be co-recorded separately, and a later stage cannot backfill an earlier one.
+  - zh: T1539 处理浏览器或 Web 应用以 Cookie 语义维护的会话状态；T1528 处理面向 API/resource server、具有 issuer/audience/scope 或等价授权语义的应用令牌。如果同一 bearer
+      值既作为 Cookie 又作为 API token，必须依据实际材料格式、投递方式和依赖方用途证明两个对象。T1555/NJT-0147 处理受管理保管库或解锁边界的读取路径，普通文件或配置中的散落秘密可能归 T1552；当其中返回的材料是应用令牌时可与本对象并列，但只发现或打开存储对象不足以证明令牌值已取得。
+    en: T1539 covers browser or web-application session state maintained with cookie semantics. T1528 covers application tokens
+      presented to an API or resource server with issuer, audience, scope, or equivalent authorization meaning. If one bearer
+      value serves as both a cookie and an API token, both objects require evidence from material format, delivery method,
+      and relying-party purpose. T1555/NJT-0147 owns retrieval through a managed vault or unlock boundary, and loose secrets
+      in ordinary files or configuration may belong to T1552. Either can coexist when the returned material is an application
+      token, but finding or opening the storage object does not prove the token value was acquired.
+  - zh: T1056/NJT-0169 处理口令、表单或其他认证输入被截获；若认证成功后另有 token response 被复制，输入与令牌结果分别成立。合法 OAuth 委派、云 attached identity、容器 service
+      account、CI/CD runner 和第三方集成都会正常取得 token；须以 app/workload owner、批准 client/redirect、scope、资源用途、运行代码来源和 recipient 控制权排除。既有第三方集成被供应商攻陷可由
+      NJS-0086-003 描述持久关系控制转移，而具体 token 材料落入攻击者控制面仍由本对象另证。
+    en: T1056/NJT-0169 covers interception of passwords, forms, or other authentication input. If a token response is separately
+      copied after authentication, input and token outcomes can both apply. Legitimate OAuth delegation, cloud attached identity,
+      container service account, CI/CD runner, and third-party integration all normally obtain tokens and require exclusion
+      through application or workload owner, approved client and redirect, scope, resource purpose, runtime-code provenance,
+      and recipient control. NJS-0086-003 may describe durable integration-control transfer after vendor compromise, while
+      this object separately requires evidence that concrete token material entered adversary control.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: 在受侵云工作负载或恶意 OAuth client 场景中，攻击者可让正规权威把新 token 直接返回到其控制的进程、redirect 或应用。ATT&CK 19.1 明确包含从 Azure IMDS 请求短期 token
+        和诱导用户向恶意应用授予 OAuth 访问；Unit 42 记录 TeamPCP 从受侵 CI/CD 端点的 IMDS 立即收集云凭据。这里没有先存在的 token 文件，关键证据是 request—issuance—response—recipient。
+      en: In a compromised cloud workload or malicious OAuth-client scenario, the adversary causes a legitimate authority
+        to return a fresh token directly to a controlled process, redirect, or application. ATT&CK 19.1 explicitly covers
+        requesting short-lived tokens from Azure IMDS and inducing a user to grant OAuth access to a malicious application.
+        Unit 42 records TeamPCP immediately harvesting cloud credentials through IMDS on compromised CI/CD endpoints. No preexisting
+        token file is necessary; the decisive chain is request, issuance, response, and recipient.
+    - zh: 在容器、CI/CD 和开发环境中，令牌可存在于投影卷、Secret、工作目录、生成脚本、环境或运行进程。TeamPCP 的恶意 action 直接读取 runner.worker 内存提取明文 token，并收集云凭据、Kubernetes
+        材料和本地配置后外传；取得的 npm/GitHub token 又被用于后继供应链动作。正式 T1528 在 material 已进入恶意脚本或归档时完成，后继发布、API 查询和资源访问另行记录。
+      en: In container, CI/CD, and developer environments, tokens can reside in projected volumes, Secrets, work directories,
+        generated scripts, environment, or running processes. TeamPCP's malicious action read runner.worker memory directly
+        to extract plaintext tokens and collected cloud credentials, Kubernetes material, and local configuration for exfiltration.
+        Harvested npm and GitHub tokens were later used for supply-chain actions. Formal T1528 completes when material enters
+        the malicious script or archive; publishing, API queries, and resource access remain separate successor records.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者至少需要控制一个可接收签发响应的 client/workload/redirect，读取保存 token 的对象，或读取持有 token 的易失进程状态。签发返回面要求合法工作负载身份、用户 consent、authorization
+          grant、元数据端点可达性或等价前提；工件路径要求文件/Secret/仓库读取权限；运行态要求同 job 代码执行、进程内代码、ptrace/procfs/debug 权限或 token broker 接口。取得 bearer
+          token 通常不需要原口令，但 sender-constrained token 还需要绑定私钥才能后继使用。
+        en: The adversary needs control of a client, workload, or redirect able to receive an issuance response, authority
+          to read an object storing a token, or access to volatile process state holding one. Issuance return requires a legitimate
+          workload identity, user consent, authorization grant, metadata-endpoint reachability, or equivalent prerequisite.
+          Artifact retrieval requires file, Secret, or repository read authority. Runtime extraction requires code in the
+          job or process, ptrace, procfs or debug authority, or access to a token-broker interface. A bearer token usually
+          does not require the original password, but a sender-constrained token also requires its bound private key for later
+          use.
+    defender_model:
+      paragraphs:
+      - zh: 防守方假定能够取得至少两个相邻观察面：issuer/token service 的 request/issuance 元数据，workload、container、runner 或客户端的进程/对象读取，token material
+          的本地受限分类，以及 resource server 的后继接受/拒绝。原 token 值不得写入通用日志；优先使用 issuer token ID、JWT jti、token family、受控 HMAC fingerprint、artifact
+          hash 和 request ID。缺少稳定 token 标识时，可以确认某路径发生读取，但不能把后继 API 活动精确回连到该材料实例。
+        en: 'The defender is assumed to obtain at least two adjacent views: request and issuance metadata from the issuer
+          or token service, process and object reads on the workload, container, runner, or client, restricted local classification
+          of token material, and later acceptance or rejection at resource servers. Raw token values must not enter general
+          logs. Prefer issuer token ID, JWT jti, token family, a controlled HMAC fingerprint, artifact hash, and request ID.
+          Without a stable token identifier, defenders may confirm an acquisition path but cannot precisely link downstream
+          API activity to that material instance.'
+      - zh: 防守结论按阶段输出：exposed_location 只说明 token 所在位置；read_or_return_succeeded 说明数据已返回；material_acquired 还要求攻击者控制接收者和完整材料；usable_at_acquisition
+          记录有效期、scope/audience、刷新能力与 sender constraint；presented、accepted 和 resource_access 只作为后继阶段。撤销后必须按 token family、grant、client/workload
+          和各 audience 验证拒绝传播，不能把一次 revoke API 成功视为处置完成。
+        en: Defender conclusions should be staged. exposed_location identifies where a token may reside. read_or_return_succeeded
+          establishes a data return. material_acquired additionally requires adversary control of the recipient and complete
+          material. usable_at_acquisition records validity, scope and audience, refresh capability, and sender constraint.
+          presented, accepted, and resource_access remain successor stages. After revocation, denial propagation must be verified
+          by token family, grant, client or workload, and each audience. One successful revoke API call is not completed containment.
+stealth_mechanisms:
+- mechanism_ref: NM-BT
+  role: primary
+  summary:
+    zh: 将 token 复制放在签发与资源使用之间的低可见观察面
+    en: Place token copying in low-visibility planes between issuance and resource use
+  analysis:
+    paragraphs:
+    - zh: 攻击者在 token 正常返回、被 SDK/容器读取或存在于运行进程时复制材料，IdP 仍记录合法 issuer、subject、client 或 workload，资源方此时甚至没有请求。行为设计把取得动作放在 identity
+        与 resource 两套常规审计之间；trace 变为 IMDS/token response、对象 read、memory/env/IPC 访问及第二输出，未覆盖 workload/runner 的防守方看不到关键转移。Unit
+        42 的 IMDS、文件与 runner.worker 观察以及 GitHub 对受侵 runner 可收获 token 的说明支持这一差异。
+      en: The adversary copies material as a token is normally returned, read by an SDK or container, or held in a running
+        process. The identity provider still records a legitimate issuer, subject, client, or workload, and the resource server
+        may not yet receive any request. The design places acquisition between routine identity and resource audit planes,
+        changing residue into IMDS or token response, object read, memory, environment or IPC access, and a second output.
+        Defenders without workload or runner coverage miss the transfer. Unit 42's IMDS, file, and runner.worker observations
+        plus GitHub's warning that compromised runners can harvest tokens support this difference.
+  confidence: medium
+  evidence_refs:
+  - REF-000810
+  - REF-000811
+  - REF-000814
+- mechanism_ref: NM-FD
+  role: secondary
+  summary:
+    zh: 正规 issuer、client、workload 或集成身份掩盖接收者控制权变化
+    en: Legitimate issuer, client, workload, or integration identity masks changed recipient control
+  analysis:
+    paragraphs:
+    - zh: 签发返回、投影 token 和 CI/CD secret injection 都由正常平台完成，令牌结构、issuer、scope 与签名保持真实；供应商 token 被夺取后，资源调用还可能继续显示批准的 client ID。恶意差异位于谁控制接收进程、运行代码或供应商连接，而不是
+        token 外观。REF-000178 证明既有 Drift 集成的受损 OAuth token 被用于跨客户活动，Unit 42 证明受信安全扫描流程保持正常结果时后台提取 token；两者支持特征相似性，但前者不揭示最初取得路径。
+      en: Issuance returns, projected tokens, and CI/CD secret injection are performed by legitimate platforms, so token structure,
+        issuer, scope, and signature remain authentic. After a vendor token is taken, resource calls may continue displaying
+        an approved client ID. The malicious difference is who controls the recipient process, runtime code, or vendor connection,
+        not token appearance. REF-000178 shows compromised OAuth tokens from an existing Drift integration used across customers,
+        while Unit 42 shows token extraction behind an otherwise normal security-scanning result. Both support feature similarity,
+        although the former does not disclose the initial acquisition path.
+  confidence: medium
+  evidence_refs:
+  - REF-000178
+  - REF-000811
+subtechnique_taxonomy:
+  narrative:
+    paragraphs:
+    - zh: 建议按完整 token 材料在被取走前的稳定位置和取得路径建立三项 Niji 原生子技术。签发返回面令牌取得发生在 authority 新返回 token 的事务中，不读取旧材料；持久令牌工件读取从文件、Secret、投影卷、仓库或持久
+        cache 取得已存在 token；易失运行态令牌提取从进程内存、环境、临时脚本、broker/IPC 或仅在 job 生命周期存在的状态取得 token。三者分别需要 issuer/request、object-read 和
+        process-runtime 观察面。
+      en: Propose three Niji-native children based on the stable location of complete token material immediately before acquisition
+        and the acquisition path. Issuance-Return Token Acquisition occurs in the transaction where an authority newly returns
+        a token and does not read existing material. Persisted Token-Artifact Retrieval obtains an existing token from a file,
+        Secret, projected volume, repository, or durable cache. Volatile Runtime Token Extraction obtains one from process
+        memory, environment, a temporary script, broker or IPC, or state existing only for the job lifetime. The three require
+        issuer and request, object-read, and process-runtime observation respectively.
+    - zh: OAuth、云厂商、容器、设备、应用、API、产品和 token 格式只是实现维度。材料有效性横跨三项：任何位置都可能保存有效、过期、撤销或 sender-constrained token，因此它是结果分级而不是第四子项。CASE-000064
+        证明 token 在攻击者控制下和完整撤销需求，却没有说明其来自返回、工件还是运行态，故只支持父级与防御，不用于任一子项成立。
+      en: OAuth, cloud vendor, container, device, application, API, product, and token format are implementation dimensions.
+        Material usability crosses all three children because any location can contain a valid, expired, revoked, or sender-constrained
+        token, so it is an outcome grade rather than a fourth child. CASE-000064 establishes adversary control of tokens and
+        the need for complete revocation without identifying whether acquisition came from return, artifact, or runtime, and
+        therefore supports only the parent and defense rather than any child.
+  coverage: established
+  subtechnique_refs:
+  - NJS-0178-001
+  - NJS-0178-002
+  - NJS-0178-003
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000206
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000188
+    - MIT-000052
+    - MIT-000066
+evidence:
+  claim_refs:
+  - CLM-000884
+  - CLM-000885
+  - CLM-000886
+  - CLM-000887
+  - CLM-000888
+  - CLM-000889
+  - CLM-000890
+  - CLM-000891
+  case_refs:
+  - CASE-000258
+  - CASE-000064
+  reference_refs:
+  - REF-000810
+  - REF-000811
+  - REF-000070
+  - REF-000178
+  - REF-000814
+research:
+  limitations:
+    paragraphs:
+    - zh: 公开来源最强的是 TeamPCP 的 CI/CD 多路径取得和 UNC6395 的 token 已受损/被使用结果，两者证据问题不同。前者公开 IMDS、memory、部分 file/secret 行为但没有逐 token
+        完整清单；后者确认 token control 和撤销，却不披露最初取得位置。不能把后者资源查询反推为特定 cache 或 memory theft，也不能把前者不同波次和目标拼成每台受害主机的一条完整链。
+      en: Public evidence is strongest for TeamPCP's multi-path CI/CD acquisition and UNC6395's compromised-and-used token
+        result, but they answer different questions. The former exposes IMDS, memory, and some file or secret behavior without
+        a complete per-token inventory. The latter confirms token control and revocation without disclosing initial material
+        location. Its resource queries cannot be reverse-inferred as a specific cache or memory theft, and TeamPCP's waves
+        and targets cannot be spliced into one chain for every victim host.
+    - zh: 许多 issuer、SaaS 和 runtime 不记录可安全关联的 token ID；opaque token 不能解码，JWT jti 也不一定存在或唯一。通用日志禁止保存 raw token，HMAC fingerprint
+        又要求在受限本地边界生成。字段缺失时，防守方可能分别证明未授权 read、异常 issuance 或后继 use，却无法证明它们属于同一 token 实例；结论应显式降级。
+      en: Many issuers, SaaS providers, and runtimes do not expose a safely joinable token ID. Opaque tokens cannot be decoded,
+        and JWT jti may be missing or nonunique. General logs must not retain raw tokens, while HMAC fingerprints must be
+        generated within a restricted local boundary. With missing fields, defenders may separately establish an unauthorized
+        read, anomalous issuance, or successor use without proving they refer to one token instance, and conclusions must
+        explicitly downgrade.
+    - zh: 撤销语义随 access/refresh token、Cookie、workload credential、Kubernetes TokenRequest 和第三方集成而异。Microsoft 说明 refresh revoke
+        后 access token 可持续到期，Kubernetes bound token 依 Pod 删除失效，供应商集成还需跨客户和各 connected system 处理。固定窗口只能是实施起点；正式 Analytic 必须按
+        provider SLA、最大 TTL、cache 和 audience 能力校准，并避免用真实被盗 token 做破坏性测试。
+      en: Revocation semantics differ across access and refresh tokens, cookies, workload credentials, Kubernetes TokenRequest,
+        and third-party integrations. Microsoft notes that access tokens may remain valid until expiry after refresh revocation.
+        Kubernetes bound tokens expire with Pod deletion, and vendor integrations require action across customers and connected
+        systems. Fixed windows are implementation starting points only. Formal analytics must calibrate provider SLA, maximum
+        TTL, cache, and audience capability and avoid destructive testing with real stolen tokens.
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-09-27'
+  modified: '2026-09-27'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

@@ -1,0 +1,145 @@
+schema_version: 2.0.0
+type: evasion-subtechnique
+id: NJS-0166-001
+parent_ref: NJT-0166
+name:
+  zh: 签发链外可信证明铸造
+  en: Trusted-Proof Minting Outside the Issuance Chain
+summary:
+  zh: 攻击者利用已受信或新受信的签名能力，在权威签发器之外构造完整证明，使依赖方接受却找不到对应认证和签发事件。
+  en: The adversary uses an already trusted or newly trusted signing capability to construct a complete proof outside the authoritative issuer,
+    leaving relying-party acceptance without corresponding authentication and issuance.
+aliases: []
+lineage:
+  attck_subtechnique_inherited: false
+definition_and_concept:
+  paragraphs:
+  - zh: 签发链外可信证明铸造是攻击者掌握依赖方信任的私钥、HMAC 密钥或同等签名能力后，在正常 IdP、SSO 或应用签发事务之外构造完整认证证明。证明可以是 SAML 断言、自包含签名 Cookie、预认证值或其他材料；子技术按构造来源与权威签发链的分离划界，不按协议或产品划界。若攻击者先添加自己的
+      signer，信任修改归相邻技术，本项从攻击者实际计算新证明开始。
+    en: Trusted-Proof Minting Outside the Issuance Chain occurs when an adversary controls a private key, HMAC key, or equivalent signing capability
+      trusted by a relying party and constructs a complete authentication proof outside the normal IdP, SSO, or application issuance transaction.
+      The proof can be a SAML assertion, self-contained signed cookie, preauthentication value, or other material. The boundary is construction-source
+      separation from the authoritative issuance chain, not protocol or product. If the adversary first adds its own signer, the trust mutation
+      belongs to an adjacent technique and this child begins when the new proof is actually computed.
+stealth_characteristics:
+  paragraphs:
+  - zh: 签发链外可信证明铸造使依赖方的签名校验成功、主体存在和字段可解析可与合法材料相同，因而其登录记录本身通常不显示“伪造”。决定性差异是权威侧缺少相同主体、依赖方和时点的认证及签发链，或材料中的声明、时限、受众和请求绑定与本地签发规则不一致。私钥访问、DPAPI 材料读取、异常
+      signer、同一断言重放和后继高价值操作仍是残余；若攻击者同时控制日志与 signer，来源差分也可能被伪造。
+    en: Trusted-Proof Minting Outside the Issuance Chain means that signature verification, subject existence, and parseable fields at the relying
+      party can look identical to legitimate material, so the sign-in record itself usually does not say forged. The decisive differential is
+      missing authority-side authentication and issuance for the same subject, relying party, and time, or claims, lifetime, audience, and request
+      bindings inconsistent with local issuance rules. Private-key access, DPAPI-material reads, unexpected signers, assertion replay, and downstream
+      high-value actions remain. If the adversary controls both signer and logs, it may also forge the origin differential.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 纳入要求材料在签发器正常事务之外由攻击者计算，并至少具有可验证的签名能力、结构语义或依赖方接受证据。仅导出证书或读取私钥是前置暴露；仅提交一个从合法 IdP 窃取的原令牌是 T1528/T1539；调用 AWS STS 让 AWS 正式返回凭据是令牌获取或权限滥用。SAML
+      中修改 issuer、signer trust 或 claim rule 属 T1556/NJT-0100 的状态变化，但随后由攻击者签发的具体断言可与本项并列。
+    en: Inclusion requires adversary computation outside the issuer's normal transaction, with evidence of signing capability, structural semantics,
+      or relying-party acceptance. Certificate export or private-key access alone is precursor exposure. Presenting an original token stolen from
+      a legitimate IdP belongs to T1528 or T1539. Calling AWS STS and receiving an AWS-issued credential is token acquisition or authority abuse.
+      Changing an issuer, signer trust, or claim rule belongs to T1556 or NJT-0100 state mutation, while a specific assertion later minted by
+      the adversary can be co-mapped here.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: Solorigate 调查描述攻击者通过窃取 AD FS SAML 签名证书或把自有证书加入联合信任，随后为所选身份创建有效 SAML 令牌并访问云资源。Mandiant 2026 年受控评估进一步从机器 DPAPI 路径恢复活动签名私钥，生成冒充 Global
+        Administrator 的断言并被 Entra ID 接受。Zimbra 文档则说明域级 preauth key 可对 account、by、expires 和 timestamp 计算 HMAC，服务器验证后返回 auth token；文档证明机制能力，不证明一次恶意在野使用。
+      en: Microsoft Solorigate reporting describes attackers stealing an AD FS SAML signing certificate or adding their own certificate to federation
+        trust and then creating valid SAML tokens for identities of their choice to access cloud resources. A 2026 Mandiant controlled assessment
+        recovered an active signing key through machine DPAPI, forged an assertion impersonating a Global Administrator, and had Entra ID accept
+        it. Zimbra documentation shows a domain preauth key computing an HMAC over account, identifier mode, expiry, and timestamp before the
+        server returns an auth token. The documentation establishes mechanism capability, not a malicious field event.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者需要活动 signer 或共享密钥以及依赖方仍信任它的时间窗，并需复现签名算法、证书链、主体映射和验证约束。取得过期或未生效的 AD FS 证书可能导致断言被拒绝；Mandiant 指出配置数据库与活动主机证书可能漂移。严格 Recipient/Audience/InResponseTo、短
+          NotOnOrAfter、重放缓存和每会话绑定会压缩可用空间，但不能单独抵御活动私钥已失守。
+        en: The adversary needs an active signer or shared secret and a window in which the relying party still trusts it, plus the ability to
+          reproduce the signing algorithm, certificate chain, subject mapping, and validation constraints. An expired or inactive AD FS certificate
+          can produce rejected assertions; Mandiant notes drift between configuration-database and active-host certificates. Strict Recipient,
+          Audience, InResponseTo, short NotOnOrAfter, replay caching, and per-session binding narrow the usable space but cannot by themselves
+          defeat a compromised active private key.
+    defender_model:
+      paragraphs:
+      - zh: 防守方需要 AD FS 或等价 IdP 的认证/签发事件、依赖方联合登录、signer 和信任清单、关键密钥访问与轮换记录。优先以 assertion/request/session ID 关联，次选主体、relying party、issue/accept
+          time、issuer、声明摘要、来源和客户端。只有依赖方成功时先标记“签发来源未证实”；只有密钥读取时标记“伪造能力暴露”；两者以及后继资源操作连成链后才提高到已接受或已使用。
+        en: Defenders need AD FS or equivalent IdP authentication and issuance, relying-party federated sign-ins, signer and trust inventory,
+          sensitive-key access, and rotation records. Prefer assertion, request, or session identifiers, then fall back to principal, relying
+          party, issue and acceptance time, issuer, claim digest, origin, and client. A relying-party success alone is issuance origin unverified.
+          Key access alone is forgery capability exposed. Confidence rises to accepted or used only when these stages and downstream resource
+          activity form a supported chain.
+stealth_mechanisms:
+- mechanism_ref: NM-BT
+  role: primary
+  summary:
+    zh: 依赖方成功缺少权威签发对应项
+    en: Relying-party success lacks an authoritative issuance counterpart
+  analysis:
+    paragraphs:
+    - zh: 链外签名让攻击者跳过 IdP 的主体认证、声明规则和签发审计，却复用依赖方信任的验证密钥。结果在依赖方表现为正常成功，而行为发生在其常规监控范围之外；跨 IdP—RP 关联才能恢复缺口。Mandiant 的受控结果和 Microsoft AD FS 事件语义直接支持这条因果链，但日志未启用或合法
+        unsolicited SAML 会降低缺口结论强度。
+      en: Off-chain signing skips IdP subject authentication, claim rules, and issuance audit while reusing a verification key trusted by the
+        relying party. The result appears as ordinary success at the relying party while construction remains outside its routine monitoring.
+        Cross-IdP and relying-party correlation recovers the gap. Mandiant's controlled result and Microsoft AD FS event semantics directly support
+        this causal chain, while disabled logging or legitimate unsolicited SAML lowers the strength of an absence conclusion.
+  confidence: high
+  evidence_refs:
+  - REF-000712
+  - REF-000714
+- mechanism_ref: NM-FD
+  role: secondary
+  summary:
+    zh: 受信 signer 与约束相容声明伪装签发来源
+    en: Trusted signer and constraint-compatible claims disguise issuance origin
+  analysis:
+    paragraphs:
+    - zh: 攻击者以活动受信 signer 签名，并设置依赖方会接受的主体、Recipient、Audience、时限与请求字段；签名与结构特征和合法断言一致，使单个登录事件难以分类为恶意。OASIS 定义依赖方必须检查的约束，Microsoft 说明受信证书签名的异常可能被遗漏。字段仿形的具体在野选择公开有限，故保留中等置信度并要求以发行差分而非“签名有效”判定来源。
+      en: The adversary signs with an active trusted signer and sets subject, Recipient, Audience, time, and request fields the relying party
+        accepts. Signature and structural features match legitimate assertions, making one sign-in difficult to classify as malicious. OASIS defines
+        the constraints a relying party checks, and Microsoft states that anomalies signed by a trusted certificate can be missed. Published field
+        evidence reveals little about exact in-the-wild shaping choices, so confidence remains medium and origin must be decided by issuance differential
+        rather than valid signature alone.
+  confidence: medium
+  evidence_refs:
+  - REF-000304
+  - REF-000715
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000188
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000170
+    - MIT-000073
+evidence:
+  claim_refs:
+  - CLM-000817
+  - CLM-000818
+  case_refs:
+  - CASE-000111
+  reference_refs:
+  - REF-000711
+  - REF-000304
+  - REF-000712
+  - REF-000714
+  - REF-000715
+  - REF-000716
+research:
+  limitations:
+    paragraphs:
+    - zh: Solorigate 公开资料确认两条取得签名能力的路径和攻击者创建令牌，但未公开每个受害者的完整断言字段、签发日志缺口或资源操作序列。Mandiant 2026 结果是受控评估而非外部攻击事件，Zimbra 是能力文档。它们共同支持机制和可检测差分，不能用于估计在野频率、默认日志覆盖或所有
+        IdP 的字段可用性。
+      en: Public Solorigate reporting confirms two paths to signing capability and attacker-created tokens but does not publish complete assertion
+        fields, issuance-log gaps, and resource-action sequences for each victim. Mandiant's 2026 result is a controlled assessment rather than
+        an external attack, and Zimbra is capability documentation. Together they support the mechanism and detectable differential, but they
+        cannot estimate prevalence, default logging coverage, or field availability across every IdP.
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-09-23'
+  modified: '2026-09-23'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

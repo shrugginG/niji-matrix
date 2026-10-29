@@ -1,0 +1,103 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000169
+strategy_ref: DET-000158
+name:
+  zh: 邮件规则版本与匹配副本投递关联
+  en: Mail Rule Version and Matched-Copy Delivery Correlation
+summary:
+  zh: 证明条件规则对实际到达消息生成了非批准副本，而非只发现规则存在。
+  en: Prove that a conditional rule generated unapproved copies of arriving messages rather than only finding the rule.
+domains:
+- enterprise
+platforms:
+- Office Suite
+logic:
+  paragraphs:
+  - zh: 从统一审计取 New-InboxRule、Set-InboxRule、Set-Mailbox 和邮件流规则变更，保留配置前后谓词、动作、操作者、邮箱、规则 ID 与目的地；再取自动转发报告或消息跟踪中的转发用户、类型、收件域、首次转发时间、消息
+      ID 与结果。只有规则在生效窗口内匹配实际邮件且副本流向未批准收件人时标记完成收集，优先排序财务/安全关键字、受保护邮箱、首次出现目的域或规则创建后异常删除。若只有配置而无匹配消息，输出准备行为；若只有转发结果而缺少规则历史，输出待追溯路由异常。
+    en: Take New-InboxRule, Set-InboxRule, Set-Mailbox, and mail-flow-rule changes from unified audit, preserving before/after
+      predicate, action, actor, mailbox, rule ID, and destination. Join the auto-forward report or message trace by forwarding
+      user, type, recipient domain, first-forward time, message ID, and outcome. Mark completed collection only when a rule
+      matches actual mail within its effective interval and a copy reaches an unapproved recipient. Prioritize finance or
+      security terms, protected mailboxes, first-seen destination domains, and anomalous deletion after rule creation. Configuration
+      without matching mail is preparation; forwarding without rule history is an unresolved routing anomaly.
+data_requirements:
+- source_type: exchange-unified-audit
+  name:
+    zh: Exchange 规则变更审计
+    en: Exchange rule-change audit
+  channel: Purview mailbox and transport rule audit
+  required_fields:
+  - creation_time
+  - operation
+  - user_id
+  - mailbox_owner_u_p_n
+  - object_id
+  - parameters
+  - client_i_p
+  - session_id
+- source_type: exchange-mail-flow
+  name:
+    zh: Exchange 自动转发与邮件流
+    en: Exchange auto-forward and mail flow
+  channel: Auto-forwarded messages report or message trace
+  required_fields:
+  - timestamp
+  - sender_mailbox
+  - internet_message_id
+  - forwarding_type
+  - recipient
+  - recipient_domain
+  - delivery_status
+- source_type: governance-baseline
+  name:
+    zh: 批准转发与迁移清单
+    en: Approved forwarding and migration register
+  channel: approved forwarding and migration register
+  required_fields:
+  - mailbox
+  - rule_id
+  - destination
+  - approver
+  - effective_start
+  - effective_end
+observables:
+- zh: 新增规则谓词匹配到达邮件并出现异常接收目的地
+  en: A new rule predicate matches arriving mail and an anomalous destination appears
+- zh: 规则配置人、消息 ID 和副本结果构成闭合链
+  en: Rule writer, message ID, and copy outcome form a closed chain
+correlation:
+  window:
+    zh: 覆盖规则有效期并以三十天为初始回看期，保留每次消息投递的顺序。
+    en: Cover the rule's effective interval with an initial thirty-day lookback and preserve each message's delivery order.
+  dimensions:
+  - mailbox
+  - rule_id
+  - internet_message_id
+  - recipient
+false_positives:
+- zh: 合规日记、归档、共享邮箱、代理转发、迁移过渡与用户批准的规则可产生相同模式；要以批准目的地和有效期限作基线。
+  en: Compliance journaling, archives, shared mailboxes, delegated forwarding, migration windows, and user-approved rules
+    can look identical; baseline approved destinations and effective intervals.
+blind_spots:
+- zh: 规则审计过期、隐藏 MAPI 属性、内部收件人、外部网关缺日志、转发报告时间窗有限及邮件未投递，会使成功收集无法判定。
+  en: Expired rule audit, hidden MAPI properties, internal recipients, absent external-gateway logs, limited forwarding-report
+    windows, and undelivered mail can prevent a successful-collection conclusion.
+tuning_guidance:
+  paragraphs:
+  - zh: 在敏感邮箱及首次外部目的域提高权重；保留旧规则修改和删除历史；不要把合法全量邮件迁移与单条财务主题规则混作同一基线。
+    en: Weight sensitive mailboxes and first-seen external domains more heavily, preserve modifications and removals of old
+      rules, and do not use a full-mailbox migration baseline for a narrow finance-topic rule.
+evidence_refs:
+- REF-000572
+- REF-000571
+- REF-000570
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-09-22'
+  modified: '2026-09-22'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

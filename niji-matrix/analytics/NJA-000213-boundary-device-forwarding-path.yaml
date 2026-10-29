@@ -1,0 +1,46 @@
+schema_version: "2.0.0"
+type: detection-analytic
+id: NJA-000213
+strategy_ref: DET-000191
+name: {zh: 边界设备转发路径改写分析, en: Boundary-Device Forwarding-Path Rewrite Analytic}
+summary: {zh: 识别边界设备 route、NAT、ACL 或 proxy 状态变化后出现的原本禁止跨域流量。, en: "Identify formerly prohibited cross-domain traffic after route, NAT, ACL, or proxy state changes on a boundary device."}
+domains: [enterprise]
+platforms: [Network Devices, Linux]
+logic:
+  paragraphs:
+    - zh: 建立 network_domain、trust_level、approved_path_id、source/destination prefix、允许协议/端口、required inspection points 与 boundary_device_id 图。版本化边界设备 route、NAT、ACL/firewall、policy route、proxy/listener、interface 和 forwarding state，保存 old/new、writer AAA/session/source、工单、commit/reload 与时间。将配置 diff 映射为可达性和 inspection path 变化，生成 bridge_state_id。
+      en: Build a graph of network_domain, trust_level, approved_path_id, source and destination prefixes, allowed protocol and port, required inspection points, and boundary_device_id. Version route, NAT, ACL or firewall, policy route, proxy or listener, interface, and forwarding state on the boundary device while retaining old and new state, writer AAA, session, source, ticket, commit or reload, and time. Map the configuration difference into reachability and inspection-path changes and generate bridge_state_id.
+    - zh: 在 bridge_state_id 生效后，从两侧 NetFlow/packet metadata、设备 session/NAT translation 和 policy decision 连接同一五元组/转换关联。批准图原本 deny 或要求 inspection，而观察到流量通过且绕开预期点，并有攻击者后继 RDP、恶意载荷、扫描或外送时，输出 forwarding_bridge。只有规则变化无流量输出 mutation_only；只有流量无设备状态输出 path_anomaly。
+      en: After bridge_state_id becomes effective, join bilateral NetFlow or packet metadata, device session or NAT translation, and policy decisions for the same tuple or translation. Emit forwarding_bridge when the approved graph previously denied the path or required an inspection point, traffic passes and bypasses that point, and adversary follow-on RDP, payload transfer, scanning, or exfiltration follows. A rule change without traffic is mutation_only; traffic without device state is path_anomaly.
+data_requirements:
+  - source_type: approved-network-path-model
+    name: {zh: 网络域、批准路径与检查点模型, en: Network Domain Approved Path and Inspection-Point Model}
+    channel: null
+    required_fields: [network_domain_id, trust_level, source_prefix, destination_prefix, approved_path_id, allowed_protocols, allowed_ports, required_inspection_point_ids, boundary_device_id, policy_version]
+  - source_type: boundary-device-config-audit
+    name: {zh: 边界设备 route/NAT/ACL/proxy 版本与 Writer, en: Boundary Device Route NAT ACL and Proxy Versions Plus Writer}
+    channel: Device configuration and AAA audit
+    required_fields: [timestamp, device_id, config_version, actor_id, session_id, source_ip, object_type, object_id, old_value, new_value, commit_id, approval_id]
+  - source_type: bilateral-network-flow
+    name: {zh: 边界两侧 flow、session 与策略裁决, en: Bilateral Flow Session and Policy Decision}
+    channel: NetFlow IPFIX firewall or packet metadata
+    required_fields: [timestamp, sensor_side, source_ip, source_port, destination_ip, destination_port, protocol, session_or_translation_id, bytes, packets, policy_decision, inspection_point_id]
+observables:
+  - {zh: 非批准 writer 创建 route/NAT/proxy 使禁止 domain pair 变为可达, en: An unapproved writer creates route NAT or proxy state that makes a prohibited domain pair reachable}
+  - {zh: 同一 translation/session 在边界两侧出现且未经过 required inspection point, en: The same translation or session appears on both sides without the required inspection point}
+  - {zh: 新路径承载 RDP、恶意样本、扫描或数据外送, en: The new path carries RDP malicious samples scanning or data exfiltration}
+correlation:
+  window: {zh: 从配置变化前一小时至回滚后七日，并长期保留 approved path 与 config version。, en: "Correlate one hour before the configuration change through seven days after rollback and retain approved paths plus configuration versions long term."}
+  dimensions: [network_domain_id, approved_path_id, device_id, config_version, bridge_state_id, actor_id, session_id, session_or_translation_id, source_ip, destination_ip, protocol, time]
+false_positives:
+  - {zh: 经批准的网络迁移、应急互联、灾备或临时支持路径具有双人审批和到期, en: "Approved network migration, emergency interconnect, disaster recovery, or temporary support path with two-person approval and expiry"}
+  - {zh: 动态路由收敛或 HA failover 改变设备但保持同等检查点, en: Dynamic routing convergence or HA failover changes devices while preserving equivalent inspection points}
+blind_spots:
+  - {zh: 设备配置/AAA 由同一受侵设备提供且没有外部备份, en: Device configuration and AAA come only from the compromised device without external backup}
+  - {zh: 异步路由、NAT 与 flow 时钟无法对齐或一侧无传感器, en: Asynchronous routing NAT and flow clocks cannot align or one side lacks a sensor}
+tuning_guidance:
+  paragraphs:
+    - zh: 先按业务域和 required inspection 建模而非按端口静态告警；批准例外绑定 domain pair、设备对象、writer、时间和用途。HA/动态路由用等效 path identity 归一化。只有状态变化、双侧流与策略差同时成立时高置信，避免把普通互联网出站误判为桥接。
+      en: Model business domains and required inspection before static port alerts. Approved exceptions bind domain pair, device object, writer, time, and purpose. Normalize HA and dynamic routing through equivalent path identity. Require state change, bilateral flow, and policy difference for high confidence to avoid treating ordinary internet egress as bridging.
+evidence_refs: [REF-000721, REF-000722, REF-000723]
+lifecycle: {status: review, version: "1.0.0", created: "2026-09-23", modified: "2026-09-23", contributors: [Niji Matrix Research], reviewers: []}

@@ -1,0 +1,40 @@
+schema_version: "2.0.0"
+type: mitigation
+id: MIT-000176
+name: {zh: 受治理的交互历史与独立会话记录, en: Governed Interactive History and Independent Session Recording}
+summary: {zh: 锁定 history 策略和 sink、限制 session 级覆盖，并以不同权远程记录保留命令/结果，使本地记录前抑制既更难实施又不能消除全部证据。, en: "Lock history policy and sinks, constrain session-level overrides, and retain commands or outcomes through differently authorized remote recording so local pre-recording suppression is harder and cannot erase all evidence."}
+description:
+  paragraphs:
+    - zh: 本缓解把本地 history 视为便利调查面而非唯一审计。组织按 shell/CLI 与版本定义批准 store、write mode、capacity、predicate、保留期和隐私规则；系统/设备 profile 由配置管理保护，普通交互用户不能将 sink 改为 null/unset、选择 SaveNothing 或引入未批准 filter。高权限和关键系统通过 session broker、TTY/CLI accounting 或进程审计把最小必要的命令特征、身份、时间和结果发送到本地管理员不能同时删除的存储。
+      en: This mitigation treats local history as a convenient investigative surface rather than the sole audit record. The organization defines approved stores, write modes, capacity, predicates, retention, and privacy rules by shell or CLI and version. Configuration management protects system or device profiles so ordinary interactive users cannot redirect sinks to null or unset values, choose SaveNothing, or introduce unapproved filters. Privileged and critical-system sessions use a session broker, TTY or CLI accounting, or process audit to send minimally necessary command features, identity, time, and outcomes to storage that local administrators cannot delete at the same time.
+    - zh: 控制不能只禁止某个字符串，因为攻击者可通过 API、临时环境或其他 CLI 实现相同结果。应在 session 建立时和期间验证 effective state，在退出/flush 后验证 store outcome；例外绑定主体、设备、用途、时间窗与替代记录。隐私设计优先使用 session-scoped hash、命令类别和受控按需解密，避免把历史治理变成新的秘密泄露面。
+      en: Controls cannot merely ban one string because the same outcome can be reached through an API, temporary environment, or another CLI. Validate effective state at session establishment and during the session and validate store outcome after exit or flush. Exceptions bind principal, device, purpose, time window, and replacement recording. Privacy design prefers session-scoped hashes, command classes, and controlled on-demand decryption so history governance does not become a new secret-exposure surface.
+domains: [enterprise]
+measures:
+  - key: locked-history-policy-and-sinks
+    name: {zh: 锁定 History 策略与持久 Sink, en: Locked History Policy and Durable Sinks}
+    description: {paragraphs: [{zh: 通过只读/签名 profile、设备 AAA 配置、应用控制和文件权限固定 history store、保存方式、容量与 predicate；检测并阻止未批准 null/unset sink、SaveNothing、零容量和用户级 filter 覆盖。, en: "Use read-only or signed profiles, device AAA configuration, application control, and file permissions to fix history store, save style, capacity, and predicates. Detect and block unapproved null or unset sinks, SaveNothing, zero capacity, and user-level filter overrides."}]}
+    control_type: preventive
+  - key: differently-authorized-session-recording
+    name: {zh: 不同权会话与命令结果记录, en: Differently Authorized Session and Command-Outcome Recording}
+    description: {paragraphs: [{zh: 对特权/关键 session 在 broker、TTY/CLI accounting、内核审计或控制平面记录身份、序列、最小化命令特征和结果，并远程发送到 shell/主机管理员不能同时修改的存储。, en: "For privileged or critical sessions record identity, sequence, minimized command features, and outcomes at a broker, TTY or CLI accounting layer, kernel audit, or control plane and send them remotely to storage that shell or host administrators cannot modify simultaneously."}]}
+    control_type: detective-support
+  - key: versioned-exceptions-and-privacy-controls
+    name: {zh: 版本化例外与隐私控制, en: Versioned Exceptions and Privacy Controls}
+    description: {paragraphs: [{zh: 将无历史/过滤例外绑定 owner、主体、系统、精确 predicate、替代记录和到期；命令明文最小化、分级访问并设置短保留，常规分析使用 hash/结构特征。, en: "Bind no-history or filtering exceptions to owner, principal, system, exact predicate, replacement recording, and expiry. Minimize plaintext commands, tier access, use short retention, and rely on hashes or structural features for routine analytics."}]}
+    control_type: governance
+applications:
+  - target_ref: NJT-0170
+    use: {paragraphs: [{zh: 为每类交互环境定义“应记录什么、何时持久化、谁可改变、由何处独立留存”，在 session 建立与结束时验证。发现差分时先冻结远程 session/进程证据，再隔离主体并恢复批准配置，避免仅修复空 history 文件。, en: "For each interactive environment define what should be recorded, when it persists, who can change it, and where an independent copy remains, and validate at session establishment and end. On a differential preserve remote session and process evidence first, then isolate the principal and restore approved configuration rather than merely repairing an empty history file."}]}
+    expected_effect: {paragraphs: [{zh: 本地 history 不再是单点证据，攻击者必须同时绕过策略保护、session 验证和不同权记录才能消除命令谱系。, en: "Local history is no longer a single evidence point, and the adversary must bypass policy protection, session validation, and differently authorized recording together to remove command lineage."}]}
+    limitations: {paragraphs: [{zh: 全量命令记录具有隐私、秘密泄露、存储和性能成本；内置命令、加密终端及网络设备能力差异会留下盲点，攻击者若控制记录平面也可绕过。, en: "Full command recording carries privacy, secret-exposure, storage, and performance costs. Built-ins, encrypted terminals, and network-device capability differences leave blind spots, and an adversary controlling the recording plane can still bypass it."}]}
+  - target_ref: NJS-0170-001
+    use: {paragraphs: [{zh: 强制批准的非空持久路径与容量，禁止普通用户选择 SaveNothing 或 null sink；session 开始时采集 effective state，结束后验证 write/entry 区间，并用远程 TTY/进程记录补足。, en: "Enforce an approved non-null durable path and capacity and prevent ordinary users from selecting SaveNothing or a null sink. Capture effective state at session start, validate the write and entry interval after session end, and supplement with remote TTY or process recording."}]}
+    expected_effect: {paragraphs: [{zh: 整段关闭会在首个敏感命令前暴露为未批准 state，且即使本地 store 为空仍可从独立记录重建 session。, en: "Whole-session disablement is exposed as unapproved state before the first sensitive command, and the session remains reconstructable from independent recording even if the local store is empty."}]}
+    limitations: {paragraphs: [{zh: 合法救援 shell、只读介质、短生命周期容器和故障恢复可能无法写本地历史，必须提供有期限的替代记录；仅锁 profile 不能阻止内存/API 覆盖。, en: "Legitimate rescue shells, read-only media, short-lived containers, and recovery workflows may be unable to write local history and need time-bounded replacement recording. Locking profiles alone does not prevent in-memory or API overrides."}]}
+  - target_ref: NJS-0170-002
+    use: {paragraphs: [{zh: 版本化所有批准 predicate 和规范化规则，限制用户修改 HISTCONTROL/HISTIGNORE/handler；在远程 session 层保留最小化输入特征并与 history sequence 对账，未批准选择器立即撤销。, en: "Version every approved predicate and normalization rule, restrict user changes to HISTCONTROL, HISTIGNORE, or handlers, retain minimized input features at a remote session layer, and reconcile them with the history sequence. Revoke unapproved selectors immediately."}]}
+    expected_effect: {paragraphs: [{zh: 攻击者难以在保持正常历史外观的同时只隐藏敏感命令，局部 sequence gap 可由独立特征和 predicate 版本解释。, en: "The adversary has greater difficulty hiding only sensitive commands while preserving normal-looking history, and local sequence gaps can be explained through independent features and predicate versions."}]}
+    limitations: {paragraphs: [{zh: 合法秘密过滤和命令去重会产生相似局部缺口，错误规范化可收集过量敏感内容或高误报；攻击者可把操作移入不产生独立 command event 的内置/应用交互。, en: "Legitimate secret filtering and command deduplication create similar local gaps. Incorrect normalization can over-collect sensitive content or create high false positives, and an adversary can move activity into built-ins or application interaction that produces no independent command event."}]}
+evidence_refs: [REF-000453, REF-000737, REF-000738, REF-000739, REF-000740]
+lifecycle: {status: review, version: "1.0.0", created: "2026-09-23", modified: "2026-09-23", contributors: [Niji Matrix Research], reviewers: []}

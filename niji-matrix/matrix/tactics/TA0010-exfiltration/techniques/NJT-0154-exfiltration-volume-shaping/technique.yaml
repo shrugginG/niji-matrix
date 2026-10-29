@@ -1,0 +1,175 @@
+schema_version: 2.0.0
+type: technique
+id: NJT-0154
+name:
+  zh: 外传规模约束
+  en: Exfiltration Volume Shaping
+summary:
+  zh: 攻击者限制单次或短时间窗口内的外传规模，使局部传输量可能低于粗粒度阈值，并把数据泄露分散到需跨事件恢复的痕迹中。
+  en: An adversary caps the volume of one outbound unit or short window so local traffic may fall below coarse thresholds
+    and data loss is dispersed into traces requiring cross-event reconstruction.
+aliases: []
+classification:
+  tactic_refs:
+  - TA0010
+  origin:
+    kind: attack-adapted
+    source_attack_id: T1030
+    source_attack_version: '19.1'
+  decision_ref: DEC-TA0010-T1030
+definition_and_concept:
+  paragraphs:
+  - zh: 外传规模约束是攻击者在已经取得可外传数据后，主动规定上传对象、应用请求或持续传输在一个可观察单元中承载多少数据的行为。其直接目标仍是将数据送达攻击者可接收的位置；规模限制改变完成该目标的传输形态，而不改变数据来源、目的地或所选协议。
+    en: Exfiltration Volume Shaping is the attacker-controlled setting of how much already acquired data an upload
+      object, application request, or continuing transfer carries within an observable unit. Its immediate objective
+      remains delivery to a location the attacker can receive; volume control changes how that delivery appears
+      without itself changing the data source, destination, or protocol.
+  - zh: 可控制量至少包括单个对象或请求的上限，以及每个短观察窗中的发送量上限。前者通常把大数据集拆成可重组的较小部分；后者通过读取或发送节流延长同一外传任务。两者都必须以降低可见规模或阈值触发概率的因果链证明其匿迹意义，不能把任何使用分块
+      API 或限速选项的工具自动纳入。
+    en: Controllable quantities include the maximum size of one object or request and the outbound volume within
+      a short observation window. The first commonly splits a larger data set into reconstructible parts; the second
+      extends the same exfiltration job by throttling reads or sends. Both need a causal account of reduced visible
+      magnitude or threshold exposure; a tool's use of a chunking API or rate option alone does not establish stealth.
+stealth_characteristics:
+  paragraphs:
+  - zh: 本技术把一次明显的大型外传变成多次较小发送，或把高吞吐短时段变成较长的低吞吐活动。按单文件、单请求、单连接或短时峰值触发的控制可能分别漏过局部痕迹；剩余的对象数量、累计出站字节、持续时间、源文件读取、目标账号和上传结果仍然存在，且重复的大小或速度模式自身可能变得异常。
+    en: This technique turns one conspicuous large transfer into multiple smaller sends or a brief high-throughput
+      interval into longer lower-throughput activity. Controls keyed only to one file, request, connection, or short
+      peak can each miss the local traces. Object counts, cumulative outbound bytes, duration, source-file reads,
+      destination account, and upload outcomes remain visible, and repeated sizes or rates may themselves become
+      anomalous.
+  - zh: 匿迹收益取决于防守方的计量边界。能按同一进程、主机、身份与目的地跨连接聚合字节的防守方，可能比只看一次请求的传感器更容易发现分散后的总量；若只有 TLS 外层连接摘要，则无法可靠区分应用分块与普通重试，也无法凭固定包长推出文件切块。
+    en: The stealth benefit depends on the defender's accounting boundary. A defender able to aggregate bytes across
+      connections by process, host, identity, and destination can recover dispersed volume more readily than a sensor
+      limited to one request. With only TLS connection summaries, application chunking may be indistinguishable
+      from retries, and fixed packet lengths cannot establish file chunking.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 纳入攻击者为规避局部传输量观察而选定的文件分卷、应用级负载上限、定量读取或发送节流；同一实施可以同时具有单元上限和时间窗上限。纳入判断需要外传语境、攻击者可控参数或可重组序列，并需指出哪一种防守观察因规模改变而失效。网络
+      MTU、TCP 分段、HTTP 多部分语法以及云服务强制分片本身不满足这一标准。
+    en: Scope includes attacker-selected file volumes, application payload caps, or metered reading and sending
+      used to evade local transfer-volume observation; one implementation can impose both unit and window caps.
+      Inclusion requires an exfiltration context, attacker control or a reconstructible sequence, and an account
+      of which defender observation loses force. Network MTU, TCP segmentation, HTTP multipart syntax, and cloud-mandated
+      chunking alone do not meet this test.
+  - zh: T1029 关注外传在何时、以何种周期发生；即使低速传输跨越多个时段，只要没有独立的时刻选择，仍由本技术承担。T1020 关注自动化触发而非体积；T1041、T1048 和 T1567 关注承载通道；NJT-0133
+      关注外传前的压缩、加密和封装，只有为控制网络发送单元而做的分卷才属于此处。备份、同步、上传限额和拥塞控制可产生相似形态，须借授权用途、源数据及目的地排除。
+    en: T1029 owns when or how periodically exfiltration occurs; a slow transfer spanning several periods stays
+      here unless there is an independent clock choice. T1020 owns automated triggering rather than volume, and
+      T1041, T1048, and T1567 own carriage channels. NJT-0133 owns compression, encryption, and packaging before
+      egress; volume splitting belongs here only when it controls network delivery units. Backups, synchronization,
+      upload quotas, and congestion control can look similar and require authorization, source-data, and destination
+      context to rule out.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: 攻击者取得文档、数据库导出或配置后，面对按单次上传量或短时出站峰值报警的出口环境，可选择把归档分成多份送往云服务，或限制传输工具的每秒发送量。DFIR Report 观察到入侵者使用 Rclone 将共享目录送至
+        MEGA 且设置 --bwlimit 10M；Cybereason 对 StealBit 的逆向还记录按十五秒窗口控制读取量的能力。两者说明规模控制可以嵌入不同通道和工具，并不证明所有限速选择都有匿迹目的。
+      en: After acquiring documents, database exports, or configuration, an adversary facing alerts on individual
+        uploads or short outbound peaks may split an archive into several cloud uploads or cap a transfer tool's
+        send rate. The DFIR Report observed intruders moving a share to MEGA with Rclone and --bwlimit 10M; Cybereason's
+        StealBit reverse engineering records a separate ability to control file reads over 15-second windows. These
+        show volume control across channels and tools, but do not prove every rate choice was made for stealth.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者必须已能读取拟外传数据、选择发送程序或参数，并拥有可接收多个部分或长时间传输的目标端。单元切块还要求目标端能识别顺序或重组内容；限速要求攻击者容忍更长暴露时间、重试和任务中断。攻击者可能知道企业阈值，也可能仅按常见单请求和带宽告警作保守估计；不能凭结果反推其确切知识。
+        en: The attacker must already be able to read the intended data, select the sender or its parameters, and
+          use a receiver that can accept multiple parts or a longer-running transfer. Unit splitting also needs
+          sequencing or reconstruction at the destination. Rate capping requires tolerance for longer exposure,
+          retries, and interruption. The attacker may know local thresholds or merely estimate common per-request
+          and bandwidth alerts; the observed result cannot reveal exact knowledge.
+    defender_model:
+      paragraphs:
+      - zh: 防守方可能持有 Zeek 等流量记录中的时间、源目标、持续时间与方向字节，也可能在可检查 HTTP 或代理出口取得方法、主机、URI、请求体长度和上传状态，并在端点记录启动命令及连接进程。若传感器只保留单连接摘要或短周期计数，跨连接累计与应用对象关系会缺失；即便具备完整字节遥测，未核对合法备份、同步和批准目的地也会误判。
+        en: The defender may have timestamps, endpoints, duration, and directional bytes in Zeek-style flows, plus
+          method, host, URI, request-body length, and upload status where HTTP or a proxy is inspectable, and process
+          command lines or network attribution at the endpoint. A sensor retaining only per-connection summaries
+          or short counters loses cross-connection totals and application-object relationships. Even complete byte
+          telemetry can misclassify authorized backup or sync traffic unless source, destination, and approval are
+          checked.
+stealth_mechanisms:
+- mechanism_ref: NM-ST
+  role: primary
+  summary:
+    zh: 将一次外传量分散为多个低强度观察单元
+    en: Disperse one exfiltration volume across lower-intensity observation units
+  analysis:
+    paragraphs:
+    - zh: 攻击者为每次上传设定较小上限或为一段时间内的发送量设定预算，使原本集中出现在一个对象或短时峰值中的字节散落到多个请求或更长时间。单局部阈值因此只见到低强度事件，防守方必须跨请求、连接和时间重建总量。已观察到的分块和
+        StealBit 明确的十五秒速率控制分别支持行为两端；实际是否绕过某组织规则仍须在该组织阈值下验证。
+      en: The attacker caps each upload or budgets bytes over a time window, dispersing what would have appeared
+        as one large object or short peak across requests or a longer span. A local threshold then sees weaker events,
+        and the defender must reconstruct totals across requests, connections, and time. Observed chunking and StealBit's
+        explicit 15-second rate control support the two behavioral forms; whether a specific organization's rule
+        is bypassed still requires testing against that rule.
+  evidence_refs:
+  - REF-000638
+  - REF-000639
+  - REF-000641
+  confidence: medium
+subtechnique_taxonomy:
+  narrative:
+    paragraphs:
+    - zh: 建议按外传预算的计量单位划分两个 Niji 原生子项：单元大小约束改变每个对象或应用请求的可见体积，时间窗发送量约束改变持续传输的速率曲线。前者重点验证重复小对象或请求及重组关系，后者重点验证长期稳定或受控低速与累计字节；同一工具可以同时实现两者，协议和工具名称不划界。
+      en: Two Niji-native children are proposed by the accounting unit of the exfiltration budget. Per-unit size
+        capping changes the visible magnitude of each object or application request; time-window volume capping
+        changes the rate profile of a continuing transfer. The first is tested through repeated small objects or
+        requests and reconstruction, the second through sustained controlled throughput and cumulative bytes. One
+        tool can implement both; protocol and product names do not define the boundary.
+  coverage: established
+  subtechnique_refs:
+  - NJS-0154-001
+  - NJS-0154-002
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000171
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000156
+evidence:
+  claim_refs:
+  - CLM-000770
+  - CLM-000771
+  - CLM-000772
+  - CLM-000773
+  case_refs:
+  - CASE-000213
+  - CASE-000214
+  reference_refs:
+  - REF-000638
+  - REF-000639
+  - REF-000640
+  - REF-000641
+  - REF-000642
+  - REF-000632
+  - REF-000634
+  - REF-000604
+  - REF-000664
+  - REF-000230
+research:
+  limitations:
+    paragraphs:
+    - zh: T1030 固定版提供父行为和可能的阈值规避机理，而多份原始案例只能证明切块或限速的发生，不能证明当地检测规则实际漏报。StealBit 的作者级逆向对速率规避意图最明确，DFIR 的 Rclone 事件则对真实使用最明确；因此速率子项的设计因果强于具体攻击效果，切块子项保持中等置信度。
+      en: Fixed-version T1030 anchors parent behavior and a possible threshold-evasion mechanism, while several
+        primary incidents establish chunking or rate capping without proving a local rule missed an alert. StealBit
+        reverse engineering is clearest about rate-evasion design and the DFIR case about real use; the rate child's
+        design causality is stronger than proof of operational effect, and the chunk child remains medium-confidence.
+    - zh: 分块检测需要能见 HTTP 请求或服务对象边界，速率检测需要经过部署验证的周期字节字段；任一前提不满足时都应降低覆盖声称。连接数量、单个结束时的 Zeek conn.log 与 DeviceNetworkEvents
+        的进程归属均不能独立替代请求大小或窗内发送量。ATT&CK 过程实例还须逐条核对原始报告，避免把入站分段写入误记为外传。
+      en: Chunk detection needs visible HTTP request or service-object boundaries, while rate detection needs deployment-validated
+        periodic byte fields. Coverage claims must be reduced when either prerequisite is absent. Connection count,
+        a Zeek conn.log emitted only at connection end, and DeviceNetworkEvents process attribution cannot independently
+        substitute for request size or in-window sent volume. ATT&CK procedure examples also require primary-source
+        checking so inbound segmented writes are not mistaken for exfiltration.
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-09-22'
+  modified: '2026-09-22'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

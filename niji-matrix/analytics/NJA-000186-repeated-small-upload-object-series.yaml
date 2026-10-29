@@ -1,0 +1,93 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000186
+strategy_ref: DET-000171
+name:
+  zh: 重复小型上传的对象谱系关联
+  en: Repeated Small-Upload Object Lineage Correlation
+summary:
+  zh: 输出同一来源和目标反复上传小对象、累计量异常的对象序列。
+  en: Emit a series of repeated small-object uploads whose cumulative volume is abnormal for one source and destination.
+domains:
+- enterprise
+platforms: []
+logic:
+  paragraphs:
+  - zh: 在可见应用请求体或代理上传对象的出口，筛选出站 POST/PUT 或服务上传事件，按设备、用户/令牌、目的主机、URI 家族和可得对象标识，在建议的 1–24 小时窗口内聚合 request_body_len、请求数、累计字节和尺寸分布。找出多个相近或上限受控的成功小上传，其累计量超过该资产角色的正常值，而单次大小均落在现有单事件阈值以下的序列；若可见分卷名、偏移或共同来源文件读取则提高置信度，并排除批准备份、部署和同步任务。阈值应先从本地规则和基线校准，不把示例字节常量硬编码为恶意判据。
+    en: Where application request bodies or proxy upload objects are visible, select outbound POST/PUT or service
+      upload events and group by device, user or token, destination host, URI family, and available object identifier
+      over a suggested 1–24-hour window. Aggregate request_body_len, request count, total bytes, and size distribution.
+      Identify sequences of repeated similarly sized or visibly capped successful small uploads whose total exceeds
+      the asset role's normal behavior while every unit stays below a local per-event alert threshold. Raise confidence
+      for volume names, offsets, or shared source-file reads, and exclude approved backup, deployment, and synchronization
+      jobs. Calibrate thresholds to local policy and baseline rather than hard-coding illustrative byte values as
+      malicious.
+data_requirements:
+- source_type: http-upload-metadata
+  name:
+    zh: 可检查 HTTP 上传元数据
+    en: Inspectable HTTP upload metadata
+  channel: Zeek http.log after authorized TLS inspection or equivalent proxy log
+  required_fields:
+  - ts
+  - uid
+  - id.orig_h
+  - id.resp_h
+  - method
+  - host
+  - uri
+  - request_body_len
+  - status_code
+- source_type: network-connection
+  name:
+    zh: 网络连接摘要
+    en: Network connection summary
+  channel: Zeek conn.log
+  required_fields:
+  - ts
+  - uid
+  - id.orig_h
+  - id.resp_h
+  - orig_bytes
+observables:
+- zh: 同源同目的重复成功小上传、相近请求体长度或有序分卷、跨单事件阈值的累计出站量。
+  en: Repeated successful small uploads to one destination, similar request-body lengths or ordered volumes, and
+    aggregate outbound bytes above the per-event limit.
+correlation:
+  window:
+    zh: 先以一至二十四小时连接同一上传序列；依据对象标识与已批准作业时长调整，始终保留跨请求累计。
+    en: Start with one to twenty-four hours for one upload series; adjust to object identifiers and approved job
+      duration while preserving across-request totals.
+  dimensions:
+  - source-host
+  - user-or-token
+  - destination-host
+  - uri-family
+  - object-or-series-id
+false_positives:
+- zh: 合法备份分卷、软件发布、云端同步、断点续传与服务强制分块可形成相近小请求序列。
+  en: Authorized backup volumes, software deployment, cloud sync, resumable uploads, and service-mandated chunking
+    can form similar small-request sequences.
+blind_spots:
+- zh: 未检查 TLS、使用单个长连接或仅持有连接汇总时无法可靠看到每个应用对象；代理多租户出口也可能缺失发起身份。
+  en: Without TLS inspection, with one long connection, or with connection summaries only, individual application
+    objects may be invisible; a shared proxy may also lose originating identity.
+tuning_guidance:
+  paragraphs:
+  - zh: 按资产角色、服务和批准作业基线设置最小重复次数、累计字节与尺寸相似度；保留新目标或不常见发起进程的覆盖，不用笼统服务白名单抹除风险。
+    en: Set minimum repeat count, cumulative bytes, and size similarity by asset role, service, and approved job
+      baseline; preserve coverage for new destinations and uncommon initiating processes rather than exempting an
+      entire service.
+evidence_refs:
+- REF-000632
+- REF-000634
+- REF-000639
+- REF-000638
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-09-22'
+  modified: '2026-09-22'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

@@ -1,0 +1,273 @@
+schema_version: 2.0.0
+type: technique
+id: NJT-0084
+name:
+  zh: 启动或登录生命周期自启动
+  en: Boot-or-Logon Lifecycle Autostart
+summary:
+  zh: 攻击者建立或改变由系统启动或用户登录消费的持久激活映射，使代码在以后生命周期事件中自动恢复，并通过时间分离、系统托管来源或更新主题外观降低关联和区分能力。
+  en: Adversaries establish or change a durable activation mapping consumed at system boot or user logon so code automatically
+    returns at a later lifecycle event, reducing correlation and discrimination through temporal separation, system-hosted
+    provenance, or update-themed appearance.
+aliases:
+- Boot or Logon Autostart Execution
+classification:
+  tactic_refs:
+  - TA0003
+  - TA0004
+  origin:
+    kind: attack-retained
+    source_attack_id: T1547
+    source_attack_version: '19.1'
+  decision_ref: DEC-TA0003-T1547
+definition_and_concept:
+  paragraphs:
+  - zh: 启动或登录生命周期自启动是攻击者创建、修改或启用一个持久激活映射，使操作系统在后续启动、重启或用户登录时自动选择并运行攻击者指定代码的技术。映射可以存放在注册表、启动目录、登录项、桌面描述符、配置数据库或受支持的扩展注册中，但必须同时表达触发生命周期、作用范围和真实目标。其直接目标是在当前植入进程或会话结束后，由正常系统生命周期恢复执行，从而维持入侵立足点。
+    en: Boot-or-Logon Lifecycle Autostart is a technique in which an adversary creates, changes, or enables a durable activation
+      mapping that causes the operating system to select and run adversary-chosen code at a later boot, reboot, or user logon.
+      The mapping can reside in registry, startup directory, login item, desktop descriptor, configuration database, or supported
+      extension registration, but it must express the lifecycle trigger, scope, and actual target. Its direct objective is
+      to let normal system lifecycle restore execution after the current implant process or session ends, thereby maintaining
+      the intrusion foothold.
+  - zh: 本技术的概念锚是“由启动或登录事件消费的持久目标映射”，而不是某个具体键、文件、API、工具、用户权限或恶意载荷。一次设置动作与以后执行共同构成完整对象，只有写入但从未被目标生命周期消费时仍是未确认状态，只有启动期进程而没有可归因映射时也不能独立归类。系统可能延迟或无序运行多个启动项，这改变发生时间却不改变映射身份。
+    en: The conceptual anchor is a durable target mapping consumed by a boot or logon event, not a specific key, file, API,
+      tool, user privilege, or malicious payload. The setup action and later execution together form the complete object.
+      A write never consumed by the target lifecycle remains unconfirmed state, while a startup-time process without an attributable
+      mapping cannot be classified independently. The system may delay or reorder multiple startup items, changing execution
+      time without changing mapping identity.
+  - zh: 启动或登录映射既可在生命周期边界恢复执行，也可能让较低权限写入者的目标被更高权限组件加载。只有后者实际产生写入者此前没有的资源权限时，同一行为才同时服务于权限提升。
+    en: A boot or logon mapping can restore execution at a lifecycle boundary or cause a target influenced by a lower-authority
+      writer to be loaded by a higher-authority component. The same behavior also serves Privilege Escalation only when the
+      latter produces resource authority the writer did not previously hold.
+stealth_characteristics:
+  paragraphs:
+  - zh: 启动或登录生命周期自启动把攻击者写入状态与实际代码运行分散到不同时间、进程和会话。配置变化可能发生在安装器、脚本、远程管理进程或短驻恶意程序中，后继执行却由启动管理器、用户 shell、登录宿主或注册系统组件在下一次生命周期边界产生。若变更审计、状态快照和进程谱系不能以描述符、设备、用户、boot
+      或 logon ID 和目标连接，防守方可能只看到一个旧配置差异或一个具有正常系统父体的新进程。
+    en: Boot-or-Logon Lifecycle Autostart distributes adversary state mutation and actual code execution across different
+      times, processes, and sessions. Configuration can change inside an installer, script, remote-management process, or
+      short-lived malware, while later execution originates from a startup manager, user shell, logon host, or registered
+      system component at the next lifecycle boundary. If mutation audit, state snapshots, and process lineage cannot be joined
+      by descriptor, device, user, boot or logon ID, and target, defenders may see only an old configuration difference or
+      a new process with a normal system parent.
+  - zh: 自启动又与操作系统、更新器、驱动、企业管理、安全产品和用户应用的合法恢复机制共享相同存储位置、父进程和时间窗口。攻击者可以选择更新或浏览器主题的可见名称，使新描述符在粗粒度清单中接近常见维护项；然而名称不会改变真实目标，写入者、old/new
+      值、参数、目标路径、原始文件名、哈希、签名、发布者、软件包归属和启动后的行为仍会留下可验证差异。完整清单和跨重启留存会削弱这种匿迹。
+    en: Autostart also shares storage locations, parent processes, and lifecycle windows with legitimate recovery by operating
+      systems, updaters, drivers, enterprise management, security products, and user applications. An adversary can select
+      an update- or browser-themed visible name so a new descriptor resembles routine maintenance in a coarse inventory. The
+      name does not change the actual target, however, and writer, old and new values, arguments, target path, original filename,
+      hash, signature, publisher, software-package ownership, and post-start behavior remain verifiable differences. Complete
+      inventory and cross-reboot retention weaken the evasion.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 本技术纳入攻击者控制的持久启动或登录映射及其自动激活，包括创建新描述符、改变现有描述符的名称、目标、参数或启用状态，以及改变实际被生命周期消费的等价注册。判定要求证明目标配置在当前进程或会话之外继续存在、由启动或登录边界消费，并连接到攻击者代码或明确的后继执行。用户级和系统级范围、注册表和文件系统、Windows、Linux、macOS
+      与网络设备只是实现条件，不构成 Niji 子技术边界。
+    en: This technique includes an adversary-controlled durable boot or logon mapping and its automatic activation, including
+      creation of a descriptor, mutation of an existing descriptor's name, target, arguments, or enabled state, and change
+      to equivalent registration actually consumed by the lifecycle. Classification requires evidence that target configuration
+      persists beyond the current process or session, is consumed by a boot or logon boundary, and connects to adversary code
+      or explicit successor execution. User versus system scope, registry versus filesystem, and Windows, Linux, macOS, or
+      network-device environment are implementation conditions rather than Niji child boundaries.
+  - zh: 以初始化脚本正文或脚本钩子为直接对象的行为归 T1037；由服务管理器保存服务或守护进程定义的行为归 T1543；由文件、网络、云或应用事件而非启动/登录触发的订阅归 T1546；日历、间隔或一般调度状态归 T1053；搜索路径、导入表、模块加载或
+      DLL 旁加载的重定向归 T1574。若一个 Run 值启动合法程序后再发生旁加载，可同时记录本技术的激活映射和 T1574 的劫持，但不能把后者折叠为启动子项。合法安装、更新、修复、用户登录项和系统恢复只有在攻击者控制稳定变量并形成对应观察差异时才属于匿迹实现。
+    en: Behavior whose direct object is initialization-script content or a script hook belongs to T1037. Service-manager state
+      for a service or daemon belongs to T1543. Subscriptions triggered by file, network, cloud, or application events rather
+      than boot or logon belong to T1546. Calendar, interval, or general scheduler state belongs to T1053. Redirection through
+      search path, import table, module loading, or DLL side-loading belongs to T1574. If a Run value starts a legitimate
+      program that then side-loads a DLL, both this activation mapping and the T1574 hijack can be recorded, but the latter
+      is not collapsed into an autostart child. Legitimate installation, update, repair, user login items, and system recovery
+      qualify as evasion only when an adversary controls a stable variable and creates the corresponding observation difference.
+  - zh: 写入系统位置、由受信系统进程加载或出现 SYSTEM/root 身份只说明潜在影响。权限提升还要求攻击者能从较低权限状态影响被实际消费的映射，并由结果上下文完成此前不可执行的操作；同一用户上下文中的自启动仍只属于持久化。
+    en: Writing a system location, loading through a trusted system process, or observing a SYSTEM or root identity shows
+      potential impact only. Privilege Escalation also requires the adversary to influence the consumed mapping from a lower-authority
+      state and the resulting context to complete an operation that was previously unavailable. Autostart in the same user
+      context remains Persistence only.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: 攻击者在已经获得用户或系统配置写权限后使用本技术，将一次性代码执行转换为能够在用户注销、进程终止、补丁重启或设备断电后恢复的路径。其可选择当前用户映射以避免额外提权，也可在高权限位置建立跨用户或早期启动激活；写入后可以立即退出并等待下一次登录或重启。后继目的通常是恢复后门、加载驻留模块、重建命令通道或启动下一阶段，但载荷功能不决定本技术边界。
+      en: An adversary uses this technique after gaining user- or system-configuration write authority, converting one-time
+        code execution into a path that restores after user logoff, process termination, patch reboot, or power loss. The
+        operator may choose a current-user mapping to avoid additional elevation or a privileged location for cross-user or
+        early-boot activation, then exit immediately and wait for the next logon or reboot. Follow-on purposes commonly include
+        restoring a backdoor, loading a resident module, rebuilding a command channel, or starting another stage, but payload
+        function does not define the technique boundary.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者必须能够写入至少一个目标操作系统实际消费的自启动位置，并保持描述符指向的目标、参数和依赖直到生命周期触发。其需要知道用户与系统范围、权限与 ACL、启动顺序、登录条件、位数与路径解析、签名或应用控制限制，以及变更是否需要重启或重新登录。选择更新主题描述符还要求了解本机安装软件和命名习惯。只读配置、受保护目录、强应用控制、内核或扩展批准、状态回滚和启动失败都会限制效果并可能暴露行动。
+        en: The adversary must be able to write at least one autostart location actually consumed by the target operating
+          system and preserve the referenced target, arguments, and dependencies until the lifecycle trigger. Required knowledge
+          includes user versus system scope, permission and ACL, startup order, logon conditions, bitness and path resolution,
+          signature or application-control constraints, and whether activation requires reboot or renewed logon. Selecting
+          an update-themed descriptor additionally requires knowledge of installed software and local naming practice. Read-only
+          configuration, protected directories, strong application control, kernel or extension approval, state rollback,
+          and startup failure constrain effectiveness and may expose the operation.
+    defender_model:
+      paragraphs:
+      - zh: 防守方模型假定能够取得自启动注册表、文件与配置的变更事件或连续快照，记录写入主体、进程、会话、old/new 值与权限，并取得 boot、reboot 与 logon 边界以及进程、模块和目标文件完整性。可靠分析按设备、用户或系统范围、描述符
+          ID 或路径、名称、目标、参数、哈希、签名、发布者、boot 或 logon ID 和时间恢复变更—等待—激活序列。RunOnce 在运行前删除、系统允许延迟执行和多项无序启动都要求保留前序事件。
+        en: The defender model assumes access to mutation events or successive snapshots for autostart registry, files, and
+          configuration, including writer principal, process, session, old and new values, and permission, together with boot,
+          reboot, and logon boundaries and process, module, and target-file integrity. Reliable analysis reconstructs mutation-wait-activation
+          by device, user or system scope, descriptor ID or path, name, target, arguments, hash, signature, publisher, boot
+          or logon ID, and time. RunOnce deletion before execution, system-permitted delay, and nondeterministic startup order
+          require retention of preceding events.
+      - zh: 正常软件安装、更新、卸载、修复、登录项、桌面环境、驱动和安全产品会产生同形状态与进程，因此防守方还需要批准软件包、所有者、安装路径、维护窗口和预期差异。仅看到受信父进程、签名目标、常见更新名称或用户级位置都不足以判定安全；相反，没有后继激活的状态变化只能作为未批准配置异常。早期启动发生在传感器上线前、设备长时间离线或攻击者控制合法供应链时，观察模型会显著减弱。
+        en: Legitimate software installation, update, removal, repair, login items, desktop environments, drivers, and security
+          products create the same state and process shape, so defenders also need approved package, owner, installation path,
+          maintenance window, and expected difference. A trusted parent, signed target, common updater name, or user-scoped
+          location does not establish safety. Conversely, a state mutation without later activation is only an unapproved
+          configuration anomaly. The observation model weakens substantially when early boot precedes sensor startup, the
+          device remains offline for long periods, or the adversary controls a legitimate supply chain.
+stealth_mechanisms:
+- mechanism_ref: NM-ST
+  role: primary
+  summary:
+    zh: 持久启动状态把写入与实际激活分散到后续登录或重启
+    en: Durable startup state disperses mutation and activation into a later logon or reboot
+  analysis:
+    paragraphs:
+    - zh: 攻击者在一个时间点写入描述符，创建者进程可以退出，而操作系统只在以后启动或登录时读取状态并执行目标。Run 键每次登录生效，RunOnce 在下一次处理时执行且通常先删除，系统还可能延迟启动项；这些行为把写入、状态存在、生命周期边界和目标进程分布到不同窗口。短期进程记录无法恢复写入者，单次配置枚举又无法证明真实激活，防守方必须跨注销、离线和重启保留关联键，形成时空释痕。
+      en: The adversary writes a descriptor at one time and the creator can exit, while the operating system reads state and
+        executes the target only at a later boot or logon. Run values apply at every logon, RunOnce executes at its next processing
+        and commonly deletes first, and the system may delay startup items. These behaviors distribute mutation, state existence,
+        lifecycle boundary, and target process across different windows. Short-lived process records cannot recover the writer,
+        while one configuration inventory cannot prove actual activation. Defenders must retain correlation keys across logoff,
+        offline intervals, and reboot, producing Spatiotemporal Trace Dilution.
+    - zh: Microsoft 的行为文档与 ATT&CK DET0274 直接要求跨时间连接配置创建或修改和启动期进程，现场案例也观察到登录后恢复载荷。来源证明架构与行为，但没有为每个实例量化攻击者选择等待所获得的隐蔽收益，因此机理为
+        strongly inferred、medium。描述符时间、状态快照、boot/logon ID 和目标结果仍能恢复因果。
+      en: Microsoft behavior documentation and ATT&CK DET0274 directly require temporal linkage between configuration creation
+        or modification and startup-time processes, while field cases observe payload restoration at logon. Sources establish
+        architecture and behavior but do not quantify the evasion benefit obtained from waiting in every instance, so the
+        mechanism is strongly inferred at medium confidence. Descriptor time, state snapshots, boot or logon ID, and target
+        outcome still recover causality.
+  evidence_refs:
+  - REF-000148
+  - REF-000149
+  - REF-000153
+  confidence: medium
+- mechanism_ref: NM-BT
+  role: secondary
+  summary:
+    zh: 系统生命周期宿主割裂配置写入者与后继进程来源
+    en: System lifecycle hosts separate configuration writer from successor provenance
+  analysis:
+    paragraphs:
+    - zh: 启动管理器、用户 shell、登录宿主或注册系统组件在生命周期边界消费持久映射并创建目标进程，进程侧父体因此属于正常操作系统路径，而攻击者原始进程只存在于更早的配置写入或文件放置事件。若检测只审查当前父子进程而不查找相同描述符的写入者和目标变化，关键执行原因落在既有观察理解之外，形成行为透明。Sysinternals
+        显示自启动位置广泛且需要同时查看条目与映像，ATT&CK 检测也明确连接变更和父子谱系。
+      en: A startup manager, user shell, logon host, or registered system component consumes the durable mapping at a lifecycle
+        boundary and creates the target process. Process telemetry therefore shows a normal operating-system parent while
+        the adversary's original process remains only in earlier configuration-write or file-placement events. Detection that
+        reviews current parent-child lineage without locating the same descriptor's writer and target mutation loses the critical
+        execution cause outside existing observation and understanding, producing Behavioral Transparency. Sysinternals shows
+        that autostart locations are broad and require both entry and image inspection, while ATT&CK detection explicitly
+        joins mutation and parent-child lineage.
+    - zh: 该机理不意味着系统父体能够证明合法，也不意味着配置不可解析。注册表或文件变更、ACL、描述符、目标、哈希、签名和启动进程能够重建链条；缺少前序审计或传感器晚于早期启动上线时才获得更强匿迹效果。来源对关联需要提供强支持，但主观规避目的仍需推断，置信度保持
+        medium。
+      en: The mechanism does not make a system parent proof of legitimacy or make configuration uninterpretable. Registry
+        or file mutation, ACL, descriptor, target, hash, signature, and startup process can reconstruct the chain. Stronger
+        evasion occurs when prior audit is missing or the sensor starts after early boot. Sources strongly support the need
+        for correlation, while subjective evasion purpose remains inferred, so confidence stays medium.
+  evidence_refs:
+  - REF-000148
+  - REF-000150
+  - REF-000153
+  confidence: medium
+- mechanism_ref: NM-FD
+  role: secondary
+  summary:
+    zh: 更新主题描述符使恶意启动项接近常见软件维护外观
+    en: Update-themed descriptors make malicious autostarts resemble routine software maintenance
+  analysis:
+    paragraphs:
+    - zh: 攻击者为 Run 值或启动文件夹快捷方式选择 EdgeUpdate、MsEdgeMsE 等更新或浏览器主题名称，同时让真实目标指向 LocalAppData 中的 Node.js loader、rundll32 加载的恶意
+        DLL 或伪装扩展。可见描述符借用常见维护语义，使只按名称、位置或系统宿主分类的规则难以区分恶意与合法启动项，形成特征伪装。Microsoft 两项现场调查直接记录了这些名称、位置和目标，支持行为事实。
+      en: The adversary selects update- or browser-themed names such as EdgeUpdate or MsEdgeMsE for a Run value or Startup-folder
+        shortcut while the actual target points to a Node.js loader in LocalAppData, a malicious DLL loaded by rundll32, or
+        a disguised extension. The visible descriptor borrows routine maintenance meaning, making rules based only on name,
+        location, or system host less able to distinguish malicious from legitimate autostarts and producing Feature Disguise.
+        Two Microsoft field investigations directly record these names, locations, and targets, supporting the behavior.
+    - zh: 名称并不会隐藏真实命令或制品。发布者、原始文件名、安装路径、签名、哈希、解释器、参数和软件包清单仍能揭示主题不一致；合法更新器也可能使用用户缓存和临时脚本。因此不能把任一更新名称直接标恶，且公开报告没有量化命名带来的检测下降，机理保持
+        strongly inferred、medium。
+      en: The name does not hide the real command or artifact. Publisher, original filename, installation path, signature,
+        hash, interpreter, arguments, and package inventory still reveal thematic inconsistency, while legitimate updaters
+        can use user caches and temporary scripts. An updater name alone cannot be treated as malicious, and public reporting
+        does not quantify detection reduction from naming, so the mechanism remains strongly inferred at medium confidence.
+  evidence_refs:
+  - REF-000151
+  - REF-000152
+  confidence: medium
+subtechnique_taxonomy:
+  narrative:
+    paragraphs:
+    - zh: 本技术建立三项 Niji 原生子技术。更新主题描述符伪装以新条目的名称/邻近路径与真实目标不一致为变量；既有自启动描述符目标替换以描述符身份连续而目标/参数变化为变量；会话恢复队列注入以目标由前序会话恢复状态而非普通静态启动项携带为变量。三者分别要求名称—软件一致性、同对象
+        old/new 目标和前序会话—队列—登录恢复连接。
+      en: This technique defines three Niji-native children. Update-Themed Descriptor Camouflage varies inconsistency between
+        a new entry name or adjacent path and its actual target. Established Autostart Descriptor Target Substitution varies
+        continuous descriptor identity with changed target or arguments. Session-Restoration Queue Injection varies a target
+        carried by prior-session restoration state rather than an ordinary static startup item. They respectively require
+        name-to-software coherence, same-object old and new target, and prior-session-to-queue-to-logon restoration joins.
+  coverage: established
+  subtechnique_refs:
+  - NJS-0084-001
+  - NJS-0084-002
+  - NJS-0084-003
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000065
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000064
+evidence:
+  claim_refs:
+  - CLM-000321
+  - CLM-000322
+  - CLM-000323
+  - CLM-000324
+  - CLM-000325
+  - CLM-000326
+  - CLM-000350
+  - CLM-000351
+  - CLM-000352
+  - CLM-000353
+  - CLM-000542
+  - CLM-000543
+  case_refs:
+  - CASE-000056
+  - CASE-000057
+  reference_refs:
+  - REF-000148
+  - REF-000149
+  - REF-000150
+  - REF-000151
+  - REF-000152
+  - REF-000153
+  - REF-000172
+  - REF-000173
+  - REF-000174
+research:
+  limitations:
+    paragraphs:
+    - zh: 三项子项均有同级行为来源，但效果置信度保持校准。Microsoft 现场案例直接记录更新主题条目；ATT&CK 直接记录快捷方式目标修改和重新打开应用状态；Sysinternals 与 Apple 分别提供清单和正常恢复语义。公开材料没有为每项提供完整企业告警结果，故三项及机理均为
+        medium，不把平台位置或正常恢复自动判为恶意。
+      en: Each child has peer-level behavior sources with calibrated effect confidence. Microsoft field cases directly document
+        update-themed entries; ATT&CK directly documents shortcut-target modification and re-opened-application state; Sysinternals
+        and Apple provide inventory and normal-restoration semantics respectively. Public material does not provide complete
+        enterprise alert outcomes for every item, so all three children and mechanisms remain medium and neither platform
+        location nor normal restoration is automatically malicious.
+    - zh: 父级跨平台范围由 ATT&CK 支持，而新增两个变量的直接证据分别集中于快捷方式修改和 macOS 恢复状态。其他注册项、plist 或恢复实现只有在证明相同对象连续性或状态—恢复因果时才能纳入；没有可信 old/new 基线或前序会话活动时应退回父级，不能用数量目标扩大结论。
+      en: ATT&CK supports cross-platform parent scope, while direct evidence for the two new variables centers on shortcut
+        modification and macOS restoration state. Other registry, plist, or restoration implementations qualify only when
+        they prove the same object continuity or state-to-restoration causality. Without trusted old and new baseline or prior-session
+        activity, classification falls back to parent scope rather than expanding conclusions to meet a numeric target.
+lifecycle:
+  status: review
+  version: 1.3.0
+  created: '2026-09-11'
+  modified: '2026-09-19'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

@@ -1,0 +1,145 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000335
+strategy_ref: DET-000253
+name:
+  zh: GCP 对象正文返回与公开/签名路径补偿关联
+  en: GCP Object-Body Return and Public or Signed-Path Compensating Correlation
+summary:
+  zh: 按对象、主体、会话与结果字段实现“GCP 对象正文返回与公开/签名路径补偿关联”。
+  en: Implement GCP Object-Body Return and Public or Signed-Path Compensating Correlation with object, principal, session,
+    and outcome fields.
+domains:
+- enterprise
+platforms:
+- IaaS
+logic:
+  paragraphs:
+  - zh: '对含敏感对象的项目显式启用 Cloud Storage Data Access DATA_READ，并另对需要公开或签名链接的桶配置 usage logs。把 audit log 的 protoPayload.methodName、resourceName、authenticationInfo.principalEmail、requestMetadata.callerIp/callerSuppliedUserAgent、authorizationInfo
+      和 status 作为身份/权限请求证据；由于对象 metadata 与 data read 均进入 DATA_READ，不单凭 storage.objects.get 权限名确认正文。以 usage log 的 cs_operation=GET_Object、sc_status=200/206、sc_bytes
+      大于零、cs_bucket/cs_object、cs_uri、cs_user_agent、c_ip 和 s_request_id 形成 provider_delivered_object，并按 request/object/time
+      与 audit 记录连接。
+
+      对 Data Access 中可解析 principal 的读取，按 service account/user、来源和职责基线判断；对 public object，官方说明 Cloud Audit Logs 不记录访问，只能依赖 usage
+      log、公开策略快照和对象敏感度。对 signed URL，连接 X-Goog-Credential/签名服务账户、签发工作流、到期和来源，但不把签名者等同实际持有者。对新来源、过期/过长链接、无批准门户记录、敏感对象扇出和前序 allUsers/public-access
+      变化提高风险；无 usage log 时只报告 audit_read_candidate 或 public_visibility_gap。'
+    en: 'Explicitly enable Cloud Storage Data Access DATA_READ for projects containing sensitive objects and separately configure
+      usage logs for buckets that require public or signed-link access. Treat audit-log protoPayload.methodName, resourceName,
+      authenticationInfo.principalEmail, requestMetadata.callerIp and callerSuppliedUserAgent, authorizationInfo, and status
+      as identity and permission-request evidence. Because object metadata and data reads both enter DATA_READ, do not confirm
+      a body from the storage.objects.get permission name alone. Build provider_delivered_object from usage-log cs_operation=GET_Object,
+      sc_status 200 or 206, sc_bytes greater than zero, cs_bucket and cs_object, cs_uri, cs_user_agent, c_ip, and s_request_id,
+      joining to audit records by request, object, and time.
+
+      For reads with a resolvable Data Access principal, compare service account or user, origin, and duty baseline. Google
+      states that public-object access is absent from Cloud Audit Logs, so public reads depend on usage logs, public-policy
+      snapshots, and object sensitivity. For signed URLs, join X-Goog-Credential or signing service account, issuance workflow,
+      expiry, and origin without treating the signer as the actual holder. Raise risk for a new origin, expired or excessive
+      link lifetime, missing approved-portal record, sensitive-object fan-out, or preceding allUsers or public-access change.
+      Without usage logs, emit only audit_read_candidate or public_visibility_gap.'
+data_requirements:
+- source_type: gcp-cloud-storage-data-access
+  name:
+    zh: 经验证的Gcp Cloud Storage Data Access数据
+    en: Gcp Cloud Storage Data Access
+  channel: Cloud Audit Logs data_access with DATA_READ explicitly enabled
+  required_fields:
+  - timestamp
+  - log_name
+  - proto_payload.service_name
+  - proto_payload.method_name
+  - proto_payload.resource_name
+  - proto_payload.authentication_info.principal_email
+  - proto_payload.request_metadata.caller_ip
+  - proto_payload.request_metadata.caller_supplied_user_agent
+  - proto_payload.authorization_info
+  - proto_payload.status
+  - insert_id
+- source_type: gcp-cloud-storage-usage-log
+  name:
+    zh: 经验证的Gcp Cloud Storage Usage Log数据
+    en: Gcp Cloud Storage Usage Log
+  channel: configured Cloud Storage usage logs
+  required_fields:
+  - time_micros
+  - cs_operation
+  - cs_bucket
+  - cs_object
+  - cs_uri
+  - sc_status
+  - sc_bytes
+  - c_ip
+  - cs_user_agent
+  - s_request_id
+- source_type: gcp-storage-policy-and-signer-inventory
+  name:
+    zh: 经验证的Gcp Storage Policy And Signer Inventory数据
+    en: Gcp Storage Policy And Signer Inventory
+  channel: IAM/public-access state, signer registry, approved download workflows, and sensitivity catalog
+  required_fields:
+  - project_id
+  - bucket_name
+  - object_or_prefix
+  - visibility
+  - public_access_prevention
+  - signer_principal
+  - signing_workflow_id
+  - expiry
+  - approved_audience_or_source
+  - object_sensitivity
+  - owner
+observables:
+- zh: 需人工核实的正常活动。
+  en: data_read_candidate
+- zh: 需人工核实的正常活动。
+  en: get_object_success_with_bytes
+- zh: 需人工核实的正常活动。
+  en: public_read_without_audit_principal
+- zh: 需人工核实的正常活动。
+  en: signed_url_signer_holder_gap
+- zh: 需人工核实的正常活动。
+  en: new_origin_sensitive_fanout
+correlation:
+  window:
+    zh: 审计日志到 usage log 默认十五分钟，读取片段三十分钟，签名者与公共策略历史保留三十天。
+    en: audit-to-usage join 15m; read episode 30m; signer and public-policy history 30d
+  dimensions:
+  - project_id
+  - bucket_name
+  - object_name
+  - principal_or_signer
+  - source_ip
+  - user_agent
+  - request_id
+  - signing_workflow_id
+  - time
+false_positives:
+- zh: 静态网站、公开数据集、CDN/客户下载、临时签名链接、分析作业、备份/恢复、数据科学和合法 rsync 会产生同类读取。
+  en: Static websites, public datasets, CDN or customer downloads, temporary signed links, analytics jobs, backup or restore,
+    data science, and authorized rsync produce the same read shapes.
+blind_spots:
+- zh: Data Access 默认关闭且公开对象访问不进入 Cloud Audit Logs；usage logs 需另行配置、按小时生成且完整性/及时性不保证。浏览器下载还可能对 principalEmail/callerIp 做脱敏；sc_bytes
+    只证明服务返回字节。
+  en: Data Access is disabled by default, and public-object access does not enter Cloud Audit Logs. Usage logging requires
+    separate setup, is generated hourly, and has no completeness or timeliness guarantee. Authenticated browser downloads
+    can redact principalEmail and callerIp, and sc_bytes proves only that the service returned bytes.
+tuning_guidance:
+  paragraphs:
+  - zh: 对敏感桶执行已认证 JSON/XML 下载、Range、signed URL 与 public object 测试，确认 audit 与 usage log 的实际字段和延迟。公开/签名例外绑定精确对象前缀、签名工作流、最长有效期、受众/来源和
+      owner，不能按 service account 或 GET_Object 全局抑制。
+    en: Run authenticated JSON or XML downloads, Range requests, signed URLs, and public-object tests on sensitive buckets
+      to verify actual audit and usage-log fields and latency. Bind public or signed exceptions to exact prefix, signing workflow,
+      maximum lifetime, audience or origin, and owner rather than globally suppressing a service account or GET_Object.
+evidence_refs:
+- REF-000540
+- REF-001115
+- REF-000528
+- REF-001116
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-10-05'
+  modified: '2026-10-05'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

@@ -1,0 +1,124 @@
+schema_version: 2.0.0
+type: evasion-subtechnique
+id: NJS-0088-002
+parent_ref: NJT-0088
+name:
+  zh: 跨控制面账户投放
+  en: Cross-Control-Plane Account Provisioning
+summary:
+  zh: 攻击者通过云或集中管理控制面在下游工作负载内创建账户，使创建来源与来宾账户及后续认证分布在不同审计域。
+  en: Adversaries create an account inside a downstream workload through a cloud or centralized management plane, distributing creator provenance,
+    guest identity, and later authentication across audit domains.
+aliases: []
+lineage:
+  attck_subtechnique_inherited: false
+definition_and_concept:
+  paragraphs:
+  - zh: 跨控制面账户投放是攻击者从云、虚拟化、设备编排或集中身份管理平面调用合法管理功能，在下游主机、虚拟机、设备或应用内部创建新身份的匿迹子技术。直接目标是让管理操作在上游完成，而持久身份对象和以后认证在另一个系统出现，从而把一次账户生命周期拆分到不同所有者、日志格式和保留策略中。
+    en: Cross-Control-Plane Account Provisioning is an evasion sub-technique in which an adversary invokes legitimate management capability from
+      a cloud, virtualization, device-orchestration, or centralized identity plane to create a new identity inside a downstream host, virtual
+      machine, device, or application. Its direct objective is to complete administration upstream while the durable identity object and later
+      authentication appear in another system, splitting one account lifecycle across different owners, log formats, and retention policies.
+  - zh: 分类变量是创建动作与账户落地位置跨越控制边界，不是云账户或本地账户类型。Microsoft 观察到 Storm-2949 通过 Azure VMAccess 在来宾 VM 中创建本地管理员，正好形成云扩展操作、来宾账户状态和本地登录三层。若创建和使用都在同一身份系统内，则属于父级而非本子项。
+    en: The classification variable is a control boundary between creation action and account materialization rather than cloud or local account
+      type. Microsoft observed Storm-2949 use Azure VMAccess to create a local administrator inside a guest VM, producing three layers of cloud
+      extension operation, guest account state, and local sign-in. Creation and use occurring inside one identity system remain parent scope rather
+      than this child.
+stealth_characteristics:
+  paragraphs:
+  - zh: 跨控制面账户投放使来宾端看到一个本地账户及其成功认证，却未必看到哪个云主体、API、扩展或远程管理会话创建了它；云侧又看到正常恢复或管理功能调用，却未必保留来宾生成的 SID、用户名和以后会话。单侧检测难以把合法管理功能与持久后门结果连接，真实创建者归因因此断裂。
+    en: Cross-Control-Plane Account Provisioning leaves the guest with a local account and successful authentication but not necessarily the cloud
+      principal, API, extension, or remote-management session that created it. The cloud side sees a normal recovery or administration call but
+      may not retain the guest-generated SID, username, and later sessions. One-sided detection cannot connect legitimate management capability
+      to a persistent backdoor outcome, breaking attribution to the actual creator.
+  - zh: 管理事件、subscription/tenant、目标工作负载、operation/request ID、扩展实例、来宾账户创建时间、SID/UID、首次登录和资源结果仍能恢复链条。正常密码恢复、自动化配置、镜像部署和运维也会跨面创建账户；缺少批准或结果异常前，单一
+      VMAccess 调用不能判恶。
+    en: Management event, subscription or tenant, target workload, operation or request ID, extension instance, guest account creation time, SID
+      or UID, first sign-in, and resource outcome can still reconstruct the chain. Normal password recovery, automated configuration, image deployment,
+      and administration also create accounts across planes. One VMAccess call cannot establish maliciousness without missing approval or anomalous
+      outcome.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 纳入上游管理控制面调用在下游系统新建可认证身份，要求能够证明控制操作、目标工作负载、落地账户和以后使用属于同一因果链。创建者与目标账户位于同一审计域的普通账户创建排除；仅修改已有来宾账户归 T1098；远程命令只执行脚本但不创建身份属于相应 Execution 技术。
+    en: Scope includes an upstream management-plane call creating a new authenticating identity in a downstream system, with evidence that control
+      operation, target workload, materialized account, and later use belong to one causal chain. Ordinary account creation where creator and
+      target identity share one audit domain is excluded. Mutation of an existing guest account belongs to T1098, while a remote command executing
+      a script without creating identity belongs to the relevant Execution technique.
+  - zh: Azure VMAccess 是证据中的实现，不是产品边界；等价虚拟化来宾操作、设备管理或编排接口也只有在产生同样跨面观察差异时才纳入。合法恢复与配置管理必须通过工单、操作者、目标、预期用户名和有效期验证。
+    en: Azure VMAccess is an evidenced implementation rather than a product boundary. Equivalent virtualization guest operations, device management,
+      or orchestration interfaces qualify only when they produce the same cross-plane observation difference. Legitimate recovery and configuration
+      management require validation through change record, operator, target, expected username, and validity.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: 攻击者控制具备云 RBAC 或集中管理权限的身份后，可调用凭据恢复、来宾配置或账户管理功能，在无法直接登录或受端点网络限制的工作负载内创建管理员或服务账户。随后其通过来宾远程服务使用新账户，即使原云会话被撤销，本地身份仍可能继续存在。
+      en: After controlling an identity with cloud RBAC or centralized management authority, an adversary can invoke credential recovery, guest
+        configuration, or account management to create an administrator or service account inside a workload that cannot be reached directly or
+        is constrained by endpoint networking. The adversary then uses the new account through a guest remote service. The local identity may
+        remain even after the original cloud session is revoked.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者需要上游管理权限、目标工作负载选择能力、创建账户的管理功能以及以后访问来宾服务的路径，并理解异步操作和账户命名/密码要求。JIT RBAC、强审批、扩展 allowlist、来宾代理完整性、目标网络隔离和创建后自动到期会限制效果。
+        en: The adversary needs upstream management authority, target-workload selection, an account-creation management function, and a later
+          path to the guest service, plus knowledge of asynchronous operation and account naming or password requirements. JIT RBAC, strong approval,
+          extension allowlists, guest-agent integrity, target network isolation, and automatic post-creation expiry constrain effectiveness.
+    defender_model:
+      paragraphs:
+      - zh: 防守方需要汇聚云 activity/extension audit 与来宾账户、认证和资源事件，并在两侧传播 tenant、workload、operation/request ID、时间和预期账户属性。云团队与端点团队日志不共享、来宾代理不记录具体命令或本地
+          SID 不能回传时，只能通过时间和目标做较弱关联。
+        en: The defender needs cloud activity or extension audit joined with guest account, authentication, and resource events and must propagate
+          tenant, workload, operation or request ID, time, and expected account attributes across both sides. When cloud and endpoint teams do
+          not share logs, the guest agent omits the concrete command, or a local SID cannot be returned, only weaker temporal and target correlation
+          is possible.
+stealth_mechanisms:
+- mechanism_ref: NM-BT
+  role: primary
+  summary:
+    zh: 创建者留在上游管理面而账户与登录出现在下游系统
+    en: The creator remains upstream while account and sign-in appear downstream
+  analysis:
+    paragraphs:
+    - zh: 攻击者利用合法管理 API 或扩展在下游创建账户，使上游记录动作和发起主体，下游记录新身份与以后认证。关键“谁通过哪次管理操作创建了哪个本地账户”跨越原有审计边界，单侧分析虽能看到局部正常事件，却无法恢复完整因果，形成行为透明。Storm-2949 的 VMAccess
+        案例直接证明行为链；匿迹效果基于日志分布强推断，置信度为 high。
+      en: The adversary uses a legitimate management API or extension to create an account downstream, leaving action and initiator upstream and
+        the new identity and later authentication downstream. The critical relationship identifying who created which local account through which
+        management operation crosses the original audit boundary. One-sided analysis sees locally normal events without full causality, producing
+        Behavioral Transparency. The Storm-2949 VMAccess case directly establishes the behavior chain, while the evasion effect is strongly inferred
+        from log distribution, supporting high confidence.
+  evidence_refs:
+  - REF-000167
+  confidence: high
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000069
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000068
+evidence:
+  claim_refs:
+  - CLM-000345
+  case_refs:
+  - CASE-000061
+  reference_refs:
+  - REF-000166
+  - REF-000167
+research:
+  limitations:
+    paragraphs:
+    - zh: 当前直接案例来自 Azure VMAccess，足以证明云到来宾账户投放，但不能自动外推所有编排和设备管理产品。Microsoft 公开材料没有给出每个内部关联字段，因此 operation ID 到本地 SID 的精确连接属于实现要求而非已证实普遍能力。其他平台进入本子项前必须证明相同控制边界、落地账户和后续使用。
+      en: The direct case concerns Azure VMAccess and establishes cloud-to-guest account provisioning without automatically generalizing to every
+        orchestration and device-management product. Microsoft's public material does not expose every internal correlation field, so exact operation-ID-to-local-SID
+        linkage is an implementation requirement rather than a universally demonstrated capability. Other platforms require proof of the same
+        control boundary, materialized account, and later use before entering this child.
+lifecycle:
+  status: review
+  version: 0.2.0
+  created: '2026-09-11'
+  modified: '2026-09-11'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

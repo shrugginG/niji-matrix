@@ -1,0 +1,104 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000108
+strategy_ref: DET-000122
+name:
+  zh: 调试通道低价值事件饱和分析
+  en: Low-Value Debug-Event Channel Saturation Analytic
+summary:
+  zh: 输出调试事件密度、模板重复、通道丢失与外部结果之间的饱和关系。
+  en: Produce saturation relationships among debug-event density, template repetition, channel loss, and external outcomes.
+domains:
+- enterprise
+platforms:
+- Windows
+- Linux
+- macOS
+logic:
+  paragraphs:
+  - zh: 按 process start key 和 thread ID 归一调试字符串模板、异常类型、事件数量与信息增益，同时采集通道队列、丢失、采样、截断、存储和 CPU。将噪声区间与解码、文件、子进程或网络结果连接。当低价值重复模板占主导、核心执行仍在继续，且通道出现丢失、明显延迟或资源消耗时，输出 debug_channel_saturation。
+    en: Normalize debug-string templates, exception types, event counts, and information gain by process start key and thread
+      ID while collecting channel queue, loss, sampling, truncation, storage, and CPU. Join noise intervals to decoding, file,
+      child-process, or network outcomes. Emit debug_channel_saturation when low-value repeated templates dominate, core execution
+      continues, and the channel shows loss, material latency, or resource consumption.
+data_requirements:
+- source_type: debug-event-stream
+  name:
+    zh: 调试字符串与异常事件流
+    en: Debug-string and exception event stream
+  channel: null
+  required_fields:
+  - event.timestamp
+  - host.id
+  - process.start_key
+  - thread.id
+  - event.type
+  - event.template_hash
+  - event.size
+  - exception.code
+- source_type: debug-channel-health
+  name:
+    zh: 调试通道健康与资源
+    en: Debug-channel health and resources
+  channel: null
+  required_fields:
+  - event.timestamp
+  - process.start_key
+  - queue.depth
+  - event.dropped_count
+  - event.sampled_count
+  - log.bytes
+  - cpu.time
+  - processing.latency
+- source_type: process-behavior-outcome
+  name:
+    zh: 噪声期间的进程外部结果
+    en: External process outcomes during noise
+  channel: null
+  required_fields:
+  - event.timestamp
+  - process.start_key
+  - payload.stage
+  - child.start_key
+  - file.action
+  - network.destination
+observables:
+- zh: 一个进程长时间高频输出少量重复调试或异常模板
+  en: One process emits a small set of repeated debug or exception templates at sustained high rate
+- zh: 噪声期间出现通道丢失、截断、延迟或存储激增，而外部执行继续
+  en: Channel loss, truncation, latency, or storage growth appears during noise while external execution continues
+correlation:
+  window:
+    zh: 覆盖一次进程运行中的噪声区间及紧邻外部结果；环境按调试器与日志管线的缓冲、采样和保留语义记录具体时限。
+    en: Cover the noise interval within one process run and closely adjacent external outcomes. Record the concrete limit from
+      debugger and logging-pipeline buffering, sampling, and retention semantics.
+  dimensions:
+  - host.id
+  - process.start_key
+  - thread.id
+  - event.type
+  - event.template_hash
+  - payload.stage
+false_positives:
+- zh: 详细开发调试、压力测试、崩溃风暴、模糊测试和诊断采样
+  en: Verbose development debugging, stress testing, crash storms, fuzzing, and diagnostic sampling
+blind_spots:
+- zh: 调试器不暴露丢失与队列指标、日志被静默截断或样本绕过受观察通道
+  en: Debugger exposes no loss or queue metrics, logs truncate silently, or the sample bypasses the observed channel
+tuning_guidance:
+  paragraphs:
+  - zh: 按开发、测试与生产环境建立调试事件密度和模板基线，限速时保留原始总量、丢失、模板数和核心状态转折。严重度依赖低信息增益、通道影响和噪声期间的可疑外部结果，不使用一个跨产品固定速率阈值。
+    en: Baseline debug-event density and templates by development, test, and production environment. During rate limiting,
+      preserve raw totals, loss, template count, and core state transitions. Base severity on low information gain, channel
+      impact, and suspicious external outcomes during noise rather than one cross-product fixed-rate threshold.
+evidence_refs:
+- REF-000386
+- REF-000416
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-09-21'
+  modified: '2026-09-21'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

@@ -1,0 +1,113 @@
+schema_version: 2.0.0
+type: evasion-subtechnique
+id: NJS-0144-001
+parent_ref: NJT-0144
+name:
+  zh: 既存邮件副本二次读取
+  en: Rereading a Preexisting Mail Replica
+summary:
+  zh: 攻击者从此前同步的邮件副本取得正文或附件，使本次读取留在端点而不产生新的服务器逐封读取。
+  en: An adversary obtains message bodies or attachments from a previously synchronized replica, leaving the current read
+    on the endpoint without a new server per-message read.
+aliases: []
+lineage:
+  attck_subtechnique_inherited: false
+definition_and_concept:
+  paragraphs:
+  - zh: 既存邮件副本二次读取是攻击者在邮件客户端早先已完成同步或归档之后，直接从可读副本中恢复消息正文、附件或特定时间段通信。它改变的是本次获取与邮件服务端的关系：服务器看到的最后一次同步可能属于正常用户流程，而攻击者本次解析不会生成同等粒度的新服务器读取事件。是否为
+      OST、PST 或其他格式仅决定取证实现，不构成子项条件。
+    en: 'Rereading a Preexisting Mail Replica occurs after a mail client has already synchronized or archived content, when
+      an adversary recovers message bodies, attachments, or a selected date range directly from the readable copy. It changes
+      the relationship between current acquisition and the mail server: the last server sync may belong to normal user workflow,
+      while the adversary''s parsing generates no equally granular new server read. OST, PST, or another format affects forensics
+      but does not define the child.'
+stealth_characteristics:
+  paragraphs:
+  - zh: 既存邮件副本二次读取要求同时看到服务器缺少本次逐封访问、端点却出现异常副本读取或复制，才形成可解释的观察差。Microsoft 说明同步后的离线访问不会产生新的邮箱审计；Mandiant 的 GETMAIL 事件证明攻击者能从
+      PST 抽取限定日期邮件。但该事件未证明攻击者专为避开审计而选择副本，合法迁移工具也可能读取整个 PST。
+    en: Rereading a Preexisting Mail Replica creates an observation difference only when a current per-message server read
+      is absent while anomalous endpoint replica reads or copies are present. Microsoft explains that offline access after
+      sync creates no new mailbox audit event, and Mandiant's GETMAIL case establishes date-limited extraction from PST. The
+      case does not prove the copy was chosen to evade audit, and an authorized migration tool may also read the whole PST.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 纳入已有副本的消息接触，排除单纯发现 OST 路径、首次服务器同步、管理员发起的新导出和后续把抽取物打包暂存。与到达触发分流的边界在于这里读取历史副本，而后者复制到达后的新消息。若攻击者只读取地址簿而非消息内容，应归身份发现而非本项。
+    en: Include contact with messages in a preexisting copy; exclude merely discovering an OST path, first server synchronization,
+      a newly initiated administrator export, and later packaging or staging. The sibling copies new messages after arrival,
+      whereas this child reads historical copies. Reading only an address book rather than message content belongs to identity
+      discovery.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: 攻击者进入员工工作站后可取用已经同步的用户邮箱或共享邮箱副本，按日期或主题筛选近期业务通信。APT1 报告中的 GETMAIL 从 PST 提取邮件与附件，一名攻击者连续四周每周返回取上周邮件；该周期性可同时触及 T1119，但本子项只讨论其利用已有邮件副本引起的审计错位。
+      en: An attacker on an employee workstation can use previously synchronized user or shared-mailbox copies and select
+        recent business communications by date or subject. Mandiant reports GETMAIL extracting messages and attachments from
+        PST and one attacker returning weekly for four weeks to take the previous week's mail. That cadence may also implicate
+        T1119; this child addresses only the audit displacement caused by the preexisting mail copy.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者需要读取缓存所在设备或用户文件，理解邮件副本格式，并承担副本不完整、受加密保护或过时的限制。对已解锁客户端进程的滥用可能绕过直接文件解析，但必须另证消息实际接触。
+        en: The attacker needs access to the cache-bearing device or user file, knowledge of the replica format, and must
+          tolerate an incomplete, encrypted, or stale copy. Abuse of an unlocked client process may avoid direct file parsing,
+          but actual message contact still needs evidence.
+    defender_model:
+      paragraphs:
+      - zh: 防守方应将邮件服务的最近同步时间和内容覆盖，与端点对邮件数据文件的非预期进程读取、文件复制和出站写入关联。若无端点文件遥测，就只能从先前同步推断可能暴露范围，不能定位攻击者本次读了哪些消息。
+        en: Defenders should join the mail service's last sync time and covered folders to unexpected process reads of mail-data
+          files, copies, and outbound writes on the endpoint. Without endpoint file telemetry, earlier sync only bounds possible
+          exposure; it cannot identify which messages the attacker reread.
+stealth_mechanisms:
+- mechanism_ref: NM-BT
+  role: primary
+  summary:
+    zh: 借用先前同步副本移走当前服务器读取痕迹
+    en: Reuse an earlier synced replica to remove current server-read traces
+  analysis:
+    paragraphs:
+    - zh: 客户端先前的正常同步建立副本，攻击者后来直接解析该副本，本次消息选择和读取只在端点发生。只以 MailItemsAccessed 的当前 Bind 事件追查会低估历史邮件接触；先前 Sync 范围与端点读/复制进程关联后可恢复风险。该机理不能宣称服务器从未有同步痕迹，也不能把没有端点日志解释为无收集。
+      en: Earlier normal client synchronization creates a copy that the attacker later parses, so the current message selection
+        and read occur at the endpoint. An investigation using only current MailItemsAccessed Bind events undercounts historical-mail
+        exposure; joining the earlier Sync scope with endpoint read or copy processes restores the risk. This mechanism does
+        not claim that the server has no sync trace or that missing endpoint logs prove no collection.
+  confidence: medium
+  evidence_refs:
+  - REF-000567
+  - REF-000568
+  - REF-000569
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000157
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000146
+evidence:
+  claim_refs:
+  - CLM-000737
+  - CLM-000739
+  case_refs:
+  - CASE-000193
+  reference_refs:
+  - REF-000566
+  - REF-000567
+  - REF-000568
+  - REF-000569
+  - REF-000379
+research:
+  limitations:
+    paragraphs:
+    - zh: GETMAIL 案例是 PST 归档提取，不能自动当成 OST 离线缓存的具体入侵证据；离线缓存覆盖范围取决于同步设置，共享邮箱与附件还可能单独受限。Windows 4663 只有配置目标 SACL 才会产生所需文件访问事件，E5/高级邮箱审计可用性亦需按环境核实。
+      en: The GETMAIL case concerns PST archive extraction and is not itself an intrusion demonstration against an OST offline
+        cache. Cache coverage depends on sync settings, with shared mailboxes and attachments adding limits. Windows event
+        4663 requires an appropriate target SACL, and availability of advanced mailbox auditing must be verified locally.
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-09-22'
+  modified: '2026-09-22'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

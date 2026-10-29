@@ -1,0 +1,143 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000281
+strategy_ref: DET-000226
+name:
+  zh: 共享 Web 服务接收命名空间与端点源数据关联
+  en: Shared Web-Service Receiver Namespace and Endpoint Source-Data Correlation
+summary:
+  zh: 识别合法共享服务域后未经批准的 tenant、bot、chat、repository 或账户接收者。
+  en: Identify an unapproved tenant, bot, chat, repository, or account receiver behind a legitimate shared-service
+    domain.
+domains:
+- enterprise
+platforms: []
+logic:
+  paragraphs:
+  - zh: 维护 service_provider、receiver_type、tenant/account/chat/repo/webhook_id、approved_principal、approved_process、allowed_data_class、owner、expiry
+      和 policy_version 的接收者注册表。把 DeviceFileEvents 的敏感读取/创建/归档与 DeviceNetworkEvents、代理/CASB 和服务 API 审计按 device_id、initiating_process_unique_id、user/app、request_id
+      和时间连接；从 URI、对象路径、审计 target 或 token hash 解析 receiver_namespace。分别输出 provider_only、receiver_resolved、unapproved_receiver
+      和 source_linked_exfiltration。最后一级要求未批准接收者、敏感源数据和服务写入/消息发送结果，不把整个 SaaS 域视为恶意。
+    en: Maintain a receiver registry containing service_provider, receiver_type, tenant or account or chat or repository
+      or webhook ID, approved_principal, approved_process, allowed_data_class, owner, expiry, and policy_version.
+      Join sensitive read, create, or archive events from DeviceFileEvents to DeviceNetworkEvents, proxy or CASB,
+      and service API audit by device_id, initiating_process_unique_id, user or app, request_id, and time. Resolve
+      receiver_namespace from URI, object path, audit target, or token hash. Emit provider_only, receiver_resolved,
+      unapproved_receiver, and source_linked_exfiltration separately. The last requires an unapproved receiver,
+      sensitive source data, and a successful service write or message-send result and never treats an entire SaaS
+      domain as malicious.
+data_requirements:
+- source_type: endpoint-file
+  name:
+    zh: 端点敏感文件与产物事件
+    en: Endpoint sensitive-file and artifact events
+  channel: Microsoft DeviceFileEvents, EDR or endpoint DLP
+  required_fields:
+  - timestamp
+  - deviceid
+  - actiontype
+  - folderpath
+  - filename
+  - filesize
+  - sha1
+  - sensitivitylabel
+  - initiatingprocessuniqueid
+  - initiatingprocessaccountname
+- source_type: endpoint-process-network
+  name:
+    zh: 端点进程到 Web 服务连接
+    en: Endpoint process to web-service connection
+  channel: Microsoft DeviceNetworkEvents or equivalent
+  required_fields:
+  - timestamp
+  - deviceid
+  - remoteurl
+  - remoteip
+  - remoteport
+  - protocol
+  - initiatingprocessuniqueid
+  - initiatingprocessfilename
+  - initiatingprocesscommandline
+- source_type: service-transaction
+  name:
+    zh: 代理、CASB 或服务 API 事务
+    en: Proxy CASB or service API transaction
+  channel: inspectable HTTP proxy, CASB or provider audit
+  required_fields:
+  - event-time
+  - provider
+  - tenant-id
+  - actor-or-app-id
+  - action
+  - receiver-type
+  - receiver-id
+  - object-or-message-id
+  - request-id
+  - status
+  - bytes-out
+- source_type: receiver-registry
+  name:
+    zh: 批准服务接收者清单
+    en: Approved service receiver registry
+  channel: SaaS governance inventory
+  required_fields:
+  - provider
+  - receiver-type
+  - receiver-id
+  - approved-principal
+  - approved-process
+  - allowed-data-class
+  - owner
+  - expiry
+  - policy-version
+observables:
+- zh: 敏感读取后，非批准进程调用共享 SaaS 上传 API
+  en: An unapproved process calls a shared SaaS upload API after sensitive access
+- zh: 外层域名与 TLS 合法，但 bot、chat、tenant、repository 或账户标识不在清单
+  en: The outer domain and TLS are legitimate but bot, chat, tenant, repository, or account identifiers are not
+    approved
+correlation:
+  window:
+    zh: 以二十四小时连接敏感读取、服务 API 调用和对象接收结果。
+    en: Use twenty-four hours to join sensitive access, service API invocation, and object receipt.
+  dimensions:
+  - device-id
+  - process-start-key
+  - user-or-app-id
+  - provider
+  - tenant-id
+  - receiver-id
+  - object-or-message-id
+  - request-id
+  - source-file-hash
+  - time
+false_positives:
+- zh: 批准协作工具、CI/CD、支持机器人和企业云盘上传
+  en: Approved collaboration, CI/CD, support bots, and enterprise cloud-drive uploads
+blind_spots:
+- zh: TLS 或客户端库隐藏逻辑接收者标识
+  en: TLS or a client library hides the logical receiver identifier
+- zh: 服务审计不可用或 token 被多个工作负载共享
+  en: Service audit is unavailable or a token is shared across workloads
+tuning_guidance:
+  paragraphs:
+  - zh: 按提供方和业务流程维护 receiver 级正向清单，禁止只对白名单域名放行。对开发、备份和聊天分别建立进程、账号、路径、数据标签和时间基线；新 receiver 与敏感 source 同时存在才升级。令牌不得以明文入日志，可记录稳定
+      hash 以关联撤销和重复使用。
+    en: Maintain provider-specific receiver-level positive allowlists rather than allowing a domain alone. Build
+      separate process, account, path, data-label, and time baselines for development, backup, and chat. Escalate
+      when a new receiver and sensitive source coexist. Never log tokens in clear text; retain a stable hash for
+      revocation and reuse joins.
+evidence_refs:
+- REF-000939
+- REF-000923
+- REF-000924
+- REF-000604
+- REF-000632
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-10-04'
+  modified: '2026-10-04'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

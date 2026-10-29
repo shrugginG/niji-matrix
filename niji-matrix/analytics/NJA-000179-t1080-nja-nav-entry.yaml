@@ -1,0 +1,121 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000179
+strategy_ref: DET-000166
+name:
+  zh: 共享导航入口替身—消费者命令序列
+  en: Shared Navigation Substitute to Consumer Command Sequence
+summary:
+  zh: 发现共享目录导航项指向替代命令后，关联另一主机点击时的原目录显示与恶意进程链。
+  en: Find a shared navigation entry redirected to a substitute command and join another host's click to both expected-directory
+    display and malicious processes.
+domains:
+- enterprise
+platforms:
+- Windows
+logic:
+  paragraphs:
+  - zh: 在重点 SMB 共享上联结目录隐藏属性/重命名与同名可触发入口的新建或修改；解析入口的目标程序、参数、工作目录与图标，检查其是否以目录外观调用 mshta、PowerShell、cmd 或其他解释器后再打开真实目录。把入口 writer、5145/4663
+      共享访问、消费者设备上的 Explorer 打开和后继进程按规范化 UNC 路径、同名 stem、时间及设备关联。高置信要求原目录属性变化、替身目标的可执行命令及另一设备的后继执行；仅有 LNK 创建或双击记录时作为待验证线索。窗口以入口写入后
+      7 天内首次观察到的消费为准，后续重复触发作为同一对象的扩散证据。
+    en: On priority SMB shares, join hidden-attribute or rename changes of a directory with creation or modification of a
+      same-named trigger entry. Parse its target program, arguments, working directory, and icon, checking whether a folder-looking
+      entry calls mshta, PowerShell, cmd, or another interpreter before opening the real directory. Join entry writer, 5145
+      or 4663 share access, consumer Explorer open, and successor process by normalized UNC path, common name stem, time,
+      and device. High confidence requires original-directory attribute change, executable command in the substitute target,
+      and successor execution on another device. An LNK creation or click alone remains a lead. Use the first consumption
+      within seven days of entry modification; later repeated triggers evidence spread from the same object.
+data_requirements:
+- source_type: shared-directory-change
+  name:
+    zh: 共享目录变更历史
+    en: Shared-directory change history
+  channel: null
+  required_fields:
+  - event.timestamp
+  - share.path
+  - entry.path
+  - entry.type
+  - entry.attributes
+  - actor.id
+- source_type: navigation-entry-metadata
+  name:
+    zh: 导航入口目标与外观元数据
+    en: Navigation entry target and appearance metadata
+  channel: null
+  required_fields:
+  - entry.path
+  - entry.target
+  - entry.arguments
+  - entry.icon
+  - entry.modified_at
+- source_type: windows-security-detailed-file-share
+  name:
+    zh: Windows 详细共享访问审计
+    en: Windows detailed share-access audit
+  channel: Security/5145
+  required_fields:
+  - event.timestamp
+  - host.id
+  - subject_user_sid
+  - ip_address
+  - share_name
+  - relative_target_name
+  - access_mask
+- source_type: endpoint-process-tree
+  name:
+    zh: 目标端进程树
+    en: Destination process tree
+  channel: null
+  required_fields:
+  - event.timestamp
+  - device.id
+  - user.id
+  - process.id
+  - process.parent_id
+  - process.command_line
+observables:
+- zh: 原目录被隐藏且同名目录外观入口指向命令解释器或异常目标
+  en: Original directory is hidden while a same-looking entry under its name points to an interpreter or anomalous target
+- zh: 异机 Explorer 打开该入口后出现解释器/载荷进程，然后才呈现真实目录
+  en: Explorer on another device opens the entry then produces interpreter or payload process before the real directory is
+    shown
+correlation:
+  window:
+    zh: 共享目录改写到受害者导航默认观察七天；同一次点击到命令、文件及原目录打开默认五分钟。
+    en: Observe up to seven days from share-directory mutation to victim navigation, then default to five minutes from one
+      click to command, file, and original-directory activity.
+  dimensions:
+  - share.path
+  - entry.path
+  - original_directory.path
+  - actor.id
+  - consumer.device.id
+  - consumer.user.id
+  - process.id
+false_positives:
+- zh: 合法快捷方式发布、DFS 调整和管理员重命名目录可能出现同名导航项。
+  en: Authorized shortcuts, DFS changes, and administrator directory renames can create similar-looking navigation entries.
+blind_spots:
+- zh: 只有文件服务器审计而缺少目标端 Explorer 和子进程谱系时，不能证明替身被用户实际触发。
+  en: File-server audit without destination Explorer and child-process lineage cannot prove that a user triggered the substitute.
+tuning_guidance:
+  paragraphs:
+  - zh: 只在可写高访问量共享中比较同名原目录与入口目标，并以是否有未批准命令、异机后继进程及写入主体异常评分；对受管迁移保留变更单和入口目标白名单，勿按 .lnk 扩展名一刀切。5145 是访问检查，不足以证明用户实际点击或代码运行。
+    en: Compare same-named original directories and entry targets on writable, high-use shares, scoring unapproved commands,
+      cross-host successor processes, and abnormal writer identity. Keep change records and precise target allowlists for
+      managed migrations rather than blanket-blocking the .lnk extension. Event 5145 is an access check and does not prove
+      a user click or code execution.
+evidence_refs:
+- REF-000592
+- REF-000474
+- REF-000379
+- REF-000595
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-09-22'
+  modified: '2026-09-22'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

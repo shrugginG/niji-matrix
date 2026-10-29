@@ -1,0 +1,128 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000265
+strategy_ref: DET-000215
+name:
+  zh: 名称绑定—内容源—展示结果谱系
+  en: Name Binding–Content Source–Display Outcome Lineage
+summary:
+  zh: 确认异常 DNS/注册绑定把组织名称引向未经授权页面，而规范源保持批准内容。
+  en: Confirm an anomalous DNS or registration binding directs an organization name to unauthorized content while
+    the canonical source remains approved.
+domains:
+- enterprise
+platforms: []
+logic:
+  paragraphs:
+  - zh: 在 DNS/注册变更触发时和固定五分钟轮次，从权威与至少多个独立递归/地域观察点解析高价值名称，保存 NS、CNAME、A/AAAA 链、TTL、DNSSEC 与答案来源。对每个答案用相同 Host/SNI 抓取证书、重定向、正文/语义/视觉
+      hash，并与规范源比较。
+    en: On DNS or registration change and fixed five-minute rounds, resolve high-value names from authoritative and
+      multiple independent recursive or regional vantages, preserving NS, CNAME, A or AAAA chain, TTL, DNSSEC, and
+      answer source. Retrieve certificate, redirects, body, semantic, and visual hashes for each answer with the same
+      Host and SNI and compare the canonical source.
+  - zh: 把控制面 actor、前后记录、change ID 和审批连接到答案传播与页面差。异常绑定/答案、未经授权可见内容和干净规范源共同成立才输出 display-source-substitution-confirmed；只有
+      IP、证书或 DNS 错误保留为路径异常。
+    en: Join control-plane actor, before and after records, change ID, and approval to answer propagation and page
+      difference. Emit display-source-substitution-confirmed only when anomalous binding or answer, unauthorized visible
+      content, and a clean canonical source all hold; IP, certificate, or DNS error alone remains a path anomaly.
+data_requirements:
+- source_type: dns-registration-control
+  name:
+    zh: 注册与 DNS 控制面
+    en: Registration and DNS control plane
+  channel: Registrar audit and Route 53 CloudTrail
+  required_fields:
+  - event.time
+  - actor.id
+  - event.name
+  - domain.id
+  - record.name
+  - record.type
+  - action
+  - rdata.old
+  - rdata.new
+  - ttl
+  - change.id
+  - approval.id
+- source_type: multivantage-dns-answer
+  name:
+    zh: 多观察点 DNS 答案
+    en: Multivantage DNS answers
+  channel: Authoritative and recursive probes
+  required_fields:
+  - event.time
+  - vantage.id
+  - resolver.id
+  - qname
+  - qtype
+  - rcode
+  - answers
+  - ttl
+  - dnssec.status
+  - authoritative.ns
+- source_type: tls-http-display
+  name:
+    zh: TLS/HTTP 展示内容观察
+    en: TLS and HTTP display observation
+  channel: null
+  required_fields:
+  - event.time
+  - vantage.id
+  - qname
+  - resolved.ip
+  - sni
+  - certificate.fingerprint
+  - http.status
+  - redirect.chain
+  - content.hash
+  - semantic.hash
+  - visual.hash
+observables:
+- zh: 未经批准 RRset 或注册变化与替代页面同时出现
+  en: An unapproved RRset or registration change co-occurs with a substitute page
+- zh: 同一组织名称跨解析器返回超出批准流量工程的内容源差
+  en: The organization name returns source differences beyond approved traffic engineering across resolvers
+correlation:
+  window:
+    zh: 同轮五分钟；控制面变化连接到 max(2×旧 TTL, 1 小时)，上限 24 小时。
+    en: Use five minutes for one round; join control change through max of twice the old TTL or one hour, capped at
+      24 hours.
+  dimensions:
+  - domain.id
+  - record.name
+  - record.type
+  - change.id
+  - resolver.id
+  - vantage.id
+  - resolved.ip
+  - certificate.fingerprint
+  - event.time
+false_positives:
+- zh: 批准 DNS/CDN 迁移、灾备故障切换、蓝绿发布、GeoDNS/Anycast、DDoS sinkhole 和过期缓存
+  en: Approved DNS or CDN migration, DR failover, blue-green release, GeoDNS or Anycast, DDoS sinkhole, and stale
+    cache
+blind_spots:
+- zh: 未抽样递归器、DoH/DoT 绕过、注册商无审计、同步篡改审批、复用批准 CDN/证书或短于探测间隔的改向
+  en: Unsampled resolver, DoH or DoT bypass, absent registrar audit, co-tampered approval, reuse of approved CDN or
+    certificate, or diversion shorter than polling
+tuning_guidance:
+  paragraphs:
+  - zh: 登记批准 NS/RRset、ASN/CDN、证书、内容变体和变更窗口；不按 IP 变化单独告警。用户报告触发临时高频抓取，每个例外记录 owner、approval 和到期。
+    en: Register approved NS or RRsets, ASN or CDN, certificates, content variants, and change windows; do not alert
+      on IP change alone. User reports trigger temporary high-frequency retrieval and each exception carries owner,
+      approval, and expiry.
+evidence_refs:
+- REF-000884
+- REF-000887
+- REF-000888
+- REF-000889
+- REF-000890
+- REF-000524
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-10-04'
+  modified: '2026-10-04'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

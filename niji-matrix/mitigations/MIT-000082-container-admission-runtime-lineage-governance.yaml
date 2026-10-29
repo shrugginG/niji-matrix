@@ -1,0 +1,44 @@
+schema_version: "2.0.0"
+type: mitigation
+id: MIT-000082
+name: {zh: 容器准入、规范完整性与运行时谱系治理, en: Container Admission Specification Integrity and Runtime-Lineage Governance}
+summary: {zh: 以最小 create 权限、批准模板、Pod Security、digest/签名/证明和启动后能力控制，限制规范伪装与良性镜像后置载荷。, en: Constrain specification camouflage and benign-image late payloads through least create authority approved templates Pod Security digest signature or attestation and post-start capability controls.}
+description:
+  paragraphs:
+  - zh: 本缓解把创建主体、规范来源、实际 image identity 和运行时首行为视为一个事务。按 namespace 与 workload 类型最小化 create/update 权限，保护 Docker socket、Dashboard/Portainer 和部署令牌；只允许经签名 GitOps template/commit 的规范，admission 验证 registry owner、resolved digest、签名/attestation/SBOM 与 Pod Security，并保存决策。
+    en: This mitigation treats creator specification origin actual image identity and runtime first action as one transaction. Minimize create or update authority by namespace and workload type and protect Docker sockets Dashboard or Portainer and deployment tokens. Allow only specifications from signed GitOps templates or commits and have admission verify registry owner resolved digest signature attestation or SBOM and Pod Security while retaining the decision.
+  - zh: 签名镜像不是运行时永久信任。对通用基础镜像使用默认拒绝 egress、固定下载目的地与 hash、只读根、最小 volume/secrets、seccomp/capability 和进程策略，并把 first-action 回传部署记录。异常时停止 rollout/DaemonSet、冻结创建身份与 digest、保存规范和容器状态，再删除/隔离所有实例、轮换挂载凭据并核查节点；仅删 Pod 可能被控制器重建。
+    en: A signed image is not permanent runtime trust. For generic base images use default-deny egress, pinned download destination and hash, read-only root, minimal volumes or secrets, seccomp or capability and process policy, and return first action into the deployment record. On anomaly stop rollout or DaemonSet, freeze creator identity and digest, preserve specification and container state, then remove or isolate all instances, rotate mounted credentials, and inspect nodes. Deleting only a Pod can let its controller recreate it.
+domains: [enterprise]
+measures:
+- key: least-workload-create-authority
+  name: {zh: Workload 创建权限与管理接口最小化, en: Least Workload Create Authority and Management Interface Exposure}
+  description: {paragraphs: [{zh: 按 namespace/kind/owner 限制 create/update，使用短期部署身份，保护 Docker socket、Dashboard 和 Portainer，禁止匿名或公网写入管理接口。, en: Restrict create or update by namespace kind and owner use short-lived deployment identities protect Docker sockets Dashboard and Portainer and prohibit anonymous or public write access to management interfaces.}]}
+  control_type: preventive
+- key: signed-template-image-admission
+  name: {zh: 签名模板、实际 Digest 与 Pod Security 准入, en: Signed Template Actual Digest and Pod Security Admission}
+  description: {paragraphs: [{zh: 验证 GitOps commit/template、creator、registry owner、resolved digest、cosign/attestation/SBOM 和 Pod Security；标签、名称或 image tag 不能替代内容与来源验证。, en: Verify GitOps commit or template creator registry owner resolved digest cosign or attestation or SBOM and Pod Security. Labels names and image tags cannot substitute for content and origin verification.}]}
+  control_type: preventive
+- key: post-start-capability-control
+  name: {zh: 启动后网络、文件与进程能力控制, en: Post-Start Network File and Process Capability Control}
+  description: {paragraphs: [{zh: 对基础镜像限制 egress、DNS、下载 hash、可写路径、mount、capability 与可执行进程，并把首行为与 image/SBOM 声明比较。, en: Constrain egress DNS download hashes writable paths mounts capabilities and executable processes for base images and compare first behavior with image or SBOM declarations.}]}
+  control_type: preventive
+- key: controller-aware-response
+  name: {zh: 控制器感知的证据化处置, en: Controller-Aware Evidence-Preserving Response}
+  description: {paragraphs: [{zh: 冻结 creator、template 和 digest，暂停 rollout/DaemonSet/Job，保存 admission 与 runtime 证据，再隔离所有实例、轮换身份并核查节点，防止控制器重建。, en: Freeze creator template and digest pause rollout DaemonSet or Job preserve admission and runtime evidence then isolate every instance rotate identities and inspect nodes to prevent controller recreation.}]}
+  control_type: containment
+applications:
+- target_ref: NJT-0067
+  use: {paragraphs: [{zh: 所有新容器必须绑定短期创建身份、批准模板/commit、实际 digest 与准入证明，并在启动后回传首进程、网络和文件。将控制器 owner 与全部实例纳入同一处置范围。, en: Every new container binds a short-lived creator approved template or commit actual digest and admission proof and returns first process network and file after start. Include controller owner and every instance in one response scope.}]}
+  expected_effect: {paragraphs: [{zh: 降低攻击者创建任意 workload、借用熟悉规范或在签名基础镜像后引入未审载荷的能力，并保留端到端归因。, en: Reduces ability to create arbitrary workloads borrow familiar specifications or introduce unreviewed payloads after a signed base image and preserves end-to-end attribution.}]}
+  limitations: {paragraphs: [{zh: 动态应用需要 init 下载、Job 与弹性实例，严格策略可能影响发布；被攻陷 GitOps、builder 与 registry 可产生一致证明，需要独立 runtime 约束。, en: Dynamic applications need initialization downloads Jobs and elastic instances and strict policy can affect releases. Compromised GitOps builders and registries can produce consistent proofs requiring independent runtime constraints.}]}
+- target_ref: NJS-0067-001
+  use: {paragraphs: [{zh: 通用基础镜像必须声明允许的启动下载目的地、digest/hash、entrypoint 与首行为；默认拒绝其他 egress 和新可执行文件，并对 image/SBOM 未声明的 shell、下载器和包管理动作告警或阻断。, en: Generic base images declare allowed startup download destinations digest or hash entrypoint and first behavior. Default-deny other egress and new executables and alert or block shells downloaders and package actions absent from image or SBOM declarations.}]}
+  expected_effect: {paragraphs: [{zh: 将策略延伸到真实载荷形成时点，使通过镜像扫描的基础 image 不能自由取得或执行未知内容。, en: Extends policy to the time the real payload forms so a scan-approved base image cannot freely retrieve or execute unknown content.}]}
+  limitations: {paragraphs: [{zh: 插件、模型和配置驱动应用可能合法下载大量动态内容，hash 预声明困难；可使用签名 manifest、受信代理与行为沙箱替代固定 hash。, en: Plug-in model and configuration-driven applications may legitimately retrieve dynamic content and cannot always predeclare hashes; signed manifests trusted proxies and behavioral sandboxes can substitute.}]}
+- target_ref: NJS-0067-002
+  use: {paragraphs: [{zh: 以签名 template/commit 和 registry owner/digest 验证完整规范；对近似名称、跨 namespace owner、service account 变化和非部署身份创建实施二次审批，labels 与常见软件名不产生信任。, en: Validate complete specification through a signed template or commit and registry owner or digest. Require secondary approval for lookalike names cross-namespace owners service-account changes and nondeployment creators. Labels and familiar software names confer no trust.}]}
+  expected_effect: {paragraphs: [{zh: 让攻击者复制可见名称和标签仍无法获得批准来源与内容身份，直接削弱特征伪装。, en: Prevents copied visible names and labels from acquiring approved origin and content identity directly weakening Feature Disguise.}]}
+  limitations: {paragraphs: [{zh: 合法 fork、迁移和第三方镜像可能改变 owner 或 registry；需到期例外和实际 digest 审批，避免永久域名白名单。, en: Legitimate forks migrations and third-party images can change owner or registry and need expiring exceptions plus actual-digest approval rather than permanent domain allowlists.}]}
+evidence_refs: [REF-000186, REF-000212, REF-000213, REF-000215, REF-000220, REF-000221]
+lifecycle: {status: review, version: 0.1.0, created: '2026-09-12', modified: '2026-09-12', contributors: [Niji Matrix Research], reviewers: []}

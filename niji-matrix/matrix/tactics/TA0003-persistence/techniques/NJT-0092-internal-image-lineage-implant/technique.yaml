@@ -1,0 +1,170 @@
+schema_version: 2.0.0
+type: technique
+id: NJT-0092
+name:
+  zh: 内部镜像谱系植入
+  en: Internal Image-Lineage Implant
+summary:
+  zh: 攻击者篡改受害环境内部镜像，使以后置备产生后门实例，并通过可变引用替换或未来激活分离可见规范、内容身份与运行结果。
+  en: Adversaries tamper with an image inside the victim environment so later provisioning produces backdoored instances and
+    separate visible specification, content identity, and runtime outcome through mutable-reference substitution or future
+    activation.
+aliases:
+- Implant Internal Image
+classification:
+  tactic_refs:
+  - TA0003
+  origin:
+    kind: attack-adapted
+    source_attack_id: T1525
+    source_attack_version: '19.1'
+  decision_ref: DEC-TA0003-T1525
+definition_and_concept:
+  paragraphs:
+  - zh: 内部镜像谱系植入是攻击者在受害组织控制的容器 registry、云镜像目录或等价置备库中修改或创建带有恶意代码、启动项、凭据或配置的镜像，使编排器、扩缩容、灾备或管理员以后从该镜像生成实例时自动恢复攻击者能力。直接目标是把持久化放在实例上游的可复用内容对象中。
+    en: Internal Image-Lineage Implant modifies or creates an image containing malicious code, startup state, credentials,
+      or configuration inside a victim-controlled container registry, cloud image catalog, or equivalent provisioning repository
+      so an orchestrator, scaling event, recovery process, or administrator later restores adversary capability when generating
+      an instance. Its direct objective is to place persistence in a reusable content object upstream of any one instance.
+  - zh: 概念锚是镜像 identity/digest、内容 manifest 和部署实例之间的谱系，不是云厂商、VM/容器类型或单一恶意文件。外部开发/供应环节植入归 T1195；只上传载荷而置备系统不消费它不属于本对象；对已经运行实例的临时修改也不构成镜像持久化。
+    en: The conceptual anchor is lineage among image identity or digest, content manifest, and deployed instance rather than
+      cloud provider, VM or container class, or one malicious file. Implantation in an external development or supply stage
+      belongs to T1195. Uploading a payload that no provisioning system consumes is outside this object, as is a transient
+      change to an already running instance that does not modify the image.
+stealth_characteristics:
+  paragraphs:
+  - zh: 可变 tag 或常用镜像名可以保持 workload 规范不变而指向新 digest，使审查者继续看到熟悉引用；镜像也可在 registry 静态停留，直到数日后的扩容、重建或恢复才在另一资产运行。两种变量分别切断“引用等于内容”和“修改紧邻执行”的假设。
+    en: A mutable tag or common image name can keep the workload specification unchanged while resolving to a new digest,
+      leaving reviewers with a familiar reference. An image can also remain static in the registry until scaling, rebuild,
+      or recovery days later runs it on another asset. The two variables separately break assumptions that a reference equals
+      content and that modification immediately precedes execution.
+  - zh: push actor、registry event、tag-to-digest history、manifest/layer digest、签名、SBOM、deployment revision、node pull 与实例启动仍可恢复链条。合法发布、回滚、金镜更新和自动扩缩容会产生同形事件；缺少批准基线时，新
+      digest 或以后实例启动只能说明版本变化，不能单独归因。
+    en: Push actor, registry event, tag-to-digest history, manifest or layer digest, signature, SBOM, deployment revision,
+      node pull, and instance start can still recover lineage. Legitimate release, rollback, golden-image update, and autoscaling
+      produce the same event shape. Without an approval baseline, a new digest or later instance start shows version change
+      but cannot alone establish attribution.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 纳入受害环境内部镜像的攻击者控制内容变化及至少一个由该镜像产生或计划产生的实例结果，要求稳定 registry/image ID、内容 digest 和置备引用可关联。标签、平台、镜像格式和 payload 类型不形成子项。
+    en: Scope includes adversary-controlled content change to an image inside the victim environment and at least one instance
+      outcome produced or intended to be produced from that image, requiring correlatable stable registry or image ID, content
+      digest, and provisioning reference. Tag, platform, image format, and payload type do not form children.
+  - zh: 只改变运行实例归实例配置或执行技术；篡改外部公共镜像归供应链；只把恶意镜像上传到未被消费的仓库不证明持久化。签名镜像也可能由被攻陷 builder 合法签发，因此签名是谱系字段而非自动信誉。
+    en: Changing only a running instance belongs to instance-configuration or execution techniques, tampering with an external
+      public image to supply chain, and uploading a malicious image to an unconsumed repository does not establish persistence.
+      A compromised builder can legitimately sign a malicious image, so signature is a lineage field rather than automatic
+      reputation.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: 攻击者取得 ECR/ACR/GCR、VM image catalog 或构建服务写权限后，可向生产 tag 推送恶意 digest，或创建看似正常的黄金镜像并等待滚动更新、节点替换、扩缩容或灾备恢复。新实例继承植入后，即使原被攻陷实例删除，入口仍会复现。
+      en: After obtaining write authority over ECR, ACR, GCR, a VM image catalog, or a build service, an adversary can push
+        a malicious digest to a production tag or create an apparently normal golden image and wait for rolling update, node
+        replacement, scaling, or disaster recovery. New instances inherit the implant so entry recurs even if the originally
+        compromised instance is deleted.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 需要 registry/image 创建或修改权限、与目标运行环境兼容的镜像内容，以及让置备系统引用该镜像的已有配置或控制能力。digest pinning、签名验证、不可变 tag、隔离 builder 和最小 push
+          权限会限制效果；错误镜像可能启动失败并暴露。
+        en: The adversary needs registry or image create or modify authority, image content compatible with the target runtime,
+          and either an existing provisioning reference or authority to make the system use the image. Digest pinning, signature
+          verification, immutable tags, isolated builders, and least push privilege constrain the effect. A broken image may
+          fail to start and expose the operation.
+    defender_model:
+      paragraphs:
+      - zh: 防守方需要 registry 审计、tag 历史、digest/manifest、签名与 SBOM、构建来源、部署规范、pull 和实例运行遥测，并跨镜像生命周期关联。只看 workload YAML 会漏掉 tag 重定向；只看单个实例会丢失上游
+          push actor；短保留会丢失置备延迟。
+        en: The defender needs registry audit, tag history, digest or manifest, signature and SBOM, build origin, deployment
+          specification, pull, and instance runtime telemetry correlated across the image lifecycle. Workload-YAML-only review
+          misses tag retargeting, instance-only review loses the upstream push actor, and short retention loses provisioning
+          delay.
+stealth_mechanisms:
+- mechanism_ref: NM-FD
+  role: primary
+  summary:
+    zh: 熟悉镜像引用承载被替换的内容 digest
+    en: A familiar image reference carries a substituted content digest
+  analysis:
+    paragraphs:
+    - zh: 攻击者把恶意 manifest 推到既有 tag 或镜像名下，部署规范、仓库路径和 workload 名称不变而解析内容发生变化。恶意镜像借用已批准引用的可见特征，依赖名称或 tag 的控制难以区分，形成特征伪装。Kubernetes
+        明确说明 tag 可指向不同代码而 digest 唯一固定版本，故置信度为 high。
+      en: The adversary pushes a malicious manifest under an established tag or image name so deployment specification, repository
+        path, and workload name remain while resolved content changes. The malicious image borrows visible features of an
+        approved reference, defeating controls based on name or tag and producing Feature Disguise. Kubernetes explicitly
+        states that a tag can point to changed code while a digest uniquely pins a version, supporting high confidence.
+  evidence_refs:
+  - REF-000185
+  - REF-000186
+  confidence: high
+- mechanism_ref: NM-ST
+  role: secondary
+  summary:
+    zh: 镜像修改与未来实例运行跨时间和资产分离
+    en: Image modification and future instance execution separate across time and assets
+  analysis:
+    paragraphs:
+    - zh: 恶意内容先停留在 registry，只有以后扩缩容、重建或启动实例时才执行；push 和行为落在不同时间窗与节点，局部分析只能看到一次镜像变更或一个正常置备，形成时空释痕。DET0334 明确要求把 image push 与以后
+        deployment/instance start 关联，支持 high。
+      en: Malicious content first remains in the registry and executes only when later scaling, rebuild, or instance start
+        consumes it. Push and behavior land in different windows and nodes, leaving local analysis with one image change or
+        normal provisioning and producing Spatiotemporal Trace Dilution. DET0334 explicitly requires joining image push with
+        later deployment or instance start, supporting high confidence.
+  evidence_refs:
+  - REF-000185
+  - REF-000186
+  confidence: high
+subtechnique_taxonomy:
+  narrative:
+    paragraphs:
+    - zh: 可变镜像引用替换固定引用保持而 digest 改变，检测核心是 tag-to-digest 历史；未来置备镜像激活固定镜像先植入而以后实例才运行，检测核心是 registry-to-instance 长期谱系。前者可立即滚动部署，后者可使用固定
+        digest 延后启动，因此互不包含。
+      en: Mutable Image-Reference Substitution fixes a stable reference with changing digest and centers detection on tag-to-digest
+        history. Future-Provisioning Image Activation fixes prior implantation with later instance execution and centers detection
+        on long-term registry-to-instance lineage. The former can roll out immediately, while the latter can delay a digest-pinned
+        image, so neither contains the other.
+    - zh: 容器、虚拟机和云厂商不构成分类边界。微小镜像层嫁接也不独立成项，因为“差异小”没有稳定阈值，且不能单独证明防守观察效果；它仍按引用变化或未来置备激活归入已有兄弟项。
+      en: Containers, virtual machines, and cloud providers do not define the taxonomy. Minimal image-layer grafting is not
+        an independent child because a small difference has no stable threshold and does not by itself establish a defender-observation
+        effect; it remains classified by reference change or future-provisioning activation.
+  coverage: established
+  subtechnique_refs:
+  - NJS-0092-001
+  - NJS-0092-002
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000072
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000072
+evidence:
+  claim_refs:
+  - CLM-000374
+  - CLM-000375
+  - CLM-000376
+  case_refs: []
+  reference_refs:
+  - REF-000185
+  - REF-000186
+research:
+  limitations:
+    paragraphs:
+    - zh: ATT&CK 与 DET0334 直接支持内部镜像植入、registry push 和以后部署/实例启动；Kubernetes 直接支持 tag 与 digest 语义。跨 VM 和容器的统一限于相同 image identity-content-instance
+        谱系，不假定所有平台都有相同字段。合法发布同样改变 digest 并在未来启动，必须结合 push actor、审批、签名/SBOM 差异和异常运行结果。
+      en: ATT&CK and DET0334 directly support internal-image implantation, registry push, and later deployment or instance
+        start, while Kubernetes directly supports tag and digest semantics. Unification across VM and container images is
+        limited to equivalent image identity-content-instance lineage and does not assume identical fields. Legitimate releases
+        also change digests and start later, requiring push actor, approval, signature or SBOM difference, and anomalous runtime
+        outcome.
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-09-11'
+  modified: '2026-09-11'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

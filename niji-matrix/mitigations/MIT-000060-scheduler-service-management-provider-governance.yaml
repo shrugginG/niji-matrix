@@ -1,0 +1,159 @@
+schema_version: 2.0.0
+type: mitigation
+id: MIT-000060
+name:
+  zh: 调度器、服务与管理 Provider 治理
+  en: Scheduler, Service, and Management-Provider Governance
+summary:
+  zh: 以最小权限、定义完整性、实时事务审计和远程来源限制约束计划、服务与 WMI 执行。
+  en: Constrain scheduled, service, and WMI execution through least privilege,
+    definition integrity, real-time transaction audit, and remote-origin
+    restrictions.
+description:
+  paragraphs:
+    - zh: 本缓解把可复用控制措施与逐目标应用分开。它以最小权限、定义完整性、实时事务审计和远程来源限制约束计划、服务与 WMI
+        执行。实施时同时保留检测所需审计，不以单一信誉、签名或白名单替代最小权限、输入审查和完整性验证。
+      en: This mitigation separates reusable measures from per-target applications. It
+        will constrain scheduled, service, and WMI execution through least
+        privilege, definition integrity, real-time transaction audit, and
+        remote-origin restrictions. Implementation preserves audit needed for
+        detection and does not substitute a single reputation, signature, or
+        allowlist for least privilege, input review, and integrity validation.
+    - zh: 对服务型权限提升，治理必须把 definition writer 与 runtime account 的授权边界显式分开：能提交或修改定义的主体不应仅因 manager 消费而继承更高权限，批准记录应绑定精确 object/version、目标、账户和有效期；处置还需撤销服务执行产生的 privileged side effects，而不能只删除定义。
+      en: For service-based elevation, governance must explicitly separate definition-writer authority from the runtime account. A principal able to submit or change a definition must not inherit greater authority merely because a manager consumes it. Approval binds the exact object and version, target, account, and validity period, and response must revoke privileged side effects produced by service execution rather than only deleting the definition.
+domains:
+  - enterprise
+measures:
+  - key: scheduler-service-definition-control
+    name:
+      zh: 计划与服务定义控制
+      en: Scheduled and Service Definition Control
+    description:
+      paragraphs:
+        - zh: 限制任务与服务创建修改权限，验证定义和载荷完整性，并保留创建、启动、执行与删除的事务日志。
+          en: Restrict task and service create or modify rights, validate definition and
+            payload integrity, and retain transactional create, start,
+            execution, and delete logs.
+    control_type: preventive
+  - key: wmi-namespace-origin-control
+    name:
+      zh: WMI 命名空间与来源控制
+      en: WMI Namespace and Origin Control
+    description:
+      paragraphs:
+        - zh: 按角色限制 WMI 命名空间和可执行方法，收缩远程 DCOM 或 WinRM 来源，并把操作标识传递到 provider 与进程审计。
+          en: Restrict WMI namespaces and execution-capable methods by role, reduce remote
+            DCOM or WinRM origins, and propagate operation identifiers into
+            provider and process audit.
+    control_type: governance
+  - key: service-writer-runtime-authority-separation
+    name:
+      zh: 服务 writer 与运行权限分离
+      en: Service Writer and Runtime-Authority Separation
+    description:
+      paragraphs:
+        - zh: 将 service create/change/ACL 权限限制为 JIT 审批主体，禁止低权限 writer 直接指定更高 runtime account 或未经批准的 target；在 manager 采用时验证 object/version、resolved target、execution account 与策略，并保留可撤销的结果审计。
+          en: Restrict service create, change, and ACL rights to JIT-approved principals, prevent a lower-authority writer from directly selecting a higher runtime account or unapproved target, validate object and version, resolved target, execution account, and policy when the manager adopts the definition, and preserve revocable outcome audit.
+    control_type: preventive
+applications:
+  - target_ref: NJT-0089
+    use:
+      paragraphs:
+        - zh: 只允许 JIT 管理主体创建或修改服务定义与对象权限，版本化保存原始指令、解析目标、执行账户和
+            ACL；变更必须绑定软件包、审批与有效期，并在服务启动时验证目标身份。
+          en: Allow only JIT administrative principals to create or modify service
+            definitions and object permissions. Version raw directives, resolved
+            targets, execution accounts, and ACLs; bind changes to a package,
+            approval, and validity period and verify target identity when the
+            service starts.
+        - zh: 将 writer/pre-state 权限与 runtime token 的授权集合分别评估；只有批准主体可让 manager 采用高于 writer 的账户或权限。隔离异常 object/version 后，还要撤销其创建的账户、组成员、ACL、凭据、进程或远程会话等新获准结果。
+          en: Evaluate writer or pre-state authority separately from the runtime token's authorization set, allowing only an approved principal to make the manager adopt an account or authority above the writer. After isolating an anomalous object and version, revoke newly authorized effects such as created accounts, group memberships, ACLs, credentials, processes, or remote sessions.
+    expected_effect:
+      paragraphs:
+        - zh: 减少未经批准的持久服务状态，破坏只借用服务名称或管理器信誉的匿迹，并保留从 writer 到执行结果的归因链。
+          en: Reduces unapproved durable service state, defeats evasion that borrows only
+            service-name or manager reputation, and preserves attribution from
+            writer to execution outcome.
+        - zh: 缩小低权限定义输入被高权限 manager 消费的路径，并使已发生的权限提升结果可被定位和撤销。
+          en: Narrows paths where a privileged manager consumes lower-authority definition input and makes completed elevation outcomes identifiable and revocable.
+    limitations:
+      paragraphs:
+        - zh: 软件安装、恢复和编排需要频繁合法变更；控制管理身份或签名供应链的攻击者仍可能提交一致定义，强制回滚还可能中断关键服务。
+          en: Software installation, recovery, and orchestration require frequent
+            legitimate changes. An adversary controlling a management identity
+            or signed supply chain can still submit a consistent definition,
+            while forced rollback may interrupt critical services.
+        - zh: 某些 installer、编排器与管理员本就具有等同 runtime 权限，角色分离不能创造不存在的边界；若攻击者已控制批准者或高权限声明式源，definition validation 仍会接受恶意但一致的版本。
+          en: Some installers, orchestrators, and administrators already hold authority equivalent to runtime, so role separation cannot create a nonexistent boundary. If the adversary controls the approver or privileged declarative source, definition validation can still accept a malicious but internally consistent version.
+  - target_ref: NJS-0089-001
+    use:
+      paragraphs:
+        - zh: 对既有服务强制比较批准定义与解析后路径、哈希和签名，禁止未授权 drop-in、符号链接和 ImagePath
+            变化；服务名称或受信父进程不得自动放行目标差异。
+          en: For established services, enforce comparison of the approved definition with
+            resolved path, hash, and signature and prohibit unapproved drop-ins,
+            symbolic links, and ImagePath changes. A service name or trusted
+            parent must not automatically allow target differences.
+        - zh: 只有经批准 writer 才能改变同一 service object 的 target，并在 manager 采用前验证 runtime account 与目标资源授权；发现替换时冻结精确 definition version、阻止再次启动，并回滚该版本在更高 token 下产生的结果。
+          en: Allow only an approved writer to change the target of the same service object and validate the runtime account and target-resource authorization before manager adoption. When substitution is found, freeze the exact definition version, prevent another start, and roll back outcomes produced by that version under the higher token.
+    expected_effect:
+      paragraphs:
+        - zh: 使攻击者无法仅保留外观就替换语义，迫使其同时控制定义基线、批准包或目标完整性。
+          en: Prevents the adversary from substituting semantics merely by preserving
+            appearance and forces simultaneous control of the definition
+            baseline, approved package, or target integrity.
+        - zh: 防止既有服务信誉把较低权限输入自动转换为高权限执行，并缩短被替换版本可产生新增授权的时间。
+          en: Prevents established-service reputation from automatically converting lower-authority input into privileged execution and shortens the period in which a substituted version can produce added authorization.
+    limitations:
+      paragraphs:
+        - zh: 动态生成 unit、版本切换和合法路径迁移需要受控例外；只验证签名不能发现被滥用的合法但错误目标。
+          en: Dynamically generated units, version switches, and legitimate path migration
+            need controlled exceptions. Signature validation alone cannot detect
+            an abused legitimate but incorrect target.
+        - zh: 若 writer 已具备与 runtime 等同权限，措施只提高完整性而不能证明或阻止权限提升；进程已完成的高权限副作用不会因恢复旧 ImagePath 自动消失。
+          en: If the writer already holds authority equivalent to runtime, the measure improves integrity but cannot prove or prevent elevation. Restoring the old ImagePath does not automatically remove privileged side effects already completed by the process.
+  - target_ref: NJS-0089-002
+    use:
+      paragraphs:
+        - zh: 限制服务 ACL 修改权限，定期以独立高权限只读主体比较原始注册状态与一线管理视图，并将任何对象级访问拒绝连接到 ACL writer、审批和实际进程。
+          en: Restrict service-ACL modification, periodically compare raw registration
+            state with frontline management views through an independent
+            privileged read-only principal, and join every object-level access
+            denial to ACL writer, approval, and actual process.
+        - zh: 高权限盘点主体发现视图差后，应冻结相关 ACL/definition version，验证 manager 使用的实际 token 与新获准资源操作，并恢复预期读权限；只有确认过低权限 writer—高权限结果链时才按提权事件处置。
+          en: After a privileged inventory principal finds a view difference, freeze the relevant ACL and definition version, validate the actual token used by the manager and newly authorized resource operations, and restore intended read rights. Treat it as elevation only after confirming a lower-writer-to-higher-outcome chain.
+    expected_effect:
+      paragraphs:
+        - zh: 消除攻击者依赖单一受限枚举视图隐藏服务的机会，并把异常权限变化变成可追溯控制事件。
+          en: Removes the opportunity to hide a service behind one restricted enumeration
+            view and turns anomalous permission changes into attributable
+            control events.
+        - zh: 使不可见服务的 runtime authority 和结果进入处置链，避免只恢复可见性却保留已建立的高权限后继状态。
+          en: Brings runtime authority and outcomes of an invisible service into response, avoiding restoration of visibility while leaving established privileged successor state intact.
+    limitations:
+      paragraphs:
+        - zh: 合法多租户和职责隔离会有意产生视图差异；高权限审计主体被攻陷或原始状态接口不可用时，该措施无法保证完整性。
+          en: Legitimate multitenancy and separation of duties intentionally create view
+            differences. The measure cannot guarantee completeness if the
+            privileged audit principal is compromised or raw-state interfaces
+            are unavailable.
+        - zh: 恢复 query right 可能暴露受治理隔离的对象或扩大信息面；若没有 ACL old/new、批准 owner、actual token 与结果，视图修复不能确认曾发生权限提升。
+          en: Restoring query rights can expose deliberately isolated objects or broaden information access. Without ACL old and new, approved owner, actual token, and outcome, repairing the view cannot confirm that elevation occurred.
+evidence_refs:
+  - REF-000127
+  - REF-000131
+  - REF-000134
+  - REF-000182
+  - REF-000289
+  - REF-000290
+  - REF-000292
+  - REF-000336
+  - REF-000337
+lifecycle:
+  status: review
+  version: 1.2.0
+  created: "2026-09-10"
+  modified: "2026-09-13"
+  contributors:
+    - Niji Matrix Research
+  reviewers: []

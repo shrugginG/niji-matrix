@@ -1,0 +1,132 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000278
+strategy_ref: DET-000224
+name:
+  zh: 敏感读取—近距 peer 发送关联
+  en: Sensitive Read–Proximity Peer Send Correlation
+summary:
+  zh: 连接近距 peer 发现、会话或广播与方向字节及敏感数据来源。
+  en: Join proximity peer discovery, session or advertisement to directional bytes and sensitive-data provenance.
+domains:
+- enterprise
+platforms:
+- Windows
+- Linux
+- macOS
+logic:
+  paragraphs:
+  - zh: 在 30 分钟内把非交互或未批准进程的敏感文件读取/暂存连接到 radio enable、scan/pair/connect/service 事件及 peer 方向字节。peer 未在资产外设清单、服务/profile
+      允许文件或自定义数据传输、发送字节明显超过该设备角色基线，或同一随机化 peer 在物理区域重复出现时提高严重度。输出 peer-discovered、session-established、outbound-bytes-observed
+      和 receipt-supported 四层；仅发现或 beacon 状态不报告外传。
+    en: Within 30 minutes, join sensitive-file read or staging by a non-interactive or unapproved process to radio
+      enable, scan, pair, connect, and service events plus directional peer bytes. Raise severity when the peer
+      is absent from the asset's peripheral inventory, the service or profile permits files or custom data, sent
+      bytes exceed the device-role baseline, or the same randomized peer recurs in one physical area. Output peer-discovered,
+      session-established, outbound-bytes-observed, and receipt-supported separately; discovery or beacon status
+      alone does not report exfiltration.
+data_requirements:
+- source_type: short-range-link-audit
+  name:
+    zh: 短距链路生命周期与方向字节
+    en: Short-range link lifecycle and directional bytes
+  channel: OS Bluetooth/NFC/nearby-sharing logs, MDM telemetry, HCI audit, or equivalent
+  required_fields:
+  - timestamp
+  - device-id
+  - adapter-id
+  - technology-class
+  - operation
+  - peer-identifier
+  - pairing-state
+  - service-or-profile
+  - session-id
+  - direction
+  - bytes-sent
+  - bytes-received
+  - process-id-if-available
+  - outcome
+- source_type: endpoint-file-event
+  name:
+    zh: 敏感文件访问或暂存事件
+    en: Sensitive-file access or staging events
+  channel: Microsoft Defender XDR DeviceFileEvents or equivalent
+  required_fields:
+  - timestamp
+  - deviceid
+  - filename
+  - folderpath
+  - filesize
+  - initiatingprocessuniqueid
+  - actiontype
+- source_type: approved-peer-inventory
+  name:
+    zh: 批准 peer、服务与设备角色清单
+    en: Approved peer, service, and device-role inventory
+  channel: MDM, asset, and physical-security management
+  required_fields:
+  - device-id
+  - peer-identity-or-class
+  - approved-service-or-profile
+  - owner
+  - role
+  - location-scope
+  - valid-from
+  - valid-to
+- source_type: proximity-context
+  name:
+    zh: 可选 RF 与物理邻近上下文
+    en: Optional RF and physical-proximity context
+  channel: authorized RF sensor, access-control, or location system
+  required_fields:
+  - timestamp
+  - area-id
+  - observed-peer
+  - signal-context
+  - sensor-id
+observables:
+- zh: 未批准进程发现或连接邻近 peer，并使用文件、PAN 或自定义数据服务
+  en: An unapproved process discovers or connects to a nearby peer and uses file, PAN, or custom data services
+- zh: 敏感读取后近距会话或广播的发送量、序列或持续时间增加
+  en: Proximity-session or advertisement sends, sequence, or duration increases after sensitive access
+correlation:
+  window:
+    zh: 以十五分钟连接发现、会话和发送，并为低吞吐广播保留二十四小时序列。
+    en: Use fifteen minutes to join discovery, session, and sending and retain twenty-four hours for low-throughput
+      advertisements.
+  dimensions:
+  - device-id
+  - adapter-id
+  - peer-identifier-or-cluster
+  - service-or-profile
+  - session-id
+  - process-id
+  - area-id
+  - time
+false_positives:
+- zh: 批准外设、协作传输、实验室测试和受管移动设备同步
+  en: Approved peripherals, collaboration transfer, lab testing, and managed mobile synchronization
+blind_spots:
+- zh: peer 地址随机化且操作系统不记录方向字节
+  en: Peer addresses are randomized and the OS does not record directional bytes
+- zh: radio 固件、被动接收者或不受管个人设备位于 EDR 之外
+  en: Radio firmware, passive receivers, or unmanaged personal devices sit outside EDR
+tuning_guidance:
+  paragraphs:
+  - zh: 按资产角色允许 peer class 与 service/profile，不把单一随机地址永久白名单；对服务器和固定工作站默认低容忍，对移动办公设备按用户交互和文件大小基线。RF/位置数据只在授权区域与明确保留政策下使用。
+    en: Allow peer class and service or profile by asset role rather than permanently allowlisting one randomized
+      address. Use low tolerance on servers and fixed workstations and baseline user interaction and file size on
+      mobile work devices. Use RF or location data only in authorized areas with explicit retention policy.
+evidence_refs:
+- REF-000932
+- REF-000933
+- REF-000935
+- REF-000475
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-10-04'
+  modified: '2026-10-04'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

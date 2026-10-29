@@ -1,0 +1,108 @@
+review_schema_version: 1.0.0
+type: taxonomy-breadth-review
+batch_ref: BATCH-TA0004-006
+work_item_ref: WORK-TA0004-T1543
+attack_baseline: {domain: enterprise-attack, version: '19.1'}
+attack_subtechnique_count: 5
+attack_subtechnique_ids: [T1543.001, T1543.002, T1543.003, T1543.004, T1543.005]
+represented_dimensions:
+- {attack_ref: T1543.001, implementation_or_behavior: macOS per-user launch-agent plist and program or argument definition consumed by launchd}
+- {attack_ref: T1543.002, implementation_or_behavior: Linux systemd system or user unit definition and manager lifecycle execution}
+- {attack_ref: T1543.003, implementation_or_behavior: Windows Service Control Manager service object configuration account and executable target}
+- {attack_ref: T1543.004, implementation_or_behavior: macOS system-wide launch-daemon plist and privileged launchd execution}
+- {attack_ref: T1543.005, implementation_or_behavior: container or cluster service definition reconciled by a runtime orchestrator or node agent}
+breadth_trigger: five-child-multi-axis-review
+coverage_resolutions:
+- attack_refs: [T1543.001]
+  resolution: parent-core
+  rationale_zh: Launch Agent 是按用户消费的 plist 实现，通常不能仅凭 launchd 父进程证明权限提升。若攻击者替换已存在 agent 的解析目标可进入 NJS-0089-001；新建 agent、标签或 plist 介质仍归父级。
+  rationale_en: Launch Agent is a per-user plist implementation and a launchd parent alone does not establish elevation. Substitution of the resolved target of an established agent can enter NJS-0089-001, while a new agent, label, or plist medium remains parent scope.
+- attack_refs: [T1543.002]
+  resolution: parent-core
+  rationale_zh: systemd system 与 user unit 的 manager、目录和默认账户是实现参数。只有较低权限 writer/pre-state 能影响由更高权限 system manager 消费的精确 unit 并产生新获准结果时才满足 TA0004；保留既有 unit 身份而改变 Exec 语义可进入 NJS-0089-001。
+  rationale_en: The manager, directory, and default account of systemd system and user units are implementation parameters. TA0004 applies only when a lower-authority writer or pre-state can influence the exact unit consumed by a higher-authority system manager and obtain a newly authorized outcome. Preserving an established unit identity while changing Exec semantics can enter NJS-0089-001.
+- attack_refs: [T1543.003]
+  resolution: niji-variable-candidate
+  final_resolution: formal
+  child_refs: [NJS-0089-001, NJS-0089-002]
+  rationale_zh: Windows Service 同时直接支持两项稳定变量：同一 service object 保留身份但 ImagePath/配置改变，以及对象 DACL 使普通枚举静默遗漏而 SCM 继续读取执行。SERVICE_CHANGE_CONFIG 或对象 DACL 权限与 LocalSystem 执行也为 TA0004 结果门提供直接系统语义，但权限差仍须逐事件证明。
+  rationale_en: Windows Service directly supports two stable variables: the same service object preserves identity while ImagePath or configuration changes, and an object DACL makes ordinary enumeration silently omit the service while SCM continues to read and execute it. SERVICE_CHANGE_CONFIG or object-DACL authority and LocalSystem execution also provide direct system semantics for the TA0004 outcome gate, although the authority difference still requires per-event proof.
+- attack_refs: [T1543.004]
+  resolution: parent-core
+  rationale_zh: Launch Daemon 是系统范围的 launchd 实现，路径和 root consumer 不构成 Niji 子项。既有 daemon 身份替换可进入 NJS-0089-001；若创建或修改本身已需 root，则 root 执行没有相对 pre-state 的权限增量。
+  rationale_en: Launch Daemon is a system-wide launchd implementation, and its path or root consumer does not create a Niji child. Established-daemon identity substitution can enter NJS-0089-001. If creation or modification already requires root, root execution has no authority gain relative to pre-state.
+- attack_refs: [T1543.005]
+  resolution: parent-core
+  rationale_zh: Container Service 表示运行时、编排器或节点代理保存并调和的服务定义。容器账户、restart policy、镜像和平台留在父级；从容器越界到宿主归 T1611。既有 service identity replacement 只有在稳定对象和解析目标可比较时才进入 NJS-0089-001，分布式扇出证据仍不足。
+  rationale_en: Container Service represents a service definition preserved and reconciled by a runtime, orchestrator, or node agent. Container account, restart policy, image, and platform remain parent parameters, while crossing from a container to the host belongs to T1611. Established-service identity replacement enters NJS-0089-001 only when a stable object and resolved target are comparable; evidence for distributed fan-out remains insufficient.
+candidate_stealth_axes_examined:
+- axis: established-service-identity-substitution
+  discovery_source: ATT&CK-T1543-and-existing-service-incidents
+  final_resolution: formal
+  child_ref: NJS-0089-001
+  reason_zh: 攻击者能稳定控制同一 service object 的解析目标，同时保留名称、账户、启动条件与受信 manager 谱系；痕迹由“新服务”变为既有定义的 old/new 差异，名称或父进程规则难以区分，需要 definition-target-process 和权限结果关联。
+  reason_en: The adversary can stably control the resolved target of one service object while preserving name, account, start condition, and trusted-manager lineage. The trace changes from a new service to an old-versus-new difference within an established definition, weakening name or parent rules and requiring definition-to-target-to-process and authority-outcome correlation.
+- axis: enumeration-restricted-service-registration
+  discovery_source: Windows-service-object-DACL-and-ATT&CK-T1543
+  final_resolution: formal
+  child_ref: NJS-0089-002
+  reason_zh: 攻击者可控制对象查询权限，使默认 EnumServicesStatusEx 或等价管理视图静默遗漏仍被 manager 执行的对象；该轴改变 observation coverage，使用普通视图—高权限原始状态差分和 ACL writer 键，检测与缓解均区别于目标替换。
+  reason_en: The adversary can control object query rights so default EnumServicesStatusEx or an equivalent management view silently omits an object still executed by the manager. This axis changes observation coverage and uses ordinary-view-to-privileged-raw-state differences plus ACL-writer keys, with detection and mitigation distinct from target substitution.
+- axis: new-service-vendor-or-generic-name-mimicry
+  discovery_source: ATT&CK-internal-and-cross-category-masquerading
+  final_resolution: adjacent
+  reason_zh: 新建 service 使用近似供应商名称可能影响名称信誉，但没有保留同一对象身份；service 创建仍归父级，名称/文件伪装归 Masquerading，不能用命名维度复制第三个 Niji 子项。
+  reason_en: A new service with a vendor-like name can affect name reputation but does not preserve the same object identity. Service creation remains parent scope and name or file disguise belongs to Masquerading, so naming cannot duplicate a third Niji child.
+- axis: service-target-or-argument-substitution
+  discovery_source: ATT&CK-T1543.003-and-cross-platform-definition-fields
+  final_resolution: formal-when-established-otherwise-parent-core
+  child_ref: NJS-0089-001
+  reason_zh: 对既有 stable object 的 ImagePath、Exec、Program、argument、drop-in 或解析链接替换由 NJS-0089-001 完整覆盖；新对象初始目标只是父级定义内容，没有另一套 identity key 或防御 owner。
+  reason_en: NJS-0089-001 fully covers substitution of ImagePath, Exec, Program, arguments, drop-ins, or resolved links on an established stable object. The initial target of a new object is merely parent definition content and has no separate identity key or defense owner.
+- axis: service-account-or-execution-context-transition
+  discovery_source: cross-tactic-TA0003-to-TA0004
+  final_resolution: parent-core
+  reason_zh: writer/pre-state 到实际 service account/token/result 的正向权限差是所有实现进入 TA0004 的共同结果门，并可与任一 sibling 同时出现；它不改变 service definition 的匿迹变量，单列会把战术结果误作子技术。
+  reason_en: Positive authority difference from writer or pre-state to actual service account, token, and result is the common TA0004 outcome gate across implementations and can coexist with either sibling. It does not change the service-definition evasion variable, so a child would mistake tactic outcome for taxonomy.
+- axis: delayed-restart-or-recovery-only-activation
+  discovery_source: lifecycle-timing-outside-ATT&CK-child-partitions
+  final_resolution: parent-core
+  reason_zh: 服务定义可在稍后启动、重启、失败恢复或调和时执行，写入与结果分离会形成 NM-ST 因果链，但这是持久定义共有的生命周期语义，没有持久 sibling 边界；应在父技术和检测窗口中表达。
+  reason_en: A service definition can execute later at start, reboot, failure recovery, or reconciliation, separating mutation from outcome and forming an NM-ST causal chain. This is shared lifecycle semantics of the durable definition rather than a persistent sibling boundary and belongs in the parent and detection window.
+- axis: distributed-desired-state-fanout
+  discovery_source: ATT&CK-T1543.005-and-cross-system-topology
+  final_resolution: deferred
+  reason_zh: 一份期望状态驱动多节点服务可减少逐节点写入并分散观察，但现有公开来源未结论级证明攻击者以匿迹为目的选择该扇出，也没有稳定区分合法编排、rollout 与攻击传播的独立阈值。
+  reason_en: One desired-state version driving services on many nodes can reduce per-node mutations and distribute observation, but public sources do not conclusively establish adversary selection of that fan-out for evasion or an independent stable threshold separating legitimate orchestration, rollout, and malicious propagation.
+- axis: transient-service-create-start-delete
+  discovery_source: cross-technique-service-execution-lifecycle
+  final_resolution: adjacent
+  reason_zh: 短驻 create—start—delete 以一次 brokered service execution 和删除窗口为 stable key，已由 NJT-0079/NJS-0079-002 拥有；没有跨会话或期望状态持久定义时不属于 NJT-0089。
+  reason_en: Short-lived create-start-delete uses one brokered service-execution transaction and deletion window as stable keys and is already owned by NJT-0079 and NJS-0079-002. Without a cross-session or desired-state durable definition it is outside NJT-0089.
+- axis: target-binary-content-or-load-resolution
+  discovery_source: cross-category-integrity-and-execution-flow
+  final_resolution: adjacent
+  reason_zh: 定义不变而目标二进制正文改变归 NJT-0087，模块、DLL 或依赖搜索劫持归 T1574；这些行为可能与服务提权组合，但不改变服务定义的 Niji 分类。
+  reason_en: Target-binary content change with an unchanged definition belongs to NJT-0087, while module, DLL, or dependency-search hijacking belongs to T1574. These behaviors can combine with service elevation but do not alter service-definition taxonomy.
+- axis: mispermission-or-control-plane-compromise
+  discovery_source: cross-category-access-control
+  final_resolution: adjacent
+  reason_zh: 可写 service definition、SERVICE_CHANGE_CONFIG、ACL 错配或受控部署身份是获得输入能力的前提或权限修改行为；它决定 TA0004 是否成立，却没有独立改变服务痕迹的方式。
+  reason_en: A writable service definition, SERVICE_CHANGE_CONFIG, ACL misconfiguration, or compromised deployment identity is a precondition or permission-modification behavior that determines whether TA0004 applies but does not independently change how the service trace is hidden.
+- axis: platform-manager-medium-log-field
+  discovery_source: ATT&CK-internal
+  final_resolution: rejected
+  reason_zh: 按 Windows、Linux、macOS、Containers、SCM、systemd、launchd、plist、unit、Registry、账户名或日志字段拆分只是导入实现，不满足稳定匿迹变量和独立防御差异门禁。
+  reason_en: Splitting by Windows, Linux, macOS, Containers, SCM, systemd, launchd, plist, unit, Registry, account name, or log field only imports implementations and fails the stable-evasion-variable and independent-defense gates.
+second_pass_required: false
+second_pass_completed: true
+second_pass_dimensions: [object identity versus target semantics, ordinary versus privileged enumeration, lifecycle timing, distributed desired-state topology, transient transaction ownership, authority transition, target content and loading, access-control preconditions, platform and medium]
+final_formal_niji_child_count: 2
+new_formal_niji_child_count: 0
+breadth_gap_explained: true
+why_not_more:
+  zh: 五项 ATT&CK 实现和九类开放轴均已覆盖。既有对象目标替换与枚举权限差已由两个 formal child 拥有；权限转换和延迟激活是 parent-core；命名、瞬时执行、目标内容/加载与权限修改归 adjacent；分布式扇出 deferred；平台、manager、介质和字段 rejected。没有第三个同时具备可控稳定键、独立 trace/observation 效果、结论级证据与防御 owner 的轴。
+  en: All five ATT&CK implementations and nine open-search dimensions are covered. Established-object target substitution and enumeration-permission difference are already owned by two formal children. Authority transition and delayed activation are parent-level; naming, transient execution, target content or loading, and permission modification are adjacent; distributed fan-out is deferred; and platform, manager, medium, and field splits are rejected. No third axis combines a controllable stable key, independent trace and observation effect, conclusion-level evidence, and a defense owner.
+why_not_fewer:
+  zh: NJS-0089-001 的 stable key 是同一服务身份下定义/解析目标 old—new 差异，改变实体区分并要求 target-process 完整性；NJS-0089-002 的 stable key 是同一对象在不同 principal/API 路径上的 presence/ACL 差异，改变观察覆盖并要求 raw-state differential。二者可独立存在，反例、数据和恢复动作不同，合并会丢失明确边界。
+  en: NJS-0089-001 uses an old-to-new definition or resolved-target difference under the same service identity as its stable key, changing entity discrimination and requiring target-to-process integrity. NJS-0089-002 uses presence and ACL differences for the same object across principals or API paths as its stable key, changing observation coverage and requiring a raw-state differential. Either can exist independently, and their counterexamples, data, and recovery actions differ, so merging would erase a clear boundary.

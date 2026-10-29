@@ -1,0 +1,145 @@
+schema_version: 2.0.0
+type: evasion-subtechnique
+id: NJS-0214-001
+parent_ref: NJT-0214
+name:
+  zh: 剪贴板变化事件耦合获取
+  en: Clipboard-Change-Event-Coupled Acquisition
+summary:
+  zh: 攻击者在剪贴板变化通知到达后才读取新内容，使空闲期缺少持续轮询，而采集结果集中于用户复制后的短时窗口。
+  en: An adversary reads new content only after clipboard-change notifications, removing continuous polling during idle periods
+    and concentrating results shortly after user copy actions.
+aliases: []
+lineage:
+  attck_subtechnique_inherited: false
+definition_and_concept:
+  paragraphs:
+  - zh: 剪贴板变化事件耦合获取以读取触发条件为稳定变量：恶意组件先登记为 clipboard format listener、viewer 或平台等效观察者，收到内容变化通知后才打开或请求剪贴板并把成功返回的数据保存到攻击者控制的结果链。NightshadeC2
+      创建隐藏工具窗口、注册 AddClipboardFormatListener，接收 WM_CLIPBOARDUPDATE 后收集变化内容并写入隐藏日志，随后可由 C2 命令 150 上传，因而同时证明触发变量和实际内容结果。
+    en: Clipboard-Change-Event-Coupled Acquisition uses the read trigger as its stable variable. A malicious component first
+      registers as a clipboard format listener, viewer, or platform-equivalent observer, then opens or requests the clipboard
+      only after a content-change notification and saves a successful result into an adversary-controlled outcome chain. NightshadeC2
+      creates a hidden tool window, registers AddClipboardFormatListener, harvests changed content after WM_CLIPBOARDUPDATE,
+      writes a hidden log, and can upload it through C2 command 150, establishing both the trigger variable and an actual
+      content outcome.
+  - zh: 子项不要求某一种窗口类、API 名称或日志路径；关键是变化事件因果控制读取，未变化时相同采集读取不发生。单纯比较 sequence number 的轮询若仍按固定频率运行，不属于事件耦合；监听注册后从未取得数据也未达到完成点。剪贴板管理器、DLP
+      与远程支持同样采用变化事件，恶意性需由软件来源、授权范围和结果去向证明。
+    en: The child does not require a particular window class, API name, or log path. The defining fact is that a change event
+      causally controls the read and the same acquisition read does not occur without a change. Polling a sequence number
+      at a fixed cadence is not event coupling, and a listener that never acquires data does not reach completion. Clipboard
+      managers, DLP, and remote support also use change events, so maliciousness requires software provenance, authorization
+      scope, and outcome destination.
+stealth_characteristics:
+  paragraphs:
+  - zh: 剪贴板变化事件耦合获取让长期驻留与实际读取在时间上分离。组件可在没有用户复制动作时保持安静，只有变化后出现读取和日志追加；相较每数百毫秒打开剪贴板的循环，它减少空结果调用、锁竞争和固定节奏。防守方若只看短时 API 计数或沙箱中没有触发复制操作，可能只看到隐藏消息窗口而看不到内容结果。该设计仍留下
+      listener/viewer 注册、窗口或消息对象、变化到读取的稳定短窗，以及结果文件或网络动作。
+    en: Clipboard-Change-Event-Coupled Acquisition separates long-term residence from actual reads in time. The component
+      can remain quiet when the user performs no copy action, producing reads and log appends only after changes. Compared
+      with a loop that opens the clipboard every few hundred milliseconds, it reduces empty-result calls, lock contention,
+      and fixed cadence. A defender examining only short-window API counts, or a sandbox that never triggers a copy, may see
+      only a hidden message window and no content outcome. The design still leaves listener or viewer registration, a window
+      or message object, a repeatable change-to-read interval, and a result file or network action.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 判定须同时包含攻击者控制的变化订阅、通知后的成功内容读取以及内容进入其日志、内存或传输链的证据。只有 AddClipboardFormatListener、SetClipboardViewer、changeCount 或 selection
+      通知不够；只有用户复制事件也不够。固定间隔读取属于父级或暂缓的节奏轴，函数 hook 在正常粘贴消费者返回路径内复制数据属于兄弟项。若组件把持久 sequence、版本或时间边界用于约束后继自动收集轮次，可同时评估 NJS-0135-001；仅以当前变化事件作为一次读取触发不属于其检查点分类。事件之后的隐藏日志、压缩或上传可以补充
+      T1074、T1560 或外传技术，但不是本子项身份。
+    en: Classification requires an adversary-controlled change subscription, a successful content read after notification,
+      and evidence that the content entered its log, memory, or transfer chain. AddClipboardFormatListener, SetClipboardViewer,
+      changeCount, a selection notification, or a user copy event alone is insufficient. Fixed-interval reading remains parent
+      behavior or the deferred cadence axis. Copying a result inside a normal paste consumer's return path belongs to the
+      sibling child. A component that persists a sequence, version, or time boundary to constrain later automated collection
+      passes may also be assessed under NJS-0135-001; using the current change event only as a one-read trigger does not enter
+      its checkpoint taxonomy. A hidden log, compression, or upload after the event may add T1074, T1560, or an exfiltration
+      technique but does not define this child.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: 信息窃取程序驻留在用户工作站的交互桌面，等待日常复制动作带来短驻的凭据、地址、文档片段或命令。每次变化后，它读取新内容并追加到不显眼的本地结果，稍后由命令或定时传输取回。NightshadeC2 所见隐藏窗口、变化通知、隐藏日志与命令式上传构成完整实例；若沙箱或调查时段没有复制动作，组件可以存在而不产生一次采集结果。
+      en: An information stealer resides on a user's interactive desktop and waits for ordinary copy actions to expose short-lived
+        credentials, addresses, document fragments, or commands. After each change, it reads the new content and appends it
+        to an inconspicuous local result for later command-driven or scheduled retrieval. NightshadeC2's hidden window, change
+        notification, hidden log, and command-driven upload form a complete instance. If no copy action occurs in a sandbox
+        or investigation window, the component can exist without producing one acquisition result.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者须能在同一剪贴板会话注册长期观察对象、保持消息循环或等效事件订阅，并在通知后及时读取目标格式。其收益依赖用户产生感兴趣内容，且受到内容快速覆盖、应用清理、会话隔离及 compositor 权限限制。隐藏窗口可减少界面可见性，却不会自动隐藏进程、线程、窗口对象或
+          listener 注册；将内容持久化或上传还会增加文件与网络痕迹。
+        en: The adversary must register a long-lived observer in the same clipboard session, maintain a message loop or equivalent
+          subscription, and promptly read a target format after notification. Success depends on the user producing content
+          of interest and is constrained by rapid overwrites, application clearing, session isolation, and compositor permissions.
+          A hidden window can reduce UI visibility but does not automatically hide the process, thread, window object, or
+          listener registration. Persisting or uploading content adds file and network traces.
+    defender_model:
+      paragraphs:
+      - zh: 防守方需要经验证的 listener/viewer 注册或窗口对象遥测、剪贴板变化序列、成功读取结果以及文件或网络去向，并按主机、用户、登录会话、进程启动键和 sequence/change 标识关联。Volatility
+          证明 viewer 与剪贴板状态可以在内存中形成取证痕迹，但这不是持续实时审计。生产环境若没有剪贴板 API 传感器，应把隐藏窗口和变化后文件写入作为调查线索，不宣称已看到内容。合法剪贴板历史、密码管理器清理、VM guest
+          tools、RDP、DLP 与远程支持必须纳入批准基线。
+        en: Defenders need validated listener or viewer registration or window-object telemetry, a clipboard-change sequence,
+          a successful read result, and a file or network destination joined by host, user, logon session, process-start key,
+          and sequence or change identifier. Volatility establishes that viewer and clipboard state can leave memory-forensic
+          artifacts, but this is not continuous real-time auditing. Where production lacks a clipboard API sensor, hidden
+          windows and post-change file writes should remain investigative leads rather than claims that content was observed.
+          Legitimate clipboard history, password-manager clearing, VM guest tools, RDP, DLP, and remote support must be included
+          in the approved baseline.
+stealth_mechanisms:
+- mechanism_ref: NM-ST
+  role: primary
+  summary:
+    zh: 将剪贴板读取集中在变化通知后的短时窗口
+    en: Concentrate clipboard reads in short windows after change notifications
+  analysis:
+    paragraphs:
+    - zh: 恶意组件持续保留事件订阅，却只在用户改变剪贴板时执行内容读取。与固定轮询相比，空闲期不再出现重复 OpenClipboard/GetClipboardData 或同类调用，痕迹被分散到不规则的用户事件之后，短时计数与无交互沙箱更难重建整个驻留—触发—获取链。NightshadeC2
+        证明实际内容由这一通知路径收集；Windows 与 Volatility 资料说明通知和轮询的调用差异。listener、消息窗口、变化后读取和隐藏日志仍可通过长窗口关联，所以置信度为 medium 而非宣称全面规避。
+      en: The malicious component keeps an event subscription resident but reads content only when the user changes the clipboard.
+        Compared with fixed polling, idle periods no longer contain repeated OpenClipboard and GetClipboardData or equivalent
+        calls, and traces disperse after irregular user events. Short-window counts and noninteractive sandboxes therefore
+        struggle to reconstruct the full resident-to-trigger-to-acquisition chain. NightshadeC2 establishes actual collection
+        through this notification path, while Windows and Volatility material establishes the call-pattern difference between
+        notification and polling. The listener, message window, post-change read, and hidden log remain correlatable over
+        a long window, supporting medium confidence rather than a claim of universal evasion.
+  confidence: medium
+  evidence_refs:
+  - REF-001095
+  - REF-001096
+  - REF-001097
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000251
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000222
+evidence:
+  claim_refs:
+  - CLM-001074
+  case_refs:
+  - CASE-000326
+  reference_refs:
+  - REF-001097
+  - REF-001095
+  - REF-001096
+  - REF-001099
+research:
+  limitations:
+    paragraphs:
+    - zh: NightshadeC2 提供一个现场关联的 Windows 样本和完整结果链，却没有公开比较事件监听与轮询实现的告警率；时空释痕结论来自已证调用结构与防守模型。不同 Windows 版本、终端产品和内存取证工具对 listener、窗口与
+        API 的可见性不同。正常剪贴板管理器与安全产品会产生相同通知和读取，缺少软件来源、业务 owner 与内容去向时，本子项只能作为待调查行为，不能直接判恶。
+      en: NightshadeC2 provides one incident-linked Windows sample and a complete outcome chain but publishes no alert-rate
+        comparison between event-listener and polling implementations. The spatiotemporal-trace conclusion follows from the
+        established call structure and defender model. Listener, window, and API visibility differs by Windows version, endpoint
+        product, and memory-forensic tooling. Legitimate clipboard managers and security products generate the same notifications
+        and reads. Without software provenance, business owner, and content destination, this child is investigative behavior
+        rather than a malicious verdict.
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-10-05'
+  modified: '2026-10-05'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

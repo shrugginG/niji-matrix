@@ -1,0 +1,50 @@
+schema_version: "2.0.0"
+type: detection-analytic
+id: NJA-000135
+strategy_ref: DET-000132
+name: {zh: 精确规则—首个越界会话关联, en: Scoped Rule–First Boundary-Crossing Session Correlation}
+summary: {zh: 展开新例外的匹配范围与短驻寿命，并证明首个原本受阻的会话实际命中该规则。, en: Expand a new exception's match scope and short lifetime and prove that the first formerly blocked session actually matched it.}
+domains: [enterprise]
+platforms: []
+logic:
+  paragraphs:
+    - zh: 对每次规则新增、修改、重排或解绑保存不可变 old/new policy_version、writer、request_id、approval_id 和 effective interval；在完整规则集合中解析优先级与继承关系，得到新增允许的来源、目的、协议、端口、进程或资源选择器。云安全组 API、Windows 4946 和设备配置提交仅是变更入口；4946 不覆盖 GPO，因而还需有效策略快照。以候选规则的选择器与变更前 deny 决议构造 expected_block_flow 集合。
+      en: For every rule addition, edit, reorder, or detachment, retain immutable old and new policy_version, writer, request_id, approval_id, and effective interval. Resolve precedence and inheritance in the full rule set to derive newly allowed source, destination, protocol, port, process, or resource selectors. Cloud security-group APIs, Windows 4946, and device commits are change entry points only; 4946 omits Group Policy and requires an effective-policy snapshot. Build an expected_block_flow set from the candidate selector and prior deny decisions.
+    - zh: 在规则生效后寻找首个匹配的完整连接及其 rule_hit、握手和接收服务；若规则仍有其他更高优先级阻断、没有流量命中或连接失败，只报告 rule_exposure。若同一会话在旧版本应被拒绝而新版本由该规则放行，并连接攻击者控制的 writer 与后续敏感服务访问，才输出 scoped_exception_confirmed。规则很快被回滚时仍保留版本跨度和首个会话，不让当前状态覆盖历史。
+      en: After the rule becomes effective, locate the first matching complete connection with rule_hit, handshake, and receiving service. If a higher-priority rule still blocks it, no flow matches, or the connection fails, report rule_exposure only. Emit scoped_exception_confirmed only when the same session would have been denied under the old version but is allowed by the new rule and joins an adversary-controlled writer and subsequent sensitive-service access. When the rule is rapidly reverted, retain its version interval and first session rather than letting current state overwrite history.
+data_requirements:
+  - source_type: firewall-rule-version
+    name: {zh: 版本化规则与资源绑定, en: Versioned firewall rules and resource attachments}
+    channel: null
+    required_fields: [timestamp, enforcement_point_id, asset_or_resource_id, policy_version, rule_id, priority, direction, action, source_selector, destination_selector, protocol, port_range, attached_resource]
+  - source_type: firewall-change-audit
+    name: {zh: 规则写入与审批审计, en: Rule writer and approval audit}
+    channel: null
+    required_fields: [timestamp, actor_id, request_id, enforcement_point_id, action, rule_id, old_version, new_version, approval_id]
+  - source_type: firewall-rule-hit
+    name: {zh: 规则命中与会话裁决, en: Rule-hit and session-decision events}
+    channel: null
+    required_fields: [timestamp, enforcement_point_id, session_id, policy_version, rule_id, source_ip, destination_ip, destination_port, protocol, decision]
+  - source_type: independent-network-session
+    name: {zh: 独立会话与接收服务遥测, en: Independent session and receiving-service telemetry}
+    channel: null
+    required_fields: [timestamp, session_id, source_ip, destination_ip, destination_port, protocol, handshake_result, receiving_service_id, asset_or_resource_id]
+observables:
+  - {zh: 攻击者会话附近出现短时精确放行规则, en: A short-lived precise allow rule appears near an adversary session}
+  - {zh: 新规则命中此前拒绝的首个连接且接收服务完成握手, en: The new rule matches a first formerly denied connection and the receiving service completes a handshake}
+  - {zh: 整体防火墙仍启用，其他来源或目标继续被拒绝, en: The firewall remains enabled and other origins or destinations continue to be denied}
+correlation:
+  window: {zh: 从规则首次生效前一小时至回滚后一小时关联，最长保留三十天策略历史以发现延迟首次命中。, en: Correlate from one hour before a rule first takes effect through one hour after rollback and retain up to thirty days of policy history for delayed first matches.}
+  dimensions: [enforcement_point_id, asset_or_resource_id, rule_id, policy_version, actor_id, request_id, source_ip, destination_ip, destination_port, session_id, time]
+false_positives:
+  - {zh: 已批准的维护跳板、临时供应商访问或自动伸缩服务发现, en: "Approved maintenance jump hosts, temporary vendor access, or autoscaling service discovery"}
+  - {zh: 负载均衡与 NAT 变更导致的规则命中键变化, en: Load-balancing and NAT changes alter rule-hit keys}
+blind_spots:
+  - {zh: 产品只记录配置提交而不记录有效规则命中, en: The product logs configuration commits but not effective rule hits}
+  - {zh: 流量采样、短驻规则或时钟偏差使首个会话无法恢复, en: "Sampling, short-lived rules, or clock skew prevents recovery of the first session"}
+tuning_guidance:
+  paragraphs:
+    - zh: 以每条批准例外的 owner、最窄 selector、有效期和预期服务为白名单身份，不能只按端口或管理员账户放行。把宽来源、管理接口与跨 zone 路径赋较高权重；保留没有命中的暴露记录供治理，但不让它与已证实的会话混淆。对无 rule-hit 的云服务以策略模拟和独立 VPC flow 作降级证据，并明确降低置信度。
+      en: Identify approved exceptions by owner, narrowest selector, lifetime, and expected service rather than allowlisting by port or administrator account. Weight broad sources, management interfaces, and cross-zone paths more heavily. Retain unhit exposure records for governance without conflating them with proven sessions. Where cloud services lack rule-hit logs, use policy simulation and independent VPC flow as weaker evidence and explicitly lower confidence.
+evidence_refs: [REF-000451, REF-000453, REF-000454, REF-000455]
+lifecycle: {status: review, version: "1.0.0", created: "2026-09-22", modified: "2026-09-22", contributors: [Niji Matrix Research], reviewers: []}

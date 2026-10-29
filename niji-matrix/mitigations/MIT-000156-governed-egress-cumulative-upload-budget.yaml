@@ -1,0 +1,202 @@
+schema_version: 2.0.0
+type: mitigation
+id: MIT-000156
+name:
+  zh: 受控出口与累计上传预算
+  en: Governed Egress and Cumulative Upload Budget
+summary:
+  zh: 限制敏感资产可上传的路径，并跨小对象或低速窗口累计数据外送。
+  en: Constrain upload paths for sensitive assets and account for data sent across small objects or slow windows.
+description:
+  paragraphs:
+  - zh: 对敏感主机、云存储和外部上传建立批准的主体、应用和目的地路径；再由出口代理或 DLP 对同一身份和目的地持续累计请求数与发送量。单次对象或短窗峰值不能在切块或节流后重置安全预算。该措施把阻断与侦测支持结合，需给批准的备份和迁移设置有期限的例外。
+    en: Define approved principals, applications and destinations for sensitive hosts, cloud storage and outside
+      uploads. Have the egress proxy or DLP layer continually account for requests and bytes by identity and destination.
+      Chunking or throttling must not reset an allowance after each object or short peak. The control combines blocking
+      with detective support and needs time-bounded exceptions for approved backups and migration.
+domains:
+- enterprise
+measures:
+- key: authorized-egress
+  name:
+    zh: 敏感资产批准上传路径
+    en: Approved Upload Paths for Sensitive Assets
+  description:
+    paragraphs:
+    - zh: 按主体、应用与目的地限定敏感资产的出站上传，并对新目标实施审批或拒绝。
+      en: Constrain outbound uploads from sensitive assets by principal, application and destination, with approval
+        or denial for new targets.
+  control_type: preventive
+- key: cumulative-budget
+  name:
+    zh: 跨事件累计上传预算
+    en: Across-Event Upload Budget
+  description:
+    paragraphs:
+    - zh: 在可见上传对象和方向字节的出口记录中跨请求、连接与较长窗口累计同一任务，并保留可审计关联键。
+      en: Aggregate one job across requests, connections and longer windows in egress logs with visible upload objects
+        and directional bytes, retaining auditable join keys.
+  control_type: detective-support
+applications:
+- target_ref: NJT-0154
+  use:
+    paragraphs:
+    - zh: 对敏感资产同时审查单次上传与同一身份和目的地的长窗累计，并限定可用出口。
+      en: Review both one upload and long-run totals for one identity and destination on sensitive assets, while
+        limiting available paths.
+  expected_effect:
+    paragraphs:
+    - zh: 规模分散仍留下可核对总量，未授权新目的地可在首次上传时阻断。
+      en: Dispersed volume still yields auditable totals, and an unauthorized new destination can be blocked at
+        first upload.
+  limitations:
+    paragraphs:
+    - zh: 批准的服务和被盗身份仍可被滥用；过严预算会影响合法大批量业务。
+      en: Approved services and stolen identities remain abusable; strict budgets can disrupt legitimate bulk business.
+- target_ref: NJS-0154-001
+  use:
+    paragraphs:
+    - zh: 把同源同目标的小上传按对象序列合并审批，不能让每个新分块重置单事件额度。
+      en: Approve small uploads as one source-to-destination object series rather than resetting the per-event allowance
+        for each chunk.
+  expected_effect:
+    paragraphs:
+    - zh: 连续小对象的总量可触发复核或阻断，分块本身不再自动规避单次额度。
+      en: The total of repeated small objects can trigger review or blocking, so chunking no longer automatically
+        evades a per-unit allowance.
+  limitations:
+    paragraphs:
+    - zh: 加密或不可见对象标识会妨碍序列重组，合法断点续传需例外。
+      en: Encryption or hidden object identifiers hinder series reconstruction, and legitimate resumable uploads
+        need exceptions.
+- target_ref: NJS-0154-002
+  use:
+    paragraphs:
+    - zh: 对持续低峰值的新目标传输实施跨小时或跨天累计，并核对节流进程是否属批准迁移。
+      en: Accumulate sustained low-peak transfers to new destinations across hours or days and check whether throttled
+        processes belong to an approved migration.
+  expected_effect:
+    paragraphs:
+    - zh: 低峰值不再跳过总量审查，攻击者需接受更长暴露或争取获批通道。
+      en: Low peaks no longer skip total-volume review, forcing longer exposure or access to an approved path.
+  limitations:
+    paragraphs:
+    - zh: 很小的总量、跨窗口身份漂移和缺失周期字节会降低控制效果。
+      en: Small totals, identity drift across windows and absent periodic bytes weaken the control.
+- target_ref: NJT-0191
+  use:
+    paragraphs:
+    - zh: 限定敏感资产可直接使用的协议、中介和目的地，并跨替代协议累计同一主体的外送量。
+      en: Constrain protocols, intermediaries, and destinations available directly to sensitive assets and accumulate
+        one principal’s outbound volume across alternative protocols.
+  expected_effect:
+    paragraphs:
+    - zh: 替代路径不能因更换协议重置目的地审批或累计预算。
+      en: Changing protocol does not reset destination approval or cumulative budget.
+  limitations:
+    paragraphs:
+    - zh: 已批准通道、被盗身份和无法识别的源数据仍可能被滥用。
+      en: Approved channels, stolen identities, and unclassified source data remain abusable.
+- target_ref: NJS-0191-001
+  use:
+    paragraphs:
+    - zh: 按工作负载角色固定必须经过的代理、解析器或中继，并拒绝未批准的直接协议出口。
+      en: Pin proxies, resolvers, or relays required by workload role and deny unapproved direct protocol egress.
+  expected_effect:
+    paragraphs:
+    - zh: 角色偏离需要显式策略变化或受控身份，直接旁路更难静默存在。
+      en: Role deviation requires an explicit policy change or controlled identity, making direct bypass harder
+        to hide.
+  limitations:
+    paragraphs:
+    - zh: 需要直连的管理、备份和应急业务必须有时限例外。
+      en: Administration, backup, and emergency work that needs direct access requires time-bounded exceptions.
+- target_ref: NJS-0191-002
+  use:
+    paragraphs:
+    - zh: 在 DNS、邮件和 HTTP 等受管中介上按源、域/收件人/URI 聚合事务与数据量，并保留语义异常供复核。
+      en: Aggregate transactions and data volume by source and domain, recipient, or URI at managed DNS, mail, and
+        HTTP intermediaries and retain semantic anomalies for review.
+  expected_effect:
+    paragraphs:
+    - zh: 分段或合法语法不能让每个事务独立重置外送预算。
+      en: Segmentation or valid syntax cannot reset the outbound allowance for every transaction.
+  limitations:
+    paragraphs:
+    - zh: 加密 DNS、外部邮件和共享服务可能遮蔽事务字段。
+      en: Encrypted DNS, external mail, and shared services may hide transaction fields.
+- target_ref: NJS-0191-003
+  use:
+    paragraphs:
+    - zh: 在端点加密前限制敏感读取进程可访问的外部目标，并对 SFTP/SSH/TLS 的长期方向字节执行累计预算。
+      en: Before endpoint encryption, restrict external destinations available to processes reading sensitive data
+        and apply cumulative budgets to long SFTP, SSH, or TLS outbound bytes.
+  expected_effect:
+    paragraphs:
+    - zh: 内容加密不再自动消除源侧控制和长窗总量审查。
+      en: Content encryption no longer automatically removes source-side control or long-window volume review.
+  limitations:
+    paragraphs:
+    - zh: 无端点 DLP、合法管理隧道和共享云目标会降低效果。
+      en: Absent endpoint DLP, legitimate administration tunnels, and shared cloud destinations reduce effectiveness.
+- target_ref: NJT-0195
+  use:
+    paragraphs:
+    - zh: 把批准上传路径细化为 provider 与 receiver namespace，并跨对象和请求累计同一主体向该接收者的上传量。
+      en: Refine approved upload paths to provider plus receiver namespace and accumulate one principal’s upload
+        volume to that receiver across objects and requests.
+  expected_effect:
+    paragraphs:
+    - zh: 允许服务域名不再重置接收者审批和累计预算。
+      en: Allowing a service domain no longer resets receiver approval or cumulative budgets.
+  limitations:
+    paragraphs:
+    - zh: 服务不暴露接收者标识或被盗批准 token 时仍可能绕过。
+      en: Services that hide receiver identity or stolen approved tokens may still bypass the control.
+- target_ref: NJS-0195-001
+  use:
+    paragraphs:
+    - zh: 按 tenant、account、chat、repository 或 bot 标识登记接收者，并将每个逻辑接收者作为独立上传预算键。
+      en: Register receivers by tenant, account, chat, repository, or bot identifier and use each logical receiver
+        as an independent upload-budget key.
+  expected_effect:
+    paragraphs:
+    - zh: 可信共享域后的陌生接收者能在首次或累计上传时触发审查。
+      en: An unfamiliar receiver behind a trusted shared domain can trigger review on first or cumulative upload.
+  limitations:
+    paragraphs:
+    - zh: 动态 token、共享频道和服务侧转发会削弱接收者解析。
+      en: Dynamic tokens, shared channels, and provider-side forwarding weaken receiver resolution.
+- target_ref: NJS-0195-002
+  use:
+    paragraphs:
+    - zh: 跨同一服务账户和对象系列累计创建与上传，并把公开/匿名对象计入同一数据外送预算。
+      en: Accumulate object creation and upload across one service account and object series, counting public or
+        anonymous objects toward one data-egress budget.
+  expected_effect:
+    paragraphs:
+    - zh: 攻击者不能通过拆成多个服务对象重置单对象额度。
+      en: The adversary cannot reset a per-object allowance by splitting data across service objects.
+  limitations:
+    paragraphs:
+    - zh: 编码内容和外部个人账户可能逃避租户侧分类。
+      en: Encoded content and outside personal accounts may escape tenant-side classification.
+evidence_refs:
+- REF-000646
+- REF-000632
+- REF-000634
+- REF-000664
+- REF-000641
+- REF-000922
+- REF-000923
+- REF-000919
+- REF-000939
+- REF-000940
+lifecycle:
+  status: review
+  version: 1.2.0
+  created: '2026-09-22'
+  modified: '2026-10-04'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

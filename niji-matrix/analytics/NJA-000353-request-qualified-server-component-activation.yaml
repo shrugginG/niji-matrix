@@ -1,0 +1,71 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000353
+strategy_ref: DET-000263
+name:
+  zh: 请求资格化服务器组件激活差分分析
+  en: Request-Qualified Server-Component Activation Differential Analytic
+summary:
+  zh: 比较同一服务器组件的匹配与非匹配请求，把稀少选择字段连接到恶意分支、响应差异和后继结果
+  en: Compare matching and nonmatching requests handled by one server component and join rare selector fields to malicious branches response differentials and successor outcomes
+domains: [enterprise]
+platforms: [ESXi, Linux, Network Devices, Windows, macOS]
+logic:
+  paragraphs:
+  - zh: 分析按服务器类型把 HTTP URI、method、Header、Cookie、body digest，邮件 sender、recipient、subject、attachment name/type/digest，SQL procedure、argument 与调用主体，以及等价事务字段规范成 request_or_transaction_id 和 selector tuple。它维护每个 server_component_id 的普通请求结果、错误率、响应类型、处理阶段与合法管理选择器基线。
+    en: The analytic normalizes HTTP URI method headers cookies and body digest mail sender recipient subject attachment name type and digest SQL procedure arguments and caller and equivalent transaction fields into request_or_transaction_id and selector tuples. It maintains ordinary outcomes error rates response types processing stages and legitimate administrative selectors for each server_component_id.
+  - zh: 候选选择器必须在多次重现中使同一持久组件进入不同分支，并在匹配后产生命令执行、文件变化、异常响应、外联或资源访问，而同组件的非匹配请求保持正常。LightNeuron 的邮件规则与 IISpy 的 Cookie—Host—URL 关系直接示范该结构。只有稀有字段、异常请求或服务器错误而没有组件和结果关系时，不做高置信定性。
+    en: A candidate selector must repeatedly make the same durable component enter a different branch and produce command execution file change anomalous response outbound connection or resource access after matching while nonmatching requests to that component remain normal. LightNeuron mail rules and the IISpy Cookie-to-Host-to-URL relation directly demonstrate this structure. Rare fields anomalous requests or server errors without component and outcome relation do not create a high-confidence conclusion.
+  - zh: 输出分为 selector_candidate、qualified_component_activation、persistence_outcome_unresolved 与 persistent_selective_component_confirmed。请求与结果成立但组件版本或持久状态缺失时保持 unresolved；只有精确组件已在先前时段注册、后续请求消费它并产生恶意结果时确认。若组件改写日志或响应，另标 telemetry_integrity_at_risk 并使用代理、网络或独立主机审计交叉验证。
+    en: Outputs are selector_candidate qualified_component_activation persistence_outcome_unresolved and persistent_selective_component_confirmed. A request-to-outcome relation without exact component version or durable state remains unresolved. Confirmation requires the exact component to have been registered earlier and consumed by a later request that produces a malicious outcome. If the component rewrites logs or responses telemetry_integrity_at_risk is added and proxy network or independent host audit cross-validates the chain.
+data_requirements:
+- source_type: server-request-transaction
+  name: {zh: HTTP、邮件、SQL 与等价服务器请求事务, en: HTTP mail SQL and equivalent server request transactions}
+  channel: null
+  required_fields: [timestamp, server_id, request_or_transaction_id, protocol_or_application, source_id, actor_id, uri_or_operation, method_or_action, headers_or_fields, argument_digest, payload_digest, response_status, response_digest]
+- source_type: component-request-attribution
+  name: {zh: 组件处理阶段与分支归因, en: Component processing-stage and branch attribution}
+  channel: null
+  required_fields: [timestamp, server_id, component_id, component_version_digest, request_or_transaction_id, processing_stage, branch_or_handler, matched_condition_id, invocation_result]
+- source_type: server-component-state
+  name: {zh: 请求时有效的组件版本与注册状态, en: Effective component version and registration state at request time}
+  channel: null
+  required_fields: [timestamp, server_id, component_id, component_version_digest, installed_at, enabled_state, scope, content_digest, writer_id, approval_id]
+- source_type: request-successor-outcome
+  name: {zh: 请求后继进程、文件、网络、响应与资源结果, en: Request successor process file network response and resource outcomes}
+  channel: null
+  required_fields: [timestamp, server_id, component_id, request_or_transaction_id, process_id, child_process_id, file_path, network_destination, resource_id, operation, response_status, result]
+observables:
+- {zh: 极少 HTTP Header、Cookie、URI 或字段关系稳定触发服务器进程执行命令、写文件或改变响应，而普通请求保持正常, en: A rare HTTP header cookie URI or field relation consistently triggers command execution file writes or response changes from the server process while ordinary requests remain normal}
+- {zh: 特定发件人、收件人、附件或内容组合使 Transport Agent 进入删除、转发、替换或命令分支, en: A specific combination of sender recipient attachment or content makes a Transport Agent enter deletion forwarding replacement or command branches}
+- {zh: 低频存储过程或参数组合在先前注册后被调用并产生异常 OS、文件、网络或数据结果, en: A low-frequency stored procedure or argument tuple is called after earlier registration and produces anomalous OS file network or data outcomes}
+- {zh: 服务器日志中的请求字段与代理或网络捕获不一致，且同一组件版本产生后继结果, en: Request fields in server logs disagree with proxy or network capture and the same component version produces a successor outcome}
+correlation:
+  window:
+    zh: 请求或事务到结果关联为十分钟；选择器稳定性与非匹配对照至少保留三十天，高价值服务器为九十天；组件注册状态从首次安装一直连接到最后一次匹配请求。
+    en: Join requests or transactions to outcomes within ten minutes retain selector stability and nonmatching controls for at least thirty days and ninety days on high-value servers and connect component registration state from first installation through the last matching request.
+  dimensions: [server, component, component_version, request_or_transaction, protocol_or_application, selector_tuple, source, actor, processing_stage, branch, response, child_process, file, network_destination, resource, time]
+false_positives:
+- {zh: 健康检查、管理 API、监控探针、反垃圾和邮件路由规则会使用低频字段并触发特殊处理, en: Health checks administrative APIs monitoring probes antispam and mail-routing rules use rare fields and trigger special handling}
+- {zh: 集成测试、故障注入和安全扫描会构造异常 URI、Header、Cookie、附件或 SQL 参数, en: Integration tests fault injection and security scanning construct unusual URIs headers cookies attachments or SQL arguments}
+- {zh: 合法自动化过程、数据库代理和运维脚本可从服务器组件启动工具或访问网络, en: Legitimate automation procedures database agents and operations scripts can start tools or use network from server components}
+- {zh: WAF、反向代理和邮件网关会改写字段，使服务器侧与外部捕获不一致, en: WAFs reverse proxies and mail gateways rewrite fields and create legitimate differences between server-side and external capture}
+blind_spots:
+- {zh: TLS、邮件加密、数据库审计关闭或字段截断会使 selector 不可见, en: TLS mail encryption disabled database audit or field truncation can hide selectors}
+- {zh: 组件在 OnLogRequest 或等价阶段改写日志时，单一服务器日志无法恢复真实请求, en: One server log cannot recover the request when a component rewrites it during OnLogRequest or an equivalent stage}
+- {zh: request ID 未传播到 module、procedure、process 或 network 时，匹配字段无法连接后继结果, en: Matching fields cannot join successor outcomes when request IDs do not propagate to modules procedures processes or network}
+- {zh: selector 使用高熵加密内容且只在内存解密时，字段级规则会失败, en: Field-level rules fail when selectors use high-entropy encrypted content decrypted only in memory}
+tuning_guidance:
+  paragraphs:
+  - zh: 为每个服务器角色、组件和业务功能维护合法 selector、来源、字段结构、响应和结果基线。批准规则绑定 owner、组件版本、来源范围、请求形状、业务结果与到期；不按某个稀有字符串永久白名单。严重度以组件持久状态和后继结果为主，稀有度只调整候选优先级。
+    en: Maintain legitimate selector source field-structure response and outcome baselines for each server role component and business function. Approval binds owner component version source range request shape business outcome and expiry and never permanently allowlists one rare string. Severity depends on durable component state and successor outcome while rarity only prioritizes candidates.
+  - zh: 对加密或可能被日志改写的服务，比较反向代理、负载均衡器、网络捕获、应用审计和主机结果；任何一侧缺失时降低置信度而不解释为正常。响应前保全匹配与非匹配样本、组件版本、原始字段和后继结果，避免删除组件后失去选择器证据。
+    en: For encrypted services or those capable of rewriting logs compare reverse-proxy load-balancer network-capture application-audit and host outcomes. Lower confidence rather than assuming normality when one vantage is missing. Preserve matching and nonmatching samples component version raw fields and successor outcomes before response so selector evidence is not lost when the component is removed.
+evidence_refs: [REF-001159, REF-001160, REF-001161]
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-10-22'
+  modified: '2026-10-22'
+  contributors: [Niji Matrix Research]
+  reviewers: []

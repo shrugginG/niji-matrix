@@ -1,0 +1,81 @@
+schema_version: 1.0.0
+type: taxonomy-breadth-review
+batch_ref: BATCH-TA0004-001
+work_item_ref: WORK-TA0004-T1548
+attack_baseline: {domain: enterprise-attack, version: '19.1'}
+attack_subtechnique_count: 6
+attack_subtechnique_ids: [T1548.002, T1548.004, T1548.001, T1548.003, T1548.006, T1548.005]
+represented_dimensions:
+- Windows UAC consent, integrity levels, and auto-elevation paths
+- macOS credential-prompted authorization execution
+- Unix set-user-ID and set-group-ID execution identity changes
+- sudo policy, credential prompts, and timestamp caching
+- macOS TCC consent-state and already-authorized application mediation
+- cloud just-in-time activation, role assumption, and impersonation windows
+breadth_trigger: second-pass
+coverage_resolutions:
+- attack_refs: [T1548.002, T1548.004, T1548.006]
+  resolution: niji-variable-candidate
+  rationale_zh: 这些实现可让攻击者有意选择受信系统二进制、授权 broker 或已批准应用作为低权限发起者与高权限结果之间的中介；跨平台稳定变量是中介谱系和授权来源的分离，不是 UAC、提示或 TCC 产品名称。
+  rationale_en: These implementations permit an adversary to choose a trusted system binary, authorization broker, or already-approved application as an intermediary between a low-privilege initiator and a privileged result. The stable cross-platform variable is separation of intermediary lineage and authorization provenance, not the UAC, prompt, or TCC product name.
+- attack_refs: [T1548.003, T1548.005]
+  resolution: niji-variable-candidate
+  rationale_zh: sudo 时间戳和云临时权限都允许攻击者把高权限使用限制在可控的短寿命状态窗口中，使授权、使用与到期分散到不同事件；稳定变量是权限寿命，而不是本地或云平台。
+  rationale_en: Sudo timestamps and temporary cloud privilege both let an adversary confine privileged use to a controllable short-lived state window, distributing authorization, use, and expiry across distinct events. The stable variable is privilege lifetime, not local versus cloud platform.
+- attack_refs: [T1548.001]
+  resolution: parent-core
+  rationale_zh: setuid/setgid 直接体现由控制机制改变有效执行身份，但现有证据没有证明权限位本身形成第三个与中介谱系或短寿命窗口并列的稳定匿迹变量。按文件类型、权限位或 Unix 平台拆分只会复制实现分类。
+  rationale_en: Setuid and setgid directly express an effective execution-identity change through an elevation control, but available evidence does not establish the permission bit itself as a third stable stealth variable alongside intermediary lineage or short-lived windows. Splitting by file type, permission bit, or Unix platform would duplicate implementation taxonomy.
+candidate_stealth_axes_examined:
+- axis: trusted-elevation-intermediary-lineage-borrowing
+  disposition: formal
+  trace_change: A low-privilege request or attacker-controlled input is separated from the privileged action by a native broker, trusted executable, approved application, or delegated cloud identity, leaving the visible parent, service, or principal closer to the trusted intermediary than to the original initiator.
+  defender_effect: Defenders must correlate requester, selected control path, authorization context, intermediary, and privileged outcome rather than allowlisting a trusted parent, broker, or service principal in isolation.
+  prerequisites: The attacker can invoke, redirect, or supply input to an elevation intermediary that is authorized, auto-elevating, preapproved, or impersonable.
+  evidence_disposition: conclusion-level support from ATT&CK T1548.002 and T1548.006 behavior, Microsoft UAC mechanics, Google service-account impersonation identity records, and an observed Glupteba UAC-bypass chain
+  defense_difference: Requires requester-to-broker-to-outcome lineage and delegation/provenance fields.
+- axis: ephemeral-privilege-window-activation
+  disposition: formal
+  trace_change: Privilege exists only during a cached, activated, assumed, or impersonated interval and may leave no durable entitlement after expiry, separating activation, privileged use, and deactivation records.
+  defender_effect: Point-in-time entitlement inventories can appear normal before and after use; defenders need interval-aware joins and proof that each privileged action fell inside an approved activation window and scope.
+  prerequisites: The environment exposes a reusable authorization cache, eligible-to-active workflow, or short-lived delegated credential and the attacker can activate or exploit its validity window.
+  evidence_disposition: conclusion-level support from ATT&CK T1548.003 and T1548.005, sudo timestamp semantics, Microsoft Entra PIM activation lifecycle, and Google short-lived impersonation credentials
+  defense_difference: Requires interval construction, activation-to-use-to-expiry correlation, and scope or approval comparison rather than durable-state diffing.
+- axis: prompt-or-consent-suppression
+  disposition: parent-core
+  trace_change: Some elevation paths reduce or eliminate a visible prompt, but prompt absence is an outcome of a preauthorized, cached, auto-elevating, or brokered path.
+  defender_effect: It can weaken user-visible warning but does not maintain a boundary independent of intermediary provenance or privilege lifetime.
+  rationale: The same mechanism can be prompted or promptless depending on local policy, and prompt state alone does not prescribe a distinct detection or mitigation object.
+- axis: elevation-control-state-camouflage
+  disposition: deferred
+  trace_change: An attacker might alter UAC, sudoers, TCC, or cloud approval state so the resulting control appears administratively legitimate.
+  defender_effect: A well-camouflaged state change could evade rule-based configuration monitoring.
+  rationale: Current evidence establishes control-state abuse but does not support a cross-platform stable camouflage variable or a defense delta beyond writer-state-use integrity; durable identity grants also overlap T1098 and tenant policy mutation overlaps T1484.
+- axis: minimum-scope-or-least-duration-elevation
+  disposition: hypothesis
+  trace_change: An attacker could choose only the scope and duration needed for one action to reduce the volume of privileged behavior.
+  defender_effect: Lower event volume may reduce threshold-based alerting.
+  rationale: The design is plausible, but the collected sources do not establish adversarial intent or a persistent sibling boundary beyond ephemeral-window activation.
+- axis: product-platform-control-partition
+  disposition: rejected
+  trace_change: Separate UAC, sudo, setuid, TCC, prompt, and cloud names would reproduce implementation surfaces.
+  defender_effect: Product-specific log fields differ, but the observation problems converge on provenance lineage or interval reconstruction.
+  rationale: Product, platform, permission bit, prompt type, and log channel are not Niji-native stealth variables.
+- axis: vulnerability-triggered-elevation
+  disposition: adjacent
+  trace_change: A software flaw changes privilege without the elevation mechanism's normal authorization semantics.
+  defender_effect: Detection requires exploit causality and vulnerable-component telemetry.
+  rationale: The direct object is T1068 exploitation rather than abuse of an elevation control path.
+- axis: durable-identity-entitlement-addition
+  disposition: adjacent
+  trace_change: A role, group, credential, or delegate remains attached to an existing identity after the operation.
+  defender_effect: Detection relies on identity-state mutation and subsequent-use lineage.
+  rationale: The direct object is T1098 durable identity access state, already modeled by NJT-0083.
+second_pass_required: true
+second_pass_completed: true
+second_pass_notes_zh: 第二轮从授权来源、broker 谱系、权限寿命、提示可见性、作用域、控制状态、执行身份、审批和 ATT&CK 外的短期委派搜索。只有中介谱系与短寿命窗口同时满足可控性、稳定边界、痕迹变化、观察影响、明确前提、结论证据和防御差异；提示归父级结果，最小作用域保持假设，控制状态伪装延后，平台划分拒绝，漏洞利用和持久身份状态归相邻技术。
+second_pass_notes_en: The second pass searched authorization provenance, broker lineage, privilege lifetime, prompt visibility, scope, control state, execution identity, approval, and short-lived delegation beyond ATT&CK's internal categories. Only intermediary lineage and short-lived windows satisfy controllability, stable boundary, trace change, observation impact, explicit prerequisites, conclusion-level evidence, and defense difference. Prompt state remains a parent outcome, minimum scope a hypothesis, control-state camouflage deferred, platform partition rejected, and exploitation or durable identity state assigned to adjacent techniques.
+proposed_niji_child_count: 2
+breadth_gap_explained: true
+reviewer_notes_zh: 六项 ATT&CK 实现维度收敛为两个正交的 Niji 匿迹变量：谁在日志中呈现为提权中介，以及权限在多长的可重建窗口内存在。减少为一项会把谱系归因与时间窗检测错误合并；增加会按平台、控制名、提示或证据不足的最小作用域机械拆分。T1548.001 保留为父级核心，因为它证明执行身份转换但不独立证明第三个匿迹边界。
+reviewer_notes_en: Six ATT&CK implementation dimensions converge on two orthogonal Niji stealth variables: who appears as the elevation intermediary in telemetry and how long privilege exists as a reconstructable interval. Reducing to one would incorrectly merge provenance attribution with time-window detection; adding more would partition by platform, control name, prompt behavior, or an under-evidenced minimum-scope hypothesis. T1548.001 remains parent core because it establishes execution-identity transition without independently establishing a third stealth boundary.

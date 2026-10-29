@@ -1,0 +1,186 @@
+handoff_schema_version: "2.0.0"
+type: technique-research-handoff
+batch_ref: BATCH-TA0003-001
+work_item_ref: WORK-TA0003-T1098
+temporary_key_prefix: P3B001-T1098
+candidate:
+  source_type: attack
+  source_attack_id: T1098
+  name:
+    zh: 账户操纵
+    en: Account Manipulation
+recommendation:
+  decision: retain
+  confidence: high
+  rationale:
+    paragraphs:
+      - zh: ATT&CK Enterprise 19.1 将 T1098 定义为对既有账户的凭据、权限组或其他访问状态进行更改，以维持或提升对受害系统的访问。Microsoft 对 NOBELIUM 的直接观察进一步记录了攻击者为长期驻留而创建额外服务主体凭据并向用户或应用授予角色。该行为的直接持久化对象不是一次登录，也不是新账户，而是可跨会话继续生效的既有身份认证或授权状态，因此在 TA0003 中保留。
+        en: ATT&CK Enterprise 19.1 defines T1098 as changing credentials, permission groups, or other access state of an existing account to maintain or elevate access to victim systems. Microsoft's direct observations of NOBELIUM further document creation of additional service-principal credentials and grants of roles to users or applications for long-term persistence. The direct persistence object is neither a single sign-in nor a newly created account, but authentication or authorization state attached to an existing identity and effective across sessions, so the candidate is retained in TA0003.
+proposed_content:
+  summary:
+    zh: 攻击者更改既有身份的认证或授权状态，使立足点能够跨会话继续使用，并利用身份控制面变更与后续访问之间的观察断点降低识别和归因概率。
+    en: Adversaries change authentication or authorization state attached to an existing identity so a foothold remains usable across sessions, exploiting observation breaks between identity-control changes and later access to reduce detection and attribution.
+  definition_and_concept:
+    paragraphs:
+      - zh: 本对象以既有身份主体及其可持续认证、授权或委托关系为直接对象；只有更改继续生效并支持以后恢复访问时，才属于 Persistence 下的账户操纵。
+        en: The direct object is an existing identity principal and its durable authentication, authorization, or delegation relationships; the change belongs to Account Manipulation under Persistence only when it remains effective and supports later restoration of access.
+  stealth_characteristics:
+    paragraphs:
+      - zh: 变更发生在身份控制面，而后续成功访问出现在登录、令牌或资源审计面；若这些数据不能按主体、凭据、角色和变更时点连接，防守方可能分别看到一次管理动作和一次由既有身份发起的正常成功访问，却无法恢复持久化因果。额外访问路径还可以保留原使用者的凭据和日常活动，使账户继续呈现既有名称、年龄和业务关系。
+        en: The mutation occurs in the identity control plane while later successful use appears in sign-in, token, or resource audit. If those data cannot be joined by principal, credential, role, and change time, defenders may see one administrative action and one normal successful access by an established identity without recovering the persistence cause. An additional access path can also preserve the legitimate owner's credentials and routine activity, leaving the account's existing name, age, and business relationships intact.
+  scope_boundary_definition:
+    paragraphs:
+      - zh: 纳入对既有主体的密码、密钥、认证方法、组、角色、委托、设备信任或等价持久访问边的攻击者控制更改；排除新建身份 T1136、未改变状态而直接使用有效账户 T1078、只取得秘密、全局认证流程篡改 T1556，以及只在当前会话有效的临时提权。
+        en: Scope includes adversary-controlled changes to passwords, keys, authentication methods, groups, roles, delegations, device trust, or equivalent durable access edges of an existing principal. It excludes creating a new identity under T1136, using a valid account without state mutation under T1078, merely acquiring a secret, globally modifying authentication under T1556, and temporary elevation limited to the current session.
+  application_scenarios_and_threat_model:
+    application_scenarios:
+      paragraphs:
+        - zh: 攻击者在已取得能够管理账户、目录、应用或资源授权的会话后使用本技术，把短期控制转换为可在密码重置、会话结束、设备更换或人员处置后继续调用的身份入口。
+          en: An adversary uses the technique after obtaining a session able to administer an account, directory, application, or resource authorization, converting temporary control into an identity entry that can be invoked after password reset, session termination, device change, or personnel response.
+    threat_model:
+      attacker_model:
+        paragraphs:
+          - zh: 攻击者必须控制具有目标属性写权限的身份、会话、主机或管理接口，并了解变更对认证、角色继承、令牌签发和审计的影响；其约束包括审批、强认证、密钥数量与寿命、传播延迟和不可变审计。
+            en: The attacker must control an identity, session, host, or administrative interface with write permission over the target state and understand effects on authentication, role inheritance, token issuance, and audit. Approval, strong authentication, key-count and lifetime limits, propagation delay, and immutable audit constrain the operation.
+      defender_model:
+        paragraphs:
+          - zh: 防守方需要同时取得身份变更、审批、目录快照、登录或令牌、设备和资源访问记录，并保留到新增状态被使用或撤销；只有变更日志而没有后续使用谱系，或只有登录而没有控制面历史，都会把结论限制为异常而非已确认持久化。
+            en: The defender needs identity-change, approval, directory-snapshot, sign-in or token, device, and resource-access records retained until the new state is used or revoked. Change logs without subsequent-use lineage, or sign-ins without control-plane history, limit the conclusion to anomaly rather than confirmed persistence.
+  stealth_mechanisms:
+    - mechanism_ref: NM-BT
+      role: primary
+      summary:
+        zh: 身份变更与后续访问分布在不同控制面和时间点
+        en: Identity changes and later access are distributed across control planes and time
+      analysis:
+        paragraphs:
+          - zh: 攻击者先修改既有主体的认证或授权状态，随后才用该状态取得令牌或访问资源。管理审计记录“谁改了什么”，登录与资源日志记录“哪个主体成功做了什么”，而两者可能使用不同事件、标识和保留期；缺少变更到使用的谱系时，关键持久化关系落在既有检测理解之外。Microsoft 的官方监控建议和 NOBELIUM hunting query 都明确要求把凭据更新与后续登录关联，因此该机理为中等置信度的强推断。
+            en: The adversary first changes authentication or authorization state of an existing principal and only later uses that state to obtain a token or access a resource. Administrative audit records who changed what, while sign-in and resource logs record which principal successfully did what; these planes can use different events, identifiers, and retention. Without mutation-to-use lineage, the persistence relationship falls outside existing analytic understanding. Microsoft's official monitoring guidance and NOBELIUM hunting query explicitly join credential updates to later sign-in, supporting this mechanism as a medium-confidence strong inference.
+      evidence_keys: [P3B001-T1098-REF-01, REF-000110, P3B001-T1098-REF-03, P3B001-T1098-REF-04, P3B001-T1098-REF-05]
+      confidence: medium
+    - mechanism_ref: NM-FD
+      role: secondary
+      summary:
+        zh: 增补访问路径保留既有身份及正常所有者活动外观
+        en: An added access path preserves the established identity and legitimate-owner activity
+      analysis:
+        paragraphs:
+          - zh: 非替换式增补把攻击者凭据、认证方法、角色或委托附着到已有主体，同时让原凭据和业务用途继续存在。后续事件仍携带熟悉的账户或服务主体标识，恶意控制者与合法所有者共享实体特征，基于新账户、账户停用或密码替换的粗粒度规则因而失去区分力；新增边、变更发起者、认证方法和首次使用仍是残余线索。ATT&CK 与 Microsoft 对额外凭据和角色的记录直接支持行为，匿迹效果为中等置信度推断。
+            en: Non-displacing augmentation attaches an adversary credential, authentication method, role, or delegation to an established principal while leaving original credentials and business use in place. Later events retain the familiar account or service-principal identifier, so malicious controller and legitimate owner share entity features and coarse rules based on new accounts, disablement, or password replacement lose discrimination. The added edge, change initiator, authentication method, and first use remain residual evidence. ATT&CK and Microsoft directly support the additional-credential and role behavior; the stealth effect is a medium-confidence inference.
+      evidence_keys: [P3B001-T1098-REF-01, P3B001-T1098-REF-02, REF-000110, P3B001-T1098-REF-03]
+      confidence: medium
+proposed_subtechniques:
+  - temporary_key: P3B001-T1098-SUB-01
+    name:
+      zh: 非替换式访问路径增补
+      en: Non-Displacing Access-Path Augmentation
+    distinguishing_variable:
+      zh: 攻击者新增一条并行认证或授权路径，同时保留既有主体原访问路径和正常活动，而不是替换主体状态或创建新身份。
+      en: The adversary adds a parallel authentication or authorization path while preserving the existing principal's original access path and normal activity, rather than replacing identity state or creating a new identity.
+    evidence_keys: [P3B001-T1098-REF-02, REF-000110, P3B001-T1098-REF-03, P3B001-T1098-REF-04]
+    confidence: medium
+defense_candidates:
+  detection_strategies:
+    - temporary_key: P3B001-T1098-DET-01
+      decision: create
+      objective: Correlate durable identity-state mutation with first or changed use of the affected access path.
+  detection_analytics:
+    - temporary_key: P3B001-T1098-NJA-01
+      decision: create
+      logic_identity: Normalize change, approval, directory snapshot, sign-in or token, and resource events; join exact credential or authorization edges where identifiers exist and otherwise retain lower-confidence principal-level correlation.
+  mitigations:
+    - temporary_key: P3B001-T1098-MIT-01
+      decision: create
+      control_identity: Govern durable identity-state mutation through least change authority, explicit approval, bounded credential and entitlement lifetime, complete inventory, and evidence-preserving revocation.
+existing_library_reuse:
+  reference_refs: [REF-000110]
+  claim_refs: []
+  case_refs: []
+  strategy_refs: []
+  analytic_refs: []
+  mitigation_refs: []
+  relationship_refs: []
+library_candidates:
+  references:
+    - temporary_key: P3B001-T1098-REF-01
+      resolution: create
+      identity: ATT&CK v19 T1098 version permalink
+    - temporary_key: P3B001-T1098-REF-02
+      resolution: create
+      identity: ATT&CK v19 T1098.001 version permalink used only as behavioral evidence, not imported taxonomy
+    - temporary_key: P3B001-T1098-REF-03
+      resolution: create
+      identity: Microsoft Entra security operations for applications
+    - temporary_key: P3B001-T1098-REF-04
+      resolution: create
+      identity: Microsoft Entra security operations for privileged accounts
+    - temporary_key: P3B001-T1098-REF-05
+      resolution: create
+      identity: Microsoft Entra service principal sign-in logs
+  claims:
+    - temporary_key: P3B001-T1098-CLM-01
+      resolution: create
+      proposition: T1098 remains a distinct TA0003 object because durable mutations of existing identity state preserve or restore access across sessions.
+    - temporary_key: P3B001-T1098-CLM-02
+      resolution: create
+      proposition: Control-plane mutation and later identity use require cross-plane lineage, supporting NM-BT.
+    - temporary_key: P3B001-T1098-CLM-03
+      resolution: create
+      proposition: A parallel added access path preserves original identity appearance and supports NM-FD at medium confidence.
+    - temporary_key: P3B001-T1098-CLM-04
+      resolution: create
+      proposition: Non-displacing access-path augmentation is a stable Niji-native child with a distinct mutation-to-use defensive requirement.
+  cases:
+    - temporary_key: P3B001-T1098-CASE-01
+      resolution: create
+      identity: NOBELIUM Azure AD long-term persistence changes observed by Microsoft in 2021
+  detection_strategies: [P3B001-T1098-DET-01]
+  detection_analytics: [P3B001-T1098-NJA-01]
+  mitigations: [P3B001-T1098-MIT-01]
+  relationships: []
+research:
+  evidence_coverage:
+    parent_behavior_keys: [P3B001-T1098-REF-01, REF-000110]
+    boundary_keys: [P3B001-T1098-REF-01, P3B001-T1098-REF-04]
+    mechanism_support:
+      - mechanism_ref: NM-BT
+        evidence_keys: [REF-000110, P3B001-T1098-REF-03, P3B001-T1098-REF-05]
+        evidence_mode: strongly-inferred
+      - mechanism_ref: NM-FD
+        evidence_keys: [P3B001-T1098-REF-02, REF-000110, P3B001-T1098-REF-03]
+        evidence_mode: strongly-inferred
+    child_existence_support:
+      - child_key: P3B001-T1098-SUB-01
+        evidence_keys: [P3B001-T1098-REF-02, REF-000110, P3B001-T1098-REF-03, P3B001-T1098-REF-04]
+        evidence_mode: strongly-inferred
+    unsupported_or_deferred:
+      - 按云、本地、邮件、SSH、设备或容器划分子项会继承 ATT&CK 或按平台拆分，defer。
+      - 休眠身份再激活可能改变基线，但现有资料主要给出 hunting query，尚不足以证明独立攻击者控制变量和兄弟边界，defer。
+      - 将密码轮换节奏映射为 NM-ST 缺少攻击者有意稀释痕迹的直接证据，defer。
+  content_depth_review:
+    compared_with_njt_0001: true
+    field_responsibilities_complete: true
+    candidate_specific_prose: true
+    repeated_prose_reviewed: true
+    notes:
+      zh: 已逐字段覆盖直接对象、Persistence 目的、残余痕迹、正常身份管理反例、攻击者写权限和防守方跨平面观察模型；没有复制 NJT-0001 的数量或段落。
+      en: The draft covers the direct object, Persistence purpose, residual traces, legitimate identity-administration lookalikes, attacker write authority, and defender cross-plane observation model field by field without copying NJT-0001 counts or paragraphs.
+  automation_review:
+    canonical_prose_bulk_generated: false
+    mechanical_uses: [fixed-baseline XLSX extraction, library lookup, ID allocation, validation, bundle build]
+  limitations:
+    paragraphs:
+      - zh: 现有最强证据来自 Entra 与云身份环境；ATT&CK 证明父行为跨平台存在，但不同系统对密钥标识、旧值、委托边和后续使用的可见性差异很大。来源直接证明新增凭据与角色、长期持久化及推荐关联，却不总能证明攻击者选择每个属性的主观匿迹理由，因此 NM-FD 与 Niji 子项保持 medium，休眠主体分类暂缓。
+        en: The strongest evidence concerns Entra and cloud identity. ATT&CK establishes cross-platform parent behavior, but systems differ substantially in visibility into key identifiers, old values, delegation edges, and later use. Sources directly establish added credentials and roles, long-term persistence, and recommended correlation, but do not always establish the attacker's subjective stealth reason for every property. NM-FD and the Niji child therefore remain medium confidence, while a dormant-principal category is deferred.
+  rejected_mechanisms:
+    - mechanism_ref: NM-DO
+      reason: Identity records are not shown to be intrinsically obscured; the supported weakness is missing cross-plane correlation.
+    - mechanism_ref: NM-ST
+      reason: Delayed use can occur, but current sources do not prove intentional temporal dilution as an independent stable variable.
+  open_questions: []
+integration:
+  status: decision-ready
+  resolutions:
+    - REF-000110 reuse
+    - P3B001-T1098-REF-01 through REF-05 create after canonical URL checks
+    - DET/NJA/MIT split from existing account-takeover and valid-entry objects because objective, data, and control action differ

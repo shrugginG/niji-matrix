@@ -1,0 +1,59 @@
+schema_version: 2.0.0
+type: evasion-subtechnique
+id: NJS-0074-002
+parent_ref: NJT-0074
+name: {zh: 间接构建输入激活, en: Indirect Build-Input Activation}
+summary: {zh: 攻击者保持主流水线定义不变，将执行逻辑置于其自动消费的源文件、宏、测试、action、制品或缓存中, en: Adversaries preserve the primary pipeline definition while placing executable logic in source macros tests actions artifacts or caches that it automatically consumes}
+aliases: []
+lineage: {attck_subtechnique_inherited: false}
+definition_and_concept:
+  paragraphs:
+    - zh: 间接构建输入激活是攻击者不直接改变主要 workflow，而是修改该 workflow 会解析、加载或执行的源文件、构建宏、测试、包脚本、第三方 action、跨 workflow 制品或缓存，使 runner 在正常 step 中激活恶意逻辑。直接目标是把执行因果移出最常被审阅的配置文件，同时继续利用既有 job 的权限和网络位置。该概念按“被引用输入”划界，不以依赖、测试或制品的介质差异拆分。
+      en: Indirect Build-Input Activation leaves the primary workflow unchanged while the adversary modifies source files build macros tests package scripts third-party actions cross-workflow artifacts or caches that the workflow parses loads or executes causing a runner to activate malicious logic inside a normal step. Its objective is to move execution causality outside the most-reviewed configuration while retaining the job's privileges and network position. The concept is bounded by referenced input rather than partitioned by dependency test or artifact medium.
+stealth_characteristics:
+  paragraphs:
+    - zh: 间接构建输入激活让 workflow digest、job 名称和触发器保持历史一致，变化隐藏在更大的输入或依赖图内。SUNSPOT 仅在目标 MsBuild 出现时短暂替换源文件，XZ 的触发宏只存在于发布 tarball，二者都使常规仓库或配置审阅看不到实际构建时执行材料。可变 action tag 和缓存也能让同一可见引用解析为不同内容。
+      en: Indirect Build-Input Activation preserves historical workflow digests job names and triggers while change resides in a larger input or dependency graph. SUNSPOT briefly replaced source only when target MsBuild activity appeared and the XZ trigger macro existed only in release tarballs so ordinary repository or configuration review did not reveal actual build-time executable material. Mutable action tags and caches can likewise resolve the same visible reference to different content.
+    - zh: 实际 checkout ref、tarball-to-Git 差异、依赖解析结果、action digest、缓存写入者、runner 文件事件、compiler/package-manager 子进程、制品哈希和来源证明仍是残余痕迹。固定完整 digest、隔离缓存、重建制品或记录所有 resolved dependencies 会缩小观察断点；仅有“新依赖”或“构建失败”则不足以证明攻击。
+      en: Actual checkout refs tarball-to-Git differences dependency resolution action digests cache writers runner file events compiler or package-manager children artifact hashes and provenance remain residual traces. Pinning full digests isolating caches rebuilding artifacts or recording resolved dependencies narrows the observation break. A new dependency or build failure alone is insufficient to prove attack.
+scope_boundary_definition:
+  paragraphs:
+    - zh: 本轴要求主调度定义未承载恶意命令，而攻击者控制的被引用材料在 runner 上实际变成代码。它纳入源临时替换、恶意构建宏、自动测试、install hook、可变 action、制品或缓存到执行 sink 的路径；直接新增 workflow job 归 NJS-0074-001，外部贡献跨具权触发是关键差异时归 NJS-0074-003，只污染最终软件而 runner 未执行攻击者逻辑则不属于本技术。
+      en: This axis requires that the primary scheduled definition not carry the malicious command and that adversary-controlled referenced material actually become code on the runner. It includes temporary source substitution malicious build macros automatic tests install hooks mutable actions and artifact or cache paths to execution sinks. Directly added workflow jobs belong to NJS-0074-001 external contributions belong to NJS-0074-003 when the privileged-trigger crossing is material and artifact-only poisoning without runner-side adversary execution is outside this technique.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+      - zh: 攻击者在主 workflow 受到强评审但构建脚本、发布 tarball、测试、第三方 action、缓存或跨 workflow 制品的控制更弱时使用本轴。目标可以是隐藏源插入、窃取 runner 秘密、污染构建输出或从低权 job 影响具权 release job；激活通常发生在正常 build、test 或 package install 步骤。
+        en: Adversaries use the axis when the primary workflow receives strong review but build scripts release tarballs tests third-party actions caches or cross-workflow artifacts have weaker controls. Objectives include hiding source insertion stealing runner secrets altering output or influencing a privileged release job from a low-trust job and activation commonly occurs inside normal build test or package-install steps.
+  threat_model:
+    attacker_model:
+      paragraphs:
+        - zh: 攻击者需要识别 workflow 实际消费的输入图，并控制至少一个可解析对象或解析指针。低差异实现常需了解构建版本、文件哈希、compiler 行为和失败条件；SUNSPOT 展示了通过哈希与目标进程门控避免构建异常的成本。完整 digest 固定、独立构建和 hermetic/isolated runner 会减少可控面。
+          en: The adversary must identify the workflow's actual input graph and control at least one parsed object or resolution pointer. Low-difference operation often requires knowledge of build versions file hashes compiler behavior and failure conditions. SUNSPOT demonstrates the cost of hash and target-process gating to avoid build anomalies. Full digest pinning independent builds and hermetic or isolated runners reduce the controllable surface.
+    defender_model:
+      paragraphs:
+        - zh: 防守方除 workflow 历史外还需保存 source/release 差分、lockfile 与 resolved dependency、action commit、cache provenance、artifact digest、runner 文件/进程和出站遥测。若第三方 action 是黑盒、发布 tarball 未与 Git 对比或短驻 runner 在结束时丢失临时文件，定义级审计会产生明显盲区。
+          en: In addition to workflow history defenders need source-to-release differences lockfiles and resolved dependencies action commits cache provenance artifact digests runner file and process events and egress telemetry. Definition-level audit has a material blind spot when third-party actions are opaque release tarballs are not compared with Git or ephemeral runners discard temporary files at job end.
+stealth_mechanisms:
+  - mechanism_ref: NM-FD
+    role: primary
+    summary: {zh: 恶意逻辑伪装为流水线预期构建输入, en: Malicious logic appears as pipeline-expected build input}
+    analysis:
+      paragraphs:
+        - zh: 攻击者让恶意对象保留正常源文件、宏、测试、action 或制品的位置与调用方式，主 workflow 继续显示熟悉的 step。规则和评审若只查看定义或文件类别，就会把恶意内容与正常构建材料混同，形成特征伪装。SUNSPOT 的临时源替换与 XZ 的 tarball-only 宏证明这一差异可被有意控制；输入 digest、发布差分、runner 文件事件和产物来源仍能揭示不一致。
+          en: The adversary keeps malicious objects in normal source macro test action or artifact locations and invocation paths while the primary workflow shows familiar steps. Rules or reviews limited to the definition or file class conflate malicious content with normal build material and create Feature Disguise. SUNSPOT's temporary source replacement and XZ's tarball-only macro demonstrate intentional control while input digests release differentials runner file events and artifact provenance can still expose inconsistency.
+    evidence_refs: [REF-000252, REF-000253]
+    confidence: high
+defense:
+  detections: {coverage: available, strategy_refs: [DET-000062]}
+  mitigations: {coverage: available, mitigation_refs: [MIT-000061]}
+evidence:
+  claim_refs: [CLM-000282, CLM-000452, CLM-000454, CLM-000455, CLM-000457, CLM-000458]
+  case_refs: [CASE-000087, CASE-000088]
+  reference_refs: [REF-000126, REF-000252, REF-000253, REF-000257, REF-000258]
+research:
+  limitations:
+    paragraphs:
+      - zh: SUNSPOT 和 XZ 提供强案例，但它们分别是已入侵构建主机上的临时替换和发布 tarball 的构建触发，不能证明所有依赖更新、缓存命中或测试执行都有恶意意图。跨平台对“实际输入”的记录质量差异很大；若无法取得解析后的 digest 和 runner 结果，应保留为可疑谱系而非高置信投毒结论。
+        en: SUNSPOT and XZ are strong cases but respectively represent temporary substitution on a compromised builder and build triggering from a release tarball and do not make every dependency update cache hit or test execution malicious. Platforms vary greatly in recording actual inputs. Without resolved digests and runner outcomes the event should remain suspicious lineage rather than a high-confidence poisoning conclusion.
+lifecycle: {status: review, version: 2.0.0, created: '2026-09-10', modified: '2026-09-12', contributors: [Niji Matrix Research], reviewers: []}

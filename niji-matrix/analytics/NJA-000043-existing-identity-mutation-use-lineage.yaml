@@ -1,0 +1,266 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000043
+strategy_ref: DET-000064
+name:
+  zh: 既有身份变更—新增访问边—使用谱系分析
+  en: Existing-Identity Mutation-Added-Access-Edge-Use Lineage Analytic
+summary:
+  zh: 规范身份变更、审批、状态快照和访问事件，按目标主体与访问边连接未批准的持久状态修改及其首次或异常使用。
+  en: Normalize identity changes, approvals, state snapshots, and access events to join unapproved durable-state mutations and their first or
+    anomalous use by target principal and access edge.
+domains:
+- enterprise
+platforms:
+- Identity Provider
+- IaaS
+- SaaS
+- Office Suite
+- Containers
+- ESXi
+- Windows
+- Linux
+- macOS
+- Network Devices
+logic:
+  paragraphs:
+  - zh: 分析首先把目录、身份提供商、云 IAM、应用授权、邮件委托、端点账户、SSH 授权、容器 RBAC 和虚拟化管理审计规范为“既有主体状态变更”记录。每条记录至少保留时间、租户或设备、变更发起主体、目标主体、操作、对象类别、结果和来源；平台若提供 modified properties、旧值与新值、key
+      ID、认证方法 ID、组或角色 ID、委托对象、设备 ID、到期时间、请求 ID或审计事件 ID，则一并保存。以变更前状态快照或最近可信基线确认目标主体已经存在，并区分新增、替换、删除和临时激活；无法证明主体先前存在时转交 T1136 审查。
+    en: The analytic first normalizes directory, identity-provider, cloud-IAM, application-permission, mail-delegation, endpoint-account, SSH-authorization,
+      container-RBAC, and virtualization-management audit into existing-principal state-mutation records. Every record retains at least time,
+      tenant or device, initiating principal, target principal, operation, object class, outcome, and origin. Where available, it also retains
+      modified properties, old and new values, key ID, authentication-method ID, group or role ID, delegation object, device ID, expiry, request
+      ID, or audit event ID. A pre-change snapshot or the most recent trusted baseline confirms that the target principal already existed and
+      distinguishes addition, replacement, deletion, and temporary activation; events without evidence of a pre-existing principal are referred
+      for T1136 review.
+  - zh: 分析随后按状态键分为三条不可互换的路径。认证路径以 key ID、证书/SSH 指纹或认证方法 ID 连接新增与首次认证；授权图路径保存 role assignment、group membership、delegation 或 policy edge ID，展开嵌套关系并验证资源操作在新增边后才获准；设备信任路径连接
+      Register/Add/Join device 活动、device ID、owner、trust type、PRT/令牌认证声明、合规和条件访问结果。若访问侧不暴露精确键，各分支均降为 principal 级，并记录降级原因。
+    en: The analytic then separates three non-interchangeable state-key paths. The authentication path joins key ID, certificate or SSH fingerprint,
+      or authentication-method ID from addition to first authentication. The authorization-graph path retains role-assignment, group-membership,
+      delegation, or policy-edge ID, expands nesting, and verifies that resource action became allowed after the edge. The device-trust path joins
+      Register, Add, or Join device activity, device ID, owner, trust type, PRT or token authentication claims, compliance, and Conditional Access
+      result. If the access side omits an exact key, every branch falls back to principal-level correlation and records the degradation reason.
+  - zh: 然后把成功或失败登录、令牌签发、服务主体认证、SSH 会话、远程访问和资源操作连接到被改变的主体。首选 key ID、证书指纹、认证方法、设备、角色分配、组成员边或委托 ID 的精确匹配；如果登录面只提供主体、状态、IP 和资源，则按租户或设备、主体、变更后时间、首次出现的来源或客户端、目标资源和权限结果进行主体级匹配，并把置信度降一级。访问发生前必须验证状态变更已经成功且仍在有效期内；只存在变更而没有使用时输出“持久访问状态异常”，只有变更与后续使用相连时才输出“账户操纵持久化链”。
+    en: The analytic then joins successful or failed sign-ins, token issuance, service-principal authentication, SSH sessions, remote access,
+      and resource operations to the changed principal. It prefers exact matching on key ID, certificate fingerprint, authentication method, device,
+      role assignment, group-membership edge, or delegation ID. When the sign-in plane exposes only principal, status, IP, and resource, it performs
+      principal-level matching by tenant or device, principal, post-change time, first-seen origin or client, target resource, and authorization
+      outcome and lowers confidence by one level. It verifies that the mutation succeeded and remained valid before access. A mutation without
+      use produces a durable-access-state anomaly; only mutation joined to subsequent use produces an Account Manipulation persistence chain.
+  - zh: 风险评分分为来源、状态和使用三组。来源异常包括非常见管理主体、非管理工作站、被接管会话、业务外时点或缺少审批；状态异常包括原路径仍有效的第二凭据或认证方法、异常长寿命、未纳入盘点的角色或委托、过宽权限、休眠主体突然被修改，或旧值无法从基线解释；使用异常包括新增路径很快或在长延迟后首次认证、访问高价值资源、来源或设备与主体历史不符，以及合法所有者活动与攻击者活动并存。至少两个组异常且存在成功变更才提升为高风险；已确认攻击者发起者或精确访问边使用可以提高结论强度。对 TA0004，分析在同一记录中计算 authority delta，保存 initiating principal 的 pre-state 动作与 target principal 的变更前权限或 policy decision，再记录 mutation、传播/token refresh 后的 post-state，并对同一 resource/action 比较 allow/deny 或可达性。认证器路径要求进入更高权威 target，授权图路径要求 changed edge 位于实际 evaluation path，设备路径要求 device claim 将 deny/challenge 改为 allow。只有精确 edge 连接首个 newly-authorized 高敏感结果才输出“账户操纵权限提升链”；pre-state 未知或结果原本已允许时不得确认。
+    en: Risk scoring uses provenance, state, and use classes. Provenance anomalies include an uncommon administrator, nonadministrative workstation,
+      compromised session, off-business timing, or missing approval. State anomalies include a second credential or authentication method while
+      the original remains valid, unusually long lifetime, an uninventoried role or delegation, excessive privilege, sudden mutation of a dormant
+      principal, or an old value unexplained by baseline. Use anomalies include authentication by the added path soon after or long after mutation,
+      access to a high-value resource, origin or device inconsistent with principal history, and concurrent activity by legitimate owner and adversary.
+      High risk requires anomalies in at least two classes and a successful mutation; a confirmed adversary initiator or exact use of the changed
+      edge can raise conclusion strength. For TA0004, the same record calculates authority delta, preserving actions available to the initiating principal in pre-state and the target principal's pre-mutation permission or policy decision, then recording post-state after mutation and propagation or token refresh and comparing allow or deny or reachability for the same resource and action. The authenticator path requires entry into a higher-authority target, the authorization path requires the changed edge in the actual evaluation path, and the device path requires a device claim to turn deny or challenge into allow. Only an exact edge joined to the first newly authorized high-sensitivity outcome produces an Account Manipulation privilege-escalation chain; unknown pre-state or an action already allowed cannot confirm it.
+data_requirements:
+- source_type: identity-control-plane-change
+  name:
+    zh: 身份、目录、授权与设备控制面变更审计
+    en: Identity, directory, authorization, and device control-plane change audit
+  channel: null
+  required_fields:
+  - timestamp
+  - tenant_or_device_id
+  - initiating_principal_id
+  - target_principal_id
+  - operation
+  - object_class
+  - outcome
+  - event_id
+  - source
+  - state_key_type
+  - state_key_id
+  - old_value
+  - new_value
+  - request_id
+- source_type: identity-state-inventory
+  name:
+    zh: 认证器、授权图与设备信任状态快照
+    en: Authenticator, authorization-graph, and device-trust state snapshots
+  channel: null
+  required_fields:
+  - snapshot_time
+  - tenant_or_device_id
+  - principal_id
+  - access_edge_type
+  - access_edge_id
+  - state
+  - valid_from
+  - valid_until
+  - parent_edge_id
+  - resource_scope
+  - device_owner
+  - device_trust_type
+  - compliance_state
+- source_type: identity-authentication-and-resource-use
+  name:
+    zh: 登录、令牌、会话与资源使用记录
+    en: Sign-in, token, session, and resource-use records
+  channel: null
+  required_fields:
+  - timestamp
+  - tenant_or_device_id
+  - principal_id
+  - session_or_token_id
+  - authentication_method
+  - source
+  - device_id
+  - target_resource
+  - action
+  - outcome
+  - authentication_strength
+  - token_device_id
+  - token_claims
+  - conditional_access_result
+  - authorization_result
+- source_type: identity-change-approval
+  name:
+    zh: 身份变更审批与工作流记录
+    en: Identity-change approval and workflow records
+  channel: null
+  required_fields:
+  - change_id
+  - requested_at
+  - requesting_principal_id
+  - target_principal_id
+  - approved_operation
+  - approver_id
+  - validity_window
+  - status
+- source_type: authority-baseline-and-policy-evaluation
+  name:
+    zh: 变更前后有效权限与策略求值
+    en: Before-and-after effective authority and policy evaluation
+  channel: null
+  required_fields:
+  - timestamp
+  - tenant_or_device_id
+  - initiating_principal_id
+  - target_principal_id
+  - access_edge_id
+  - graph_or_policy_version
+  - session_or_token_id
+  - resource
+  - action
+  - required_permission
+  - pre_state_result
+  - post_state_result
+  - evaluation_path
+  - changed_edge_in_path
+  - device_claims
+  - decision_reason
+  - outcome
+observables:
+- zh: 非常见管理主体在没有匹配审批时，为既有主体新增第二认证器、授权图边或设备信任关系。
+  en: An uncommon administrator adds a second authenticator, authorization-graph edge, or device-trust relationship to an existing principal without
+    matching approval.
+- zh: 新增 key、证书或认证方法在原认证器仍有效时首次用于认证，且寿命、来源或类型偏离同类身份基线。
+  en: A new key, certificate, or authentication method is first used while the original authenticator remains valid, with lifetime, origin, or
+    type outside the peer-identity baseline.
+- zh: 角色、组、委托或策略边使主体首次取得高价值资源操作；展开后的有效权限不能由工单、所有者或既有图解释。
+  en: A role, group, delegation, or policy edge first enables a high-value resource action, and the resolved effective privilege is unexplained
+    by change record, owner, or prior graph.
+- zh: 新注册或加入的 device ID 不在资产/MDM 清单，注册时认证强度不足，随后取得 PRT、满足设备条件或访问高价值应用。
+  en: A newly registered or joined device ID is absent from asset or MDM inventory, enrollment lacks expected authentication strength, and the
+    device later obtains a PRT, satisfies a device condition, or accesses a high-value application.
+- zh: 休眠用户或服务主体在状态变更后从新来源恢复使用，或合法所有者与新增认证器/设备出现并发活动。
+  en: A dormant user or service principal resumes use from a new origin after mutation, or the legitimate owner and added authenticator or device
+    show concurrent activity.
+- zh: 发起者、目标主体、状态键和后续认证/授权结果形成控制面到访问面的完整因果链。
+  en: Initiator, target principal, state key, and later authentication or authorization result form a complete control-plane-to-access-plane causal
+    chain.
+- zh: 同一 resource/action 在变更前为 deny、不可达或需要更强认证，变更后由精确 authenticator、authorization edge 或 device claim 变为 allow，并立即出现高敏感结果。
+  en: The same resource and action is denied, unreachable, or requires stronger authentication before mutation and becomes allowed through an exact authenticator, authorization edge, or device claim after mutation, followed by a high-sensitivity outcome.
+- zh: 目标主体本来高权限但攻击者 source context 与 changed edge 使用无法证明，或 pre-state 已允许同一操作；保留状态异常/持久化输出，不升级为 TA0004。
+  en: A privileged target lacks proof connecting adversary source context and changed-edge use, or pre-state already allowed the same action; retain state-anomaly or persistence output without elevating to TA0004.
+correlation:
+  window:
+    zh: 对变更后的立即使用使用前后十五分钟至二十四小时窗口；对延迟持久化从成功变更持续到访问边到期、撤销或最近状态快照，默认最多九十日。精确 key 或授权边匹配可覆盖其完整有效期，只有主体级匹配时默认限制为三十日，并使用至少九十日历史建立管理主体、来源、角色和使用基线。
+    en: Use a fifteen-minute-to-twenty-four-hour window for immediate post-change use. For delayed persistence, extend from successful mutation
+      until edge expiry, revocation, or the latest state snapshot, ninety days by default. Exact key or entitlement-edge matches may span the
+      edge's complete validity, while principal-only matches default to thirty days and use at least ninety days of history for administrator,
+      origin, role, and use baselines.
+  dimensions:
+  - tenant_or_device
+  - initiating_principal
+  - target_principal
+  - access_edge
+  - authentication_method
+  - session_or_token
+  - source
+  - device
+  - target_resource
+  - approval
+  - time
+  - state_key_type
+  - state_key_id
+  - authorization_path
+  - device_trust
+  - authentication_strength
+  - conditional_access
+  - initiating_principal_pre_authority
+  - target_principal_pre_authority
+  - target_principal_post_authority
+  - authority_delta
+  - graph_or_policy_version
+  - evaluation_path
+  - newly_authorized_outcome
+false_positives:
+- zh: 批准的密钥轮换、证书续订、账户恢复和 MFA 迁移会在原认证器撤销前短暂形成并行路径。
+  en: Approved key rotation, certificate renewal, account recovery, and MFA migration briefly create parallel paths before the old authenticator
+    is revoked.
+- zh: 入职、岗位变更、代理工作、服务迁移、基础设施即代码和应急值守会合法改变角色、组、委托或策略边。
+  en: Onboarding, role change, delegated work, service migration, infrastructure as code, and emergency duty legitimately change role, group,
+    delegation, or policy edges.
+- zh: 新员工设备、硬件更换、BYOD、自助注册、合规重建和灾难恢复会合法生成新 device ID、PRT 或条件访问变化。
+  en: New employee devices, hardware replacement, BYOD, self-service enrollment, compliance rebuild, and disaster recovery legitimately generate
+    a new device ID, PRT, or Conditional Access change.
+blind_spots:
+- zh: 平台不记录 old/new 值、key/方法 ID、证书或 SSH 指纹时，无法证明具体并行认证器被使用，只能作主体级推断。
+  en: Platforms omitting old and new values, key or method ID, certificate fingerprint, or SSH fingerprint cannot prove use of a concrete parallel
+    authenticator and permit only principal-level inference.
+- zh: 嵌套组、委托链、资源策略版本或授权求值路径未展开时，无法证明哪条新增边授权了具体操作。
+  en: When nested groups, delegation chains, resource-policy versions, or authorization evaluation paths are not resolved, analysis cannot prove
+    which added edge authorized a concrete action.
+- zh: 令牌日志缺少 device ID、认证声明或条件访问结果，设备目录历史未保留，或本地设备注册未集中采集时，恶意设备关系可能无法连接到后续访问。
+  en: When token logs omit device ID, authentication claims, or Conditional Access result, device-directory history is not retained, or local
+    enrollment is not centrally collected, a rogue device relationship may not join to later access.
+- zh: 攻击者不修改状态、删除变更历史，或控制审批工作流、资产清单与可信管理来源时，该分析失去关键判据。
+  en: The analytic loses critical criteria when the adversary makes no state change, deletes mutation history, or controls approval workflow,
+    asset inventory, and trusted management origin.
+tuning_guidance:
+  paragraphs:
+  - zh: 分别为三类状态建立同类基线：认证器按类型、数量、寿命、轮换重叠和首次来源；授权图按边类型、作用域、嵌套深度、owner 和正常资源；设备按注册方式、认证强度、trust type、MDM/资产状态与网络。允许列表必须绑定具体发起者、目标、状态键、工单和有效期，不得永久放行同步服务、全局管理员、常见角色、公司网络或
+      BYOD。
+    en: Build separate peer baselines for the three state classes. For authenticators, use type, count, lifetime, rotation overlap, and first
+      origin. For authorization graph, use edge type, scope, nesting depth, owner, and normal resources. For devices, use enrollment method, authentication
+      strength, trust type, MDM or asset state, and network. Allowlists must bind concrete initiator, target, state key, change record, and validity;
+      never permanently allow a synchronization service, global administrator, common role, corporate network, or BYOD.
+  - zh: 将来源合法性、状态持久性和后续使用分别评分，并在输出中标明 exact-key 或 principal-only。已批准但超出寿命/范围的状态仍需复核；未批准但未使用的状态先隔离与保全证据，不直接归因。用本地轮换、岗位调整、委托、设备更换与自助注册流程回放字段、传播延迟和误报，并保证保留期覆盖最长认证器、授权边和设备关系寿命。
+    en: Score provenance legitimacy, state durability, and downstream use separately, labeling output as exact-key or principal-only. Approved
+      state exceeding lifetime or scope still requires review; unapproved but unused state should be isolated and preserved without immediate
+      attribution. Replay local rotation, role change, delegation, hardware replacement, and self-service enrollment to validate fields, propagation
+      delay, and false positives, and retain data through the longest authenticator, authorization edge, and device relationship lifetime.
+  - zh: 单独校准 TA0004 输出：对每类状态建立受控 before/after replay，证明同一 resource/action 在 mutation 前被拒绝、变更后因精确 edge 或 claim 允许，并保留 initiating principal 原权限。高权限角色名、目标账户等级或注册成功都不是 authority delta；只有完整图/策略求值与 newly-authorized outcome 才能高置信，principal-only 关联最多为中低置信风险。
+    en: Calibrate TA0004 output separately with controlled before-and-after replay for every state class, establishing that the same resource and action was denied before mutation and allowed after it because of the exact edge or claim, while retaining the initiating principal's original authority. A privileged role name, target-account tier, or successful enrollment is not authority delta. Only complete graph or policy evaluation plus a newly authorized outcome can be high confidence, and principal-only correlation remains medium- or low-confidence risk.
+evidence_refs:
+- REF-000143
+- REF-000110
+- REF-000145
+- REF-000146
+- REF-000147
+- REF-000168
+- REF-000169
+- REF-000170
+- REF-000171
+lifecycle:
+  status: review
+  version: 1.2.0
+  created: '2026-09-11'
+  modified: '2026-09-13'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

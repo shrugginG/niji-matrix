@@ -1,0 +1,140 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000235
+strategy_ref: DET-000201
+name:
+  zh: 单次证明签发—读取—消费关联
+  en: Single-Proof Issuance-Read-Consumption Correlation
+summary:
+  zh: 把证明签发、第二读者、异源消费、验证结果和用户否认连接为短时 MFA 证明取得链。
+  en: Join proof issuance, a second reader, different-origin consumption, verifier outcome, and user denial into an ephemeral
+    MFA-proof acquisition chain.
+domains:
+- enterprise
+platforms:
+- Identity Provider
+- SaaS
+- IaaS
+- Network Devices
+- Windows
+- Linux
+- macOS
+logic:
+  paragraphs:
+  - zh: 将每个 MFA challenge 规范为 tenant、user、challenge/request/correlation ID、method、authenticator ID、destination hash、issued_at、expires_at
+      和 expected device/session。连接投递 provider 或邮箱的 message ID、console actor、source IP、view/search/read operation 与时间，再连接 IdP
+      的 proof consumption、source IP、device、session、result 和 successor session。输出 exposure、material-reached、usable-window、accepted、session-created
+      五级；不得采集证明值。没有跨服务 ID 时，仅在短于证明 TTL 的窗口按 user、method、destination 与来源做低置信关联。
+    en: Normalize each MFA challenge into tenant, user, challenge, request or correlation ID, method, authenticator ID, destination
+      hash, issued_at, expires_at, and expected device or session. Join delivery-provider or mailbox message ID, console actor,
+      source IP, view, search, or read operation and time, then join IdP proof consumption, source IP, device, session, result,
+      and successor session. Emit exposure, material-reached, usable-window, accepted, and session-created tiers without collecting
+      proof values. Without a cross-service ID, use lower-confidence joins by user, method, destination, and origin within
+      a window shorter than the proof TTL.
+data_requirements:
+- source_type: idp-mfa-challenge-and-signin
+  name:
+    zh: IdP MFA 挑战与登录详情
+    en: IdP MFA challenge and sign-in details
+  channel: identity provider challenge and sign-in logs
+  required_fields:
+  - timestamp
+  - tenant_id
+  - user_id
+  - challenge_id
+  - request_or_correlation_id
+  - authentication_method
+  - authenticator_id
+  - issued_at
+  - expires_at
+  - source_ip
+  - device_id
+  - session_id
+  - result
+- source_type: proof-delivery-or-consumer-access
+  name:
+    zh: 证明投递或认证消费者访问
+    en: Proof delivery or authentication-consumer access
+  channel: SMS or email provider audit, mailbox audit, or authentication-component output telemetry
+  required_fields:
+  - timestamp
+  - provider_or_node_id
+  - message_or_output_id
+  - destination_hash
+  - actor_id
+  - actor_source_ip
+  - operation
+  - delivery_status
+  - challenge_or_transaction_id
+- source_type: identity-session-outcome
+  name:
+    zh: 认证后会话结果
+    en: Post-authentication session outcome
+  channel: IdP and relying-party session logs
+  required_fields:
+  - timestamp
+  - user_id
+  - request_or_correlation_id
+  - session_id
+  - resource_id
+  - source_ip
+  - device_id
+  - authentication_method
+  - result
+observables:
+- zh: 证明投递被异常主体查看
+  en: Proof delivery viewed by an unexpected actor
+- zh: 提供者查询后出现 MFA 成功
+  en: Provider search followed by MFA success
+- zh: 证明由异常设备或会话消费
+  en: Proof consumed from an unexpected device or session
+- zh: 证明重复或已使用拒绝
+  en: Duplicate or already-used proof
+- zh: 用户否认对应挑战
+  en: User denied the corresponding challenge
+correlation:
+  window:
+    zh: 从证明签发开始覆盖其有效期，并在消费后继续关联十五分钟内的 session 与用户反馈。
+    en: Start at proof issuance, cover its validity lifetime, and continue through fifteen minutes after consumption to join
+      sessions and user feedback.
+  dimensions:
+  - tenant_id
+  - user_id
+  - challenge_id
+  - request_or_correlation_id
+  - authentication_method
+  - authenticator_id
+  - destination_hash
+  - device_id
+  - session_id
+  - source_ip
+false_positives:
+- zh: 提供者支持、获批帮助台排障、共享家庭电话、用户漫游、代理出口、恢复测试和企业消息归档可能产生查看与来源差异；必须核对工单、provider role、用户确认和是否存在对应合法请求。
+  en: Provider support, approved help-desk troubleshooting, shared family phones, user roaming, proxy egress, recovery testing,
+    and enterprise message archiving can create view and origin differences. Check ticket, provider role, user confirmation,
+    and the corresponding legitimate request.
+blind_spots:
+- zh: 运营商不提供逐消息访问、IdP 与提供者没有共同 ID、端到端加密邮箱或攻击者删除 provider 审计时无法高置信连接；真实认证组件第二输出可能只在内存存在，成功 MFA 也不证明攻击者看过代码。
+  en: High-confidence linkage is unavailable when carriers omit per-message access, IdP and provider lack a shared ID, mail
+    is end-to-end encrypted, or the adversary deletes provider audit. A second output inside a genuine authentication component
+    may remain only in memory, and successful MFA does not prove the adversary viewed a code.
+tuning_guidance:
+  paragraphs:
+  - zh: 按 method 配置真实 TTL 与一次使用规则，优先使用稳定 challenge/correlation ID；provider 例外必须绑定精确角色、工单、message scope 和期限。将“无对应用户请求”“控制台搜索后异源成功”“重复使用拒绝”和“用户否认”提高权重，不以
+      SMS 或邮件方法本身告警。
+    en: Configure actual TTL and one-use semantics by method and prefer stable challenge or correlation IDs. Provider exceptions
+      bind exact role, ticket, message scope, and expiry. Raise weight for no corresponding user request, different-origin
+      success after console search, duplicate-use rejection, and user denial rather than alerting on SMS or email as methods.
+evidence_refs:
+- REF-000779
+- REF-000777
+- REF-000307
+- REF-000781
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-09-27'
+  modified: '2026-09-27'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

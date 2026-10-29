@@ -1,0 +1,85 @@
+schema_version: "2.0.0"
+type: technique
+id: NJT-0124
+name: {zh: 防火墙策略削弱, en: Firewall Policy Impairment}
+summary: {zh: 攻击者改变系统防火墙的有效阻断或转发结果，使受限路径可通行或真实后门入口被表面正常端口掩盖。, en: Adversaries change effective system-firewall blocking or forwarding so restricted paths become usable or a real backdoor entry is concealed behind an apparently ordinary port.}
+aliases: [Disable or Modify System Firewall, T1686]
+classification:
+  tactic_refs: [TA0112]
+  origin: {kind: attack-retained, source_attack_id: T1686, source_attack_version: "19.1"}
+  decision_ref: DEC-TA0112-T1686
+definition_and_concept:
+  paragraphs:
+    - zh: 防火墙策略削弱是攻击者对主机、网络设备、虚拟化或云边界的系统防火墙施加受控变化，使原本应被拒绝的流量获得通路，或让可见的入口与实际接收服务发生策略性错位。其直接目的是损害网络边界的阻断和解释能力，从而支持远程控制、横向移动或后续载荷，而不等同于这些后继行动本身。
+      en: Firewall Policy Impairment is adversary-controlled change to a system firewall at a host, network device, virtualization layer, or cloud boundary that gives traffic expected to be denied a usable path or makes the visible entry diverge from the actual receiving service. Its immediate purpose is to damage the boundary's blocking and interpretive capability in support of remote control, lateral movement, or a later payload, not to equate the policy change with those follow-on actions.
+    - zh: 概念锚是经批准的有效策略、攻击者写入的版本、规则优先级与资源绑定、真实会话裁决，以及过滤前后网络路径。命令、Registry、云 API、设备 ACL 和 NAT 规则只是实现介质；没有生效的配置变化或只是启动一个已允许的网络服务，不构成这个防御对象。
+      en: The concept is anchored in approved effective policy, the adversary-written version, rule precedence and resource attachment, actual session decision, and network path before and after filtering. Commands, Registry values, cloud APIs, device ACLs, and NAT rules are implementation media. A configuration change that never takes effect or merely starting a service already allowed by policy does not establish this defensive object.
+stealth_characteristics:
+  paragraphs:
+    - zh: 防火墙策略削弱改变应有的拒绝信号、可达性与接收者谱系。整体关闭使大量路径同时开放，容易形成配置和拒绝量异常；局部例外让其他流量仍被正常阻断；条件化重定向还可让边界传感器只看到常用端口，而真实后门进程在另一个端口接收。后两者把恶意通路藏在看似健康的边界与正常流量背景中。
+      en: Firewall Policy Impairment changes expected deny signals, reachability, and receiver lineage. Whole shutdown opens many paths at once and can create conspicuous configuration and deny-volume anomalies. A local exception leaves other traffic normally blocked. Conditional redirection can also make a boundary sensor see only a common port while a backdoor process receives the traffic elsewhere. The latter two hide a malicious path within an apparently healthy boundary and normal traffic background.
+    - zh: 残余痕迹包括策略版本、profile 或 zone 状态、规则增删与重排、云资源绑定、规则命中、拒绝变允许的会话、NAT 前后五元组、本地监听及接收进程。不同权配置审计、独立流量采集和受控可达性验证可以重建差异；仅保存当前规则、单侧 flow 或防火墙“运行中”状态，会错过短驻或来源限定的例外。
+      en: Residue includes policy versions, profile or zone state, rule additions, deletions, and reordering, cloud-resource attachment, rule hits, sessions changing from denied to allowed, pre- and post-NAT five-tuples, local listeners, and receiving processes. Differently authorized configuration audit, independent flow collection, and controlled reachability tests reconstruct the difference. Current rules alone, one-sided flows, or a firewall-running flag miss brief or source-scoped exceptions.
+scope_boundary_definition:
+  paragraphs:
+    - zh: 纳入攻击者控制的防火墙整体停用、默认动作放宽、规则例外、ACL/安全组改写、资源解绑或过滤路径重定向，但必须证明变更使受限流量的有效裁决或实际接收路径发生变化。规则已创建却被更高优先级拒绝覆盖、尚未绑定资源或没有命中会话时，只能证明潜在暴露，不能宣称完整匿迹效果。
+      en: Scope includes adversary-controlled whole-firewall disablement, relaxed default action, rule exceptions, ACL or security-group edits, resource detachment, and filtering-path redirection, but only when the change alters the effective decision or actual receiving path for restricted traffic. A created rule overridden by a higher-priority deny, not attached to a resource, or never hit by a session establishes potential exposure, not a completed stealth effect.
+    - zh: 单纯停用防火墙日志但保持过滤结果归 NJT-0123 的遥测链；秘密监听而不改变策略归隐藏工件或通信对象；网络边界桥接、C2 会话和横向移动按其直接行为分别研究。批准的远程维护、灾备、动态部署、负载均衡、服务网格与故障切换可产生相似配置和流量形状，必须用 owner、工单、范围、寿命和真实结果区分，不能以端口或管理员身份单独定性。
+      en: Disabling firewall logs while preserving enforcement belongs to the telemetry chain in NJT-0123. A secret listener without a policy change belongs to concealment or communication objects. Network-boundary bridging, C2 sessions, and lateral movement are examined by their direct behaviors. Approved remote maintenance, disaster recovery, dynamic deployment, load balancing, service mesh, and failover can produce similar configuration and flow shapes; owner, ticket, scope, lifetime, and real outcome distinguish them, not port or administrator identity alone.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+      - zh: 在已有高权限入口之后，攻击者可为远程桌面、后门监听、跨 zone 会话或云工作负载创建通路，也可在组织新加 ACL 后利用设备上的重定向恢复访问。Dragonfly 相关脚本关闭主机防火墙并开放远程入口；BPFDoor 和 UNC3886 TABLEFLIP 则分别展示来源限定的端口重定向及真实接收者错位。
+        en: After gaining privileged access, an adversary can create a path for remote desktop, a backdoor listener, a cross-zone session, or a cloud workload, or restore access after an organization adds an ACL by redirecting traffic on the device. A Dragonfly-related script disabled a host firewall and opened remote access. BPFDoor and UNC3886 TABLEFLIP respectively show source-limited port redirection and mismatch with the real receiver.
+  threat_model:
+    attacker_model:
+      paragraphs:
+        - zh: 攻击者需取得主机管理员、设备配置员、云安全组写入或等效高权限，并理解默认拒绝、规则优先级、资源绑定、NAT 先后顺序及后继服务。全域关停实施简单但异常明显；精确例外和重定向需要更详细的拓扑、会话来源与服务知识，并受独立审批、规则审计、连接跟踪和外部探测限制。
+          en: The adversary needs host administration, device configuration, cloud security-group write permission, or equivalent authority and must understand default deny, rule precedence, resource attachment, NAT order, and the follow-on service. Broad shutdown is simple but conspicuous. Precise exceptions and redirection require more detailed topology, session-origin, and service knowledge and are constrained by independent approval, rule audit, connection tracking, and external probes.
+    defender_model:
+      paragraphs:
+        - zh: 防守方假定能从批准基线与当前策略版本计算每个边界的有效拒绝集合，并获得写入主体、规则命中、独立流量、握手结果及 NAT 后接收进程。云安全组、主机和设备的数据字段并不完全同形；若只收集配置提交而无资源绑定与会话，或只有单侧五元组而无 conntrack，就不能可靠判断策略实际损害范围。
+          en: Defenders are assumed to compute each boundary's effective deny set from approved baseline and current policy version and to obtain writer, rule hit, independent flow, handshake outcome, and post-NAT receiving process. Cloud security groups, hosts, and devices do not expose identical fields. Configuration commits without resource attachment and sessions, or one-sided five-tuples without conntrack, cannot reliably establish the actual impairment scope.
+stealth_mechanisms:
+  - mechanism_ref: NM-BT
+    role: primary
+    summary: {zh: 让原本受限的会话穿过边界而缺少应有的拒绝结果, en: Let formerly restricted sessions cross a boundary without their expected deny outcomes}
+    analysis:
+      paragraphs:
+        - zh: 攻击者关闭宽范围策略或添加定向放行后，原本会被防火墙拒绝的会话转为被允许，规则拒绝与后继网络活动之间的观察联系被切断。宽范围变化留下显著状态差分，定向变化则保留其他正常拒绝作为背景；如果防守方只以“防火墙仍在线”或总事件量判断覆盖，后继访问会呈现为无异常的合法会话，形成行为透明。
+          en: After the adversary disables broad policy or adds a targeted allow, a session formerly denied by the firewall becomes permitted, breaking the observable link between rule denial and follow-on network activity. Broad change leaves a conspicuous state differential, whereas targeted change preserves other normal denials as background. If defenders judge coverage only from firewall-online state or aggregate event volume, follow-on access appears as an unremarkable legitimate session, producing Behavioral Transparency.
+    evidence_refs: [REF-000452, REF-000453, REF-000451]
+    confidence: high
+  - mechanism_ref: NM-FD
+    role: secondary
+    summary: {zh: 用正常入口端口掩盖被策略改写后的真实后门接收者, en: Use an ordinary entry port to disguise the real backdoor receiver after policy translation}
+    analysis:
+      paragraphs:
+        - zh: 来源限定的 NAT/REDIRECT 规则让边界记录保留常用目的端口，但实际会话被转给不同的监听进程，表面网络特征与真实接收者因此分离。防守方若只读取转换前流量，会把后门会话归给正常服务；只有把规则命中、转换后五元组和 socket/进程连起来，才能识别该特征伪装。
+          en: A source-limited NAT or REDIRECT rule preserves an ordinary destination port in boundary records while delivering the real session to a different listening process, separating visible network features from the actual receiver. Defenders reading only pre-translation traffic may attribute the backdoor session to a normal service. Joining rule hit, post-translation five-tuple, and socket or process reveals the Feature Disguise.
+    evidence_refs: [REF-000453, REF-000155]
+    confidence: high
+subtechnique_taxonomy:
+  narrative:
+    paragraphs:
+      - zh: 子技术按有效防火墙裁决被改变的范围与路径关系划分。NJS-0124-001 改变整个 profile 或宽策略的执行状态，需比较状态、拒绝量与多路径可达性；NJS-0124-002 只给特定来源、目标、端口或服务建立规则开口，需解析选择器、优先级与首个命中会话；NJS-0124-003 则保持表面常用入口，把命中流量重定向到另一真实接收者，需连接 NAT 前后路径和进程。
+        en: Children are partitioned by the breadth and path relationship of changed effective firewall decisions. NJS-0124-001 changes enforcement state for an entire profile or broad policy and requires state, deny-volume, and multi-path reachability comparison. NJS-0124-002 opens a rule only for a selected source, target, port, or service and requires selector, precedence, and first matched session. NJS-0124-003 preserves an apparently ordinary entry while redirecting matched traffic to another real receiver and requires pre/post-NAT path and process joins.
+      - zh: 云、网络设备与 Windows 是 ATT&CK 的实现维度，不进入 Niji 子项；端口号、命令、产品和规则文件也不定义兄弟。临时开口后回滚改变可观察窗口，但可以叠加于三项之上而不是第四子项。单个会话既可能命中精确规则又被重定向，只有分别证明允许边和真实接收者错位才双重归类。
+        en: Cloud, network-device, and Windows categories are ATT&CK implementation dimensions and do not become Niji children. Port number, command, product, and rule file do not define siblings. A brief opening followed by rollback changes the observation window but can overlay all three rather than form a fourth child. One session may both match a scoped rule and be redirected; dual classification requires independent proof of the allow edge and receiver mismatch.
+  coverage: established
+  subtechnique_refs: [NJS-0124-001, NJS-0124-002, NJS-0124-003]
+defense:
+  detections: {coverage: available, strategy_refs: [DET-000132, DET-000133]}
+  mitigations: {coverage: available, mitigation_refs: [MIT-000122]}
+evidence:
+  claim_refs: [CLM-000665, CLM-000666, CLM-000667, CLM-000668, CLM-000669, CLM-000670]
+  case_refs: [CASE-000169, CASE-000170, CASE-000171]
+  reference_refs: [REF-000451, REF-000452, REF-000453, REF-000454, REF-000455, REF-000155]
+research:
+  limitations:
+    paragraphs:
+      - zh: CISA 报告直接证明广域防火墙关闭与远程入口开放，却没有逐会话拒绝前态；BPFDoor 样本和演示清楚证明来源限定重定向，但演示为可读性关闭了实际植入使用的加密；Mandiant 的 TABLEFLIP 报告直接描述设备 ACL 后的重定向与后门访问。云安全组与 Windows 官方文档只证明可用审计数据，不能证明所有产品都有规则命中、NAT 后进程或相同事件格式。
+        en: CISA directly establishes broad firewall shutdown and a remote entry but lacks per-session prior denials. The BPFDoor sample and demonstration clearly establish source-limited redirection, but the demonstration disables encryption used by the real implant for readability. Mandiant directly describes redirection and backdoor access after device ACL restriction through TABLEFLIP. Cloud security-group and Windows official documentation establish available audit data, not that every product provides rule hits, post-NAT processes, or identical event formats.
+      - zh: 规则写入与真实生效不同，配置合规与会话安全也不同；缺少有效策略前态、资源绑定或后继会话时只能记录暴露。合法维护和动态编排可能生成短时例外与 NAT，需以精确 owner、用途及服务映射区分；当攻击者同时控制设备和日志时，需要不同权网络观察或离线配置，人工评审应复核三项兄弟边界是否覆盖更多云与设备案例。
+        en: Rule write differs from effective enforcement, and configuration compliance differs from session safety. Without prior effective policy, resource attachment, or follow-on session, only exposure is supported. Legitimate maintenance and dynamic orchestration can create brief exceptions and NAT and require exact owner, purpose, and service mapping to distinguish them. When the adversary controls device and logs together, differently authorized network observation or offline configuration is needed. Human review should test whether the three sibling boundaries generalize across more cloud and appliance cases.
+lifecycle: {status: review, version: "0.1.0", created: "2026-09-22", modified: "2026-09-22", contributors: [Niji Matrix Research], reviewers: []}

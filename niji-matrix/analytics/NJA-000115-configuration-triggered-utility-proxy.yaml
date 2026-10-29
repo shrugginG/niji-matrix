@@ -1,0 +1,99 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000115
+strategy_ref: DET-000129
+name:
+  zh: 持久工具配置到未来代理结果关联
+  en: Durable Utility Configuration to Future Proxy Outcome Correlation
+summary:
+  zh: 输出未批准配置版本被后续工具会话读取并触发恶意本地或网络动作的链条。
+  en: Produce chains where a later utility session reads an unauthorized configuration version and triggers a malicious local
+    or network action.
+domains:
+- enterprise
+platforms:
+- Windows
+logic:
+  paragraphs:
+  - zh: 版本化记录用户和系统工具配置的写入者、路径、作用域、选项和值摘要；在 ssh.exe 或等价工具运行时解析实际生效的 ProxyCommand、LocalCommand、PermitLocalCommand 或其他命令配置，并连接配置读取、认证会话、helper 子进程、文件与网络。未批准配置在后来会话中实际触发敏感结果时输出 configuration_triggered_utility_proxy。
+    en: Version user and system utility configuration with writer, path, scope, option, and value digest. When ssh.exe or an
+      equivalent utility runs, parse the effective ProxyCommand, LocalCommand, PermitLocalCommand, or other command configuration
+      and join configuration read, authentication session, helper child, file, and network. Emit configuration_triggered_utility_proxy
+      when unauthorized configuration actually triggers a sensitive outcome in a later session.
+data_requirements:
+- source_type: utility-configuration-version
+  name:
+    zh: 工具配置版本与写入
+    en: Utility configuration version and write
+  channel: null
+  required_fields:
+  - event.timestamp
+  - host.id
+  - config.path
+  - config.scope
+  - config.version
+  - config.writer_start_key
+  - option.name
+  - option.value_hash
+  - approval.id
+- source_type: utility-config-consumption
+  name:
+    zh: 工具配置消费与结果
+    en: Utility configuration consumption and outcome
+  channel: null
+  required_fields:
+  - event.timestamp
+  - host.id
+  - utility.start_key
+  - utility.image
+  - config.path
+  - config.version
+  - session.id
+  - child.start_key
+  - command.hash
+  - network.destination
+  - outcome
+observables:
+- zh: 用户 ssh_config 被未知进程写入 ProxyCommand，后来 ssh 会话启动 shell helper
+  en: An unknown process writes ProxyCommand into user ssh_config and a later SSH session starts a shell helper
+- zh: LocalCommand 配置版本在连接成功后触发敏感复制或执行
+  en: A LocalCommand configuration version triggers sensitive copy or execution after connection succeeds
+correlation:
+  window:
+    zh: 从配置写入覆盖到该版本首次工具读取与结果；具体上限按配置版本历史、用户 home 审计和 SSH 使用周期配置并记录，不使用固定三十日。
+    en: Cover configuration write through the first utility read and outcome for that version. Configure and record the concrete
+      upper bound from configuration-version history, user-home auditing, and SSH usage cycle rather than use a fixed thirty-day
+      period.
+  dimensions:
+  - host.id
+  - config.path
+  - config.version
+  - config.writer_start_key
+  - utility.start_key
+  - session.id
+  - command.hash
+false_positives:
+- zh: 堡垒机代理、固定部署 wrapper、管理员本地命令、文件传输自动化和受管 SSH 配置
+  en: Bastion proxying, fixed deployment wrappers, administrator local commands, file-transfer automation, and managed SSH
+    configuration
+blind_spots:
+- zh: 配置写入未审计、工具不报告实际配置来源、用户 home 在离线卷或 helper 进程内执行
+  en: Configuration writes are not audited, utility does not report effective configuration source, user home resides on
+    an offline volume, or helper executes in-process
+tuning_guidance:
+  paragraphs:
+  - zh: 按账户、主机角色、配置路径、选项值、目标和正常会话建立批准组合，配置例外绑定 owner 与到期。严重度要求未知写入者、危险 helper、异常目标和实际结果组合，不按 ssh.exe 或 ProxyCommand 关键词全局告警。
+    en: Baseline approved combinations by account, host role, configuration path, option value, destination, and normal session
+      and bind configuration exceptions to owner and expiry. Require unknown writer, dangerous helper, anomalous destination,
+      and actual outcome together for severity rather than globally alerting on ssh.exe or the ProxyCommand keyword.
+evidence_refs:
+- REF-000398
+- REF-000429
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-09-21'
+  modified: '2026-09-21'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

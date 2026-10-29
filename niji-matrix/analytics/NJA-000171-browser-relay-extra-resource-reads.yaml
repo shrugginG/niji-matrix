@@ -1,0 +1,96 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000171
+strategy_ref: DET-000160
+name:
+  zh: 浏览器代理控制与额外资源读取关联
+  en: Browser Relay Control and Extra Resource Read Correlation
+summary:
+  zh: 连接浏览器进程控制、代理链路与用户未发起的服务端额外请求。
+  en: Join browser-process control, proxy link, and extra service-side requests the user did not initiate.
+domains:
+- enterprise
+platforms:
+- Windows
+logic:
+  paragraphs:
+  - zh: 对有浏览器进程写权限访问或异常模块载入的设备，关联同一浏览器进程到非批准远端的长连接，再检查 20 分钟内该设备认证会话读取内部应用资源的序列。若请求在无相应页面导航或用户活动时出现、超出用户近期访问基线，且与代理控制链同现，提升风险；仅凭
+      Sysmon 8/10 不断言内容取得。
+    en: On devices with write-capable browser process access or unusual module loads, correlate a long connection from the
+      same browser process to an unapproved remote endpoint. Inspect internal-app resource reads in the device's authenticated
+      session within 20 minutes. Raise risk when requests lack matching page navigation or user activity, exceed the user's
+      recent access baseline, and coincide with the relay chain. Sysmon 8 or 10 alone does not prove content acquisition.
+data_requirements:
+- source_type: sysmon-process-access
+  name:
+    zh: Sysmon 浏览器进程访问
+    en: Sysmon browser process access
+  channel: null
+  required_fields:
+  - utc_time
+  - source_process_guid
+  - target_process_guid
+  - granted_access
+- source_type: endpoint-network-connection
+  name:
+    zh: 端点网络连接
+    en: Endpoint network connection
+  channel: null
+  required_fields:
+  - utc_time
+  - process_guid
+  - destination_ip
+  - destination_port
+- source_type: application-request-log
+  name:
+    zh: 应用资源请求日志
+    en: Application resource request log
+  channel: null
+  required_fields:
+  - account_id
+  - session_id
+  - device_id
+  - resource_path
+  - response_status
+  - observed_at
+observables:
+- zh: 浏览器进程被写入后产生独立代理连接
+  en: A browser process starts an independent relay connection after write access
+- zh: 同一会话从该设备访问用户未打开的额外资源
+  en: The same session reads additional resources the user did not open
+correlation:
+  window:
+    zh: 以代理链路出现前后二十分钟为初始关联窗口。
+    en: Use an initial twenty-minute window around the appearance of the relay link.
+  dimensions:
+  - device_id
+  - browser_process_guid
+  - account_id
+  - session_id
+  - resource_path
+false_positives:
+- zh: 经批准的 Selenium/Playwright 自动化、远程协助、浏览器测试代理和辅助功能可能造成浏览器控制与额外页面请求；应根据批准进程及测试账号区分。
+  en: Approved Selenium or Playwright automation, remote support, browser test proxies, and accessibility functions may create
+    browser control and extra requests; distinguish by approved process and test account.
+blind_spots:
+- zh: 现代浏览器的多进程隔离使会话映射复杂；无端点进程事件或应用资源日志时无法闭环，内存内代理也可能避开模块载入事件。
+  en: Modern browser process isolation complicates session mapping. Missing endpoint events or app resource logs prevent a
+    closed chain, and an in-memory relay may avoid module-load events.
+tuning_guidance:
+  paragraphs:
+  - zh: 在浏览器进程名和写权限掩码上做定向筛选，并记录企业代理与远程支持排除项的进程签名和运行时段；仍保留高价值账户在正常设备上出现新资源序列的检测。
+    en: Filter on browser process names and write-capable access masks; scope enterprise proxy and remote-support exclusions
+      by signed process and approved window while retaining new-resource sequence detection for high-value accounts on familiar
+      devices.
+evidence_refs:
+- REF-000574
+- REF-000575
+- REF-000366
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-09-22'
+  modified: '2026-09-22'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

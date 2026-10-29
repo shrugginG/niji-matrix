@@ -1,0 +1,113 @@
+schema_version: 2.0.0
+type: mitigation
+id: MIT-000206
+name:
+  zh: 端点工作准入、成本界限与优雅降级
+  en: Endpoint Work Admission, Cost Bounds, and Graceful Degradation
+summary:
+  zh: 限制连接状态和每输入内部工作，将高代价路径隔离并在过载时优雅降级，降低端点 DoS。
+  en: Bound connection state and per-input internal work, isolate expensive paths, and degrade gracefully under overload
+    to reduce endpoint DoS.
+description:
+  paragraphs:
+  - zh: 该控制同时治理会话持有与算法工作。前置代理和服务应用阶段 timeout、最小数据率、并发/队列限额；代码使用线性/非回溯算法、输入长度/复杂度与执行预算；高代价路径隔离到受限 worker，并用独立健康和 failover
+      避免级联。
+    en: This control governs both session holding and algorithmic work. Proxies and services apply stage timeouts,
+      minimum data rates, concurrency and queue limits. Code uses linear or nonbacktracking algorithms, input length
+      or complexity and execution budgets. Expensive paths are isolated in bounded workers, while independent health
+      and failover prevent cascades.
+domains:
+- enterprise
+measures:
+- key: connection-progress-bounds
+  name:
+    zh: 连接进度与并发界限
+    en: Connection Progress and Concurrency Bounds
+  description:
+    paragraphs:
+    - zh: 按请求阶段设置 timeout/min-rate、每来源与全局并发、header/body/keepalive 界限，并保留慢合法客户端例外。
+      en: Set stage timeouts and minimum rates, per-source and global concurrency, and header, body, and keepalive
+        bounds while preserving exceptions for slow legitimate clients.
+  control_type: preventive
+- key: input-work-bounds
+  name:
+    zh: 输入与内部工作成本界限
+    en: Input and Internal-Work Cost Bounds
+  description:
+    paragraphs:
+    - zh: 使用非回溯算法、输入长度/嵌套/复杂度限制、执行超时和 circuit breaker，在上线前复杂度测试。
+      en: Use nonbacktracking algorithms, input length, nesting and complexity limits, execution timeouts, and circuit
+        breakers, testing complexity before release.
+  control_type: preventive
+- key: isolated-graceful-degradation
+  name:
+    zh: 隔离工作池与优雅降级
+    en: Isolated Worker Pools and Graceful Degradation
+  description:
+    paragraphs:
+    - zh: 为高代价 route 使用有界池/队列、backpressure、缓存和 failover，在过载时保留关键功能与独立健康。
+      en: Use bounded pools and queues, backpressure, caching, and failover for expensive routes and preserve critical
+        function and independent health during overload.
+  control_type: containment
+applications:
+- target_ref: NJT-0199
+  use:
+    paragraphs:
+    - zh: 为关键 endpoint 建立资源/健康 SLO、入口准入和内部成本上限，隔离昂贵路径并演练过载/failover。
+      en: Establish resource and health SLOs, ingress admission, and internal-cost limits for critical endpoints,
+        isolate expensive paths, and exercise overload and failover.
+  expected_effect:
+    paragraphs:
+    - zh: 高量、低速和小输入高成本路径都更难耗尽共同资源，影响范围和持续时间下降。
+      en: High-volume, low-rate, and small-input high-cost paths have less ability to exhaust shared resources, reducing
+        scope and duration.
+  limitations:
+    paragraphs:
+    - zh: 严格限额会拒绝慢客户端或复杂合法任务，failover 可能同步过载；代码缺陷仍可能绕过通用门。
+      en: Strict limits can reject slow clients or complex legitimate tasks, failover can overload in parallel, and
+        code flaws can bypass generic gates.
+- target_ref: NJS-0199-001
+  use:
+    paragraphs:
+    - zh: 针对 header/body/keepalive 和连接池设置阶段 timeout、min-rate、全局并发与 progress 检查，不只按源 IP。
+      en: Set stage timeouts, minimum rate, global concurrency, and progress checks for headers, bodies, keepalive,
+        and pools rather than source IP alone.
+  expected_effect:
+    paragraphs:
+    - zh: 低速连接不能无限占用状态，多源低速也受全局门限制。
+      en: Slow connections cannot hold state indefinitely and distributed slow sources face global gates.
+  limitations:
+    paragraphs:
+    - zh: 卫星/移动/大上传和长轮询需精确例外，攻击者可围绕门槛调速。
+      en: Satellite or mobile clients, large uploads, and long polling need precise exceptions, and attackers can
+        pace around thresholds.
+- target_ref: NJS-0199-002
+  use:
+    paragraphs:
+    - zh: 替换灾难性回溯正则、限制输入长度/嵌套、设置 per-route execution budget，并隔离 parser/报告 worker。
+      en: Replace catastrophic-backtracking regex, bound input length and nesting, set per-route execution budgets,
+        and isolate parser or report workers.
+  expected_effect:
+    paragraphs:
+    - zh: 小输入无法无限放大内部工作，单路由故障不再阻塞共享事件循环。
+      en: Small inputs cannot amplify work without bound and one route no longer blocks the shared event loop.
+  limitations:
+    paragraphs:
+    - zh: 复杂度难静态预测，timeout 可中断合法重任务，原生库/内核路径可能不受应用预算控制。
+      en: Complexity is hard to predict statically, timeouts can interrupt legitimate heavy work, and native library
+        or kernel paths may escape app budgets.
+evidence_refs:
+- REF-000965
+- REF-000966
+- REF-000967
+- REF-000968
+- REF-000969
+- REF-000970
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-10-04'
+  modified: '2026-10-04'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

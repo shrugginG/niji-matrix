@@ -1,0 +1,55 @@
+schema_version: "2.0.0"
+type: detection-analytic
+id: NJA-000035
+strategy_ref: DET-000085
+name: {zh: 客户端 Exploit 门控与工作流因果分析, en: Client Exploit Gating and Workflow Causality Analytic}
+summary: {zh: 以内容 ID 比较多环境响应并连接正常 client 动作到异常控制流和执行结果。, en: Use content identity to compare multienvironment responses and join ordinary client actions to abnormal control flow and execution outcomes.}
+domains: [enterprise]
+platforms: [Windows, Linux, macOS]
+logic:
+  paragraphs:
+  - zh: 为 URL/page/document/archive/object 生成 input_content_id，保存投递来源、server response、redirect/iframe、script 或文件 hash、签名/MOTW 与净化结果；连接 client product/build/architecture、OS/patch/mitigation、hardware/automation profile、user/session 和 navigation/open/view/preview/parse。记录 crash/exception、sandbox violation、renderer/Office/reader module 与内存控制流、child process、文件和网络结果。
+    en: Generate an input content ID for URLs pages documents archives or objects and retain delivery origin server response redirect or iframe script or file hash signature or Mark of the Web and sanitization result. Join client product build architecture OS patch and mitigation hardware or automation profile user or session and navigation open view preview or parse. Record crash or exception sandbox violation renderer Office or reader module and memory control flow child process file and network outcomes.
+  - zh: 门控检测在隔离环境以相同 cookies/token/网络条件对 patched/unpatched、多个 client build、真实/自动化画像重放，比较 fingerprint 请求、响应 body/hash、redirect 与 client 执行；只有匹配画像出现 exploit 结果时输出选择性激活。工作流检测不依赖差分，要求普通 client action 后出现异常 parse/control-flow 与一致 payload 结果。两轴可同时标记但各自保留证据。
+    en: Gating detection replays under isolated environments with equivalent cookies tokens and network conditions across patched and unpatched multiple client builds and real or automated profiles and compares fingerprint requests response body or hash redirects and client execution. Output selective activation only when matching profiles produce exploit outcomes. Workflow detection does not require differential replay but requires abnormal parse or control flow and a consistent payload outcome after an ordinary client action. Both axes may be marked while retaining independent evidence.
+data_requirements:
+- source_type: client-input-and-delivery
+  name: {zh: 页面、文档、Archive 与投递响应, en: Page document archive and delivery response}
+  channel: null
+  required_fields: [timestamp, input_content_id, origin_url_or_sender, redirect_or_iframe, server_response_hash, document_or_archive_hash, signature_or_motw, token_or_cookie_context, sanitization_result]
+- source_type: client-inventory-and-context
+  name: {zh: Client Build、补丁、缓解与设备画像, en: Client build patch mitigation and device profile}
+  channel: null
+  required_fields: [host_or_device_id, client_product, client_build, architecture, os_build, patch_state, exploit_mitigations, sandbox_or_site_isolation, hardware_profile, automation_or_real_profile]
+- source_type: client-action-and-parser
+  name: {zh: Navigation/Open/View/Preview 与解析事件, en: Navigation open view preview and parsing events}
+  channel: null
+  required_fields: [timestamp, process_entity, input_content_id, user_or_session, action_type, parser_or_module, temporary_path, parse_status, active_document_or_tab]
+- source_type: exploit-runtime-outcome
+  name: {zh: Crash、Sandbox、控制流与后继执行, en: Crash sandbox control flow and successor execution}
+  channel: null
+  required_fields: [timestamp, process_entity, exception_or_crash, sandbox_violation, instruction_or_memory_region, loaded_module, child_process, file_write_or_hash, network_destination, outcome]
+- source_type: differential-replay
+  name: {zh: 多环境重放与响应差分, en: Multienvironment replay and response differential}
+  channel: null
+  required_fields: [input_content_id, replay_environment_id, client_build, patch_state, hardware_or_automation_profile, request_fingerprint, response_hash, redirect, execution_or_crash_result]
+observables:
+- {zh: 同一 URL/输入只向真实设备和特定易受攻击 build 返回 exploit response，其他环境获得空白/诱饵, en: The same URL or input returns an exploit response only to real devices and specific vulnerable builds while other environments receive blank or decoy content}
+- {zh: client 在普通 view/open/preview 后异常解析或 crash，并启动未预期 shell/loader、写入 payload 或连接新目的地, en: A client abnormally parses or crashes after ordinary view open or preview and starts an unexpected shell or loader writes a payload or connects to a new destination}
+- {zh: 未补丁 build 执行而补丁 build 只产生正常错误，二者共享 input_content_id 与 server response 条件, en: An unpatched build executes while a patched build produces only a normal error with the same input content ID and server-response conditions}
+correlation:
+  window: {zh: 从输入取得前十五分钟到 client 结果后二小时；target-bound URL 的差分重放在令牌失效前完成并保留三十日。, en: From fifteen minutes before input acquisition through two hours after client outcome with differential replay of target-bound URLs completed before token expiry and retained thirty days.}
+  dimensions: [input_content, origin, token_cookie, response, host_device, client_build, os_patch, mitigation, hardware_profile, user_session, action_parser, process, crash_sandbox, child, file, network, replay_environment, time]
+false_positives:
+- {zh: 正常 client crash、兼容性/设备检测、A/B 测试、受保护文件预览、合法 helper/插件、软件更新与 QA fuzzing, en: Normal client crashes compatibility or device checks A or B tests protected-file previews legitimate helpers or plug-ins updates and QA fuzzing}
+blind_spots:
+- {zh: 一次性链接失效、服务器离线、输入未保存、客户端无 crash/内存遥测或 sandbox 与真实设备画像差异过大, en: One-time link expiry offline server missing input client lacks crash or memory telemetry or sandbox profile differs too much from real devices}
+- {zh: exploit 在 client 进程内完成且无 crash/child/file/network，或使用加密 target-bound 响应无法重放, en: Exploit completes inside the client without crash child file or network or uses encrypted target-bound responses that cannot be replayed}
+tuning_guidance:
+  paragraphs:
+  - zh: 按 client product/build/OS/mitigation 和正常 child/module 行为建立基线，保留内容 ID 而非只按 CVE/文件扩展。门控重放必须控制 cookie、token、IP、时间和画像，避免把 CDN/个性化差异误判；工作流分支要求至少一个漏洞或结果信号，不按 open/view 定性。
+    en: Baseline client product build OS or mitigation and normal child or module behavior and retain content IDs rather than CVE or extension only. Gating replay controls cookies tokens IP time and profile to avoid mistaking CDN or personalization differences. The workflow branch requires at least one vulnerability or outcome signal and never classifies open or view alone.
+  - zh: 对崩溃和 exploit mitigations 使用同版本良性文件/页面对照；将“可疑输入”“门控差分”“利用成功”“后继载荷”分级。URL/文档可能含敏感目标数据，使用受控隔离、访问限制与安全重放，避免重新危害真实用户。
+    en: Compare crashes and exploit mitigations with benign files or pages on the same version. Tier suspicious input gating differential successful exploitation and later payload. URLs or documents may contain sensitive target data and require controlled isolation access restrictions and safe replay to avoid harming real users.
+evidence_refs: [REF-000100, REF-000242, REF-000243, REF-000244]
+lifecycle: {status: review, version: 1.1.0, created: '2026-09-10', modified: '2026-09-12', contributors: [Niji Matrix Research], reviewers: []}

@@ -1,0 +1,118 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000199
+strategy_ref: DET-000181
+name:
+  zh: 每客户端主题注册—收令—回报图
+  en: Per-Client Topic Registration–Task–Result Graph
+summary:
+  zh: 按客户端与主题重建分区投递图，并用执行结果验证控制关系。
+  en: Rebuild partitioned delivery by client and topic and verify control through execution outcomes.
+domains:
+- enterprise
+platforms:
+- Windows
+- Linux
+- Network Devices
+logic:
+  paragraphs:
+  - zh: 从 broker 订阅 API 提取当前 clientid、topic 与 QoS，并持续导出 session_subscribed 与 message_delivered 事件保留历史。以 topic 和时间连接发布者、订阅者，用设备目录或可见注册标识把轮换
+      clientid 合并到实际主机；寻找一名发布者向多条仅各由单设备订阅的地址下发，再由这些设备向其他地址回报的结构。必须以投递后相应端点执行或其他任务结果闭合，不能把每设备私有主题本身视为恶意。
+    en: Take current clientid, topic, and QoS from the broker subscription API and continuously export session_subscribed
+      and message_delivered for history. Join publishers and subscribers by topic and time, then merge rotating
+      client IDs to real hosts using device inventory or visible registration identifiers. Look for one publisher
+      delivering to multiple addresses each subscribed by one device, with those devices returning results through
+      other addresses. Require corresponding endpoint execution or another task outcome after delivery; per-device
+      private topics alone are not malicious.
+  - zh: 按设备和注册标识跨二十四小时构图，再以十分钟内的投递—后果作强关联。WailingCrab 的数字主题或 MQsTTang 的字符串只能作案例特征，不能变成跨组织通用正则。订阅 API 仅给当前状态，事件导出中断时不能重构已删除主题。
+    en: Build a graph across devices and registration identifiers over twenty-four hours, with delivery-to-outcome
+      within ten minutes as a strong join. WailingCrab numeric topics and MQsTTang strings are case features, not
+      universal regexes. The subscription API gives current state only; deleted topics cannot be reconstructed when
+      event export has gaps.
+data_requirements:
+- source_type: broker-delivery
+  name:
+    zh: broker 消息投递事件
+    en: Broker message-delivery events
+  channel: EMQX Cloud Data Integration message_delivered
+  required_fields:
+  - timestamp
+  - topic
+  - from_clientid
+  - clientid
+  - peerhost
+- source_type: broker-subscription
+  name:
+    zh: broker 历史订阅事件
+    en: Historical broker subscription events
+  channel: EMQX Cloud Data Integration session_subscribed
+  required_fields:
+  - timestamp
+  - topic
+  - clientid
+  - peerhost
+- source_type: broker-subscription-inventory
+  name:
+    zh: 当前客户端主题清单
+    en: Current client-topic inventory
+  channel: EMQX Cloud GET /subscriptions
+  required_fields:
+  - clientid
+  - topic
+  - qos
+- source_type: endpoint-process
+  name:
+    zh: 端点进程后果
+    en: Endpoint process outcome
+  channel: Sysmon Event 1 or equivalent EDR
+  required_fields:
+  - utc_time
+  - device_id
+  - process_guid
+  - parent_process_guid
+  - image
+observables:
+- zh: 共享主题消失后多个每客户端地址形成任务投递与回报的同一图
+  en: After a shared topic disappears, per-client addresses form one task-delivery and result graph
+- zh: 同一发布者跨私有主题下发后出现多设备可归属的端点动作
+  en: One publisher tasks across private topics followed by attributable endpoint actions on multiple devices
+correlation:
+  window:
+    zh: 跨二十四小时构建主题图，并在单次投递后十分钟内寻找端点结果；窗口按本地工作负载调整。
+    en: Build the topic graph across twenty-four hours and seek endpoint outcomes within ten minutes of a delivery;
+      adjust windows to local workloads.
+  dimensions:
+  - from_clientid
+  - clientid
+  - topic
+  - device_id
+  - process_guid
+  - time
+false_positives:
+- zh: 合法每设备 IoT 主题、OTA 分发和受管作业队列
+  en: Legitimate per-device IoT topics, OTA distribution, and managed job queues
+blind_spots:
+- zh: 外部 broker 无日志、订阅 API 只保当前状态、历史事件采样或注册内容不可见
+  en: External broker has no logs, subscription API retains current state only, historical events are sampled, or
+    registration content is opaque
+tuning_guidance:
+  paragraphs:
+  - zh: 把批准的设备、发布者、主题所有权及软件版本登记为有期限的基线，优先调查跨角色发布和任务后执行。唯一主题数只触发图谱审查，缺少持续事件与端点结果时不宣称全活动覆盖。
+    en: Maintain time-bounded baselines for approved devices, publishers, topic ownership, and software versions,
+      prioritizing cross-role publication with post-task execution. A count of unique topics only starts graph review;
+      without continuous events and endpoint outcomes do not claim complete activity coverage.
+evidence_refs:
+- REF-000679
+- REF-000680
+- REF-000683
+- REF-000684
+- REF-000685
+- REF-000230
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-09-22'
+  modified: '2026-09-22'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

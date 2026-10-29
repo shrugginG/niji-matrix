@@ -1,0 +1,115 @@
+schema_version: 2.0.0
+type: evasion-subtechnique
+id: NJS-0106-002
+name:
+  zh: 调试观察通道饱和
+  en: Debug Observation-Channel Saturation
+summary:
+  zh: 攻击者生成大量无意义调试消息或异常事件，占用调试通道的事件、存储与分析预算。
+  en: Adversaries generate large volumes of meaningless debug messages or exception events to consume debug-channel event,
+    storage, and analyst budgets.
+aliases: []
+parent_ref: NJT-0106
+lineage:
+  attck_subtechnique_inherited: false
+definition_and_concept:
+  paragraphs:
+  - zh: 调试观察通道饱和是攻击者反复发生无意义调试字符串、异常或等价调试事件，使分析通道必须处理、保存和展示大量低价值数据的匿迹子技术。其直接目标不是检测调试器后退出，而是在真实执行继续时降低有意义状态转折的可见性并提高分析成本。
+    en: Debug Observation-Channel Saturation is an evasion sub-technique in which an adversary repeatedly emits meaningless
+      debug strings, exceptions, or equivalent debug events so the analysis channel must process, retain, and display a large
+      volume of low-value data. Its immediate objective is not to exit after detecting a debugger but to reduce visibility
+      of meaningful state transitions and raise analysis cost while real execution continues.
+  - zh: 稳定变量是调试事件的低价值高密度对观察通道预算的消耗。OutputDebugString、异常类型、循环次数和调试器产品是实现；状态查询后退出或载荷保留归 NJS-0106-001。
+    en: The stable variable is consumption of observation-channel budget by high-density low-value debug events. OutputDebugString,
+      exception type, loop count, and debugger product are implementations; exit or payload withholding after a state query
+      belongs to NJS-0106-001.
+stealth_characteristics:
+  paragraphs:
+  - zh: 调试观察通道饱和把一条可直接审查的有意义事件序列改变为夹在大量重复调试输出或异常中的稀疏状态转折。通道可能采样、丢失、截断或简单滚动日志，分析人员也可能在有效路径出现前停止处理。
+    en: Debug Observation-Channel Saturation changes a directly reviewable sequence of meaningful events into sparse state
+      transitions embedded in large volumes of repeated debug output or exceptions. The channel may sample, drop, truncate,
+      or roll logs, and analysts may stop processing before the effective path appears.
+  - zh: 残余痕迹包括调试事件速率、重复字符串或异常类型、通道丢失计数、队列深度、存储增长和噪声期间的外部文件网络结果。限速但保留总量与丢失、按模板压缩噪声、孤立资源以及使用外部观察面会限制匿迹效果。
+    en: Residual traces include debug-event rate, repeated strings or exception types, channel loss counts, queue depth, storage
+      growth, and external file or network outcomes during the noise period. Rate limiting that preserves totals and loss,
+      template compression, isolated resources, and external observation planes limit the stealth effect.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 纳入攻击者有意产生高密度、低价值调试或异常事件，并使通道丢失、截断、延迟、存储激增或分析预算被明显占用的行为。判定需要事件密度、重复性、低价值和通道影响，不能仅凭存在 OutputDebugString 或异常。
+    en: Scope includes deliberate generation of high-density low-value debug or exception events that causes channel loss,
+      truncation, delay, storage growth, or material consumption of analyst budget. Classification requires event density,
+      repetition, low value, and channel effect and cannot rest on the presence of OutputDebugString or an exception alone.
+  - zh: 合法详细调试日志、压力测试、崩溃风暴与开发诊断是反例。调试状态检查后退出或保留载荷归 NJS-0106-001；一般 API hammering 若直接目标是消耗执行时间而非调试通道，归 NJS-0107-002。
+    en: Legitimate verbose debugging, stress testing, crash storms, and developer diagnostics are counterexamples. Exit or
+      payload withholding after a debugger-state check belongs to NJS-0106-001. General API hammering whose direct objective
+      is to consume execution time rather than debug-channel budget belongs to NJS-0107-002.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: loader 可在解包或主载荷执行同时循环发送调试字符串，使调试日志被重复消息占据。Dridex 案例中约两亿次 OutputDebugStringW 调用直接支持此场景。
+      en: A loader may loop over debug-string emission while unpacking or executing a main payload so repeated messages occupy
+        the debug log. Roughly 200 million OutputDebugStringW calls in the Dridex case directly support this scenario.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者需要能持续生成通道可接收的事件，并在不阻断自身关键路径的情况下消耗防守资源。高密度输出会消耗 CPU、存储和时间，形成显著速率特征，也可能导致样本自身超时。
+        en: The adversary must sustain events accepted by the channel while consuming defensive resources without blocking
+          the critical path. High-density output consumes CPU, storage, and time, creates a conspicuous rate feature, and may
+          cause the sample itself to time out.
+    defender_model:
+      paragraphs:
+      - zh: 防守方观察调试字符串或异常类型、每进程与每线程事件率、队列、丢失、存储、CPU 与外部文件网络结果，并能在限速时保留汇总计数和核心状态转折。通道无丢失指标、日志被静默截断或只观察用户态调试器时形成盲区。
+        en: The defender observes debug-string or exception type, event rate per process and thread, queue, loss, storage, CPU,
+          and external file or network outcomes and can preserve aggregate counts and core state transitions during rate limiting.
+          Blind spots arise when the channel has no loss metrics, logs truncate silently, or only a user-mode debugger is observed.
+stealth_mechanisms:
+- mechanism_ref: NM-FD
+  role: primary
+  summary:
+    zh: 高密度低价值调试事件淹没有意义状态转折
+    en: High-density low-value debug events bury meaningful state transitions
+  analysis:
+    paragraphs:
+    - zh: 攻击者使用大量重复调试消息或异常填充观察通道，使痕迹从可直接审查的控制流变为少量有效事件与巨量低价值噪声的混合；通道可能丢失、采样或迫使分析者降低处理深度，因此形成特征伪装与信号稀释。
+      en: The adversary fills the observation channel with repeated debug messages or exceptions, changing the trace from directly
+        reviewable control flow into a mixture of a few effective events and massive low-value noise. The channel may drop,
+        sample, or force analysts to reduce processing depth, producing Feature Disguise and signal dilution.
+  evidence_refs:
+  - REF-000416
+  confidence: high
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000122
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000105
+evidence:
+  claim_refs:
+  - CLM-000622
+  case_refs:
+  - CASE-000139
+  reference_refs:
+  - REF-000386
+  - REF-000416
+research:
+  limitations:
+    paragraphs:
+    - zh: Dridex 案例直接支持 OutputDebugStringW 洪泛和日志淹没，但不自动支持所有异常或线程操作都属于通道饱和。子技术的高置信限于可观察的高密度低价值事件对通道资源与有效信号的影响。
+      en: The Dridex case directly supports OutputDebugStringW flooding and log overwhelming, but it does not automatically
+        show that every exception or thread operation is channel saturation. High confidence is limited to observable effects
+        of high-density low-value events on channel resources and meaningful signal.
+    - zh: 事件数量本身不证明恶意；开发诊断、压力测试与崩溃风暴可以产生相似密度。只有重复低价值模板、核心路径在噪声期间继续、通道丢失或预算影响等条件同时成立时才应归因。
+      en: Event volume alone does not prove maliciousness; developer diagnostics, stress tests, and crash storms can create
+        similar density. Attribution requires repeated low-value templates, continued core execution during noise, and channel-loss
+        or budget effects to reinforce one another.
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-09-21'
+  modified: '2026-09-21'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

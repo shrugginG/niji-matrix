@@ -1,0 +1,50 @@
+schema_version: "2.0.0"
+type: detection-analytic
+id: NJA-000137
+strategy_ref: DET-000134
+name: {zh: 策略写入者—消费者—保护结果分析, en: Policy Writer–Consumer–Protection Outcome Analytic}
+summary: {zh: 证明恶意中心策略版本是否被受信消费者采用并确实降低安全功能，而非只完成管理面写入。, en: Prove whether a malicious central-policy version was consumed by a trusted target and truly reduced security function rather than merely being written.}
+domains: [enterprise]
+platforms: [Windows, Identity Provider]
+logic:
+  paragraphs:
+    - zh: 对 GPO 或租户防御策略保存 object_id、旧新版本、变更属性和完整模板 hash、writer、session、link、security/WMI filter、目标集合、审批和时间；在 AD 对象事件与 SYSVOL 文件版本之间建立一致性，避免只见目录容器或只见文件。再按目标 device/service 采集策略刷新、实际采用的版本、应用错误以及安全工具的有效保护状态。对 Defender 等有篡改保护的设置，应记录策略表面应用是否被产品拒绝或覆盖，而不是把 GPO 成功返回当作功能变化。
+      en: For a GPO or tenant defensive policy, retain object_id, old and new version, changed attribute and complete template hash, writer, session, link, security or WMI filter, target set, approval, and time. Reconcile AD-object events with SYSVOL-file versions rather than seeing only directory container or template. Then collect target device or service refresh, version actually consumed, application errors, and effective security-tool protection state. For settings protected by tamper controls, record whether the product rejected or overrode an apparently applied policy instead of treating GPO success as functional change.
+    - zh: 将目标按实际命中的 link/filter 展开，只有策略版本到达并被消费后，受控的检测、实时保护、审计或响应能力相对旧状态出现下降，且无批准业务变更，才输出 effective_impairment。只有写入而无消费输出 mutation_only；已采用但被篡改保护挡住输出 adopted_but_blocked；消费者日志缺失或保护结果不明输出 unresolved。后继恶意行为若发生在失防窗口内提高置信度，但不得用勒索部署或远程连接代替防御结果。
+      en: Expand targets through the link and filter that actually match. Emit effective_impairment only when the version arrives and is consumed, a controlled detection, real-time protection, audit, or response capability declines relative to old state, and no approved business change explains it. A write without consumption is mutation_only; an adopted change rejected by tamper protection is adopted_but_blocked; missing consumer logs or unknown protection state is unresolved. Follow-on malicious behavior in the unprotected interval raises confidence but ransomware deployment or a remote connection cannot replace the defensive outcome.
+data_requirements:
+  - source_type: authoritative-policy-audit
+    name: {zh: 域或租户权威策略变更审计, en: Domain or tenant authoritative-policy change audit}
+    channel: Windows Security 5136 or equivalent tenant audit
+    required_fields: [timestamp, object_id, object_type, writer_id, session_id, old_version, new_version, changed_attribute, old_value, new_value, approval_id]
+  - source_type: gpo-template-and-scope
+    name: {zh: GPO 模板、链接和作用域快照, en: GPO template linkage and scope snapshots}
+    channel: AD and SYSVOL
+    required_fields: [timestamp, object_id, container_version, template_version, template_hash, link_id, target_filter, target_id, policy_precedence]
+  - source_type: policy-consumer-state
+    name: {zh: 目标策略消费与错误状态, en: Target policy consumption and error state}
+    channel: null
+    required_fields: [timestamp, target_id, object_id, consumed_version, refresh_status, application_result, policy_source]
+  - source_type: effective-security-control
+    name: {zh: 目标安全控制有效状态与篡改裁决, en: Target effective security-control state and tamper decision}
+    channel: null
+    required_fields: [timestamp, target_id, control_id, old_effective_state, new_effective_state, tamper_decision, functional_test_result]
+observables:
+  - {zh: 高风险安全设置版本由非批准 writer 发布并指向宽设备集, en: An unapproved writer publishes a high-risk security-setting version to a broad device set}
+  - {zh: 目标采用该版本后有效保护、审计或响应能力下降, en: Effective protection audit or response declines after a target consumes that version}
+  - {zh: 策略表面成功但篡改保护阻止实际设置变化, en: Policy appears successful while tamper protection prevents the effective setting change}
+correlation:
+  window: {zh: 从控制面写入前一小时到目标下一次刷新或最多七天，并在回退后保留版本与消费者结果三十天。, en: Correlate from one hour before a control-plane write through the target's next refresh or seven days and retain version-to-consumer outcomes for thirty days after reversion.}
+  dimensions: [object_id, container_version, template_version, target_id, link_id, target_filter, control_id, writer_id, session_id, time]
+false_positives:
+  - {zh: 经批准的安全产品迁移、兼容性例外或应急排障策略, en: Approved security-product migration compatibility exception or emergency troubleshooting policy}
+  - {zh: AD 与 SYSVOL 复制延迟造成版本暂时不一致, en: AD and SYSVOL replication delay creates temporary version mismatch}
+blind_spots:
+  - {zh: 目录对象缺少 SACL 或租户审计不保存旧值, en: Directory object lacks a SACL or tenant audit does not retain old values}
+  - {zh: 目标无法报告采用的版本或工具状态由同一受侵控制面提供, en: Target cannot report consumed version or tool state comes from the same compromised control plane}
+tuning_guidance:
+  paragraphs:
+    - zh: 对安全设置按控制重要性、GPO/link 范围和目标刷新周期建立基线；批准清单须绑定 object/version、writer、目标集合、到期和预期有效结果，不永久放行 Domain Admin 或策略发布时段。对已采用但阻断的版本单列成功防御证据，对只见写入而缺结果的记录保留 unresolved，不用后继勒索指标填补消费者证据。
+      en: Baseline security settings by control criticality, GPO or link scope, and target refresh cycle. Approval must bind object and version, writer, target set, expiry, and expected effective result, not permanently allow Domain Admins or policy-release windows. Preserve adopted-but-blocked versions as successful defense evidence and writes without outcomes as unresolved rather than filling missing consumer evidence with later ransomware indicators.
+evidence_refs: [REF-000338, REF-000341, REF-000342, REF-000344, REF-000450]
+lifecycle: {status: review, version: "1.0.0", created: "2026-09-22", modified: "2026-09-22", contributors: [Niji Matrix Research], reviewers: []}

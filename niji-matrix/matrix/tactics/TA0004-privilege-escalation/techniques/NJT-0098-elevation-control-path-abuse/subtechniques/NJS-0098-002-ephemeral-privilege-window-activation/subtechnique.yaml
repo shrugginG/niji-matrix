@@ -1,0 +1,174 @@
+schema_version: 2.0.0
+type: evasion-subtechnique
+id: NJS-0098-002
+parent_ref: NJT-0098
+name:
+  zh: 短寿命权限窗口激活
+  en: Ephemeral Privilege-Window Activation
+summary:
+  zh: 攻击者在缓存、JIT 激活或短期委派凭据的有限有效区间内完成高权限操作，使激活、使用与失效分散，窗口前后的持久权限状态保持正常。
+  en: An adversary completes privileged operations inside the bounded validity interval of a cache, JIT activation, or temporary
+    delegated credential, distributing activation, use, and invalidation while durable privilege state remains normal before
+    and after the window.
+aliases: []
+definition_and_concept:
+  paragraphs:
+  - zh: 本子技术的稳定变量是攻击者选择让更高权限存在多长时间，以及把目标动作放在该 interval 的哪个位置。权限由 sudo authentication timestamp、eligible-to-active/JIT workflow、AssumeRole
+      或 service-account impersonation 等机制临时生效，并由 cache invalidation、deactivation 或 token expiry 结束。成立需要可识别的起止或可推定寿命、攻击者对激活/复用时点的控制和区间内确实发生的更高权限使用。
+    en: The stable variable is how long the adversary chooses higher privilege to exist and where the target action is placed
+      inside that interval. Privilege becomes temporary through mechanisms such as a sudo authentication timestamp, eligible-to-active
+      or JIT workflow, AssumeRole, or service-account impersonation and ends through cache invalidation, deactivation, or
+      token expiry. The child requires an identifiable or inferable lifetime, adversary control over activation or reuse timing,
+      and actual higher-privilege use inside the interval.
+  - zh: “短寿命”没有固定分钟数，而是相对于长期角色或权限状态的可控痕迹结构。授权只在操作附近有效，持久权限清单可以保持不变；sudo 缓存、云端即时激活和短期身份模拟虽然实现不同，但都把授权、敏感使用和失效分散在一个有限区间。
+    en: Short-lived has no fixed duration; it is a controlled trace structure relative to durable role or permission state.
+      Authority exists only around the operation while persistent entitlement inventory can remain unchanged. Sudo caches,
+      cloud just-in-time activation, and temporary impersonation differ in implementation but all distribute authorization,
+      sensitive use, and expiry across a bounded interval.
+stealth_characteristics:
+  paragraphs:
+  - zh: 短寿命权限窗口激活把“长期高权限边持续存在”的痕迹变为多个时间分离事件。激活或缓存可能发生在正常管理活动中，攻击者在数分钟或数小时后复用；高权限使用可能显示合法 role/effective principal；调查开始时窗口已经到期，当前
+      entitlement 或缓存检查恢复普通状态。只靠每日/周期性权限快照、长期成员关系或激活峰值阈值的防守方会错过使用时的有效状态。
+    en: Ephemeral Privilege-Window Activation changes a durable privileged edge into several time-separated events. Activation
+      or caching can occur during normal administration and be reused minutes or hours later; privileged use can show a legitimate
+      role or effective principal; by investigation time the interval can have expired and current entitlement or cache inspection
+      returned to normal. Defenders relying on daily or periodic privilege snapshots, long-term membership, or activation-count
+      thresholds miss effective state at use time.
+  - zh: 匿迹收益取决于时间关联与 scope 语义是否保留，而不是短期权限本身天然恶意。PIM request/approval/completed/expired、短期 token issued/expires、original/effective
+      principal 和 sudo 认证/command 记录可以使 interval 完全可审计。攻击者试图利用的是这些事件在不同服务、保留期或时钟中的分散，以及合法应急/JIT 活动提供的反例空间；防守方若精确连接，短寿命反而限制暴露并减少攻击机会。
+    en: The stealth benefit depends on preservation of temporal correlation and scope semantics rather than temporary privilege
+      being inherently malicious. PIM request, approval, completion, and expiry, temporary token issue and expiry, original
+      and effective principal, and sudo authentication and command records can make the interval fully auditable. The adversary
+      exploits their distribution across services, retention periods, or clocks and the counterexample space of legitimate
+      emergency or JIT activity. With exact correlation, short lifetime instead limits exposure and reduces adversary opportunity.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 与受信提权中介谱系借用的区别是，本项不要求中介隐藏原始请求者；只要权限具有攻击者可控的有限寿命，并因此改变周期快照或跨时间关联，即使双身份记录完整也可以成立。反之，长期中介借用可以属于兄弟项而不属于本项。
+    en: Unlike Trusted Elevation Intermediary Lineage Borrowing, this child does not require an intermediary to hide the original
+      requester. It can qualify when authority has an adversary-controlled bounded lifetime that changes periodic snapshots
+      or temporal correlation, even if dual-identity records are complete. Conversely, long-lived intermediary use can belong
+      to the sibling without belonging here.
+  - zh: 永久或长期新增角色、组、key、SSH 授权或委派边归 T1098/NJT-0083；仅因攻击者动作很快、事件量少或使用一次不成立，必须有授权状态的明确有限寿命。普通 token 生命周期、正常 sudo 认证和获批 JIT 工作是反例；只有攻击者控制激活/复用时点，并借此让高权限使用避开持久状态观察或关联时才具有本子技术的匿迹含义。
+    en: Permanent or long-lived addition of a role, group, key, SSH authorization, or delegation edge belongs to T1098 and
+      NJT-0083. Fast action, low event volume, or one-time use alone is insufficient; authorization state needs an explicitly
+      bounded lifetime. Ordinary token lifecycle, normal sudo authentication, and approved JIT work are counterexamples. The
+      stealth meaning applies only when the adversary controls activation or reuse timing and thereby moves privileged use
+      outside durable-state observation or correlation.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: 在 Linux 系统中，攻击者可能接管仍处于有效 sudo 认证缓存内的会话，并在超时前执行高权限命令而不触发新的密码提示。缓存所属会话、命令、有效身份和目标资源仍会留下痕迹；普通连续运维是直接反例。
+      en: On Linux, an adversary may take control of a session while its sudo authentication cache remains valid and execute
+        a privileged command before timeout without triggering a fresh password prompt. The cache-bearing session, command,
+        effective identity, and target resource still leave traces; ordinary continuous administration is a direct counterexample.
+    - zh: 在云环境中，攻击者可能控制具备即时激活或身份模拟资格的主体，请求有限期限的角色或令牌，在有效区间内访问敏感资源后等待状态自动失效。角色清单在事后可以恢复正常，而请求、批准、会话、有效期和资源使用分散在不同服务。
+      en: In a cloud environment, an adversary may control a principal eligible for just-in-time activation or impersonation,
+        request a time-bounded role or token, access sensitive resources during the interval, and wait for the state to expire.
+        Role inventory can appear normal afterward while request, approval, session, validity period, and resource use are
+        distributed across services.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者需要控制 eligible 或可 impersonate 主体、批准流程的一部分、含有效 sudo cache 的会话，或已经签发的短期 token。其目标是在权限自动失效前完成一个或多个敏感动作，同时避免创建可在事后清单中长期可见的授权边。攻击者可能选择业务繁忙或应急时段、常见
+          duration 与角色以接近基线，但“最小 scope”目前只有假设证据，不能作为独立正式轴。
+        en: The adversary needs control of an eligible or impersonable principal, part of an approval workflow, a session
+          with a valid sudo cache, or an already issued temporary token. The objective is to complete one or more sensitive
+          actions before automatic invalidation without creating an authorization edge visible in long-term inventory. The
+          adversary can choose a busy or emergency period and common duration or role to approach baseline, but minimum scope
+          currently has only hypothesis-level evidence and is not an independent formal axis.
+    defender_model:
+      paragraphs:
+      - zh: 防守方需要可靠时钟和足够保留期，将 requested、approved、effective、issued、resource use、deactivated 与 expired 区分，并优先用 request/token/session
+          精确键连接。审批、值班、维护工单、角色风险、最大 duration、允许 scope、常见来源/设备和撤销传播构成合法基线。只有 principal+time 时，必须降低置信度并要求额外来源、资源或审批异常。
+        en: The defender needs reliable clocks and enough retention to distinguish requested, approved, effective, issued,
+          resource use, deactivated, and expired states and should prefer exact request, token, or session keys. Approval,
+          duty roster, maintenance record, role risk, maximum duration, allowed scope, normal origin or device, and revocation
+          propagation form the legitimate baseline. Principal-and-time-only joins must lower confidence and require an additional
+          origin, resource, or approval anomaly.
+stealth_mechanisms:
+- mechanism_ref: NM-ST
+  role: primary
+  summary:
+    zh: 权限仅在使用附近短暂存在并在调查快照前自动消失
+    en: Privilege exists briefly near use and automatically disappears before investigation snapshots
+  analysis:
+    paragraphs:
+    - zh: 攻击者激活或复用带明确 timeout/expiry 的授权状态并在区间内完成高权限动作；痕迹由持久角色边变为 activation/cache、token/session、use 与 invalidation 的离散短序列。防守方若只保留周期快照或分别观察控制面与资源面，会在窗口前后看到普通权限，无法证明使用时的
+        effective state，形成 Short-lived Trace。构造 interval、保留 original/effective identity 并把每个资源结果与 scope/approval/expiry 比较，可恢复该时间因果。
+      en: The adversary activates or reuses authorization state with an explicit timeout or expiry and completes privileged
+        action inside the interval. The trace changes from a durable role edge into a discrete short sequence of activation
+        or cache, token or session, use, and invalidation. A defender retaining only periodic snapshots or separately observing
+        control and resource planes sees ordinary privilege before and after and cannot establish effective state at use time,
+        creating a Short-lived Trace. Constructing the interval, retaining original and effective identity, and comparing
+        every resource outcome with scope, approval, and expiry restores temporal causality.
+  evidence_refs:
+  - REF-000319
+  - REF-000320
+  - REF-000321
+  - REF-000322
+  confidence: high
+- mechanism_ref: NM-BT
+  role: secondary
+  summary:
+    zh: 临时授权与资源使用跨越控制面、令牌面和资源面边界
+    en: Temporary authorization and resource use cross control token and resource-plane boundaries
+  analysis:
+    paragraphs:
+    - zh: 攻击者让 request/approval 发生在治理控制面、凭据生存在 token/session 面、敏感动作出现在资源审计面；每一面单独都可能是常见合法事件。数据与责任边界使原始主体、批准、有效角色和资源结果无法自然连接，产生
+        Boundary Traversal 的次级匿迹。通过 request/approval ID、delegation chain、token/session 和 privilege_interval_id 做跨面连接，才能判断短期权限是否在批准范围内被使用。
+      en: The adversary places request and approval in a governance control plane, credential lifetime in a token or session
+        plane, and sensitive action in resource audit. Each plane can contain a common legitimate event in isolation. Data
+        and responsibility boundaries prevent original principal, approval, effective role, and resource outcome from joining
+        naturally, creating secondary Boundary Traversal stealth. Cross-plane joins on request and approval ID, delegation
+        chain, token or session, and privilege-interval ID are required to decide whether temporary privilege was used inside
+        approved bounds.
+  evidence_refs:
+  - REF-000320
+  - REF-000321
+  - REF-000322
+  confidence: high
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000095
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000096
+evidence:
+  claim_refs:
+  - CLM-000530
+  - CLM-000531
+  - CLM-000532
+  case_refs: []
+  reference_refs:
+  - REF-000317
+  - REF-000319
+  - REF-000320
+  - REF-000321
+  - REF-000322
+  - REF-000324
+research:
+  limitations:
+    paragraphs:
+    - zh: 官方资料能够证明 sudo 缓存、云端即时权限和服务身份模拟具有明确寿命，并会改变状态快照与关联需求；公开活动报告较少直接说明攻击者为匿迹而选择短窗口。因此该变量和观察效果具有较强支持，但具体事件中的主观意图需要单独取证。
+      en: Official material establishes that sudo caches, cloud just-in-time authority, and service-identity impersonation
+        have bounded lifetimes and change state snapshots and correlation requirements. Public activity reporting less often
+        states that an adversary chose a short window for evasion. The variable and its observation effect are well supported,
+        but intent in a particular event requires separate evidence.
+    - zh: 缓存、令牌和角色激活的结束语义并不统一；界面显示失效、批准期结束、令牌过期和实际授权停止可能发生在不同时间，时钟或采集延迟也会制造窗口外使用的假象。结论必须依据本地平台的实际有效期和资源行为，而不是采用统一时长。
+      en: Cache, token, and role-activation end semantics are not uniform. Interface deactivation, approved-end time, token
+        expiry, and actual authorization loss can occur at different times, and clock or ingestion delay can create the appearance
+        of use outside the window. Conclusions must use the local platform's effective lifetime and resource behavior rather
+        than a universal duration.
+lifecycle:
+  status: review
+  version: 0.2.0
+  created: '2026-09-13'
+  modified: '2026-09-19'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []
+lineage:
+  attck_subtechnique_inherited: false

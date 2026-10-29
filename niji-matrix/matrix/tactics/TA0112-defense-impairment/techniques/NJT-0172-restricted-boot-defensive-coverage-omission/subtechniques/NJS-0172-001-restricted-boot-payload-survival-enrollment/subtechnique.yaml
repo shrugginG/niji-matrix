@@ -1,0 +1,65 @@
+schema_version: "2.0.0"
+type: evasion-subtechnique
+id: NJS-0172-001
+name: {zh: 受限启动载荷存活注册, en: Restricted-Boot Payload Survival Enrollment}
+summary: {zh: 攻击者把自身 service、COM 或载荷激活路径加入 SafeBoot 允许集，使其在正常防御组件被受限启动排除时仍被加载。, en: "Adversaries enroll their service, COM object, or payload activation path in the SafeBoot allowlist so it loads while restricted boot excludes normal defensive components."}
+aliases: []
+parent_ref: NJT-0172
+lineage: {attck_subtechnique_inherited: false}
+definition_and_concept:
+  paragraphs:
+    - zh: 受限启动载荷存活注册是攻击者在触发 Safe Mode 前，将恶意或被劫持的 service、COM object 或等价 activation path 登记到 HKLM\SYSTEM\CurrentControlSet\Control\SafeBoot\Minimal、Network 或相应消费链，使该载荷在受限 boot session 中由系统加载，而正常模式基线中的 EDR/AV 等防御组件仍被排除。直接对象是 enrollment state—boot consumption—payload survival—defense asymmetry。
+      en: Restricted-Boot Payload Survival Enrollment is adversary registration before Safe Mode of a malicious or hijacked service, COM object, or equivalent activation path under HKLM\SYSTEM\CurrentControlSet\Control\SafeBoot\Minimal, Network, or the corresponding consumption chain so the system loads that payload in the restricted boot session while EDR, AV, or other defensive components in the normal-mode baseline remain excluded. Its direct object is enrollment state to boot consumption to payload survival to defense asymmetry.
+    - zh: 只有 Registry/service/COM 变化尚未被下一次实际 Safe Mode 消费时是 enrollment exposure；只有恶意进程在 Safe Mode 出现但无法连接到允许项时是 payload anomaly。完成需要前态新增/劫持、实际 boot、同一 identity/binary 被消费、具体防御差和载荷结果闭环。Snatch SuperBackupMan 与 Embargo irnagentd 提供直接案例。
+      en: Registry, service, or COM change not yet consumed by a subsequent actual Safe Mode boot is enrollment exposure, while a malicious process in Safe Mode without linkage to an allowed item is a payload anomaly. Completion requires closure across added or hijacked prior state, actual boot, consumption of the same identity or binary, a specific defensive difference, and a payload outcome. Snatch SuperBackupMan and Embargo irnagentd provide direct cases.
+stealth_characteristics:
+  paragraphs:
+    - zh: 受限启动载荷存活注册制造“攻击者载荷在场、防御载荷不在场”的组件非对称。恶意 service 使用与恢复、存储、网络或安全组件相同的 SafeBoot allowlist 语义，启动后可由 SCM/COM 正常消费；调查者若只看到 Safe Mode 和缺失 agent，可能忽略攻击者额外加入的唯一存活组件。删除 enrollment 并恢复正常模式还会缩短当前状态窗口。
+      en: Restricted-Boot Payload Survival Enrollment creates component asymmetry in which the adversary payload is present while defensive payloads are absent. The malicious service uses the same SafeBoot allowlist semantics as recovery, storage, network, or security components and can be consumed normally by SCM or COM after boot. An investigator seeing only Safe Mode and a missing agent can overlook the sole additional surviving component enrolled by the adversary. Removing enrollment and returning to normal mode further shortens the current-state window.
+    - zh: 残余包括 SafeBoot key/value old-new-delete、service/COM identity、ImagePath/binPath、binary hash/signature/first-seen、writer/session、BCD intent、SCM/COM activation、boot_id、payload process lineage、defense component gap 与清理。远程 Registry 版本、精确 binary allowlist 和下一 boot 消费验证可发现；复用受信 service、内存替换或离线 hive 修改会削弱 writer 归因。
+      en: Residue includes SafeBoot key or value old, new, and delete, service or COM identity, ImagePath or binPath, binary hash, signature, and first seen, writer and session, BCD intent, SCM or COM activation, boot ID, payload process lineage, defense-component gap, and cleanup. Remote Registry versions, an exact binary allowlist, and next-boot consumption validation expose it. Reuse of a trusted service, memory replacement, or offline hive modification weakens writer attribution.
+scope_boundary_definition:
+  paragraphs:
+    - zh: 纳入要求未批准 SafeBoot/等价 enrollment 在重启前生效，同一 service/COM/binary 在实际受限 boot 中启动，至少一个正常防御组件缺席，并产生后继恶意结果。单独新增 Registry key/service、未消费项、正常启动 service 或只有 defense item 删除不属于完成 child。
+      en: Include only when unapproved SafeBoot or equivalent enrollment takes effect before reboot, the same service, COM object, or binary starts in an actual restricted boot, at least one normal defensive component is absent, and a malicious follow-on result occurs. A new Registry key or service alone, an unconsumed item, a service in normal boot, or only deletion of a defensive item does not complete the child.
+    - zh: Windows、OEM、存储、网络、恢复和安全产品经签名/owner/host role/工单批准的 Safe Mode 项是正常反例。直接删除 WinDefend 项、stop/rename 防御归 NJT-0123；一般 Windows service 持久化归相应 Persistence 对象。Minimal/Network、service/COM 和家族名称是实现，不再形成子项。
+      en: Windows, OEM, storage, network, recovery, and security-product Safe Mode entries approved by signature, owner, host role, and ticket are normal counterexamples. Direct deletion of a WinDefend entry or stopping or renaming defenses belongs to NJT-0123, and ordinary Windows-service persistence belongs to the corresponding Persistence object. Minimal or Network, service or COM, and family name are implementations and do not create more children.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+      - zh: Snatch 在受害主机创建 SuperBackupMan service 并加入 SafeBoot Minimal，再设置 BCD 和重启，让 ransomware 在多数安全软件缺席时加密。Embargo 的 MDeployer DLL/BAT 创建 irnagentd、加入 SafeBoot Network、重启后再次执行 loader，重命名安全产品目录并启动 payload，随后删除 service/enrollment 恢复正常模式。
+        en: Snatch created the SuperBackupMan service on victim hosts, enrolled it under SafeBoot Minimal, set BCD, and rebooted so ransomware encrypted while most security software was absent. Embargo's MDeployer DLL or BAT created irnagentd, enrolled it under SafeBoot Network, executed the loader again after reboot, renamed security-product directories, launched the payload, and then deleted the service or enrollment and returned to normal mode.
+  threat_model:
+    attacker_model:
+      paragraphs:
+        - zh: 攻击者需要管理员级 Registry/service/BCD 权限、可写或劫持一个在 Safe Mode 可运行的 binary path、理解 SCM/COM 和目标产品依赖，并能承受重启。载荷必须在有限 driver/network/runtime 下工作；签名 allowlist、Registry tamper protection、外部 FIM、BitLocker 与受控 service identity 会提高成本。
+          en: The adversary needs administrator-level Registry, service, and BCD authority, a writable or hijackable binary path capable of running in Safe Mode, knowledge of SCM or COM and target-product dependencies, and tolerance for reboot. The payload must function with limited drivers, networking, and runtime. A signature allowlist, Registry tamper protection, external file integrity, BitLocker, and controlled service identity raise cost.
+    defender_model:
+      paragraphs:
+        - zh: 防守方维护按 exact Registry path、service/COM identity、binary hash/signature、host role 与有效期划分的 SafeBoot allowlist，集中保留 old-new 与文件谱系，并在下一 boot 从 SCM/COM/进程/外部管理面验证实际消费和防御差。若只采集最终 Registry 或只依赖缺席的 endpoint agent，快速清理后无法证明。
+          en: Defenders maintain a SafeBoot allowlist by exact Registry path, service or COM identity, binary hash or signature, host role, and validity interval, centrally retain old and new plus file lineage, and validate actual consumption and defensive difference on the next boot through SCM, COM, process, or external management data. Final Registry state alone or reliance on the absent endpoint agent cannot prove the behavior after rapid cleanup.
+stealth_mechanisms:
+  - mechanism_ref: NM-BT
+    role: primary
+    summary: {zh: 恶意载荷由受限允许集加载而正常防御组件缺席, en: The restricted allowlist loads a malicious payload while normal defenses are absent}
+    analysis:
+      paragraphs:
+        - zh: 攻击者把载荷放入操作系统在 Safe Mode 中正常信任并消费的启动集合，系统因此把恶意组件当作受限启动的一部分启动，而基线防御仍按同一政策被省略。载荷执行与防御缺席都表现为 boot policy 的合法消费结果，对只观察当前 service set 的防守透明；比较 enrollment 前态、binary identity、实际消费和 defense gap 后可揭示非对称。
+          en: The adversary places a payload in the startup set the operating system normally trusts and consumes in Safe Mode, causing the system to start the malicious component as part of restricted boot while the same policy continues omitting baseline defenses. Payload execution and defensive absence both appear as legitimate boot-policy consumption and are transparent to a defender observing only the current service set. Comparing enrollment prior state, binary identity, actual consumption, and defense gap exposes the asymmetry.
+    evidence_refs: [REF-000359, REF-000755, REF-000758]
+    confidence: high
+defense:
+  detections: {coverage: available, strategy_refs: [DET-000199]}
+  mitigations: {coverage: available, mitigation_refs: [MIT-000182]}
+evidence:
+  claim_refs: [CLM-000850, CLM-000851, CLM-000852, CLM-000853]
+  case_refs: [CASE-000244, CASE-000245]
+  reference_refs: [REF-000359, REF-000754, REF-000755, REF-000758]
+research:
+  limitations:
+    paragraphs:
+      - zh: Snatch 与 Embargo 直接支持 service enrollment、实际 Safe Mode 消费和 payload 结果，但两者均是 ransomware 场景，不能证明其他操作目的或 COM 变体已在野使用。Microsoft 文档支持允许集语义，不支持攻击归因；COM 只保留为实现广度，不以无案例推高置信。
+        en: Snatch and Embargo directly support service enrollment, actual Safe Mode consumption, and payload outcome, but both are ransomware contexts and do not prove in-the-wild use for other operational purposes or COM variants. Microsoft documentation supports allowlist semantics rather than adversary attribution. COM remains implementation breadth and is not given higher confidence without a case.
+      - zh: 安全、恢复、存储和网络产品可能合法增加相同 Registry/service 状态，且有些 EDR 会主动在 Safe Mode 存活；因此只有新键、未知签名或随机名称误报高。攻击者复用受信服务、替换其二进制、使用内存注入或离线修改 hive 时，需要文件/内存/磁盘和不同权管理面证据。
+        en: Security, recovery, storage, and network products can legitimately add identical Registry or service state, and some EDRs intentionally survive Safe Mode. A new key, unknown signature, or random name alone is therefore noisy. When an adversary reuses a trusted service, replaces its binary, uses memory injection, or modifies a hive offline, file, memory, disk, and differently authorized management-plane evidence is required.
+lifecycle: {status: review, version: "0.1.0", created: "2026-09-23", modified: "2026-09-23", contributors: [Niji Matrix Research], reviewers: []}

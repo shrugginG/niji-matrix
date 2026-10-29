@@ -1,0 +1,63 @@
+schema_version: "2.0.0"
+type: evasion-subtechnique
+id: NJS-0124-003
+parent_ref: NJT-0124
+name: {zh: 策略路径重定向, en: Policy-Path Redirection}
+summary: {zh: 用来源限定的防火墙 NAT 或重定向规则，把进入常用端口的会话送往隐藏监听，使表面入口与真实接收者错位。, en: "Use source-scoped firewall NAT or redirect rules to deliver sessions entering on an ordinary port to a concealed listener, separating apparent entry from real receiver."}
+aliases: []
+lineage: {attck_subtechnique_inherited: false}
+definition_and_concept:
+  paragraphs:
+    - zh: 策略路径重定向是攻击者在防火墙过滤或 NAT 决策中插入映射，使匹配其来源或信号的入站流量以一个表面正常的目的地进入，却由另一端口、socket 或后门进程实际接收。其直接目标是削弱防守方对边界路径的约束与解释，使真实控制通道不表现为独立暴露的高位监听。
+      en: Policy-Path Redirection is adversary insertion of a mapping into firewall filtering or NAT decisions so inbound traffic matching its origin or signal enters through an apparently ordinary destination but is actually received by another port, socket, or backdoor process. Its immediate objective is to weaken boundary-path control and interpretation so the real control channel does not appear as a separately exposed high-port listener.
+    - zh: 该子技术的稳定变量是 pre_nat 可见目的地与 post_nat 真实接收者之间被攻击者控制的映射，而不是 TCP/UDP、具体端口、iptables 工具或网络设备类型。只有重定向规则与实际会话、监听进程闭合，才形成独立于普通精确放行的 Niji 边界。
+      en: The stable variable is an adversary-controlled mapping between the visible pre_nat destination and real post_nat receiver, not TCP or UDP, a particular port, the iptables utility, or device type. The redirect rule must close with a real session and listening process to establish a Niji boundary distinct from an ordinary scoped allow.
+stealth_characteristics:
+  paragraphs:
+    - zh: 策略路径重定向让边界传感器仍记录常见服务或管理端口，其他来源甚至可以继续获得合法服务响应；只有攻击者来源被送往隐藏进程。单侧五元组、资产端口清单或常规外联画像会把这条会话归给表面服务，降低发现隐藏入口和正确归因接收进程的能力。
+      en: Policy-Path Redirection leaves a common service or management port in boundary-sensor records, and other origins may still receive legitimate service responses. Only the adversary source is delivered to a concealed process. One-sided five-tuples, asset-port inventories, or ordinary traffic profiles can attribute this session to the apparent service and make the hidden entry and receiving process harder to identify.
+    - zh: 规则写入、PREROUTING 或等效表版本、来源选择器、conntrack 中的转换前后五元组、高位监听 socket、进程启动和首次命中时间仍是残余。独立流量与主机 socket 映射可揭示错位；封闭设备不导出 conntrack、攻击者控制内核或日志、监听进程也被 rootkit 隐藏时，重建会显著困难。
+      en: Rule writes, PREROUTING or equivalent table versions, source selectors, pre- and post-translation five-tuples in conntrack, high-port listening sockets, process starts, and first-hit time remain as residue. Independent flow and host socket mapping reveal the mismatch. Reconstruction becomes much harder when a closed device exports no conntrack, the adversary controls kernel or logs, or a rootkit also hides the listener.
+scope_boundary_definition:
+  paragraphs:
+    - zh: 纳入攻击者控制的过滤/NAT/REDIRECT 规则把表面允许的入口会话送到非批准实际接收者，并能证明规则命中、转换路径和进程结果。无流量命中的规则只表明重定向暴露；仅有隐藏监听而没有策略映射归其他对象。规则也可能附带精确放行，只有分别证明允许边与接收者错位时才与 NJS-0124-002 并行归类。
+      en: Scope includes adversary-controlled filtering, NAT, or REDIRECT rules that deliver an apparently allowed entry session to an unapproved real receiver and have proof of rule hit, translated path, and process outcome. A rule with no matching flow shows redirect exposure only. A hidden listener without a policy mapping belongs elsewhere. The rule may also include a scoped allow; dual classification with NJS-0124-002 requires independent proof of both the allow edge and receiver mismatch.
+    - zh: 企业负载均衡、反向代理、服务网格、容器端口发布和合法故障转移产生相似转换，但有声明的服务 owner、目标版本、受管部署请求与预期接收进程。仅以端口 22/443 或 NAT 规则存在不能推定匿迹；若主要动作是通过包序列触发后门而不改变防火墙路径，触发变量归 T1205 对应既有 NJT。
+      en: Enterprise load balancers, reverse proxies, service meshes, container port publishing, and legitimate failover create similar translations but have declared service owner, target version, managed deployment request, and expected receiving process. Port 22 or 443 or the mere existence of NAT cannot establish stealth. If a packet sequence primarily activates a backdoor without altering the firewall path, the triggering variable belongs to the existing T1205-derived NJT.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+      - zh: 在原监听端口会被边界 ACL 阻断或容易暴露时，攻击者可从已受侵设备内创建条件化重定向，让控制端以常用入口连接隐藏后门。BPFDoor 用来源限定的 iptables 规则将常用端口流量导向 shell，其他来源继续到达原服务；UNC3886 的 TABLEFLIP 在 FortiManager 被 ACL 限制后建立选择性重定向，使 REPTILE 可再次从互联网访问。
+        en: When a listener's real port would be blocked by a boundary ACL or conspicuous, an adversary on the compromised device can create conditional redirection so its controller reaches a concealed backdoor through an ordinary entry. BPFDoor used source-scoped iptables rules to send common-port traffic to a shell while other origins still reached the original service. UNC3886's TABLEFLIP established selective redirection after FortiManager ACL restrictions, allowing REPTILE to be reached from the Internet again.
+  threat_model:
+    attacker_model:
+      paragraphs:
+        - zh: 攻击者需要设备或主机上的规则写入权、监听进程控制和对 NAT 链顺序及来源匹配条件的理解；为保留正常服务，其规则常只覆盖控制端来源或短时激活。策略签名、不同权配置提交、受限内核模块和网络到进程关联会提高维持暗门的成本。
+          en: The adversary needs rule-write authority on the device or host, control over a listener, and knowledge of NAT-chain order and source-matching conditions. To preserve the ordinary service, the rule often covers only the controller origin or activates briefly. Signed policy, differently authorized commits, restricted kernel modules, and network-to-process correlation raise the cost of sustaining the hidden path.
+    defender_model:
+      paragraphs:
+        - zh: 防守方需同时看到边界侧原始五元组、过滤器或 NAT 规则版本、conntrack 转换结果、主机 socket 与进程、服务 owner 及批准代理映射。只有防火墙日志或只有主机进程清单，都可能把会话归因给错误服务；时间同步和连接跟踪 ID 决定跨观察面的可靠性。
+          en: Defenders need the boundary-side original five-tuple, filter or NAT rule version, conntrack translation result, host socket and process, service owner, and approved proxy mapping. Firewall logs alone or a host-process inventory alone can attribute the session to the wrong service. Time synchronization and a conntrack ID determine the reliability of the cross-plane join.
+stealth_mechanisms:
+  - mechanism_ref: NM-FD
+    role: primary
+    summary: {zh: 以常用端口和正常服务外观掩盖会话的真实后门接收者, en: Use a common port and normal-service appearance to disguise the session's real backdoor receiver}
+    analysis:
+      paragraphs:
+        - zh: 攻击者写入只匹配控制端的策略重定向，使边界流量仍指向熟悉端口，但 NAT 后会话落到隐藏监听。表面请求特征与真实处理进程脱离，其他来源的正常响应进一步强化“该端口是合法服务”的解释；防守方若不连接规则、conntrack 和进程，就会漏掉真实入口，形成特征伪装。
+          en: The adversary writes a policy redirect matching only its controller so boundary flow still points to a familiar port while the post-NAT session lands on a concealed listener. Apparent request features diverge from the real handling process, and normal responses to other origins reinforce the interpretation that the port belongs to a legitimate service. Without joining rule, conntrack, and process, defenders miss the real entry, producing Feature Disguise.
+    evidence_refs: [REF-000453, REF-000155]
+    confidence: high
+defense:
+  detections: {coverage: available, strategy_refs: [DET-000133]}
+  mitigations: {coverage: available, mitigation_refs: [MIT-000122]}
+evidence:
+  claim_refs: [CLM-000668, CLM-000669, CLM-000670]
+  case_refs: [CASE-000170, CASE-000171]
+  reference_refs: [REF-000453, REF-000155, REF-000451]
+research:
+  limitations:
+    paragraphs:
+      - zh: BPFDoor 的可复现实验明确展示 pre/post-NAT 错位及其他来源正常响应，但其公开演示关闭了真实植入所用加密，不能把演示中可见协议内容当作检测条件。Mandiant 对 TABLEFLIP 的现场调查提供独立案例，但其设备和进程日志可见性与普通 Linux 主机不同；没有规则命中、conntrack 或真实进程映射时，只能认定可疑路径，不能断言具体后门接收者。
+        en: The reproducible BPFDoor demonstration explicitly shows pre/post-NAT mismatch and normal responses to other origins, but disables encryption used by the real implant, so visible demo protocol content is not a valid detection condition. Mandiant's TABLEFLIP field investigation provides an independent case, but appliance and process-log visibility differs from an ordinary Linux host. Without rule hit, conntrack, or real process mapping, only a suspicious path can be established, not a particular backdoor receiver.
+lifecycle: {status: review, version: "0.1.0", created: "2026-09-22", modified: "2026-09-22", contributors: [Niji Matrix Research], reviewers: []}

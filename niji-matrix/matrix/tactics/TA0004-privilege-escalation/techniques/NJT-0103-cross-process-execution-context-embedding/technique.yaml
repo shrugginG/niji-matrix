@@ -1,0 +1,225 @@
+schema_version: 2.0.0
+type: technique
+id: NJT-0103
+name:
+  zh: 跨进程执行上下文嵌入
+  en: Cross-Process Execution-Context Embedding
+summary:
+  zh: 攻击者从可识别 source 将代码或装载请求置入另一 target process 并在其线程/回调上下文执行，使恶意指令和结果继承 target 身份；TA0004 还要求证明相对 source 的正权限差与首个新增授权结果。
+  en: Adversaries place code or a load request from an identifiable source into another target process and execute through
+    its thread or callback context so malicious instructions and results inherit target identity; TA0004 additionally requires
+    a positive authority difference from the source and a first newly authorized result.
+aliases:
+- Process Injection
+classification:
+  tactic_refs:
+  - TA0004
+  - TA0005
+  origin:
+    kind: attack-adapted
+    source_attack_id: T1055
+    source_attack_version: '19.1'
+  decision_ref: DEC-TA0004-T1055
+definition_and_concept:
+  paragraphs:
+  - zh: 跨进程执行上下文嵌入是攻击者从可识别的源进程或控制事务出发，向另一个目标进程的地址空间写入、映射或请求加载代码，并通过线程、回调、消息或创建期状态使恶意指令在目标进程上下文中实际执行。直接对象是源控制与目标执行被分配到不同进程实例；仅获得句柄或写入未执行的字节并不构成完成的行为。
+    en: Cross-Process Execution-Context Embedding occurs when an adversary starts from an identifiable source process or control
+      transaction, writes or maps code into another target process or requests that it load code, and then causes malicious
+      instructions to execute in the target context through a thread, callback, message, or process-creation state. The direct
+      object is the separation of source control from target execution across process instances. Merely obtaining a handle
+      or writing bytes that never execute does not complete the behavior.
+  - zh: 该行为服务于权限提升时，目标进程必须具有源进程没有的有效权限，并由嵌入代码实际使用这些权限完成此前不可执行的操作。注入到同权限浏览器、桌面程序或用户进程仍然属于跨进程执行，但不产生权限提升；高权限进程名称本身也不能替代实际资源效果。
+    en: When the behavior serves Privilege Escalation, the target process must possess effective authority absent from the
+      source and the embedded code must actually use that authority to complete an operation previously unavailable. Injection
+      into a browser, desktop application, or user process with equivalent authority remains cross-process execution without
+      elevation. A privileged process name does not substitute for an actual resource effect.
+stealth_characteristics:
+  paragraphs:
+  - zh: 攻击者把实际 writer/loader 与执行者拆开：source 侧短暂出现 target access、memory write 或 load request，后继 file、network、credential、IPC
+      或 control action 则归在 target PID/thread。普通 process tree、file reputation 与 target module inventory 继续显示合法 binary、路径、签名和长期
+      service/browser identity；若监控系统不保留跨进程边，恶意行为看起来像 target 自发执行，而 source 在动作发生前可能已经结束。
+    en: The adversary separates the actual writer or loader from the executor. The source briefly shows target access, a memory
+      write, or load request, while follow-on file, network, credential, IPC, or control actions are attributed to a target
+      PID or thread. Ordinary process trees, file reputation, and target-module inventory retain the legitimate binary, path,
+      signature, and long-lived service or browser identity. Without a preserved cross-process edge, malicious behavior appears
+      self-originated by the target and the source may have ended before the action.
+  - zh: 可见性缺口不是绝对无痕。source/target handle or attach、VM allocation/write/protection、section/map、module request、thread create/context/APC/callback/message、suspend/resume、VAD/backing、call
+      stack 与 first target behavior 构成残余；Windows 可见 ProcessAccess/CreateRemoteThread/ProcessTampering，Linux 需要 ptrace/procfs/audit
+      与 memory maps，macOS 需要 task port、memory mapping 和 Hardened Runtime decision。只有把这些残余按 exact process-start identity 连接，才能避免
+      PID reuse、普通 debugger 或合法 injector 造成误归因。
+    en: The visibility gap is not traceless. Source and target handle or attach, VM allocation, write, or protection, section
+      or mapping, module request, thread creation, context, APC, callback, or message, suspend or resume, VAD and backing,
+      call stack, and first target behavior remain as residuals. Windows can expose ProcessAccess, CreateRemoteThread, and
+      ProcessTampering; Linux requires ptrace, procfs, audit, and memory maps; macOS requires task ports, memory mapping,
+      and Hardened Runtime decisions. Joining these by exact process-start identity is necessary to avoid misattribution from
+      PID reuse, ordinary debuggers, or legitimate injectors.
+  - zh: 权限匿迹只在 target authority 真实大于 source 时成立：新增访问由 target token/capability/service context 执行，局部资源审计会把 allow 归给一个本来有权的进程，而不是记录
+      source 的正常 grant。防守方必须把 source pre-state、target admission、注入链和 first newly authorized result 联合；若 access control 本应阻止低权限
+      source 接触高完整性 target，则还要查明先前 token、vulnerability、misconfiguration 或 kernel controller，不能把该先决步骤吞进 T1055。
+    en: Privilege concealment exists only when target authority truly exceeds the source. Added access executes through target
+      token, capability, or service context, so a local resource audit attributes allow to a process that normally has it
+      rather than recording an ordinary grant to the source. Defenders must join source pre-state, target admission, the injection
+      chain, and the first newly authorized result. If access control should prevent a lower-authority source from reaching
+      a higher-integrity target, the prior token, vulnerability, misconfiguration, or kernel controller must be identified
+      rather than absorbed into T1055.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 纳入要求存在两个可区分的进程上下文、可归因的源或控制者、精确目标实例、跨进程写入或加载请求、可证明的调度，以及目标上下文中的恶意执行或结果。远程动态库、内存载荷、共享映射、ptrace、进程内存接口、线程上下文、异步回调和创建期映像替换都可以实现；被系统阻止的访问或只完成写入而未执行不属于完成的技术。
+    en: Inclusion requires two distinguishable process contexts, an attributable source or controller, an exact target instance,
+      a cross-process write or load request, provable dispatch, and malicious execution or an outcome in the target context.
+      Remote libraries, memory payloads, shared mappings, ptrace, process-memory interfaces, thread context, asynchronous
+      callbacks, and process-birth image substitution can implement the behavior. Access blocked by the system or a write
+      that never executes does not complete the technique.
+  - zh: 同一进程内的自定义模块映射、加载器搜索路径劫持和由未修改 Broker 正常处理的远程请求分别属于相邻技术。漏洞若先突破目标访问控制、嵌入代码若随后改变令牌、或行为跨越容器到宿主边界，可以共同记录相应技术，但都不能替代源到目标的实际嵌入链。
+    en: Custom module mapping within one process, loader-search-path hijacking, and remote requests normally handled by an
+      unmodified broker belong to adjacent techniques. A vulnerability that first defeats target access control, a later token
+      change by embedded code, or a container-to-host crossing can be recorded with the corresponding technique, but none
+      replaces the actual source-to-target embedding chain.
+  - zh: 调试、辅助功能、性能分析、安全扫描、备份、即时编译、热补丁和兼容性组件也可能访问或改变其他进程。区分需要结合来源和目标关系、请求权限、载荷或模块来源、调度目的、批准窗口和后继行为；只有目标上下文实际提供并使用更高权限时，本技术才同时属于权限提升。
+    en: Debugging, accessibility, profiling, security scanning, backup, just-in-time compilation, hot patching, and compatibility
+      components can also access or modify other processes. Distinction requires source-to-target relationship, requested
+      rights, payload or module provenance, dispatch purpose, approved window, and downstream behavior. The technique also
+      belongs to Privilege Escalation only when the target context actually provides and uses greater authority.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: 攻击者可能把短驻加载器中的命令通信、凭据或发现模块迁移到浏览器、桌面程序或系统服务，使后继网络、文件或资源操作显示为目标进程发起。若目标服务拥有源进程没有的权限，嵌入代码还可借该上下文访问受保护资源；源进程如何取得写入和调度能力仍由相邻前提解释。
+      en: An adversary may move command-and-control, credential, or discovery modules from a short-lived loader into a browser,
+        desktop application, or system service so downstream network, file, or resource operations appear to originate from
+        the target process. If the target service has authority absent from the source, embedded code can also use that context
+        to reach protected resources. How the source obtained write and dispatch rights remains an adjacent prerequisite.
+    - zh: 在 Linux 上，攻击者可能通过 ptrace 或进程内存接口修改同一用户或带能力的目标；在 macOS 上，可能通过任务端口和内存接口修改未受保护目标。平台保护、命名空间和授权会改变可达性，合法调试器与故障处理程序也会产生相似关系，因此跨平台分类仍取决于实际写入、执行和结果。
+      en: On Linux, an adversary may modify a same-user or capability-bearing target through ptrace or process-memory interfaces.
+        On macOS, it may modify an unprotected target through task ports and memory APIs. Platform protections, namespaces,
+        and entitlements change reachability, while legitimate debuggers and crash handlers create similar relationships.
+        Cross-platform classification therefore still depends on actual write, execution, and outcome.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者需要定位稳定 target PID/start key 与 architecture、取得所需 handle/attach/task rights、理解目标 memory layout 与可用 dispatch，并让
+          payload 与 target ABI/mitigations 兼容。跨 integrity、session、namespace、protected process 或 Hardened Runtime 边界通常会失败，除非已有
+          token/capability、policy exception、vulnerability 或 kernel controller；这些先决条件决定 权限提升 结论是否真实。
+        en: The adversary needs a stable target PID or start key and architecture, required handle, attach, or task rights,
+          knowledge of target memory layout and available dispatch, and a payload compatible with target ABI and mitigations.
+          Cross-integrity, session, namespace, protected-process, or Hardened Runtime boundaries normally fail unless a token
+          or capability, policy exception, vulnerability, or kernel controller already exists. These prerequisites determine
+          whether a Privilege Escalation conclusion is real.
+      - zh: 为降低观察，攻击者可在 standard loader 与 unbacked memory、new thread 与 existing flow、running target 与 birth-time substitution、任意
+          target 与 role-conforming target 之间选择。每个选择都有代价：手工映射需处理 relocation/import，thread hijack/APC 依赖线程状态且可能 crash，hollowing
+          要控制创建/恢复，角色贴合受到目标存在、稳定性和 payload 功能约束。多轴组合会增加实现复杂度并留下更多跨层矛盾。
+        en: 'To reduce observation, the adversary can choose between a standard loader and unbacked memory, a new thread and
+          existing flow, a running target and birth-time substitution, or an arbitrary target and a role-conforming target.
+          Each has costs: manual mapping must handle relocations and imports, thread hijack or APC depends on thread state
+          and can crash, hollowing requires control of creation and resume, and role conformity is constrained by target presence,
+          stability, and payload function. Combining axes increases implementation complexity and leaves more cross-layer
+          contradictions.'
+    defender_model:
+      paragraphs:
+      - zh: 防守方可能在源与目标两侧观察进程身份和权限、句柄或附加权利、内存分配与写入、文件或模块背衬、线程和回调调度、挂起与恢复以及目标中的首个后继行为。稳定的进程启动标识比单独的进程号更可靠，内核或平台等价层视角可以弥补用户态接口监控被绕过的问题。
+        en: Defenders may observe process identity and authority on both source and target, handle or attach rights, memory
+          allocation and writing, file or module backing, thread and callback dispatch, suspend and resume, and the first
+          downstream behavior in the target. A stable process-start identity is more reliable than a process identifier alone,
+          while kernel or platform-equivalent visibility can compensate for bypass of user-mode interface monitoring.
+      - zh: 调试器、安全产品、即时编译器、浏览器、辅助功能、备份和热补丁工具会产生重叠行为。缺少内存内容、调度时序或目标权限时，只能看到部分跨进程关系；短驻载荷、进程退出、采样间隔和高权限代码对传感器的干扰会进一步扩大盲区。
+        en: Debuggers, security products, just-in-time compilers, browsers, accessibility tools, backup, and hot-patch systems
+          create overlapping behavior. Without memory content, dispatch timing, or target authority, only part of the cross-process
+          relationship is visible. Short-lived payloads, process exit, sampling intervals, and interference with sensors by
+          privileged code further expand blind spots.
+stealth_mechanisms:
+- mechanism_ref: NM-BT
+  role: primary
+  summary:
+    zh: 跨进程 writer 与 target runner 分离，使恶意指令和结果在合法进程身份下透明出现
+    en: Separating the cross-process writer from the target runner makes malicious instructions and results appear transparently
+      under a legitimate process identity
+  analysis:
+    paragraphs:
+    - zh: 攻击者从源进程打开目标，写入、映射载荷或请求目标加载模块，再通过线程或回调执行。控制和执行因此落在不同进程身份上：源侧只留下短暂访问与内存变化，后继操作则由合法目标的进程标识、路径、签名和权限承载。只观察进程创建、文件信誉或资源事件的防守方容易把行为归给目标并丢失写入者，形成行为透明；连接源目标关系、内存变化、调度和后继结果能够恢复来源。
+      en: The adversary opens a target from a source process, writes or maps a payload or requests module loading, and dispatches
+        it through a thread or callback. Control and execution therefore occur under different process identities. The source
+        side leaves brief access and memory changes, while downstream operations are carried by the legitimate target process
+        identifier, path, signature, and authority. Defenders observing only process creation, file reputation, or resource
+        events can attribute the behavior to the target and lose the writer, producing Behavioral Transparency. Connecting
+        the source-target relationship, memory change, dispatch, and downstream outcome can recover provenance.
+  evidence_refs:
+  - REF-000362
+  - REF-000363
+  confidence: high
+subtechnique_taxonomy:
+  narrative:
+    paragraphs:
+    - zh: 四个子技术分别按执行内存的背衬、调度载体、创建期映像来源和目标角色贴合度划分。无背衬载荷比较执行内存与文件或模块来源；既有执行流调度替换比较预期线程入口与实际调度；创建期映像来源分离比较进程创建身份与首段执行映像；角色贴合目标上下文选择比较目标业务角色与嵌入代码的后继行为。
+      en: The four children are partitioned by executable-memory backing, dispatch carrier, process-birth image provenance,
+        and target-role conformity. Unbacked Payload Memory Embedding compares executed memory with file or module origin.
+        Existing-Flow Dispatch Substitution compares expected thread entry with actual dispatch. Birth-Time Image Provenance
+        Divergence compares process-creation identity with the first executed image. Role-Conforming Target-Context Selection
+        compares the target business role with downstream behavior of embedded code.
+    - zh: 这些变量可以在同一事件中组合，但各自改变不同痕迹并需要不同观察视角。具体接口、动态库格式、操作系统、产品和工具只是实现形式；令牌操纵、漏洞利用、IPC Broker、加载器选择和调用路径规避由相邻技术负责。
+      en: The variables can combine in one event, but each changes a different trace and requires a different observation
+        vantage. Particular APIs, library formats, operating systems, products, and tools are implementation forms. Token
+        manipulation, exploitation, IPC brokers, loader selection, and call-path evasion belong to adjacent techniques.
+  coverage: established
+  subtechnique_refs:
+  - NJS-0103-001
+  - NJS-0103-002
+  - NJS-0103-003
+  - NJS-0103-004
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000100
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000102
+evidence:
+  claim_refs:
+  - CLM-000564
+  - CLM-000565
+  - CLM-000570
+  - CLM-000571
+  case_refs:
+  - CASE-000131
+  - CASE-000132
+  - CASE-000133
+  - CASE-000134
+  reference_refs:
+  - REF-000108
+  - REF-000243
+  - REF-000279
+  - REF-000362
+  - REF-000363
+  - REF-000364
+  - REF-000365
+  - REF-000366
+  - REF-000367
+  - REF-000369
+  - REF-000370
+  - REF-000371
+research:
+  limitations:
+    paragraphs:
+    - zh: 四个观察变量的直接案例和技术材料主要来自 Windows。Linux 的跨进程访问控制和 macOS 运行时保护能够证明平台边界，但没有为每个子技术提供同等强度的现场案例；跨平台映射必须重新证明相同的痕迹属性，而不能复制 Windows
+        事件字段。
+      en: Direct cases and technical material for the four observation variables are concentrated on Windows. Cross-process
+        access control on Linux and runtime protections on macOS establish platform boundaries but do not provide equally
+        strong field cases for every child. Cross-platform mapping must re-establish the same trace property rather than copy
+        Windows event fields.
+    - zh: 公开报告可以证明进程注入和相应观察变量，但通常没有完整提供源与目标的权限状态或由嵌入代码完成的新资源访问。因此这些案例不能单独证明权限提升，具体事件仍需要本地权限和资源结果。
+      en: Public reporting can establish process injection and the corresponding observation variables but usually does not
+        provide complete source and target authority state or new resource access completed by embedded code. Those cases
+        therefore do not independently prove privilege escalation; event-specific authority and resource outcomes still require
+        local evidence.
+    - zh: 内存、线程和映像遥测成本较高、持续时间短，也可能被高权限代码干扰。载荷可以在采样间隔内执行并恢复，受保护进程可能阻止读取，完整内存转储还包含敏感数据；采集范围、保留和访问需要兼顾覆盖与隐私。
+      en: Memory, thread, and image telemetry is costly, short-lived, and can be disrupted by privileged code. A payload can
+        execute and restore state between samples, protected processes can prevent inspection, and full memory dumps contain
+        sensitive data. Collection scope, retention, and access therefore need to balance coverage and privacy.
+lifecycle:
+  status: review
+  version: 0.3.0
+  created: '2026-09-13'
+  modified: '2026-09-19'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

@@ -1,0 +1,134 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000163
+strategy_ref: DET-000154
+name:
+  zh: 保管进程异常句柄与转储链
+  en: Vault Process Anomalous Access and Dump Lineage
+summary:
+  zh: 把秘密保管进程的非批准高权访问与转储、外联和可验证秘密结果分层关联。
+  en: Join unauthorized high-rights access to secret-bearing vault processes with dumps, egress, and verified secret outcomes in separate stages.
+domains:
+- enterprise
+platforms:
+- Windows
+- macOS
+logic:
+  paragraphs:
+  - zh: 维护真正处理保管秘密的进程清单及其用户、签名和版本，按终端识别非批准主体获得读取、调试或任务端口权限的访问。Windows 可用已配置的 Sysmon Event 10 或等效 EDR 记录目标进程与 GrantedAccess；macOS 仅在部署了能提供任务端口或等效跨进程读取遥测的传感器时使用本分支。将源进程、目标
+      PID、权限和时刻对齐，排除已批准的限时诊断，却保留原始访问记录。
+    en: Maintain an inventory of processes that actually handle vault secrets, with user, signer, and version. On each endpoint, identify unapproved
+      actors gaining read, debugger, or task-port rights to these targets. Windows can use configured Sysmon Event 10 or equivalent EDR for target
+      process and GrantedAccess. The macOS branch applies only when a sensor exposes task-port or equivalent cross-process read telemetry. Align
+      source process, target PID, rights, and time, and exclude approved time-bounded diagnostics while retaining raw access records.
+  - zh: 在三十分钟内追踪同一源进程或其子进程产生的转储文件和异常外联，并把结果分为 suspicious_process_access、dump_or_key_material_exposed 和 verified_secret_return。只有可信取证发现保管库解密密钥、可用明文或与输出相连的后继行为时才升级最后一级。单一
+      ProcessAccess 或转储文件不等于所有条目可解密；KeePass 的内存再加密和 Keydnap 的旧版 securityd 条件都必须保留在结论中。
+    en: Within thirty minutes, follow dump files and unusual egress from the same source process or children. Preserve separate suspicious_process_access,
+      dump_or_key_material_exposed, and verified_secret_return outcomes. Escalate to the last only when trusted forensics finds a vault decryption
+      key, usable plaintext, or a linked later result. One ProcessAccess event or dump file does not make every item decryptable; KeePass memory
+      re-encryption and Keydnap's legacy securityd conditions remain material limits.
+data_requirements:
+- source_type: vault-process-inventory
+  name:
+    zh: 保管秘密进程清单
+    en: Secret-bearing vault process inventory
+  channel: null
+  required_fields:
+  - host_id
+  - target_image
+  - target_signer
+  - product_version
+  - owner_id
+  - approved_debugger
+- source_type: cross-process-access
+  name:
+    zh: 跨进程高权访问
+    en: High-rights cross-process access
+  channel: Configured Sysmon Event 10 or equivalent EDR and macOS task-port sensor
+  required_fields:
+  - timestamp
+  - host_id
+  - source_process_id
+  - target_process_id
+  - source_image
+  - target_image
+  - access_rights
+  - user_id
+- source_type: dump-file-output
+  name:
+    zh: 进程转储或密钥输出文件
+    en: Process dump or key-output file
+  channel: EDR file telemetry
+  required_fields:
+  - timestamp
+  - host_id
+  - process_id
+  - file_path
+  - file_size
+  - operation
+- source_type: process-network-egress
+  name:
+    zh: 访问后进程外联
+    en: Post-access process network egress
+  channel: EDR network telemetry
+  required_fields:
+  - timestamp
+  - host_id
+  - process_id
+  - destination
+  - bytes_out
+- source_type: guarded-runtime-result
+  name:
+    zh: 受控运行态秘密结果核验
+    en: Guarded runtime-secret result verification
+  channel: Incident-response secure dump or key-material review
+  required_fields:
+  - timestamp
+  - host_id
+  - target_process_id
+  - artifact_hash
+  - usable_secret_confirmed
+  - verification_method
+  - verifier_id
+observables:
+- zh: 非维护主体以读取或调试权限打开已登记保管进程
+  en: A non-maintenance actor opens an inventoried vault process with read or debug rights
+- zh: 同一源谱系随后生成转储、密钥文件或异常外联
+  en: The same source lineage later creates a dump or key file or makes unusual egress
+correlation:
+  window:
+    zh: 以异常访问为中心关联前五分钟和后三十分钟，并以同一维护主体的正常诊断频率校准。
+    en: Correlate five minutes before and thirty minutes after anomalous access, calibrated against normal diagnostic activity by the same maintenance
+      actor.
+  dimensions:
+  - host_id
+  - source_process_id
+  - target_process_id
+  - user_id
+  - timestamp
+false_positives:
+- zh: 合法崩溃诊断、性能分析、取证响应及辅助功能可能访问同一进程，必须对批准者、时间和输出逐项核对。
+  en: Authorized crash diagnostics, profiling, forensic response, and accessibility tools can touch the same process; approval, time, and output
+    require separate checks.
+blind_spots:
+- zh: Sysmon Event 10 可因高噪声被过滤；同进程恶意代码或内核路径可能没有外部句柄，macOS 缺少任务端口传感器时不能声称覆盖。转储也可能不含可用明文。
+  en: Sysmon Event 10 may be filtered for noise; in-process malicious code or kernel paths may have no external handle, and macOS coverage cannot
+    be claimed without task-port telemetry. A dump may contain no usable plaintext.
+tuning_guidance:
+  paragraphs:
+  - zh: 按精确保管进程、危险权限和已签名诊断工具建立基线，批准例外须绑定维护主体、工单和到期；对新源进程、跨用户访问及转储输出提高优先级。定期以受控访问验证传感器仍收集 ProcessAccess 或等效事件，避免用全局排除项消除运行态覆盖。
+    en: Baseline exact vault processes, risky rights, and signed diagnostic tools. Bind exceptions to maintenance actor, ticket, and expiry, and
+      raise priority for new source processes, cross-user access, and dump output. Periodically validate that controlled access still reaches
+      ProcessAccess or equivalent telemetry rather than erasing runtime coverage with broad exclusions.
+evidence_refs:
+- REF-000553
+- REF-000551
+- REF-000366
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-09-22'
+  modified: '2026-09-23'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

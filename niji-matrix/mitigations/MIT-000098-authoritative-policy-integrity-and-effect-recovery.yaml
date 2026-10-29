@@ -1,0 +1,117 @@
+schema_version: 2.0.0
+type: mitigation
+id: MIT-000098
+name:
+  zh: 权威策略完整性与效果恢复
+  en: Authoritative Policy Integrity and Effect Recovery
+summary:
+  zh: 以隔离写权、双人批准、不可变完整版本、独立消费验证和效果级撤销保护域/租户策略与信任，避免正常终态掩盖恶意区间的残留权限。
+  en: Protect domain or tenant policy and trust through isolated write authority, two-person approval, immutable complete versions, independent consumption validation, and effect-level revocation so a normal end state cannot conceal residual authority from a malicious interval.
+description:
+  paragraphs:
+  - zh: >-
+      本缓解把 GPO、directory policy、domain/tenant trust 和 federation configuration 视为可在多个资源上改变权限的权威安全对象，而不是普通管理设置。组织应为每个对象建立稳定 ID、owner、完整 canonical representation、scope、consumer 清单和可信版本，把 policy/trust write 与日常账户、endpoint 管理、审批、日志保留和资源授权分离。高风险新增、修改、link/scope、ACL、issuer、certificate、claim 或 authentication-mode 变化必须由独立审批者核对 pre/post effective authority，经过 canary consumer 验证，并在不可由同一 writer 删除的保留域保存。
+    en: >-
+      This mitigation treats GPO, directory policy, domain or tenant trust, and federation configuration as authoritative security objects able to change authority across resources rather than ordinary administration settings. Each object needs a stable ID, owner, complete canonical representation, scope, consumer inventory, and trusted version, with policy or trust write separated from daily identities, endpoint administration, approval, log retention, and resource authorization. High-risk additions or changes to content, link or scope, ACL, issuer, certificate, claim, or authentication mode require an independent approver to compare pre-state and post-state effective authority, validation through a canary consumer, and preservation in a retention domain the same writer cannot delete.
+  - zh: >-
+      恢复不能止于把 current policy 写回正常值。处置需先保全 object history、GPO 双组件与 replica、trust material、writer、consumer、request/token/session 和资源结果；恢复可信版本后，枚举恶意区间全部 consumers，撤销该版本签发或允许的 token/session，移除 endpoint 已创建的权限或执行对象，并回滚已完成的资源 side effects。合法证书轮换、break-glass、失败部署和灾难恢复需要限时流程，但每个临时状态仍须有 owner、精确有效区间、预期 consumer、自动到期以及“策略恢复后效果已清除”的验证。
+    en: >-
+      Recovery cannot stop after current policy is written back to a normal value. Response first preserves object history, GPO dual components and replicas, trust material, writer, consumer, request, token or session, and resource outcomes. After restoring a trusted version, it enumerates every consumer from the malicious interval, revokes tokens or sessions issued or allowed by that version, removes endpoint authority or execution objects it created, and rolls back completed resource side effects. Legitimate certificate rotation, break-glass, failed deployment, and disaster recovery need time-bounded workflows, but every temporary state still requires an owner, exact validity interval, intended consumers, automatic expiry, and verification that effects were removed after policy restoration.
+domains: [enterprise]
+measures:
+- key: isolated-policy-trust-write-authority
+  name:
+    zh: 隔离策略/信任写权与双人批准
+    en: Isolated Policy or Trust Write Authority and Two-Person Approval
+  description:
+    paragraphs:
+    - zh: >-
+        从日常用户、共享服务账户和 endpoint 管理身份中移除 GPO、directory policy、domain trust、federation issuer/certificate/claim 的持续写权，使用抗钓鱼 MFA、隔离工作站、按 object/scope/time 限定的 JIT 角色和独立双人批准。审批必须显示完整语义 diff、pre/post effective authority、目标 consumers、回滚计划与残留 token/session 处理，不能只批准命令名或管理员角色。
+      en: >-
+        Remove standing write authority over GPO, directory policy, domain trust, and federation issuer, certificate, or claims from daily users, shared service accounts, and endpoint-administration identities. Use phishing-resistant MFA, isolated workstations, object-, scope-, and time-bounded JIT roles, and independent two-person approval. Approval must show the complete semantic difference, pre-state and post-state effective authority, target consumers, rollback plan, and treatment of residual tokens or sessions rather than approve only a command name or administrator role.
+  control_type: preventive
+- key: complete-version-and-replica-integrity
+  name:
+    zh: 完整版本、双组件与副本完整性
+    en: Complete-Version Dual-Component and Replica Integrity
+  description:
+    paragraphs:
+    - zh: >-
+        为 policy/trust object 生成规范化完整版本并保存 append-only history；GPO 同时度量 AD container、SYSVOL template、link、scope、ACL、version 和各 DC replica，federation 同时度量 domain/tenant、issuer、signer fingerprint、claim 与 authentication mode。每次 commit、replication、consumer acknowledgment 和 restore 都保留独立序号与 hash，禁止用 current snapshot 覆盖旧版本。
+      en: >-
+        Generate a canonical complete version for each policy or trust object and preserve append-only history. Measure a GPO's AD container, SYSVOL template, link, scope, ACL, version, and every domain-controller replica together, and measure federation domain or tenant, issuer, signer fingerprint, claim, and authentication mode together. Retain an independent sequence and hash for every commit, replication, consumer acknowledgment, and restoration, and never overwrite old versions with a current snapshot.
+  control_type: detective-support
+- key: independent-consumer-authority-canary
+  name:
+    zh: 独立消费方权限 canary 验证
+    en: Independent Consumer Authority Canary Validation
+  description:
+    paragraphs:
+    - zh: >-
+        使用不具生产破坏能力的 canary principal、device 或 request，在代表性 DC、endpoint、IdP 与 relying resource 上比较批准前后 policy/trust evaluation，记录 observed version、effective scope、token/session 和授权结果。验证应证明期望允许与期望拒绝均保持，并把 consumer 结果送到与 policy writer 分离的审计域；不得在生产中加入真实攻击者 signer 或执行破坏性 GPO 作为测试。
+      en: >-
+        Use a canary principal, device, or request with no destructive production capability to compare policy or trust evaluation before and after approval across representative domain controllers, endpoints, IdPs, and relying resources, recording observed version, effective scope, token or session, and authorization outcome. Validation proves both expected allow and expected deny remain correct and exports consumer outcomes to an audit domain separated from the policy writer. Never add a real adversary signer or execute a destructive GPO in production for testing.
+  control_type: preventive
+- key: bounded-change-and-automatic-effect-revocation
+  name:
+    zh: 限时变更与效果自动撤销
+    en: Bounded Change and Automatic Effect Revocation
+  description:
+    paragraphs:
+    - zh: >-
+        为 break-glass、迁移、证书重叠、临时 scope 和恢复变更定义最小有效窗口、自动到期与 owner；到期或 restore 事件触发 consumer 枚举、token/session revoke、endpoint 权限/对象清理和资源 side-effect 检查。只有 current state 恢复而没有效果级验证时，变更保持 open，不得标记已恢复。
+      en: >-
+        Give break-glass access, migration, certificate overlap, temporary scope, and recovery changes a minimum validity window, automatic expiry, and owner. Expiry or restoration triggers consumer enumeration, token or session revocation, endpoint authority or object cleanup, and resource-side-effect checks. A change with restored current state but no effect-level verification remains open and cannot be marked recovered.
+  control_type: containment
+- key: independent-policy-history-retention
+  name:
+    zh: 独立策略历史与最长效果保留
+    en: Independent Policy History and Longest-Effect Retention
+  description:
+    paragraphs:
+    - zh: >-
+        将 writer、完整 old/new、approval、replica/consumer、request/session 和 resource outcome 实时导出到 policy writer 与 tenant admin 均不能删除的存储。保留期覆盖最长 refresh/replication、token/session 和 privileged side-effect 调查窗口；按 object/version 建立索引，使反向 commit 或 normal current snapshot 不能让中间恶意版本从调查入口消失。
+      en: >-
+        Export writer, complete old and new state, approval, replica or consumer, request or session, and resource outcome in real time to storage neither policy writer nor tenant administrator can delete. Retention covers the longest refresh or replication, token or session, and privileged-side-effect investigation window. Index by object and version so an inverse commit or normal current snapshot cannot remove an intermediate malicious version from investigative entry points.
+  control_type: detective-support
+applications:
+- target_ref: NJT-0100
+  use:
+    paragraphs:
+    - zh: >-
+        对集中策略与信任状态篡改，将域与租户的 policy/trust object 纳入统一高风险控制目录，但为 GPO 与 federation 保存各自完整结构。GPO 变更必须同时批准 container/template、link/scope、ACL、version 和目标 consumer；trust 变更必须批准 issuer、signer、claim/authentication mode 与 relying resources。每次变更先计算 writer/pre-state 到预期 principal/session 的授权差，再由无生产破坏能力的 canary 证明 consumer 只产生批准结果。
+      en: >-
+        For Central Policy and Trust-State Mutation, place domain and tenant policy or trust objects in one high-risk control inventory while preserving complete GPO and federation structures separately. A GPO change approves container and template, link or scope, ACL, version, and target consumers together. A trust change approves issuer, signer, claim or authentication mode, and relying resources. Every change first computes the authority difference from writer or pre-state to the intended principal or session and then uses a production-incapable canary to prove consumers produce only approved outcomes.
+  expected_effect:
+    paragraphs:
+    - zh: >-
+        该应用减少单一被攻陷管理员、委派 writer 或管理 API 可把一个恶意版本传播到大量 resources 的机会，并使集中写入、受信 consumer 和权限结果形成不可删除谱系。攻击者必须突破隔离写权和独立批准，伪造完整版本/副本与 canary 结果，或在多数据域同时删除证据，从而增加成本并缩短可用窗口。
+      en: >-
+        This application reduces the opportunity for one compromised administrator, delegated writer, or administration API to propagate a malicious version across many resources and makes central write, trusted consumers, and authority outcomes an undeletable lineage. The adversary must compromise isolated write authority and independent approval, forge complete versions, replicas, and canary results, or delete evidence across multiple data domains, increasing cost and shortening the usable window.
+  limitations:
+    paragraphs:
+    - zh: >-
+        GPO 和 federation 是高可用基础设施；错误 scope、ACL、证书或 rollback 可造成域级故障、登录锁定或复制分裂。部分旧 endpoint/IdP 不报告 observed version 或逐请求 policy decision，pre/post 授权模拟也可能无法表达应用自定义权限。控制应分阶段、保留 emergency path 并按平台验证；若攻击者同时控制 writer、approver、replica、consumer 和 retention，单一目录无法自证安全。
+      en: >-
+        GPO and federation are high-availability infrastructure. Incorrect scope, ACL, certificate, or rollback can cause domain-wide failure, sign-in lockout, or replication split. Some legacy endpoints or IdPs do not report observed version or request-level policy decisions, and pre-state or post-state authority simulation may not express application-specific authorization. Controls require staged deployment, a protected emergency path, and platform-specific validation. If an adversary controls writer, approver, replica, consumer, and retention together, one inventory cannot attest itself secure.
+- target_ref: NJS-0100-001
+  use:
+    paragraphs:
+    - zh: >-
+        对用后策略状态回退，为同一 object 强制保存 pre-state、每个 committed intermediate version 和 restored version，restore 不能覆盖历史。每次 reverse/equivalent commit 都触发审计：确认恶意或临时版本是否被任何 consumer 使用，枚举该区间签发的 token/session、endpoint-created 权限/任务与 resource side effects，并逐项 revoke、remove 或 rollback。没有 consumer/effect 清单和验证结果时，即使 current hash 与基线一致也不得关闭事件。
+      en: >-
+        For Post-Use Policy-State Reversion, preserve pre-state, every committed intermediate version, and restored version for the same object, and never let restoration overwrite history. Every inverse or equivalent commit triggers review to determine whether any consumer used the malicious or temporary version, enumerate tokens or sessions issued, endpoint-created authority or tasks, and resource side effects during the interval, and revoke, remove, or roll each one back. Without a consumer and effect inventory plus validation outcome, the event cannot close even when current hash matches baseline.
+  expected_effect:
+    paragraphs:
+    - zh: >-
+        该应用消除“终态正常即从未异常”的假设，使攻击者缩短 policy 可见寿命也无法切断 object/version、consumer 与残留权限之间的连接。攻击者必须同时篡改 append-only 历史、伪造没有 consumer、压制 token/session 或 endpoint 结果，或在自动效果撤销前完成全部目标，从而降低回退带来的匿迹收益。
+      en: >-
+        This application removes the assumption that a normal end state means no prior anomaly, so shortening visible policy lifetime cannot sever links among object and version, consumers, and residual authority. The adversary must also alter append-only history, falsely attest no consumer, suppress token or session or endpoint outcomes, or complete every objective before automatic effect revocation, reducing the stealth benefit of reversion.
+  limitations:
+    paragraphs:
+    - zh: >-
+        正常 failed deployment、配置纠偏、证书轮换和事故恢复也会产生反向 commit，若所有回退都自动撤销 session 或回滚 endpoint 可能中断业务。某些效果不可逆，某些 consumer 离线或不报告版本，token 也可能由外部 relying party 管理。策略需按风险分级、使用 owner/approval/consumer 证据抑制误报，并把无法验证的残留项保持 open，而不能把缺失遥测当作已清除。
+      en: >-
+        Normal failed deployments, configuration correction, certificate rotation, and incident recovery also create inverse commits, and automatically revoking sessions or rolling back endpoints for every reversion can disrupt business. Some effects are irreversible, some consumers are offline or omit version, and a token can be managed by an external relying party. Policy must be risk-tiered, use owner, approval, and consumer evidence to suppress false positives, and keep unverifiable residual items open rather than treating missing telemetry as proof of removal.
+evidence_refs: [REF-000338, REF-000339, REF-000340, REF-000341, REF-000342, REF-000343, REF-000344]
+lifecycle: {status: review, version: 0.1.0, created: '2026-09-13', modified: '2026-09-13', contributors: [Niji Matrix Research], reviewers: []}

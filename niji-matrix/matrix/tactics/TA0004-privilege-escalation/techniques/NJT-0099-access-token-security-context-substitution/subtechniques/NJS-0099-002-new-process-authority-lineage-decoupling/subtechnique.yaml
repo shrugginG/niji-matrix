@@ -1,0 +1,200 @@
+schema_version: 2.0.0
+type: evasion-subtechnique
+id: NJS-0099-002
+parent_ref: NJT-0099
+name:
+  zh: 新进程权威谱系解耦
+  en: New-Process Authority-Lineage Decoupling
+summary:
+  zh: 攻击者以外来主令牌或显式选定父体创建新进程，使实际调用者、显示父级、创建主体、令牌来源与敏感结果不再呈现为一条连续谱系。
+  en: An adversary creates a process with a foreign primary token or explicitly selected parent so actual caller, displayed
+    parent, creator subject, token origin, and sensitive outcome no longer appear as one continuous lineage.
+aliases: []
+definition_and_concept:
+  paragraphs:
+  - zh: 本子技术的稳定变量是“新进程的有效权威与其可见创建谱系分离”。攻击者取得或创建能够作为主令牌的外来 token，以它启动新进程；或在拥有必要访问时显式指定另一父进程，使新承载体继承选定父体的令牌或其他属性。成立需要一个新的 process
+      start key、可证明与实际调用者不一致的 token 或 parent 来源，以及该分离带来的更高权限结果或实质观察与归因影响。
+    en: The stable variable is separation between a new process effective authority and its visible creation lineage. The
+      adversary obtains or creates a foreign token usable as a primary token and starts a process with it, or explicitly designates
+      another parent while holding the necessary access so the new carrier inherits the selected parent token or other attributes.
+      The child requires a new process start key, a token or parent source demonstrably different from the actual caller,
+      and either a higher-authority outcome or a material observation and attribution effect caused by that separation.
+  - zh: “权威谱系”包括谁取得/创建令牌、谁实际调用创建 API、Security 记录的 Creator 与 Target Subject、内核或 ETW 的 creating PID、EDR/Sysmon 显示父级、进程主令牌的 AuthenticationId/LogonId
+      以及首个高权限动作。不是每个实现都会同时改变所有字段；稳定性来自攻击者能选择令牌或父体，使至少一个可见 lineage 锚与真实权威来源分离。CreateProcessWithTokenW、CreateProcessAsUser、DuplicateTokenEx
+      或 PROC_THREAD_ATTRIBUTE_PARENT_PROCESS 是实现，不是 Niji 边界。
+    en: Authority lineage includes who obtained or created the token, who actually invoked process creation, Security Creator
+      and Target Subject, kernel or ETW creating PID, EDR or Sysmon displayed parent, the process primary token's AuthenticationId
+      or LogonId, and first privileged action. Not every implementation changes every field. Stability comes from adversary
+      choice of token or parent separating at least one visible lineage anchor from true authority provenance. CreateProcessWithTokenW,
+      CreateProcessAsUser, DuplicateTokenEx, and PROC_THREAD_ATTRIBUTE_PARENT_PROCESS are implementations, not Niji boundaries.
+stealth_characteristics:
+  paragraphs:
+  - zh: 新进程权威谱系解耦仍会留下 image、PID、start time、command line 和主令牌，但这些属性被组织成不同叙述。显示树可能把进程置于 explorer、Task Manager、服务或 SYSTEM 父体之下，目标主体可能显示另一合法用户，而实际调用者和
+      token acquisition 位于别处。依赖单一父子关系、Creator Subject 或 process owner 的防守方会把选择的正常 lineage 当作真实起点，漏掉攻击者从低权限 caller 到高权限 child
+      的过渡。
+    en: New-Process Authority-Lineage Decoupling still leaves image, PID, start time, command line, and primary token, but
+      the attributes form different narratives. The displayed tree can place it under Explorer, Task Manager, a service, or
+      SYSTEM parent; Target Subject can show another legitimate user while actual caller and token acquisition occur elsewhere.
+      A defender relying on one parent-child relation, Creator Subject, or process owner treats the selected normal lineage
+      as the true origin and misses the transition from lower-privilege caller to privileged child.
+  - zh: Windows 官方文档说明显式父体可以传递 token 等属性，4688 则提供 Creator/Target Subject 和完整性字段；独立 ETW/内核来源可以保留实际 creating process。Trellix
+      观察到 DarkGate 用 PPID spoofing 隐藏于 Task Manager/Process Explorer，ESET 观察到 PipeMon 经 parent spoofing 重启并继续启用驱动权限。这些痕迹表明匿迹依赖视角差异而非完全消失，跨源比较
+      actual caller、declared parent、process GUID、token origin 和结果可恢复真实链。
+    en: Official Windows documentation states that an explicit parent can pass token and other attributes, while 4688 provides
+      Creator and Target Subject and integrity fields; independent ETW or kernel sources can retain the actual creating process.
+      Trellix observed DarkGate using PPID spoofing to hide from Task Manager or Process Explorer, and ESET observed PipeMon
+      restarting through parent spoofing before continuing driver-privilege activation. The traces show that stealth depends
+      on viewpoint divergence rather than disappearance, and cross-source comparison of actual caller, declared parent, process
+      GUID, token origin, and outcome can restore the real chain.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 本项纳入新进程以外来身份的主令牌运行，或攻击者显式选择父体并使可见创建谱系与真实来源分离。外来令牌可以从另一进程复制、由登录凭据创建或从模拟令牌转换；父进程选择必须产生更高安全上下文，或确实让防守方对实际创建者和行为来源形成错误观察。普通进程树差异并不充分。
+    en: This child includes a new process running under a primary token from another identity or an adversary explicitly selecting
+      a parent so visible creation lineage diverges from actual provenance. The token can be copied from another process,
+      created from logon credentials, or converted from an impersonation token. Parent selection must either produce a higher
+      security context or materially mislead defender observation of the actual creator and behavior source. An ordinary process-tree
+      difference is insufficient.
+  - zh: 现有线程采用模拟令牌而没有新 process start key 归 NJS-0099-001；新进程内同一令牌后续只激活已有权限位可同时归 NJS-0099-003，但两者分别描述创建谱系与权限变化。向悬挂进程写入代码、进程空洞或反射式注入归相邻进程注入对象。普通服务或计划任务按批准主体创建子进程、用户账户控制产生特殊父体以及获批的以其他身份运行都是反例，除非令牌或父体选择未获授权并造成更高权限或实质观察影响。
+    en: An existing thread adopting an impersonation token without a new process start key belongs to NJS-0099-001. A new
+      process that later activates an existing privilege in the same token can also satisfy NJS-0099-003, but the two describe
+      creation lineage and privilege change separately. Writing code into a suspended process, process hollowing, or reflective
+      injection belongs to adjacent process injection. Ordinary service or scheduled-task child creation under an approved
+      principal, special parent behavior from user account control, and approved run-as administration are counterexamples
+      unless token or parent selection is unauthorized and causes higher authority or a material observation effect.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: 攻击者从 SYSTEM 服务、另一交互用户或目标 session 取得令牌，经 DuplicateTokenEx 转成主令牌，再用 CreateProcessAsUser 或 CreateProcessWithTokenW
+        启动工具。新进程的 Target Subject/owner 与调用者不同，正常软件名可能继续运行于更高上下文；若防守只看新进程账户，会误把攻击者控制与该合法身份等同。完整链应从 source process/token access
+        或新登录，经 token AuthenticationId 到 child 与其首个敏感操作。
+      en: An adversary obtains a token from a SYSTEM service, another interactive user, or target session, converts it to
+        a primary token through DuplicateTokenEx, and starts a tool with CreateProcessAsUser or CreateProcessWithTokenW. The
+        new process Target Subject or owner differs from the caller and a normal software name can continue under higher context;
+        a defender looking only at the new-process account can equate adversary control with that legitimate identity. The
+        complete chain runs from source process and token access or new logon through token AuthenticationId to the child
+        and its first sensitive operation.
+    - zh: 攻击者也可用扩展启动属性打开高权限或正常外观的候选父体，把其句柄传给 PROC_THREAD_ATTRIBUTE_PARENT_PROCESS，再创建新进程。显示树、Task Manager 或部分 EDR 会显示选定父体，实际
+        creating process 仍可在 ETW EventHeader 或另一传感器中出现。PipeMon 的 installer 在权限启用失败后用 parent spoofing 重新启动，并再次尝试 SeLoadDriverPrivilege；这个案例同时要求保持
+        UAC bypass、Print Processor 与注入为相邻行为，不把整条活动压成一个令牌标签。
+      en: An adversary can also open a higher-privilege or normal-looking candidate parent, pass its handle through PROC_THREAD_ATTRIBUTE_PARENT_PROCESS
+        in extended startup attributes, and create a process. The displayed tree, Task Manager, or some EDR views show the
+        selected parent while the actual creating process can remain visible in ETW EventHeader or another sensor. PipeMon's
+        installer restarted through parent spoofing after privilege enablement failed and retried SeLoadDriverPrivilege. The
+        case also requires UAC bypass, Print Processor, and injection to remain adjacent rather than collapsing the whole
+        operation into one token label.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者能创建进程并持有一个可用主令牌，或能以 PROCESS_CREATE_PROCESS 等权限打开目标父进程；若从管理员提升到 SYSTEM，还需足以接触 SYSTEM 进程/令牌但低于最终结果的初始访问。它知道 session、integrity、token
+          type、handle inheritance 与创建 API 约束，选择能通过业务父子或主体 allowlist 的 parent/image 组合，并在多个事件源写入前后维持内部相容。
+        en: The adversary can create a process and holds a usable primary token or can open a target parent with rights such
+          as PROCESS_CREATE_PROCESS. Elevation from administrator to SYSTEM also requires initial access sufficient to reach
+          a SYSTEM process or token but lower than the final result. The adversary understands session, integrity, token type,
+          handle inheritance, and process-creation constraints, selects parent and image combinations likely to pass operational
+          allowlists, and attempts to preserve internal consistency across event sources.
+    defender_model:
+      paragraphs:
+      - zh: 防守方可能从安全审计、内核遥测和端点传感器分别看到请求创建者、显示父进程、实际创建者、继承的令牌以及新进程后继操作。这些来源对“父级”的含义并不相同，标准化时若覆盖成一个字段，就会丢失调用、显示和权威来源之间的差异。
+        en: Defenders may separately observe the requesting creator, displayed parent, actual creator, inherited token, and
+          downstream behavior of the new process through security audit, kernel telemetry, and endpoint sensors. These sources
+          do not mean the same thing by parent, and normalizing them into one field erases differences among call origin,
+          visible lineage, and authority provenance.
+      - zh: 用户账户控制、服务管理器、任务计划、软件部署、终端服务、应用池、以其他身份运行和安全沙箱都会产生正常的谱系分离。操作系统版本、程序、账户、目标父体、创建选项、资产角色和变更窗口决定合法基线；进程标识复用、时钟偏差和父进程提前退出会制造伪差异。
+        en: User Account Control, service managers, schedulers, software deployment, terminal services, application pools,
+          run-as workflows, and security sandboxes create legitimate lineage separation. Operating-system build, program,
+          account, selected parent, creation options, asset role, and change window define the legitimate baseline; process-identifier
+          reuse, clock skew, and early parent exit create false differentials.
+stealth_mechanisms:
+- mechanism_ref: NM-BT
+  role: primary
+  summary:
+    zh: 新进程权威跨越实际调用者、显示父体与目标主体边界
+    en: New-process authority crosses actual-caller displayed-parent and target-subject boundaries
+  analysis:
+    paragraphs:
+    - zh: 行为设计是用外来主令牌或选定父体创建一个新的高权限 carrier。痕迹由实际 caller/token acquisition、创建 API、Security Creator/Target Subject、内核 creating
+        PID、显示 parent GUID、child token 和资源结果组成，但这些关系不再指向同一来源。只观察一侧的防守方会把显示父体或目标主体当作发起者，真实低权限 caller 在进程创建边界消失，产生 Boundary
+        Traversal。跨 Security、ETW、EDR 和 token telemetry 用 process start key 与 AuthenticationId 对齐，再验证首个权限结果，才恢复完整谱系。
+      en: The design creates a new privileged carrier with a foreign primary token or selected parent. The trace consists
+        of actual caller and token acquisition, process-creation API, Security Creator and Target Subject, kernel creating
+        PID, displayed parent GUID, child token, and resource outcome, but these relationships no longer point to one origin.
+        A defender seeing one side treats displayed parent or target subject as initiator and loses the lower-privilege caller
+        at the creation boundary, producing Boundary Traversal. Aligning Security, ETW, EDR, and token telemetry by process
+        start key and AuthenticationId and validating the first privileged outcome restores the full lineage.
+  evidence_refs:
+  - REF-000326
+  - REF-000329
+  - REF-000330
+  - REF-000334
+  - REF-000281
+  confidence: high
+- mechanism_ref: NM-FD
+  role: secondary
+  summary:
+    zh: 选定父体与外来身份为新进程提供可信创建特征
+    en: A selected parent and foreign identity give the new process trusted creation features
+  analysis:
+    paragraphs:
+    - zh: 攻击者选择 explorer、Task Manager、服务、SYSTEM 进程或另一常见身份作为父体/token source，使 child 在进程树与主体字段中获得常见关系。痕迹没有被伪造为不存在，而是合法系统机制把选择的父级和身份写入部分视图；基于
+        parent-image、签名或账户 allowlist 的防守方因此降权，产生 Feature Disguise。DarkGate 直接证明父级外观会影响监控工具，PipeMon 证明提权场景；只有把 actual creator、parent
+        access、token provenance 与高权限结果相连才能消除借用特征。
+      en: The adversary selects Explorer, Task Manager, a service, a SYSTEM process, or another common identity as parent
+        or token source so the child gains a common relation in process-tree and subject fields. The trace is not made nonexistent;
+        legitimate system mechanisms write the selected parent and identity into some views. Defenders allowlisting parent-image,
+        signing, or account relationships therefore discount it, producing Feature Disguise. DarkGate directly establishes
+        impact on monitoring views and PipeMon the elevation context. Joining actual creator, parent access, token provenance,
+        and privileged outcome removes the borrowed feature.
+  evidence_refs:
+  - REF-000330
+  - REF-000333
+  - REF-000334
+  - REF-000281
+  confidence: high
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000096
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000097
+evidence:
+  claim_refs:
+  - CLM-000536
+  - CLM-000538
+  - CLM-000539
+  case_refs:
+  - CASE-000124
+  reference_refs:
+  - REF-000326
+  - REF-000329
+  - REF-000330
+  - REF-000333
+  - REF-000334
+  - REF-000281
+research:
+  limitations:
+    paragraphs:
+    - zh: Microsoft 文档直接证明令牌化进程创建、显式父体选择和相关审计字段，但不会揭示攻击者意图。DarkGate 将父进程欺骗与隐藏监控视图联系起来，却未证明权限增加；PipeMon 则把该行为记录在持续的权限提升序列中。因此可见谱系分离的匿迹结论可以由
+        DarkGate 支持，而权限提升结论仍需要更高权限结果。
+      en: Microsoft documentation directly establishes token-based process creation, explicit parent selection, and relevant
+        audit fields but does not reveal adversary intent. DarkGate links parent-process spoofing to hiding from monitoring
+        views without proving authority gain, while PipeMon records the behavior within a continuing privilege-escalation
+        sequence. DarkGate can therefore support the stealth conclusion from visible lineage separation, while a privilege-escalation
+        conclusion still requires a higher-authority outcome.
+    - zh: 不同事件源对创建者、父体和目标主体的语义并不相同，公开案例也很少同时提供来源令牌、实际调用者、显示父体和后继结果。缺失独立视角时只能确认谱系不完整，不能断言攻击者控制；正常用户账户控制、服务代理和安全沙箱仍是重要反例。
+      en: Event sources differ in the semantics of creator, parent, and target subject, and public cases rarely expose source
+        token, actual caller, displayed parent, and successor outcome together. With no independent viewpoint, only incomplete
+        lineage can be established rather than adversary control. Normal user account control, service brokers, and security
+        sandboxes remain important counterexamples.
+lifecycle:
+  status: review
+  version: 0.3.0
+  created: '2026-09-13'
+  modified: '2026-09-19'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []
+lineage:
+  attck_subtechnique_inherited: false

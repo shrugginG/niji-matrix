@@ -1,0 +1,139 @@
+schema_version: 2.0.0
+type: evasion-subtechnique
+id: NJS-0084-003
+parent_ref: NJT-0084
+name:
+  zh: 会话恢复队列注入
+  en: Session-Restoration Queue Injection
+summary:
+  zh: 攻击者把目标写入用户会话的正常关闭/重新打开状态，使代码在下次登录时作为应用恢复结果启动，而不是呈现为普通静态启动项。
+  en: Adversaries place a target in normal user-session shutdown or reopen state so code starts at the next sign-in as application
+    restoration rather than as an ordinary static startup item.
+aliases: []
+lineage:
+  attck_subtechnique_inherited: false
+definition_and_concept:
+  paragraphs:
+  - zh: 会话恢复队列注入是攻击者操纵操作系统为注销、重启或后续登录保存的应用恢复状态，把攻击者选择的应用或目标加入待重新打开集合。系统在下一会话把该集合解释为用户此前活动的延续并启动目标。分类变量是“持久目标由会话恢复语义携带”，不是
+      macOS、具体 plist 或普通登录项；其直接目标是在静态自启动清单之外借正常恢复流程重新获得执行。
+    en: Session-Restoration Queue Injection is adversary manipulation of application-restoration state saved by an operating
+      system for logout, restart, or a later sign-in, adding an adversary-selected application or target to the set to reopen.
+      In the next session, the system interprets the set as continuation of prior user activity and starts the target. The
+      variable is a persistent target carried by session-restoration semantics rather than macOS, a concrete plist, or an
+      ordinary login item. Its direct objective is to regain execution through normal restoration outside a static autostart
+      inventory.
+  - zh: 该子项要求存在前序会话状态、可识别的恢复集合和后继登录恢复三部分；仅在登录项列表中静态注册程序仍属于父级。合法用户选择“重新打开窗口”或应用崩溃恢复可生成相同队列，只有攻击者写入、目标与真实前序活动不一致且后继执行可关联时才归入。
+    en: This child requires prior-session state, an identifiable restoration set, and successor restoration at sign-in. Static
+      registration in a login-item list remains parent scope. A user's reopen-windows choice or application crash recovery
+      can generate the same queue; classification requires adversary mutation, a target inconsistent with genuine prior activity,
+      and attributable successor execution.
+stealth_characteristics:
+  paragraphs:
+  - zh: 会话恢复队列注入使后继进程出现在用户登录后的常见应用恢复簇中，并由登录窗口或恢复组件发起。若检测只检查传统 Run、启动目录或登录项，它看不到这条状态；若只检查后继进程，系统父体和“重新打开”时序又与合法用户体验一致。关键写入原因因此分散在前一会话，形成与普通静态描述符不同的观察断点。
+    en: Session-Restoration Queue Injection places the successor process in the common cluster of applications restored after
+      user sign-in and gives it a login-window or restoration-component parent. Detection limited to traditional Run keys,
+      startup directories, or login items misses the state, while process-only inspection sees a system parent and reopen
+      timing consistent with legitimate user experience. The causal mutation remains in the prior session, creating an observation
+      break distinct from an ordinary static descriptor.
+  - zh: 恢复集合、plist/数据库差异、写入者、注销或关机事件、前序应用活动、目标签名与路径以及下次登录的恢复进程仍能恢复链条。Apple 的正常功能意味着“登录后重新打开”本身不能判恶；应证明目标不在真实前序窗口/应用集合中、写入来源异常或队列与用户选择不一致。
+    en: Restoration set, plist or database difference, writer, logout or shutdown event, prior application activity, target
+      signature and path, and restored process at the next sign-in can reconstruct the chain. Apple's normal feature means
+      reopening after login is not malicious by itself. Analysis should show that the target was absent from genuine prior
+      windows or applications, the writer was anomalous, or the queue conflicted with user choice.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 纳入攻击者在会话结束前后向持久恢复集合新增、替换或重新启用目标，并由后续登录/重启的恢复逻辑执行。判定需要同一用户和设备的队列变更、生命周期边界与恢复结果，且目标在合法前序会话中没有可验证来源。当前直接证据为 macOS 重新打开应用，但跨平台实现只有具备同样状态—恢复语义时才纳入。
+    en: Scope includes adversary addition, replacement, or re-enablement of a target in a persistent restoration set around
+      session termination, followed by execution through restoration logic at a later sign-in or reboot. Classification needs
+      queue mutation, lifecycle boundary, and restoration result for the same user and device, with no verifiable target origin
+      in the legitimate prior session. Direct evidence concerns macOS re-opened applications; another platform qualifies only
+      with the same state-to-restoration semantics.
+  - zh: 普通静态登录项、Run 键或 XDG autostart 归父级或相应兄弟项；修改既有普通描述符目标归 NJS-0084-002；应用自身保存文档窗口但没有启动攻击者代码不属于本技术。用户明确选择恢复并且队列与前序活动一致，是首要合法反例。
+    en: Ordinary static login items, Run keys, or XDG autostart remain parent scope or another sibling. Modification of an
+      established ordinary descriptor target belongs to NJS-0084-002. An application restoring document windows without starting
+      adversary code is outside this technique. Explicit user choice with a queue consistent with prior activity is the primary
+      legitimate alternative.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: 攻击者获得当前用户恢复状态的写权限后，可在退出前把恶意应用路径加入重新打开集合，随后结束进程并等待用户注销、重启或再次登录。系统恢复组件在常见登录恢复波次中启动该目标；攻击者由此不需要创建显眼的新静态启动项，但必须保持目标路径到下次会话。
+      en: After gaining write access to the current user's restoration state, an adversary can add a malicious application
+        path to the reopen set before exiting and wait for logout, restart, or another sign-in. The system restoration component
+        launches the target in the common login restoration wave. The adversary avoids a conspicuous new static startup item
+        but must preserve the target path through the next session.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者需要写入正确用户和格式的恢复状态，理解注销/关机保存顺序、系统完整性和恢复组件行为，并保证应用满足执行与签名要求。受保护状态、签名应用限制、注销时系统重写、禁用窗口恢复和队列校验会限制效果；无效目标或异常恢复崩溃会暴露行动。
+        en: The adversary needs authority to write restoration state for the correct user and format, knowledge of logout
+          or shutdown save order, system integrity, and restoration-component behavior, and an application satisfying execution
+          and signature requirements. Protected state, signed-application restriction, system rewrite at logout, disabled
+          window restoration, and queue validation constrain the behavior. An invalid target or anomalous restoration crash
+          can expose it.
+    defender_model:
+      paragraphs:
+      - zh: 防守方需要前序会话应用/窗口活动、恢复状态变更或快照、用户选择、注销/重启/登录 ID，以及恢复组件创建的进程与目标完整性。没有前序会话活动就无法判断队列是否真实；没有队列历史则只能看到正常父进程启动未知应用，必须降低置信度。
+        en: The defender needs prior-session application or window activity, restoration-state mutation or snapshots, user
+          choice, logout, restart, and sign-in IDs, plus processes created by the restoration component and target integrity.
+          Without prior-session activity, the queue's legitimacy cannot be evaluated. Without queue history, analysis sees
+          only a normal parent starting an unknown application and must lower confidence.
+stealth_mechanisms:
+- mechanism_ref: NM-BT
+  role: primary
+  summary:
+    zh: 正常会话恢复语义割裂前序队列写入与后继进程来源
+    en: Normal session-restoration semantics separate prior queue mutation from successor provenance
+  analysis:
+    paragraphs:
+    - zh: 攻击者在前一会话改变恢复集合，后继登录由系统恢复组件读取状态并启动目标。进程侧只表现为重新打开应用，攻击者写入者存在于更早的队列差异；缺少前序活动、队列和生命周期三方关联时，关键执行原因落在既有观察理解之外，形成行为透明。队列与真实前序窗口的差异仍可恢复原因。
+      en: The adversary changes the restoration set in one session, and a later sign-in causes the system restoration component
+        to read state and launch the target. Process telemetry shows only a reopened application, while the adversary writer
+        remains in an earlier queue difference. Without a three-way join among prior activity, queue, and lifecycle, the critical
+        execution cause falls outside existing observation and understanding, producing Behavioral Transparency. Difference
+        between the queue and genuine prior windows can still recover cause.
+    - zh: ATT&CK 固定子项直接记录恶意操纵重新打开应用状态，Apple 官方说明该状态对应合法的注销/重启后恢复功能。行为与正常语义均有直接来源，但公开材料没有量化所有传感器的漏检效果，因此机理和子项保持 medium。
+      en: ATT&CK documentation directly describes malicious manipulation of re-opened-application state, while Apple's documentation
+        establishes the legitimate logout or restart restoration function. Both behavior and normal semantics have direct
+        sources, but public material does not quantify detection loss across sensors, so the mechanism and child remain medium
+        confidence.
+  evidence_refs:
+  - REF-000173
+  - REF-000174
+  confidence: medium
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000065
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000064
+evidence:
+  claim_refs:
+  - CLM-000352
+  - CLM-000353
+  case_refs: []
+  reference_refs:
+  - REF-000173
+  - REF-000174
+research:
+  limitations:
+    paragraphs:
+    - zh: 当前直接恶意行为与架构证据均集中在 macOS。分类变量允许其他具有持久会话恢复集合的平台进入，但不能把普通登录项、最近文件列表或浏览器标签恢复自动外推为执行级持久化。每个新实现必须证明队列写入和后继代码激活。
+      en: Direct malicious behavior and architecture evidence are concentrated on macOS. The variable permits another platform
+        with a persistent session-restoration set, but ordinary login items, recent-file lists, or browser-tab restoration
+        cannot be generalized automatically into execution persistence. Each new implementation must prove queue mutation
+        and successor code activation.
+    - zh: ATT&CK 页面与用户文档没有公开完整主机事件序列，无法证明每次攻击都避开传统登录项监控；用户的正常恢复选择又高度相似。因此正式结论只主张独立状态与检测连接，不主张普遍成功或仅凭系统父体即可归因。
+      en: The ATT&CK page and user documentation do not publish a complete host-event sequence proving every attack bypassed
+        traditional login-item monitoring, while normal user restoration is highly similar. The formal conclusion claims independent
+        state and detection joins, not universal success or attribution from a system parent alone.
+lifecycle:
+  status: review
+  version: 0.3.0
+  created: '2026-09-11'
+  modified: '2026-09-19'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

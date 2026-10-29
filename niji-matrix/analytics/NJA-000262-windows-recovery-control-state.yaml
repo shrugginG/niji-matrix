@@ -1,0 +1,99 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000262
+strategy_ref: DET-000214
+name:
+  zh: Windows 恢复控制命令与状态差分
+  en: Windows Recovery-Control Command and State Differential
+summary:
+  zh: 连接恢复控制进程链和卷影、WinRE、目录前后状态，区分企图与确认损失。
+  en: Join recovery-control process lineage to before-and-after shadow, WinRE, and catalog state to separate attempt
+    from confirmed loss.
+domains:
+- enterprise
+platforms:
+- Windows
+logic:
+  paragraphs:
+  - zh: 从 DeviceProcessEvents 选择 vssadmin、wbadmin、diskshadow、bcdedit、reagentc、wmic、PowerShell 或 shell 的删除卷影、目录、禁用恢复或
+      WMI 删除参数，按 DeviceId 与进程唯一键在十分钟内连接父子链。保留完整参数、账户、路径、hash 和 ReportId。
+    en: Select vssadmin, wbadmin, diskshadow, bcdedit, reagentc, wmic, PowerShell, or shell activity with shadow/catalog
+      deletion, recovery-disable, or WMI-delete arguments from DeviceProcessEvents and join process lineage by DeviceId
+      and unique keys over ten minutes. Preserve full arguments, account, path, hash, and ReportId.
+  - zh: 三十分钟内比较独立恢复清单前后态：shadow ID/数量、WinRE、备份目录/版本和批准单。成功状态下降确认父级；命令失败或状态不变是企图。可在后六小时连接加密/销毁以显示攻击链，但不能反推恢复损失。
+    en: 'Within thirty minutes compare an independent recovery inventory before and after: shadow IDs and count, WinRE,
+      backup catalog and versions, and approval. Successful state reduction confirms the parent; failed commands or
+      unchanged state are attempts. Encryption or destruction in the next six hours can show an attack chain but cannot
+      infer recovery loss.'
+data_requirements:
+- source_type: defender-process-event
+  name:
+    zh: Defender 设备进程事件
+    en: Defender device process events
+  channel: DeviceProcessEvents
+  required_fields:
+  - timestamp
+  - device.id
+  - process.unique.id
+  - process.name
+  - process.command.line
+  - account.sid
+  - initiating.process.unique.id
+  - file.sha1
+  - folder.path
+  - report.id
+- source_type: recovery-state-inventory
+  name:
+    zh: 组织恢复状态清单
+    en: Organization recovery-state inventory
+  channel: null
+  required_fields:
+  - asset.id
+  - collection.time
+  - shadow.copy.id
+  - winre.status
+  - backup.catalog.id
+  - backup.version.id
+  - state.hash
+  - approval.id
+observables:
+- zh: 原生命令或 API 后恢复对象数量、WinRE 或目录状态下降
+  en: Recovery-object count, WinRE, or catalog state declines after a native command or API
+- zh: 恢复抑制后六小时内出现加密或销毁链
+  en: Encryption or destruction appears within six hours after recovery inhibition
+correlation:
+  window:
+    zh: 进程链十分钟，动作到状态三十分钟，后继链六小时。
+    en: Use ten minutes for process lineage, thirty for action-to-state, and six hours for successor-chain context.
+  dimensions:
+  - device.id
+  - process.unique.id
+  - account.sid
+  - recovery.object.id
+  - collection.time
+false_positives:
+- zh: 灾备演练、OS 修复、快照轮换、备份迁移、容量维护和厂商清理
+  en: DR exercises, OS repair, snapshot rotation, backup migration, capacity maintenance, and vendor cleanup
+blind_spots:
+- zh: 直接 COM/API、未管理主机、无前态清单、远程存储删除或存在但无法恢复的副本
+  en: Direct COM or API, unmanaged hosts, absent prior inventory, remote storage deletion, or a copy that exists but
+    cannot restore
+tuning_guidance:
+  paragraphs:
+  - zh: 按关键资产维护管理主体与工单，但不全局放行 SYSTEM、备份账户或原生工具。区分企图、状态损失和恢复失败；高价值资产使用更严格审批而非更高数量阈值。
+    en: Maintain administrative-principal and ticket baselines by critical asset without globally allowing SYSTEM,
+      backup accounts, or native tools. Separate attempt, state loss, and restore failure; use stricter approval rather
+      than a higher count for high-value assets.
+evidence_refs:
+- REF-000869
+- REF-000598
+- REF-000872
+- REF-000873
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-10-04'
+  modified: '2026-10-04'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

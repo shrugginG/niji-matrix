@@ -1,0 +1,127 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000305
+strategy_ref: DET-000238
+name:
+  zh: 受管中介入出站会话配对分析
+  en: Managed-Intermediary Ingress-Egress Session Pairing Analytic
+summary:
+  zh: 输出受管节点双侧会话的已确认转发、配置风险或不完整路径。
+  en: Classify managed-node bilateral sessions as confirmed relay, configuration risk, or incomplete path.
+domains:
+- enterprise
+platforms:
+- Windows
+- Linux
+- Network Devices
+logic:
+  paragraphs:
+  - zh: 先以 relay_device_id 和 relay_process_key 规范所有监听、连接及转发规则，生成 inbound_leg 与 outbound_leg。对每条入站会话在十秒内寻找同一进程、规则或代理 session
+      建立的外出会话；若无显式 session ID，则以端口映射、时间、方向、持续时间和双向字节比例形成候选配对。再核对批准中介清单、变更工单、调用身份和请求目的。只有发现未批准 relay 状态且两段流量配对，并在外段出现
+      C2/操作者结果时输出 confirmed_relay；仅存在规则、工具或一侧流量分别输出 configuration_risk 或 incomplete_path。
+    en: Normalize listeners, connections, and forwarding rules by relay_device_id and relay_process_key, producing inbound_leg
+      and outbound_leg. For every inbound session, search within ten seconds for an outbound session established by the
+      same process, rule, or proxy session. Where no explicit session ID exists, create a candidate pair from port mapping,
+      time, direction, duration, and bidirectional byte ratio. Compare the pair with the approved-intermediary inventory,
+      change ticket, initiating identity, and requested destination. Emit confirmed_relay only when unauthorized relay
+      state and paired legs lead to a C2 or operator outcome on the outer leg. A rule, tool, or one-sided flow alone
+      yields configuration_risk or incomplete_path.
+data_requirements:
+- source_type: endpoint-network
+  name:
+    zh: 端点网络事件
+    en: Endpoint network events
+  channel: Sysmon Event 3 or EDR equivalent
+  required_fields:
+  - event_time
+  - relay_device_id
+  - relay_process_key
+  - relay_image
+  - leg_direction
+  - source_ip
+  - source_port
+  - destination_ip
+  - destination_port
+  - transport
+- source_type: network-flow
+  name:
+    zh: 网络流记录
+    en: Network flow records
+  channel: Zeek conn.log or flow equivalent
+  required_fields:
+  - event_time
+  - sensor_session_id
+  - source_ip
+  - source_port
+  - destination_ip
+  - destination_port
+  - transport
+  - service
+  - duration
+  - bytes_a_to_b
+  - bytes_b_to_a
+  - connection_state
+- source_type: proxy-or-forwarder-audit
+  name:
+    zh: 代理或转发审计
+    en: Proxy or forwarder audit
+  channel: SOCKS, FRP, reverse-proxy, firewall, NAT, or PortProxy configuration/audit
+  required_fields:
+  - event_time
+  - relay_device_id
+  - relay_identity
+  - relay_command
+  - requested_destination
+  - requested_port
+  - outbound_bind
+  - decision
+  - relay_rule_id
+  - rule_actor
+  - rule_version
+observables:
+- zh: 未批准转发规则与同设备入出站流及控制结果闭合
+  en: Unauthorized forwarding state closes with same-device ingress, egress, and control outcome
+- zh: 双侧会话的进程、规则、时长和字节方向可配对
+  en: Bilateral sessions pair by process, rule, duration, and byte direction
+correlation:
+  window:
+    zh: 双腿配对十秒；规则变化至首次转发二十四小时。
+    en: Ten seconds for leg pairing and twenty-four hours from rule change to first relay use.
+  dimensions:
+  - relay_device_id
+  - relay_process_key
+  - relay_rule_id
+  - proxy_session_id
+  - inbound_tuple
+  - outbound_tuple
+  - requested_destination
+  - rule_actor
+  - time
+false_positives:
+- zh: 批准的堡垒机、企业代理、服务网格或运维端口转发
+  en: Approved bastions, enterprise proxies, service meshes, or operational port forwards
+blind_spots:
+- zh: 节点无进程/转发日志或外部中介不可见
+  en: The node lacks process or forwarding logs or the external intermediary is invisible
+- zh: NAT 无 session ID、时钟漂移或加密仅剩弱流量配对
+  en: NAT lacks session IDs, clocks drift, or encryption leaves weak flow pairing only
+tuning_guidance:
+  paragraphs:
+  - zh: 先维护按设备、进程、规则、调用身份、可达域和有效期限定的批准中介清单；流量比例只能排序候选，不能单独确认。分别调校低吞吐交互和高吞吐转发，保留拒绝与失败连接，并按正常最长代理会话覆盖窗口。
+    en: Maintain an approved-intermediary inventory bounded by device, process, rule, calling identity, reachable domain,
+      and validity period. Byte ratio ranks candidate pairs and never confirms alone. Tune low-throughput interactive
+      and high-throughput relay traffic separately, retain denied and failed connections, and cover the longest normal
+      proxy session in retention.
+evidence_refs:
+- REF-000025
+- REF-001025
+- REF-000634
+- REF-000230
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-10-04'
+  modified: '2026-10-04'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

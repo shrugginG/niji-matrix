@@ -1,0 +1,114 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000160
+strategy_ref: DET-000152
+name:
+  zh: S3 桶内列举与后继对象访问分析
+  en: S3 In-Bucket Listing and Follow-On Access Analytic
+summary:
+  zh: 区分桶清单、桶内键列举和后继 GetObject，并关联异常主体与容器范围。
+  en: Separate bucket inventories, in-bucket key listings, and later GetObject while correlating unusual actors and container
+    scope.
+domains:
+- enterprise
+platforms:
+- AWS S3
+logic:
+  paragraphs:
+  - zh: 对已开启对象数据事件的桶解析 CloudTrail 中实际出现的 ListObjects，另对启用的 S3 server access log 解析 REST.GET.BUCKET 和 URI 中 list-type=2 的请求；两路分开归一化为“桶内列举”，不假定普通桶
+      ListObjectsV2 一定在 CloudTrail 的特定资源行出现。按账户、桶、凭据和来源比较批准备份/索引作业，在同身份后续 GetObject 或异常目标集合出现时提高风险。单次 List、正常 prefix 或分页 token
+      都不是恶意证据；请求日志不包含完整返回键集。
+    en: Parse actually observed ListObjects from CloudTrail where object-data events are enabled. Separately parse REST.GET.BUCKET
+      and requests carrying list-type=2 from configured S3 server access logs, normalizing both to in-bucket listing without
+      assuming ordinary-bucket ListObjectsV2 appears under a particular CloudTrail resource row. Compare approved backup or
+      indexing jobs by account, bucket, credential, and origin, raising priority when the same identity later performs GetObject
+      or reaches an unusual target set. A lone List, normal prefix, or page token is not malicious, and request logs do not
+      contain a complete returned key set.
+data_requirements:
+- source_type: aws-s3-object-data-events
+  name:
+    zh: S3 对象数据事件
+    en: S3 object-data events
+  channel: CloudTrail trail or event data store with S3 object selectors
+  required_fields:
+  - event_time
+  - event_name
+  - user_identity
+  - recipient_account_id
+  - source_ip_address
+  - resources
+  - read_only
+- source_type: aws-s3-server-access-log
+  name:
+    zh: S3 服务器访问日志
+    en: S3 server access log
+  channel: bucket server access logging
+  required_fields:
+  - request_time
+  - bucket_name
+  - requester
+  - remote_ip
+  - operation
+  - request_uri
+  - http_status
+  - user_agent
+- source_type: approved-storage-job-register
+  name:
+    zh: 批准的对象索引与备份作业
+    en: Approved object-index and backup jobs
+  channel: null
+  required_fields:
+  - account_id
+  - bucket_name
+  - principal_id
+  - source_range
+  - job_window
+  - owner
+observables:
+- zh: 非常用身份对同一桶反复请求键列表
+  en: An unusual identity repeatedly requests object keys from one bucket
+- zh: 桶内列举之后出现同身份的异常对象正文访问
+  en: Unusual object-body reads follow in-bucket listing by the same identity
+correlation:
+  window:
+    zh: 以账户、桶、凭据和来源把列举到下载关联 24 小时，合法备份基线按作业周期留存至少 7 日；因日志投递延迟需允许乱序回填。
+    en: Join listing to download over 24 hours by account, bucket, credential, and origin; retain approved backup baselines
+      for at least seven days by job cadence and allow out-of-order backfill for log-delivery delays.
+  dimensions:
+  - account_id
+  - bucket_name
+  - principal_id
+  - source_ip
+  - request_type
+  - time
+false_positives:
+- zh: 备份、搜索索引、生命周期盘点、数据治理和应急调查会合法列举对象并读取部分正文
+  en: Backups, search indexing, lifecycle inventory, data governance, and incident response legitimately list objects and
+    read some bodies
+blind_spots:
+- zh: S3 对象数据事件未启用、server access log 尽力投递或缺失、普通桶 V2 的 CloudTrail 覆盖未实测、共享键/SAS 类似身份归属不清会削弱结论
+  en: Disabled S3 object-data events, best-effort or missing server access logs, untested ordinary-bucket V2 CloudTrail coverage,
+    and ambiguous shared-key identity attribution weaken conclusions
+tuning_guidance:
+  paragraphs:
+  - zh: 先对高价值桶验证选择器和受控 ListObjects/V2 请求，再核对 server log 的实际 operation 与 URI；对批准备份身份按桶和时间窗设例外，仍检查新来源、越界桶和后续异常 GetObject。不要把
+      ListBuckets、HeadBucket 或单独 GetObject 自动当作桶内对象清单。
+    en: Validate selectors and controlled ListObjects/V2 requests on high-value buckets, then inspect actual server-log operation
+      and URI values. Scope exceptions for approved backup identities by bucket and job window while retaining new-origin,
+      out-of-scope bucket, and later unusual GetObject checks. Do not equate ListBuckets, HeadBucket, or a lone GetObject
+      with an in-bucket inventory.
+evidence_refs:
+- REF-000536
+- REF-000513
+- REF-000537
+- REF-000538
+- REF-000524
+- REF-000541
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-09-22'
+  modified: '2026-09-22'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

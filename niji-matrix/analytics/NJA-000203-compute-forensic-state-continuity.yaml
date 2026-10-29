@@ -1,0 +1,46 @@
+schema_version: "2.0.0"
+type: detection-analytic
+id: NJA-000203
+strategy_ref: DET-000184
+name: {zh: 计算取证状态连续性分析, en: Compute Forensic-State Continuity Analytic}
+summary: {zh: 判断删除、快照回退或临时存储重置是否覆盖恶意活动窗口并使来宾证据不可恢复。, en: "Determine whether deletion, snapshot reversion, or ephemeral-storage reset covers a malicious interval and makes guest evidence unrecoverable."}
+domains: [enterprise]
+platforms: [IaaS]
+logic:
+  paragraphs:
+    - zh: 对每个实例/磁盘 lineage 保存版本、boot_id、attached disk、snapshot ancestry、agent sequence、last guest event、关键文件/进程摘要、备份点、外部日志水位和 approved recovery plan。规范化 terminate/delete、restore/revert、stop/reset、disk detach/replace 与 ephemeral reset 控制面事件，连接 actor、request、前后版本、删除保护、保留策略和 API 结果。
+      en: For each instance and disk lineage, retain version, boot_id, attached disk, snapshot ancestry, agent sequence, last guest event, critical file or process summary, backup point, external-log watermark, and approved recovery plan. Normalize terminate or delete, restore or revert, stop or reset, disk detach or replacement, and ephemeral-reset control-plane events and join actor, request, before and after version, deletion protection, retention policy, and API result.
+    - zh: 以最后已知恶意/高风险活动到 lifecycle action 的区间定义 target_interval，计算外部日志、快照、备份与来宾 evidence manifest 是否覆盖。未批准 actor 在活动后删除或回退，且 manifest 出现不可由正常恢复解释的缺口、备份无法恢复目标区间时，输出 forensic_continuity_break。资源删除但证据完整保留输出 destructive_or_admin_action；批准灾备回退且 pre/post manifest 和工单一致输出 approved_recovery。
+      en: Define target_interval from the last known malicious or high-risk activity to the lifecycle action and calculate whether external logs, snapshots, backups, and the guest evidence manifest cover it. Emit forensic_continuity_break when an unapproved actor deletes or reverts after activity, the manifest has a gap not explained by normal recovery, and backup cannot restore the target interval. Resource deletion with complete evidence retention is destructive_or_admin_action; an approved recovery with matching before and after manifests and ticket is approved_recovery.
+data_requirements:
+  - source_type: cloud-lifecycle-transition
+    name: {zh: 删除、回退与重置控制面事件, en: Delete Revert and Reset Control-Plane Events}
+    channel: IaaS admin activity
+    required_fields: [timestamp, account_id, actor_id, session_id, request_id, operation, resource_id, prior_state, resulting_state, snapshot_id, deletion_protection, response_status, approval_id]
+  - source_type: guest-evidence-manifest
+    name: {zh: 来宾证据清单与代理序列, en: Guest Evidence Manifest and Agent Sequence}
+    channel: null
+    required_fields: [timestamp, resource_id, lineage_root_id, version_id, boot_id, agent_id, sequence_number, last_event_time, file_or_process_digest, external_log_watermark]
+  - source_type: backup-retention-state
+    name: {zh: 快照备份与保留状态, en: Snapshot Backup and Retention State}
+    channel: null
+    required_fields: [timestamp, resource_id, backup_id, snapshot_id, coverage_start, coverage_end, recoverable, retention_policy, protected_from_delete]
+observables:
+  - {zh: 恶意活动后短时间内未批准主体删除或回退同一 lineage, en: An unapproved principal deletes or reverts the same lineage shortly after malicious activity}
+  - {zh: 控制面保留 lifecycle 事件而来宾代理 sequence 和文件/进程摘要倒退或终止, en: Control-plane lifecycle events remain while guest-agent sequence and file or process summaries rewind or stop}
+  - {zh: 备份与外部日志无法覆盖被回退或删除的 target_interval, en: Backups and external logs cannot cover the reverted or deleted target_interval}
+correlation:
+  window: {zh: 从最后恶意活动前二十四小时至删除/回退后七日，并按保留策略保存 lineage 至最大调查窗口。, en: "Correlate twenty-four hours before the last malicious activity through seven days after deletion or reversion and retain lineage for the maximum investigation window defined by policy."}
+  dimensions: [account_id, actor_id, request_id, resource_id, lineage_root_id, version_id, snapshot_id, boot_id, agent_id, time]
+false_positives:
+  - {zh: 有工单和完整外部备份覆盖的灾难恢复、重建或敏感取证克隆销毁, en: "Disaster recovery, rebuild, or forensic-clone destruction with a ticket and complete external backup coverage"}
+  - {zh: 自动伸缩或 Spot/preemptible 生命周期按批准模板终止短期实例, en: Autoscaling or Spot or preemptible lifecycle terminates short-lived instances under an approved template}
+blind_spots:
+  - {zh: 来宾证据从未外送时无法区分活动未发生与证据被生命周期动作清除, en: "When guest evidence was never exported, absence of activity cannot be distinguished from lifecycle removal"}
+  - {zh: 云提供商不保留跨账户复制 lineage 或删除后资源元数据, en: Provider does not retain cross-account copy lineage or post-deletion resource metadata}
+tuning_guidance:
+  paragraphs:
+    - zh: 为长期实例、自动伸缩、Spot、取证克隆和灾备资源分别建立生命周期基线，审批绑定 lineage、备份覆盖和期望 post-state。仅在 target_interval 有高风险活动且证据不可恢复时提升为取证断裂；批量删除可同时归 Impact，但不能用破坏标签替代连续性证明。
+      en: Build separate lifecycle baselines for long-lived instances, autoscaling, Spot, forensic clones, and recovery resources, binding approval to lineage, backup coverage, and expected post-state. Elevate to a forensic break only when target_interval contains high-risk activity and evidence is unrecoverable. Mass deletion may also map to Impact, but a destruction label cannot replace continuity proof.
+evidence_refs: [REF-000103, REF-000698, REF-000699]
+lifecycle: {status: review, version: "1.0.0", created: "2026-09-23", modified: "2026-09-23", contributors: [Niji Matrix Research], reviewers: []}

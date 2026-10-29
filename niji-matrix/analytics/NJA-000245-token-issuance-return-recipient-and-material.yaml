@@ -1,0 +1,149 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000245
+strategy_ref: DET-000206
+name:
+  zh: Token 签发请求—Response—接收者控制差分
+  en: Token Issuance Request–Response–Recipient Control Differential
+summary:
+  zh: 连接 token request、authority issuance、response recipient 与材料确认，识别签发返回面取得。
+  en: Join token request, authority issuance, response recipient, and material confirmation to identify issuance-return acquisition.
+domains:
+- enterprise
+platforms: []
+logic:
+  paragraphs:
+  - zh: 建立 token request/issuance/response 事务，保存 issuer、subject、client/workload、grant/consent、audience/scope、redirect/recipient、source、request
+      ID、response status、token reference/family 和 TTL。把成功 response 连接到实际请求 process、container/job 或 app owner，并与批准 workload、client、redirect
+      和用途比较。只有 response 成功且 recipient 被已知恶意代码、未批准 app/redirect 或受侵 workload 控制时输出 material_acquired；后继 API 仅作独立 corroboration。
+    en: Build token request, issuance, and response transactions retaining issuer, subject, client or workload, grant or consent,
+      audience or scope, redirect or recipient, source, request ID, response status, token reference or family, and TTL. Join
+      successful responses to the actual requesting process, container or job, or application owner and compare against approved
+      workload, client, redirect, and purpose. Emit material_acquired only when the response succeeds and the recipient is
+      controlled by known malicious code, an unapproved application or redirect, or a compromised workload. Downstream API
+      activity remains independent corroboration.
+data_requirements:
+- source_type: token-issuance-transaction
+  name:
+    zh: Token 请求、签发与返回事件
+    en: Token request, issuance, and return events
+  channel: authorization server, token service, IMDS, or equivalent
+  required_fields:
+  - timestamp
+  - tenant_or_issuer
+  - request_id
+  - subject_id
+  - client_or_workload_id
+  - grant_or_consent_id
+  - audience_or_resource
+  - scope_or_role
+  - source
+  - redirect_or_recipient
+  - response_status
+  - token_reference_or_family
+  - issued_at
+  - expires_at
+- source_type: workload-client-process
+  name:
+    zh: Workload/client 接收进程与代码 Provenance
+    en: Workload or client recipient process and code provenance
+  channel: EDR, container runtime, CI/CD, application, or proxy telemetry
+  required_fields:
+  - timestamp
+  - asset_or_workload_id
+  - container_or_job_id
+  - process_start_key
+  - process_image
+  - code_or_action_digest
+  - principal_id
+  - request_id
+  - destination
+  - outcome
+- source_type: oauth-app-grant-inventory
+  name:
+    zh: 应用、redirect、同意与批准用途清单
+    en: Application, redirect, consent, and approved-purpose inventory
+  channel: identity and application control plane
+  required_fields:
+  - tenant_id
+  - app_or_client_id
+  - publisher
+  - owner
+  - redirect_uri
+  - grant_or_consent_id
+  - approved_scope
+  - approved_workload
+  - purpose
+  - valid_from
+  - valid_to
+- source_type: restricted-token-material-assessment
+  name:
+    zh: 受限 Token 材料与可用性评估
+    en: Restricted token material and usability assessment
+  channel: local privacy-controlled assessment
+  required_fields:
+  - case_id
+  - request_or_artifact_id
+  - token_class
+  - token_reference_or_hmac_fingerprint
+  - complete_material
+  - valid_at_acquisition
+  - audience
+  - scope
+  - refresh_capable
+  - sender_constrained
+  - bound_key_obtained
+  - reviewer_id
+  - raw_token_retained
+observables:
+- zh: 受侵 runner 或容器中的非基线进程请求 attached identity token，并成功收到与其业务用途不符的 audience/scope
+  en: A nonbaseline process in a compromised runner or container requests an attached-identity token and successfully receives
+    audience or scope inconsistent with business purpose
+- zh: 新应用或异常 redirect 在 consent/grant 后立即收到 access/refresh token，而 app owner、publisher 或用途未获批准
+  en: A new application or anomalous redirect receives access or refresh tokens immediately after consent or grant while owner,
+    publisher, or purpose is unapproved
+correlation:
+  window:
+    zh: Token request 到 response 使用同一 request ID 的实时窗口；consent/grant 到首次 token 返回默认九十日并覆盖 grant 寿命，IMDS process 请求使用五分钟。
+    en: Use a real-time request-ID window from token request to response. Span consent or grant to first token return for
+      ninety days by default or the grant lifetime, and use five minutes for an IMDS process request.
+  dimensions:
+  - tenant_or_issuer
+  - request_id
+  - subject_id
+  - app_or_client_id
+  - workload_id
+  - process_start_key
+  - grant_or_consent_id
+  - audience
+  - scope
+  - redirect_or_recipient
+  - token_family
+  - time
+false_positives:
+- zh: 正常 SDK refresh、自动扩缩容、管理员 CLI、批准 connected app 上线、灾备 workload 和用户合法 consent
+  en: Normal SDK refresh, autoscaling, administrator CLI, approved connected-app onboarding, disaster-recovery workloads,
+    and legitimate user consent
+blind_spots:
+- zh: IMDS 不记录 calling process、issuer 不公开 token reference、恶意代码运行在批准 process 内、redirect 日志缺失，以及同一 workload owner 本身被攻陷
+  en: IMDS lacking calling-process data, issuer omission of token reference, malicious code inside an approved process, missing
+    redirect logs, and compromise of the approved workload owner
+tuning_guidance:
+  paragraphs:
+  - zh: 按 workload/app 的 owner、code digest、允许 audience/scope、redirect、source 和 refresh cadence 建立基线；不能永久放行 managed identity
+      或某个 client ID。token 值只在本地生成 HMAC fingerprint。缺少 recipient 控制证据时输出 issuance_anomaly，不升级 material_acquired。
+    en: Baseline workload or application owner, code digest, allowed audience and scope, redirect, source, and refresh cadence.
+      Do not permanently allow a managed identity or client ID. Generate token HMAC fingerprints locally only. Without evidence
+      of recipient control, output issuance_anomaly rather than material_acquired.
+evidence_refs:
+- REF-000812
+- REF-000811
+- REF-000815
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-09-27'
+  modified: '2026-09-27'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

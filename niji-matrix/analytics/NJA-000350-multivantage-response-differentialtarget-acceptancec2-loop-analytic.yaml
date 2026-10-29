@@ -1,0 +1,191 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000350
+strategy_ref: DET-000261
+name:
+  zh: 多视点响应差—目标接受—C2 循环分析
+  en: Multivantage Response Differential–Target Acceptance–C2 Loop Analytic
+summary:
+  zh: 把同一请求的源站与目标响应差连接到已受控主机多轮命令读取和结果写回。
+  en: Join origin-to-target response differences for the same request to repeated command reads and result writes on an already
+    compromised host.
+domains:
+- enterprise
+platforms:
+- Windows
+- Linux
+- macOS
+- Network
+logic:
+  paragraphs:
+  - zh: 为目标端每次 DNS、HTTP、SMB 或等价请求生成 request_fingerprint，包含客户端/进程、host/path/share、方法/操作、事务或 TCP 状态及时间。将目标收到的 response_hash、status、headers、DNS
+      answer 或 SMB object 与同窗独立出口探针、真实源站 receipt/response、代理/路径记录比较。若目标响应与源站不一致且源站无 matching receipt，保留 path_response_differential；若端点进程实际读取/执行该对象，提升为
+      accepted_injected_response。
+    en: Generate request_fingerprint for every DNS, HTTP, SMB, or equivalent target request from client or process, host,
+      path or share, method or operation, transaction or TCP state, and time. Compare the target's response_hash, status,
+      headers, DNS answer, or SMB object with an independent-egress probe, true-origin receipt and response, and proxy or
+      path records in the same window. Retain path_response_differential when the target response differs and the origin has
+      no matching receipt. Raise to accepted_injected_response when the endpoint process reads or executes the object.
+  - zh: 对目标/请求门控，计算同资源在目标群、路由、Cookie/参数及时间上的差异并要求注入只稳定命中特定集合；对竞速，寻找同五元组和请求的重复 TCP sequence/ack 或 transaction ID 异载荷、到达顺序及目标实际接受者；对幻影服务，要求目标解析/连接的服务在开放互联网或独立路径不存在、请求未到达声称源站，而路径侧仍返回可用内容。随后关联同一
+      device/process/task 在二十四小时内的命令文件读取、输出写回、插件/子进程和重复轮询。
+    en: For target or request gating, calculate resource differences across target population, route, cookie or parameter,
+      and time and require stable injection only into a selected set. For racing, find different payloads with duplicate TCP
+      sequence and acknowledgment state or transaction ID for the same flow and request, arrival order, and which response
+      the target accepted. For phantom service, require resolution or service reachable from the target but absent through
+      an open-Internet or independent path, no request at the claimed origin, and usable content returned on-path. Then join
+      command-file reads, output writes, plug-ins or child processes, and repeated polling by the same device, process, or
+      task within twenty-four hours.
+  - zh: 高置信 TA0011 输出要求 path_response_differential、target acceptance 与 continuing C2 outcome 三门齐全，并观察至少一次命令—结果闭环或两次方向一致的任务/插件周期。只有恶意文件首次执行时交给
+      DET-000051/NJA-000025 作为入口；只有新文件到达时并列 T1105；只有响应差异而无端点结果时保持完整性异常。NJS-0052-002 在没有真实 C2 竞速案例前不得由形态阈值自动映射。
+    en: 'High-confidence TA0011 output requires all three gates: path_response_differential, target acceptance, and continuing
+      C2 outcome, plus at least one command-result loop or two directionally consistent task or plug-in cycles. A first malicious
+      execution hands off to DET-000051 and NJA-000025 as entry. A new file arrival alone co-classifies with T1105. A response
+      difference without endpoint outcome remains an integrity anomaly. NJS-0052-002 must not be automatically mapped from
+      shape thresholds while no real C2 racing case is available.'
+data_requirements:
+- source_type: target-request-response
+  name:
+    zh: 目标端请求、响应与接收对象
+    en: Target Request, Response, and Received Object
+  channel: packet capture, proxy, Zeek HTTP/DNS/SMB, browser or application telemetry where authorized
+  required_fields:
+  - event_time
+  - vantage_id
+  - device_id
+  - process_start_key_when_available
+  - flow_or_transaction_id
+  - source_and_destination
+  - request_host_or_name
+  - request_path_or_share
+  - request_method_or_operation
+  - tcp_seq_ack_when_available
+  - response_status_or_dns_rcode
+  - response_headers_or_answers
+  - response_object_hash
+  - response_arrival_order
+- source_type: origin-and-independent-vantage
+  name:
+    zh: 真实源站与独立出口对照
+    en: True-Origin and Independent-Egress Comparison
+  channel: origin access logs, provider receipt, independent probe, alternate egress or trusted VPN
+  required_fields:
+  - event_time
+  - vantage_id
+  - request_fingerprint
+  - origin_receipt
+  - origin_response_hash
+  - response_status
+  - dns_answer_or_service_reachability
+  - certificate_or_server_identity
+  - route_or_provider
+- source_type: endpoint-command-and-result
+  name:
+    zh: 注入对象消费、命令与结果
+    en: Injected-Object Consumption, Command, and Result
+  channel: EDR, process/file/task audit, Windows Event 5145 for SMB where enabled
+  required_fields:
+  - event_time
+  - device_id
+  - process_start_key
+  - image
+  - parent_process_key
+  - scheduled_task_or_service
+  - object_path
+  - object_hash_when_available
+  - read_write_execute_action
+  - command_or_plugin_identity
+  - result_path_or_hash
+  - successor_network_destination
+- source_type: path-control-and-route
+  name:
+    zh: 代理、ISP、路由与解析路径
+    en: Proxy, ISP, Route, and Resolution Path
+  channel: managed proxy, resolver, router, VPN, ISP or provider audit where available
+  required_fields:
+  - event_time
+  - path_or_device_id
+  - client_or_route_scope
+  - request_match_condition_when_available
+  - upstream_destination
+  - response_source
+  - policy_or_config_version
+  - actor_or_owner
+- source_type: legitimate-content-variation-baseline
+  name:
+    zh: 合法内容差异和安全注入清单
+    en: Legitimate Content Variation and Security-Injection Inventory
+  channel: CDN, application, captive portal, proxy, security and change management
+  required_fields:
+  - owner
+  - service
+  - variant_condition
+  - expected_response_hash_or_schema
+  - security_injector
+  - change_ticket
+  - valid_from
+  - valid_to
+observables:
+- zh: 目标收到与真实源站/独立视点不同的响应，且声称源站没有对应请求或对象
+  en: The target receives a response differing from true origin or independent vantage and the claimed origin lacks the matching
+    request or object
+- zh: 同请求存在有效会话状态的异载荷竞速响应，目标接受伪造版本
+  en: The same request receives racing different-payload responses with valid session state and the target accepts the forged
+    version
+- zh: 只在目标路径存在的 DNS/SMB/HTTP 服务反复传递任务并接收结果
+  en: A DNS, SMB, or HTTP service existing only on the target path repeatedly delivers tasks and receives results
+correlation:
+  window:
+    zh: 单请求竞速使用完整 TCP/事务寿命；独立视点比较默认五分钟；C2 循环默认二十四小时并按植入轮询延长至七日，原始摘要至少保留三十日。
+    en: Use the full TCP or transaction lifetime for one race, five minutes by default for independent-vantage comparison,
+      and twenty-four hours for the C2 loop with extension to seven days based on implant polling; retain raw digests for
+      at least thirty days.
+  dimensions:
+  - device_id
+  - process_start_key
+  - request_fingerprint
+  - session_state_key
+  - flow_or_transaction_id
+  - host_url_or_share
+  - response_variant_hash
+  - vantage_id
+  - route_or_provider
+  - command_or_result_object
+  - c2_cycle_id
+  - time
+false_positives:
+- zh: CDN/Anycast、A/B 测试、动态个性化、captive portal、企业代理/防病毒注入、缓存重验证、split DNS、合法 SMB 镜像和灾备
+  en: CDN or Anycast, A/B testing, dynamic personalization, captive portals, enterprise proxy or antivirus injection, cache
+    revalidation, split DNS, legitimate SMB mirrors, and disaster recovery
+blind_spots:
+- zh: TLS 或 SMB 加密且没有合法终止视角、攻击者控制信任根/终止点、无源站日志、门控窗口短于探针、ISP 不共享日志或端点代理缺失
+  en: TLS or SMB encryption without a lawful termination vantage, adversary control of trust root or termination, absent origin
+    logs, a gate shorter than probe cadence, unavailable ISP logs, or missing endpoint agent
+- zh: CDN 合法个性化无稳定响应摘要，NAT/代理破坏客户端身份，命令在内存消费不落盘或结果走另一通道
+  en: Legitimate CDN personalization lacks a stable response digest, NAT or proxy breaks client identity, commands are consumed
+    in memory without files, or results use another channel
+tuning_guidance:
+  paragraphs:
+  - zh: 以服务 owner、发布版本、CDN 规则、代理注入、目标群和变更期限建立 response-variant 基线。高置信必须闭合三门并排除合法 variation；域名信誉、单个 hash 差异、重复序号或浏览后执行均只触发复核。对隐私敏感正文优先保存摘要、schema
+      和签名验证结果，必要的原件按最小权限和期限隔离保留。
+    en: Baseline response variants by service owner, release version, CDN rule, proxy injection, target population, and change
+      validity. High confidence requires all three gates and exclusion of legitimate variation. Domain reputation, one hash
+      difference, duplicate sequence numbers, or post-browse execution only starts review. For privacy-sensitive content,
+      prefer digests, schemas, and signature-validation results and isolate necessary originals under least privilege and
+      retention limits.
+evidence_refs:
+- REF-000096
+- REF-000097
+- REF-000098
+- REF-000632
+- REF-000634
+- REF-000474
+- REF-000475
+- REF-000598
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-10-05'
+  modified: '2026-10-05'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

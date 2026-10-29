@@ -1,0 +1,152 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000257
+strategy_ref: DET-000211
+name:
+  zh: 远程管理关系与会话内动作关联
+  en: Remote Management Relationship and In-Session Action Correlation
+summary:
+  zh: 按主体、来源和目标角色、服务与会话内动作识别贴合批准管理关系的恶意远程控制。
+  en: Identify malicious remote control that conforms to an approved management relationship by principal, source and destination
+    role, service, and in-session action.
+domains:
+- enterprise
+platforms:
+- Windows
+- Linux
+- macOS
+- Network Devices
+- SaaS
+- IaaS
+logic:
+  paragraphs:
+  - zh: 将远程认证规范为 timestamp、principal、source_device/source_role、destination_device/destination_role、service、authentication_method、logon_type、session_or_logon_id
+      和 outcome。仅在服务接受时生成 accepted_connection；按 session/logon ID 连接目标进程、命令、资源、网络和权限结果，缺稳定 ID 时以同一主体、目标、服务和受限时窗近似并降置信度。将连接与批准关系图和九十日历史比较，但
+      approved_match 只降低路径异常分。若来源已有攻击链证据或动作超出 owner、工单、目标或正常命令，输出 unauthorized_target_action；路径多维贴合且攻击者控制与目标动作均成立时输出 role_conforming_control。只有认证无动作时保持
+      accepted_connection。
+    en: Normalize remote authentication into timestamp, principal, source device and role, destination device and role, service,
+      authentication method, logon type, session or logon ID, and outcome. Emit accepted_connection only when the service
+      accepts it. Join destination process, command, resource, network, and authority outcome by session or logon ID; where
+      unavailable, approximate with the same principal, destination, service, and constrained window and lower confidence.
+      Compare the connection to an approved relationship graph and ninety-day history, but approved_match only lowers path
+      anomaly. Emit unauthorized_target_action when the source has attack-chain evidence or action exceeds owner, ticket,
+      destination, or normal commands. Emit role_conforming_control when multiple path dimensions match while adversary control
+      and target action are established. Authentication without action remains accepted_connection.
+data_requirements:
+- source_type: remote-service-authentication-session
+  name:
+    zh: 远程服务认证与会话
+    en: Remote-Service Authentication and Session
+  channel: null
+  required_fields:
+  - event.timestamp
+  - principal.id
+  - source.device_id
+  - source.ip
+  - destination.device_id
+  - service.id
+  - authentication.method
+  - logon.type
+  - session_or_logon.id
+  - outcome
+- source_type: destination-session-action
+  name:
+    zh: 目标会话动作
+    en: Destination Session Action
+  channel: Endpoint process resource network and service audit
+  required_fields:
+  - event.timestamp
+  - destination.device_id
+  - principal.id
+  - session_or_logon.id
+  - process_or_action.id
+  - parent_or_service.id
+  - command_or_resource
+  - outcome
+- source_type: management-relationship-inventory
+  name:
+    zh: 管理关系、资产角色与授权
+    en: Management Relationship Asset Role and Authorization
+  channel: CMDB PAM change management and service policy
+  required_fields:
+  - principal_or_role.id
+  - source_role
+  - destination_role
+  - allowed_service
+  - allowed_action
+  - owner.id
+  - ticket.id
+  - valid_from
+  - valid_until
+- source_type: source-compromise-context
+  name:
+    zh: 来源主机受控上下文
+    en: Source Host Compromise Context
+  channel: Endpoint identity and incident graph
+  required_fields:
+  - event.timestamp
+  - source.device_id
+  - principal.id
+  - evidence.type
+  - incident.id
+  - confidence
+observables:
+- zh: 新连接与目标会话及首个进程、命令或资源动作共享 session/logon 标识。
+  en: A fresh connection shares a session or logon identifier with the first destination process, command, or resource action.
+- zh: 路径符合批准关系，但来源已有受控证据或动作超出工单、目标或正常命令。
+  en: The path matches an approved relationship while the source has compromise evidence or action exceeds ticket, destination,
+    or normal-command scope.
+- zh: 同一主体短时连接异常数量的目标，或从角色不允许的来源发起服务会话。
+  en: One principal reaches an unusual number of destinations in a short period or starts a service session from a source
+    not permitted for its role.
+correlation:
+  window:
+    zh: 覆盖同一 session 全寿命及断开后四小时；无 session ID 时使用按服务调优的十五分钟候选窗。关系基线至少九十日并覆盖维护、轮班和月结周期。
+    en: Cover the full session lifetime and four hours after disconnect. Without session ID use a service-tuned fifteen-minute
+      candidate window. Retain at least ninety days for relationship baselines spanning maintenance, shifts, and month-end.
+  dimensions:
+  - principal.id
+  - source.device_id
+  - source.role
+  - destination.device_id
+  - destination.role
+  - service.id
+  - session_or_logon.id
+  - process_or_action.id
+  - ticket.id
+  - incident.id
+  - time
+false_positives:
+- zh: 经批准帮助台、备份、补丁、部署、排障、事件响应、轮班交接和 MSP 运维
+  en: approved helpdesk backup patching deployment troubleshooting incident response shift handoff and MSP operations
+- zh: 资产角色或工单同步延迟
+  en: asset-role or ticket synchronization delay
+blind_spots:
+- zh: 服务不记录来源或 session ID，目标动作由共享 broker/service identity 承载，来源无传感器，或云方不公开来宾关联
+  en: service omits origin or session ID destination action runs under shared broker identity source lacks sensor or cloud
+    provider exposes no guest correlation
+- zh: 真实管理主机和真实管理员均被控制且动作完全落入批准范围
+  en: real management host and real administrator are controlled and actions stay within approved scope
+tuning_guidance:
+  paragraphs:
+  - zh: 按主体/角色、来源资产组、目标角色、服务、登录类型和时段建模，不用全组织单阈值或端口规则。批准关系、管理子网和管理员账户不能永久白名单，只减少路径异常；目标动作、来源风险、并发和 fan-out 仍评分。例外绑定 owner、工单、精确目标/动作和到期，紧急操作可事后授权但保留原始事件。
+    en: Model by principal or role, source asset group, destination role, service, logon type, and time rather than one enterprise
+      threshold or port rule. Approved relationships, management subnets, and administrator accounts never receive permanent
+      allowlisting and only reduce path anomaly; target action, source risk, concurrency, and fan-out remain scored. Bind
+      exceptions to owner, ticket, exact destination or action, and expiry, permitting retrospective emergency authorization
+      while retaining raw events.
+evidence_refs:
+- REF-000843
+- REF-000845
+- REF-000289
+- REF-000377
+- REF-000598
+- REF-000848
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-09-27'
+  modified: '2026-09-27'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

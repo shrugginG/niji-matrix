@@ -1,0 +1,59 @@
+schema_version: 2.0.0
+type: evasion-subtechnique
+id: NJS-0074-001
+parent_ref: NJT-0074
+name: {zh: 受信流水线定义注入, en: Trusted Pipeline-Definition Injection}
+summary: {zh: 攻击者把恶意命令登记为版本化 workflow 内的正式 job 或步骤，使受信调度和自动化身份掩盖执行来源, en: Adversaries register malicious commands as declared jobs or steps in a versioned workflow so trusted scheduling and automation identity obscure execution provenance}
+aliases: []
+lineage: {attck_subtechnique_inherited: false}
+definition_and_concept:
+  paragraphs:
+    - zh: 受信流水线定义注入是攻击者直接增加或修改 CI/CD workflow、job、stage 或复用 workflow 定义，使恶意命令成为调度图中正式步骤的行为。其直接目的不是隐藏定义变化，而是让后续代码由平台认可的触发器、自动化主体和 runner 执行，从而取得 job 秘密、网络位置或发布权限。该对象固定“定义本身被有意改变”这一变量，不按 YAML、Groovy 等语法或具体平台拆分。
+      en: Trusted Pipeline-Definition Injection is direct adversary addition or modification of a CI/CD workflow job stage or reusable-workflow definition so malicious commands become declared steps in the scheduled graph. Its objective is not to hide every definition change but to have later code execute through platform-recognized triggers automation principals and runners and gain job secrets network position or release authority. The object fixes intentional change to the definition itself and is not partitioned by YAML Groovy or platform.
+stealth_characteristics:
+  paragraphs:
+    - zh: 受信流水线定义注入首先改变版本历史中的可执行配置，但运行时仍产生正常 workflow、run 和 job 对象，runner 端也显示预期 agent、shell 或工具父进程。恶意步骤可以采用与发布、测试或维护相同的名称，并在合法事件到达时运行，使仅按进程信誉或 job 成功状态判断的防守方难以区分。
+      en: Trusted Pipeline-Definition Injection first changes executable configuration in version history yet runtime still produces normal workflow run and job objects and the runner endpoint shows expected agent shell or tool parents. Malicious steps may use release test or maintenance names and execute when legitimate events arrive making reputation-only or job-success defenses unable to distinguish them.
+    - zh: workflow diff、作者与审批链、权限声明、触发器变化、runner registration、秘密访问和异常网络仍然可见。强分支保护、必需评审或从批准模板生成的不可变 workflow 会降低该轴的匿迹效果；如果攻击者只改变被引用脚本而定义未变，则应归间接构建输入激活。
+      en: Workflow diffs author and approval lineage permission declarations trigger changes runner registration secret access and anomalous network remain visible. Strong branch protection mandatory review or immutable workflows generated from approved templates reduce stealth. If only a referenced script changes while the definition remains stable the behavior belongs to Indirect Build-Input Activation.
+scope_boundary_definition:
+  paragraphs:
+    - zh: 本子技术只纳入攻击者控制版本化流水线定义并由该定义实际调度恶意执行的情况，包括新增隐藏 workflow、修改现有 job、改变具权触发器或把命令嵌入复用 workflow。合法 CI 维护、审批后的发布变化和只修改应用源代码不属于本轴；判定必须把定义差异与后续 run、runner 和结果连接，不能把任何 workflow edit 当作攻击。
+      en: This child includes only adversary control of a versioned pipeline definition that actually schedules malicious execution including adding a hidden workflow modifying a job changing a privileged trigger or embedding commands in a reusable workflow. Legitimate CI maintenance approved release changes and application-source changes alone are excluded. Classification must connect the definition difference to later run runner and outcome rather than label every workflow edit malicious.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+      - zh: 攻击者在窃取维护者、bot 或 GitHub App 凭据，绕过分支保护，或者已控制内部仓库后使用本轴。它适合通过 push、schedule、discussion、workflow_dispatch 或 release 事件反复触发，并可把受害主机注册为自托管 runner，使控制命令继续以仓库自动化活动出现。
+        en: Adversaries use the axis after stealing maintainer bot or GitHub App credentials bypassing branch protection or controlling an internal repository. It supports repeated triggering through push schedule discussion workflow_dispatch or release events and may register a victim host as a self-hosted runner so control commands continue to appear as repository automation.
+  threat_model:
+    attacker_model:
+      paragraphs:
+        - zh: 攻击者需要能够创建可运行定义或让修改进入受保护分支，并理解目标事件、job 权限、runner 标签与秘密范围。其设计必须避免语法错误和明显失败，还可能需要伪装作者、名称或提交说明；强制签名、CODEOWNERS、环境审批和平台级 workflow 策略会显著提高成本。
+          en: The adversary needs the ability to create a runnable definition or land a change in a protected branch and must understand events job permissions runner labels and secret scope. The design must avoid syntax errors and obvious failures and may need disguised authors names or commit messages. Required signatures CODEOWNERS environment approvals and platform workflow policy materially raise cost.
+    defender_model:
+      paragraphs:
+        - zh: 防守方需要保存 workflow 全量版本而不只是最终状态，并把 actor、reviewer、commit、workflow digest、trigger、run、job、runner 与后继进程/网络关联。若 SaaS 审计不记录工作流内容、历史被强制改写或自托管 runner 无端点遥测，检测只能依赖残留的 API、秘密和网络结果并降低置信度。
+          en: Defenders need complete workflow versions rather than only final state and must join actor reviewer commit workflow digest trigger run job runner and subsequent process or network activity. If SaaS audit omits workflow content history is force-rewritten or self-hosted runners lack endpoint telemetry detection must rely on residual API secret and network outcomes at lower confidence.
+stealth_mechanisms:
+  - mechanism_ref: NM-BT
+    role: primary
+    summary: {zh: 正式 job 与自动化身份承载恶意命令, en: Declared jobs and automation identities carry malicious commands}
+    analysis:
+      paragraphs:
+        - zh: 攻击者把恶意逻辑写成受调度的 job 或 step，使控制面和 runner 都按照正常协议创建记录，进程继承预期自动化父级。规则若把“由 CI 执行”当作良性，就会忽略命令真实意图，形成行为透明。Shai-Hulud 的 discussion workflow 和自托管 runner 展示了这一点；异常定义、runner 注册与 discussion 到命令的关系仍可破坏伪装。
+          en: The adversary writes malicious logic as a scheduled job or step causing both control plane and runner to create normal protocol records and processes to inherit expected automation parents. Rules that treat CI execution as benign ignore command intent and create Behavioral Transparency. Shai-Hulud's discussion workflow and self-hosted runner demonstrate the pattern while the unusual definition runner registration and discussion-to-command relationship can still break the disguise.
+    evidence_refs: [REF-000255]
+    confidence: high
+defense:
+  detections: {coverage: available, strategy_refs: [DET-000062]}
+  mitigations: {coverage: available, mitigation_refs: [MIT-000061]}
+evidence:
+  claim_refs: [CLM-000281, CLM-000451, CLM-000456, CLM-000457, CLM-000458]
+  case_refs: [CASE-000089]
+  reference_refs: [REF-000126, REF-000255, REF-000256, REF-000257, REF-000258]
+research:
+  limitations:
+    paragraphs:
+      - zh: Shai-Hulud 证明恶意 workflow 与具权 runner 可在现场成立，但不代表每次定义注入都以 discussion 触发或注册自托管 runner。合法团队也会频繁修改 workflow 和权限，因此只有差异、审批异常与实际敏感结果结合时才可高置信定性；缺少版本历史时应降级而非用文件名签名替代因果。
+        en: Shai-Hulud proves that malicious workflows and privileged runners occur in the field but not that every definition injection uses discussions or self-hosted registration. Legitimate teams also change workflows and permissions frequently so high-confidence classification requires definition differences approval anomalies and actual sensitive outcomes. Missing version history should lower confidence rather than replace causality with filename signatures.
+lifecycle: {status: review, version: 2.0.0, created: '2026-09-10', modified: '2026-09-12', contributors: [Niji Matrix Research], reviewers: []}

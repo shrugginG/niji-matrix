@@ -1,0 +1,183 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000237
+strategy_ref: DET-000202
+name:
+  zh: 多挑战响应序列与会话升级分析
+  en: Multi-Challenge Response Sequence and Session Escalation Analytic
+summary:
+  zh: 聚合同一用户的独立 challenge、拒绝或超时、批准和后继 session，识别真实请求外观下的重复压力。
+  en: Aggregate independent challenges, denials or timeouts, approval, and successor sessions for one user to identify repetition
+    pressure under genuine-request appearance.
+domains:
+- enterprise
+platforms: []
+logic:
+  paragraphs:
+  - zh: 对每个 user 建立 challenge 状态机，将主认证或恢复入口、challenge 创建、投递状态、factor、用户 denied/timeout/no-response/fraud/approved、token/session
+      签发和首个资源访问连接。默认调查条件为十分钟内至少三笔独立 request/correlation ID，或数量超过该用户—应用三十日基线第 99 百分位；任一 fraud report 立即高优先级。若 denied/timeout
+      序列后五分钟内从相同或近邻来源出现 approved 并签发 session，输出 approval_after_pressure；只有重复生成无批准时输出 challenge_pressure_attempt；approval 但无
+      session 输出 approved_unissued；资源访问是单独最高结果。阈值必须按应用重试语义校准，不能把通知重投当新挑战。
+    en: Build a per-user challenge state machine joining primary authentication or recovery entry, challenge creation, delivery
+      state, factor, user denial, timeout, nonresponse, fraud report, or approval, token or session issuance, and first resource
+      access. A default investigation condition is at least three independent request or correlation identifiers within ten
+      minutes, or volume above the user-application 99th percentile over thirty days. Any fraud report is immediately high
+      priority. If a denial or timeout sequence is followed within five minutes by approval and session issuance from the
+      same or a neighboring origin, emit approval_after_pressure. Repeated generation without approval emits challenge_pressure_attempt;
+      approval without a session emits approved_unissued; resource access is a separate highest outcome. Calibrate thresholds
+      by application retry semantics and do not count notification redelivery as a new challenge.
+data_requirements:
+- source_type: identity-authentication-transaction
+  channel: IdP sign-in, authentication details, SSO, VPN, PAM, or recovery audit
+  required_fields:
+  - event.timestamp
+  - tenant.id
+  - user.id
+  - application.id
+  - resource.id
+  - request.id
+  - correlation.id
+  - root_session.id
+  - transaction.id
+  - flow.type
+  - source.ip
+  - source.geo
+  - client.type
+  - user_agent
+  - device.id
+  - device.compliant
+  - primary_auth.result
+  name:
+    zh: 身份认证事务
+    en: Identity authentication transaction
+- source_type: mfa-challenge-event
+  channel: MFA provider challenge and authentication log
+  required_fields:
+  - event.timestamp
+  - tenant.id
+  - user.id
+  - application.id
+  - challenge.id
+  - request.id
+  - factor.type
+  - authenticator.device_id
+  - challenge.creation_result
+  - challenge.delivery_status
+  - response.result
+  - response.reason
+  - response.timestamp
+  - fraud.reported
+  name:
+    zh: MFA 挑战事件
+    en: MFA challenge event
+- source_type: token-session-outcome
+  channel: IdP token, relying-party session, Conditional Access, and resource audit
+  required_fields:
+  - event.timestamp
+  - tenant.id
+  - user.id
+  - application.id
+  - resource.id
+  - request.id
+  - correlation.id
+  - session.id
+  - token.safe_hash
+  - token.issued
+  - conditional_access.result
+  - sign_in.result
+  - first_resource_action
+  name:
+    zh: 令牌与会话结果
+    en: Token and session outcome
+- source_type: user-application-baseline
+  channel: identity behavior baseline and approved workflow inventory
+  required_fields:
+  - user.id
+  - application.id
+  - expected.source_range
+  - expected.device_id
+  - normal.challenge_count
+  - normal.response_distribution
+  - baseline.window
+  - workflow.owner
+  name:
+    zh: 用户与应用基线
+    en: User and application baseline
+observables:
+- zh: 多笔独立挑战突发
+  en: Burst of independent challenges
+- zh: 重复拒绝或超时
+  en: Repeated denial or timeout
+- zh: 用户报告欺诈请求
+  en: User-reported fraudulent request
+- zh: 拒绝序列后批准
+  en: Approval after a denial sequence
+- zh: 来源与认证器位置不一致
+  en: Source-to-authenticator location mismatch
+- zh: 批准后签发令牌或会话
+  en: Token or session after approval
+correlation:
+  window:
+    zh: 以十分钟聚合独立 challenge 序列，批准后五分钟关联 token/session，并使用三十天用户与应用基线。
+    en: Aggregate independent challenge sequences over ten minutes, join token or session issuance within five minutes after
+      approval, and compare against a thirty-day user and application baseline.
+  dimensions:
+  - tenant.id
+  - user.id
+  - application.id
+  - resource.id
+  - request.id
+  - correlation.id
+  - root_session.id
+  - transaction.id
+  - challenge.id
+  - source.ip
+  - device.id
+  - authenticator.device_id
+  - session.id
+false_positives:
+- zh: VPN 或桌面客户端重连、用户多次点击登录、移动通知延迟、同一 challenge 重投、应用 token 刷新故障、SSPR、设备更换、身份提供商故障和获批测试会形成重复事件。必须核对独立事务 ID、应用 owner、用户主动行为、变更窗口和平台送达语义；合法用户在弱网络中先超时后成功尤其常见。
+  en: VPN or desktop-client reconnect, repeated user clicks, delayed mobile notifications, redelivery of one challenge, application
+    token-refresh faults, SSPR, device replacement, IdP outage, and authorized testing can create repeated events. Check independent
+    transaction identifiers, application owner, user initiation, change window, and platform delivery semantics. A legitimate
+    user who times out on a weak network before succeeding is especially common.
+blind_spots:
+- zh: 某些平台只记录最终登录、不记录 challenge 创建或投递；聚合日志可能延迟并把多步骤折叠；跨 SaaS 缺少共同 correlation ID；电话和短信送达状态可能由外部提供商持有；攻击者也可用低频单次情境诱导避开序列阈值。记住设备或已有
+    MFA claim 的会话可能不产生新 challenge。
+  en: Some platforms record only final sign-in and omit challenge creation or delivery. Aggregated logs can be delayed and
+    collapse multiple steps. SaaS boundaries may lack a common correlation identifier. Telephony and SMS delivery state can
+    remain with an external provider. An adversary can also use one low-volume context-assisted request to evade sequence
+    thresholds. Remembered devices or sessions carrying an existing MFA claim may generate no new challenge.
+tuning_guidance:
+  paragraphs:
+  - zh: 先按应用和 flow 区分新 challenge、重投和步骤重试，再按用户群与工作时段建立 30 日分位数。对高权限用户、外部或新见来源、设备不合规、无对应用户发起活动、连续拒绝后批准和 fraud 报告提升权重；对精确工单、批准测试和已知故障限时降权。保留
+      generated、delivered、responded、approved、session_issued 与 resource_used 分级，缺失阶段标为 unknown 而非默认成功。
+    en: First distinguish new challenges, redelivery, and step retry by application and flow, then build thirty-day percentiles
+      by user cohort and work period. Raise weight for privileged users, external or first-seen origins, noncompliant devices,
+      absence of corresponding user initiation, approval after consecutive denials, and fraud reports. Down-weight exact cases,
+      authorized tests, and known incidents for bounded periods. Retain generated, delivered, responded, approved, session_issued,
+      and resource_used grades, marking missing stages unknown instead of successful.
+  - zh: generated_only 或 denied 序列触发临时 challenge 限流、风险调查和用户通知；fraud 或 approved 未签发 session 时阻断新认证并核实主凭据暴露。若 session/token
+      已签发，立即阻断账户新登录、撤销 refresh token 与应用 session、重置可能泄露的主凭据，核对是否新增认证方法或设备，并检查批准后资源访问。恢复后用已知安全设备重新建立因素，验证旧 session 被拒绝，再解除风险状态。
+    en: A generated_only or denied sequence triggers temporary challenge throttling, risk investigation, and user notification.
+      A fraud report or approval without session issuance blocks new authentication while primary-credential exposure is verified.
+      If a session or token was issued, immediately block new sign-ins, revoke refresh tokens and application sessions, reset
+      potentially exposed primary credentials, check for added authentication methods or devices, and review post-approval
+      resource access. Reestablish factors from a known-safe device, verify old sessions are rejected, and only then clear
+      risk state.
+evidence_refs:
+- REF-000782
+- REF-000783
+- REF-000785
+- REF-000789
+- REF-000307
+- REF-000788
+- REF-000790
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-09-27'
+  modified: '2026-09-27'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

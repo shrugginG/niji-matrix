@@ -1,0 +1,46 @@
+schema_version: "2.0.0"
+type: detection-analytic
+id: NJA-000140
+strategy_ref: DET-000136
+name: {zh: 旧运行时执行—脚本审计结果关联, en: Legacy-Runtime Execution to Script-Audit Outcome}
+summary: {zh: 在已启用脚本审计的设备上识别旧引擎真实执行与内容事件缺口。, en: Identify real legacy-engine execution and missing content events on devices whose script auditing is enabled.}
+domains: [enterprise]
+platforms: [Windows]
+logic:
+  paragraphs:
+    - zh: 从受信库存取得设备允许的 PowerShell 引擎版本和脚本块日志策略，并保存进程创建记录中的 image hash、文件版本、command line、parent、user、process GUID 与启动时间。对报告旧引擎或明确旧版本参数的进程，核对实际加载的引擎版本和运行区间，再查询同一主机同一进程时间窗中的 PowerShell Operational 4104、引擎启动/停止事件以及可用的其他进程或 AMSI 遥测。旧版本参数但实际启动新引擎仅记 attempt。
+      en: Obtain the permitted PowerShell engine version and script-block policy from a trusted inventory, then retain image hash, file version, command line, parent, user, process GUID, and start time from process creation. For processes reporting a legacy engine or an explicit legacy-version argument, verify the engine actually loaded and its execution interval, then query PowerShell Operational 4104, engine start and stop events, and any independent process or AMSI telemetry for the same host and process interval. A legacy argument that launched a current engine is only an attempt.
+    - zh: 在批准基线要求内容审计且该进程确有脚本执行证据时，旧引擎执行区间无对应内容事件才给出 audit_gap；若新引擎正常报告 4104 而旧引擎不报告，置信度提高。没有脚本执行证据、日志采集停机或全机日志缺失只输出 unresolved，不能把任何 4104 缺席都解释为降级。用同权以外的日志收集和功能性 canary 验证差分。
+      en: Emit audit_gap only when the approved baseline requires content auditing, there is evidence of script execution by that process, and no matching content event occurs during legacy-engine execution. Confidence increases when a current engine on the same host reports 4104 but the legacy engine does not. Missing script-execution proof, collection outage, or host-wide logging loss yields unresolved, not downgrade by default. Use separately authorized collection and a functional canary to validate the differential.
+data_requirements:
+  - source_type: process-image-and-engine
+    name: {zh: 进程与实际脚本引擎版本, en: Process and Actual Script-Engine Version}
+    channel: Windows process creation or EDR equivalent
+    required_fields: [timestamp, device_id, process_guid, parent_process_guid, user_id, image_path, image_hash, file_version, command_line, engine_version]
+  - source_type: powershell-operational
+    name: {zh: PowerShell Operational 内容与引擎事件, en: PowerShell Operational Content and Engine Events}
+    channel: Microsoft-Windows-PowerShell/Operational
+    required_fields: [timestamp, device_id, process_id, event_id, script_block_id, event_record_id]
+  - source_type: audit-policy-and-execution-proof
+    name: {zh: 审计策略与脚本执行证明, en: Audit Policy and Script-Execution Proof}
+    channel: null
+    required_fields: [timestamp, device_id, policy_version, script_block_logging_enabled, process_guid, execution_indicator, collection_health]
+observables:
+  - {zh: 进程确实加载低于批准基线的脚本引擎, en: A process actually loads a script engine below the approved baseline}
+  - {zh: 同一执行区间有脚本执行证据却缺少预期 4104 内容事件, en: Script execution is evidenced in the interval but expected 4104 content events are absent}
+  - {zh: 新引擎仍报告内容事件而旧引擎形成局部缺口, en: Current-engine executions still report content while the legacy engine creates a local gap}
+correlation:
+  window: {zh: 从进程启动前五分钟至结束后十五分钟，保留七日的同设备新旧引擎对照。, en: Correlate five minutes before process start through fifteen minutes after exit and retain seven days of same-device current-versus-legacy comparison.}
+  dimensions: [device_id, process_guid, process_id, engine_version, policy_version, script_block_id, time]
+false_positives:
+  - {zh: 经批准的旧脚本兼容测试且另有等效内容遥测, en: Approved legacy-script compatibility test with equivalent alternative content telemetry}
+  - {zh: 没有执行脚本块的空进程或短生命周期命令, en: Empty process or short-lived command that did not execute a script block}
+blind_spots:
+  - {zh: 进程版本字段来自可篡改的同权代理，未独立校验加载映像, en: Process version comes from a co-authorized mutable agent without independent loaded-image verification}
+  - {zh: 4104 通道或采集器全机失效，无法定位局部降级缺口, en: Host-wide 4104 channel or collector failure prevents locating a local downgrade gap}
+tuning_guidance:
+  paragraphs:
+    - zh: 按设备组维护允许的运行时版本、审计策略和正常 4104 产生率，批准例外须绑定设备、进程 hash、用户、目的与到期时间。只在有脚本执行证明且日志通道健康时计算缺口，不能把开发机永久白名单化；对无法独立确认引擎版本的结果降级为需复核。
+      en: Maintain permitted runtime versions, audit policy, and normal 4104 rates by device group. An approved exception binds device, process hash, user, purpose, and expiry. Compute a gap only with script-execution proof and a healthy log channel; do not permanently allowlist developer hosts. Downgrade confidence when engine version cannot be independently verified.
+evidence_refs: [REF-000462, REF-000463, REF-000198]
+lifecycle: {status: review, version: "1.0.0", created: "2026-09-22", modified: "2026-09-22", contributors: [Niji Matrix Research], reviewers: []}

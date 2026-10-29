@@ -1,0 +1,207 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000259
+strategy_ref: DET-000212
+name:
+  zh: Windows 替代证明验证—目标登录—结果关联
+  en: Windows Alternate-Proof Validation to Destination Logon and Outcome
+summary:
+  zh: 关联 NTLM credential validation、Kerberos 票据事务、目标登录和首个资源动作，并以源设备与原认证谱系区分正常 SSO 和可疑材料重用。
+  en: Correlate NTLM credential validation, Kerberos ticket transactions, destination logon, and first resource action, using
+    source device and original-authentication lineage to distinguish normal SSO from suspicious material reuse.
+domains:
+- enterprise
+platforms:
+- Windows
+- Active Directory
+logic:
+  paragraphs:
+  - zh: 分两个证据分支但使用同一 output contract。NTLM 分支在 authoritative host 上按 account、SourceWorkstation 和紧凑时间取得 4776 success，与目标 host
+      的 4624 中相同账户、LogonType 3/远程服务适用类型、AuthenticationPackage=NTLM、IpAddress/Workstation 和 LogonID 连接，再连接由该 LogonID 启动的服务、进程、共享或管理资源操作。Kerberos
+      分支按 account、ClientAddress、realm、ServiceName/SPN、TicketOptions、EncryptionType 和时间取得 4768/4769，与目标 4624 Kerberos LogonID
+      及服务结果连接；若更新平台可靠提供 request/response ticket hash，则作为强键而非强制字段。检查源设备是否有同一身份的近期批准交互登录/TGT 取得、是否在 allowed workstation/auth
+      silo、源端是否有凭据注入/攻击工具或已知控制、以及目标结果是否超出角色。只有 validation→fresh logon→remote result 且至少一个 controller/origin 异常时输出 suspected_alternate_proof_use；有源端材料控制或同
+      ticket/proof 安全标识时升级 confirmed_material_reuse。不能由单个 4776、4769 或 4624 断言 PtH/PtT。
+    en: Use two evidence branches under one output contract. The NTLM branch obtains successful 4776 on the authoritative
+      host keyed by account, SourceWorkstation, and a tight interval; joins it to destination 4624 for the same account with
+      logon type 3 or the applicable remote-service type, AuthenticationPackage NTLM, IpAddress or Workstation, and LogonID;
+      and then joins services, processes, shares, or management-resource actions under that LogonID. The Kerberos branch obtains
+      4768 or 4769 keyed by account, ClientAddress, realm, ServiceName or SPN, TicketOptions, EncryptionType, and time and
+      joins destination Kerberos 4624 LogonID and service outcome. Where an updated platform reliably exposes request or response
+      ticket hashes, treat them as strong optional keys rather than mandatory fields. Check whether the source device has
+      a recent approved interactive logon or TGT issuance for the identity, belongs to an allowed workstation or authentication
+      silo, shows credential injection or attack tooling or known control, and whether the destination result exceeds the
+      role. Emit suspected_alternate_proof_use only for validation to fresh logon to remote result plus at least one controller
+      or origin anomaly; upgrade to confirmed_material_reuse with source material-control evidence or a safe identifier for
+      the same ticket or proof. Never assert Pass-the-Hash or Pass-the-Ticket from one 4776, 4769, or 4624 event.
+data_requirements:
+- source_type: windows-ntlm-credential-validation
+  name:
+    zh: NTLM 凭据验证
+    en: NTLM credential validation
+  channel: Security/4776
+  required_fields:
+  - timestamp
+  - authoritative_host
+  - packagename
+  - targetusername
+  - workstation
+  - status
+- source_type: windows-kerberos-ticket-operations
+  name:
+    zh: Kerberos TGT 与服务票据事务
+    en: Kerberos TGT and service-ticket operations
+  channel: Security/4768_4769
+  required_fields:
+  - timestamp
+  - domain_controller
+  - targetusername
+  - targetdomainname
+  - clientaddress
+  - servicename
+  - ticketoptions
+  - ticketencryptiontype
+  - status
+- source_type: windows-destination-logon
+  name:
+    zh: Windows 目标登录上下文
+    en: Windows destination logon context
+  channel: Security/4624
+  required_fields:
+  - timestamp
+  - destination_host
+  - targetusersid
+  - targetusername
+  - targetlogonid
+  - logontype
+  - authenticationpackagename
+  - workstationname
+  - ipaddress
+  - processname
+- source_type: windows-logon-resource-outcome
+  name:
+    zh: 登录会话的服务、进程与资源结果
+    en: Service, process, and resource outcomes for the logon session
+  channel: endpoint_or_service_audit
+  required_fields:
+  - timestamp
+  - destination_host
+  - logon_id
+  - process_id
+  - parent_process_id
+  - service_or_resource
+  - operation
+  - result
+- source_type: identity-device-authentication-baseline
+  name:
+    zh: 身份设备、许可来源与原认证基线
+    en: Identity-device, allowed-origin, and original-authentication baseline
+  channel: null
+  required_fields:
+  - identity_id
+  - source_device_id
+  - approved_logon_types
+  - permitted_hosts
+  - authentication_silo
+  - recent_interactive_logon
+  - recent_tgt_issuance
+  - valid_from
+  - valid_to
+- source_type: source-end-control-and-material-evidence
+  name:
+    zh: 源端控制与材料证据
+    en: Source-end control and material evidence
+  channel: endpoint_security
+  required_fields:
+  - timestamp
+  - source_device_id
+  - process_id
+  - process_start_key
+  - principal_id
+  - credential_access_or_injection_signal
+  - safe_material_or_ticket_id
+  - sensor_result
+observables:
+- zh: NTLM 4776 成功与目标 4624/资源操作形成链，但源工作站不是该身份允许设备且没有相邻合法登录。
+  en: Successful NTLM 4776 joins a destination 4624 and resource action, while the source workstation is not permitted for
+    the identity and lacks an adjacent legitimate logon.
+- zh: 高权身份从新源请求敏感 SPN 的 TGS 并在目标形成新 Kerberos 会话，但源设备没有可解释的交互登录/TGT 谱系。
+  en: A privileged identity requests a TGS for a sensitive SPN from a new source and forms a destination Kerberos session
+    without explainable interactive-logon or TGT lineage on that device.
+- zh: 源端攻击工具/凭据注入信号与验证、新登录和远程资源结果在同一紧凑窗口出现。
+  en: Source attack-tool or credential-injection evidence aligns with validation, fresh logon, and a remote-resource outcome
+    in one tight window.
+correlation:
+  window:
+    zh: 4776/4769 到目标 4624 默认五分钟，登录到首个结果十五分钟；原认证/TGT 与身份设备基线回看二十四小时，ticket lifetime 及合法 batch 周期按环境延长。
+    en: Use five minutes from 4776 or 4769 to destination 4624 and fifteen minutes from logon to first outcome; look back
+      twenty-four hours for original authentication or TGT and identity-device baseline, extending to actual ticket lifetime
+      and legitimate batch cycles.
+  dimensions:
+  - account
+  - source_device
+  - authoritative_host_or_kdc
+  - client_address
+  - destination_host
+  - service_spn
+  - logon_id
+  - authentication_package
+  - safe_ticket_or_proof_id
+  - process
+  - resource
+  - operation
+  - time
+false_positives:
+- zh: approved admin jump host
+  en: approved admin jump host
+- zh: service account batch authentication
+  en: service account batch authentication
+- zh: helpdesk remote management
+  en: helpdesk remote management
+- zh: cached ticket after network change
+  en: cached ticket after network change
+- zh: domain controller failover
+  en: domain controller failover
+- zh: authorized red team
+  en: authorized red team
+blind_spots:
+- zh: audit credential validation disabled
+  en: audit credential validation disabled
+- zh: kerberos events not collected
+  en: kerberos events not collected
+- zh: local account validation without central view
+  en: local account validation without central view
+- zh: no stable ticket identifier
+  en: no stable ticket identifier
+- zh: source endpoint sensor absent
+  en: source endpoint sensor absent
+- zh: NAT or proxy hides source
+  en: NAT or proxy hides source
+- zh: target resource not audited
+  en: target resource not audited
+tuning_guidance:
+  paragraphs:
+  - zh: 按 human/service/computer identity、允许工作站/logon type、SPN、管理跳板、批处理周期和 auth silo 分开基线。先验证 4776 Workstation、4769 ClientAddress
+      和 4624 IpAddress 在本域/版本的填充质量；不以 RC4、某一 TicketOptions、缺 4768 或 LogonType 3 单独定性。例外绑定 account+source device+destination/SPN+operation+window+owner，并保留过期时间。对高权身份、DC/身份系统目标和源端材料控制证据提高置信度。
+    en: Baseline separately by human, service, and computer identity, allowed workstation and logon type, SPN, administration
+      jump host, batch schedule, and authentication silo. Validate how 4776 Workstation, 4769 ClientAddress, and 4624 IpAddress
+      populate in the local domain and OS versions. Do not classify from RC4, one TicketOptions value, missing 4768, or logon
+      type 3 alone. Bind exceptions to account, source device, destination or SPN, operation, window, owner, and expiry. Raise
+      confidence for privileged identities, domain-controller or identity-system destinations, and source material-control
+      evidence.
+evidence_refs:
+- REF-000853
+- REF-000854
+- REF-000855
+- REF-000377
+- REF-000856
+- REF-000857
+- REF-000863
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-09-27'
+  modified: '2026-09-27'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

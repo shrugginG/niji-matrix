@@ -1,0 +1,103 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000155
+strategy_ref: DET-000148
+name:
+  zh: 敏感文件增量读取轮次关联
+  en: Sensitive-File Incremental-Read Pass Correlation
+summary:
+  zh: 检测未授权主体跨轮选择变化文件的读取模式，并保留首轮与检查点关系。
+  en: Detect unauthorized changed-file reads across passes while retaining the initial-pass and checkpoint relationship.
+domains:
+- enterprise
+platforms:
+- Windows
+logic:
+  paragraphs:
+  - zh: 在预先划定的敏感目录启用 Audit File System 与 ReadData SACL，采集 Security 4663 成功读取以及文件修改事件；按主机、主体 SID/LogonId、进程映像和稳定进程启动时间关联读取。以至少
+      7 至 30 天观察期分组为多轮，计算每轮读取的唯一文件数、与上一轮被修改集合的交集比例、首次大范围读取与后续小范围读取的差异。仅当未授权进程或身份反复呈现高度“上轮后变化文件”选择性，且与许可备份、索引或同步清单不符时升级调查。阈值由本地基线训练，不能把固定
+      12 小时间隔或 ft.data 文件名当通用特征。
+    en: Enable Audit File System and a ReadData SACL on predefined sensitive directories; ingest successful Security 4663
+      reads and file-modification events. Link reads by host, subject SID/LogonId, process image, and stable process start
+      time. Over at least 7–30 days, group episodes and calculate unique files read per pass, overlap with files modified
+      since the previous pass, and the difference between an initial broad pass and smaller later passes. Escalate only when
+      an unauthorized process or identity repeatedly selects a high proportion of recently changed files and does not match
+      an approved backup, indexing, or sync job. Train thresholds on local baselines; neither a 12-hour interval nor the ft.data
+      name is a general signature.
+data_requirements:
+- source_type: windows-file-read-audit
+  name:
+    zh: Windows 敏感文件读取审计
+    en: Windows sensitive-file read audit
+  channel: Security/4663
+  required_fields:
+  - timestamp
+  - device_id
+  - subject_sid
+  - logon_id
+  - object_path
+  - access_mask
+  - process_id
+  - process_name
+- source_type: file-change-inventory
+  name:
+    zh: 文件变更清单
+    en: File change inventory
+  channel: null
+  required_fields:
+  - timestamp
+  - device_id
+  - file_path
+  - change_type
+- source_type: authorized-job-inventory
+  name:
+    zh: 授权自动作业清单
+    en: Authorized automation job inventory
+  channel: null
+  required_fields:
+  - principal_id
+  - process_path
+  - covered_paths
+  - approved_schedule
+observables:
+- zh: 首轮广泛读取后，后续轮次主要触及新变更文件
+  en: A broad initial pass is followed by later reads concentrated on newly changed files
+- zh: 非批准进程的检查点更新与敏感目录读取周期相符
+  en: Checkpoint updates by an unapproved process align with sensitive-directory read passes
+correlation:
+  window:
+    zh: 至少保留 7 至 30 天读取与变更历史以覆盖多个轮次；短于两个轮次时仅输出待观察状态。
+    en: Retain at least seven to thirty days of read and change history to cover multiple passes; with fewer than two passes,
+      report an observation-pending state.
+  dimensions:
+  - device_id
+  - subject_sid
+  - logon_id
+  - process_id
+  - object_path
+  - time
+false_positives:
+- zh: 企业备份、同步、索引与电子发现工具会合法地按变化读取大量文件。
+  en: Enterprise backup, synchronization, indexing, and e-discovery tools legitimately read changed files.
+blind_spots:
+- zh: 未启用目标目录的读取 SACL 时 4663 不会提供所需读取证据；读取审计覆盖窄或保留期短会破坏跨轮关联。
+  en: Without a read SACL on target directories, 4663 will not provide the required read evidence; narrow coverage or short
+    retention breaks cross-pass correlation.
+tuning_guidance:
+  paragraphs:
+  - zh: 按目录变更率训练每轮文件数和变化重合率，按身份、目录及有效期排除具体批准备份；不得仅以 12 小时周期或 ft.data 名称匹配。首次基线扫描与后续轮次应分开比较。
+    en: Train files-per-pass and changed-set overlap against each directory's change rate. Exempt a specific approved backup
+      only by identity, path scope, and validity period; never match a universal twelve-hour period or ft.data name. Compare
+      the initial baseline pass separately from later passes.
+evidence_refs:
+- REF-000512
+- REF-000379
+- REF-000475
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-09-22'
+  modified: '2026-09-22'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

@@ -1,0 +1,116 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000298
+strategy_ref: DET-000235
+name:
+  zh: 业务合形值与累计关系操纵分析
+  en: Business-Conforming Value and Cumulative-Relation Manipulation Analytic
+summary:
+  zh: 输出 schema-valid 但违反业务不变量、关系或累计结果的未经批准值变化。
+  en: Emit unapproved schema-valid value changes that violate business invariants, relationships, or cumulative outcomes.
+domains:
+- enterprise
+platforms: []
+logic:
+  paragraphs:
+  - zh: 从 Debezium CDC 取得 before/after/op/source/source.ts_ms/transaction/offset，连接 OTel DB span 的 system/namespace/collection/operation/query
+      summary/response/error、writer identity、approval 与 object owner。每个 mutation 先通过 schema/type，再执行行业不变量、供应商/客户关系、金额/频率和累计余额/数量检查。
+    en: Use Debezium CDC before, after, op, source, source timestamp, transaction, and offset and join OTel DB system,
+      namespace, collection, operation, query summary, response or error, writer identity, approval, and object owner.
+      After schema and type checks, apply domain invariants, vendor or customer relations, amount or frequency, and
+      cumulative balance or quantity checks.
+  - zh: 在 15 分钟连接 transaction/writer/outcome，在 24 小时与 30/90 天比较关系和累计偏移。只有未经批准 mutation、业务 invariant 异常和被下游采用的结果共同成立才输出。
+    en: Join transaction, writer, and outcome over 15 minutes and compare relations and cumulative drift over 24 hours
+      and 30 or 90 days. Emit only when unapproved mutation, business-invariant anomaly, and downstream adoption all
+      hold.
+data_requirements:
+- source_type: cdc-change-event
+  name:
+    zh: CDC 变更事件
+    en: CDC change events
+  channel: Debezium PostgreSQL connector
+  required_fields:
+  - event.time
+  - object.id
+  - before.value
+  - after.value
+  - operation
+  - source.name
+  - source.timestamp
+  - transaction.id
+  - offset.id
+- source_type: db-client-span
+  name:
+    zh: 数据库客户端 Span
+    en: Database client spans
+  channel: OpenTelemetry
+  required_fields:
+  - event.time
+  - trace.id
+  - db.system
+  - db.namespace
+  - db.collection
+  - db.operation
+  - db.query.summary
+  - server.address
+  - response.status
+  - error.type
+- source_type: business-invariant-owner
+  name:
+    zh: 业务不变量与 owner
+    en: Business invariants and owner context
+  channel: null
+  required_fields:
+  - object.id
+  - object.type
+  - owner.id
+  - writer.id
+  - approval.id
+  - invariant.id
+  - relationship.id
+  - expected.range
+  - downstream.outcome
+observables:
+- zh: schema-valid 值变化但违反关系/累计业务不变量
+  en: A schema-valid value change violates relational or cumulative business invariants
+- zh: 异常 writer/transaction 的变化被下游流程采用
+  en: A change by an anomalous writer or transaction is adopted downstream
+correlation:
+  window:
+    zh: writer/transaction 15 分钟，业务结果 24 小时，关系/累计基线 30/90 天。
+    en: Use 15 minutes for writer or transaction, 24 hours for business outcome, and 30 or 90 days for relation or
+      cumulative baselines.
+  dimensions:
+  - object.id
+  - transaction.id
+  - writer.id
+  - trace.id
+  - relationship.id
+  - event.time
+false_positives:
+- zh: 批准纠错、退款、调账、价格/汇率变化、迁移、季节性和批处理回填
+  en: Approved corrections, refunds, adjustments, price or FX changes, migration, seasonality, and backfill
+blind_spots:
+- zh: CDC 未覆盖直接写、before 缺失、writer 共享、业务规则不完整、外部系统更新或 eventual consistency
+  en: CDC misses direct writes, absent before state, shared writer, incomplete business rules, external updates, or
+    eventual consistency
+tuning_guidance:
+  paragraphs:
+  - zh: 按 object type 和 owner 维护 invariant/version 与允许 mutation，审批身份不得永久白名单。阈值是部署初值；严重度要求异常 writer、语义差和 downstream
+      outcome。
+    en: Maintain invariant versions and allowed mutations by object type and owner without permanently allowlisting
+      approved identities. Thresholds are deployment starts; severity needs anomalous writer, semantic difference,
+      and downstream outcome.
+evidence_refs:
+- REF-000997
+- REF-000999
+- REF-001000
+- REF-001001
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-10-04'
+  modified: '2026-10-04'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

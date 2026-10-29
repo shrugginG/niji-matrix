@@ -1,0 +1,81 @@
+schema_version: "2.0.0"
+type: technique
+id: NJT-0067
+name: {zh: 匿迹化容器部署执行, en: Stealth-Conforming Container Deployment Execution}
+summary: {zh: 攻击者创建新容器或工作负载并让其启动攻击者代码，通过通用良性镜像的后置载荷或与批准应用相似的规范上下文降低部署时识别。, en: Adversaries create a new container or workload that starts adversary code and reduce deployment-time detection through late payloads from generic benign images or specification context resembling approved applications.}
+aliases: [Deploy Container]
+classification:
+  tactic_refs: [TA0002]
+  origin: {kind: attack-adapted, source_attack_id: T1610, source_attack_version: '19.1'}
+  decision_ref: DEC-TA0002-T1610
+definition_and_concept:
+  paragraphs:
+  - zh: 匿迹化容器部署执行是攻击者通过 Kubernetes Pod/Deployment/DaemonSet、Docker create/start 或等价编排接口创建新的容器实例，并由 image entrypoint、command/args、init/sidecar、lifecycle hook 或启动后取得的内容开始运行攻击者代码的技术。直接目标是把执行包装为一次正常工作负载置备；对象从 create/admission 请求开始，到新容器的首个攻击者控制运行时结果为止。
+    en: Stealth-Conforming Container Deployment Execution creates a new container instance through a Kubernetes Pod Deployment or DaemonSet, Docker create or start, or equivalent orchestration interface and begins adversary code through image entrypoint, command or args, init or sidecar, lifecycle hook, or content retrieved after start. Its direct objective is to package execution as ordinary workload provisioning. The object begins with create or admission and ends at the new container's first adversary-controlled runtime outcome.
+  - zh: 概念锚是“创建主体—workload 规范—admission/解析 image digest—runtime create/start—首个行为”，不是 Kubernetes、Docker、镜像仓库或编排对象类型。对已运行容器执行命令归 NJT-0066；篡改内部镜像并等待未来任意置备反复激活归 NJT-0092；本技术关注当前新部署本身如何产生执行，允许两者在同一事件共存但不得混淆上游镜像持久化。
+    en: The anchor is creator, workload specification, admission and resolved image digest, runtime create or start, and first behavior, not Kubernetes, Docker, image registry, or orchestrator object type. Commands in an existing container belong to NJT-0066. Tampering with an internal image for repeated future provisioning belongs to NJT-0092. This technique focuses on execution from the current new deployment; both may coexist without confusing upstream image persistence.
+stealth_characteristics:
+  paragraphs:
+  - zh: 核心匿迹矛盾是攻击者必须提交可调度规范并产生新容器，却希望 admission 和部署审查看到受信 image、熟悉名称/namespace/labels/service account 或无明显恶意命令。TeamTNT 曾从预装恶意镜像转向 Alpine/Ubuntu 等通用“安全”镜像，启动后才运行恶意 shell 和脚本，使镜像扫描只验证基础内容；另有 `portaienr` 镜像借用 Portainer 外观，使规范层把恶意 workload 与熟悉软件混同。
+    en: The central stealth tension is that a schedulable specification and new container must exist while admission and deployment review see a trusted image, familiar name namespace labels or service account, or no obvious malicious command. TeamTNT moved from preloaded malicious images to generic safe Alpine or Ubuntu and ran malicious shells and scripts only after start, leaving image scanning to validate base content. Its `portaienr` images also borrowed Portainer appearance so specification review grouped a malicious workload with familiar software.
+  - zh: 匿迹不消除 create/admission audit、manifest revision、resolved digest、signature/attestation、runtime create/start、image pull、entrypoint、first process/network/file 和资源行为。Pod Security 可暴露 privileged、host namespace、hostPath 等高能力字段；但这些字段明显异常时属于影响/暴露而非本技术的匿迹来源。若 runtime 首个行为与 image/SBOM/批准规范连接，良性镜像后置载荷和规范伪装都会明显削弱。
+    en: Stealth does not erase create or admission audit, manifest revision, resolved digest, signature or attestation, runtime create or start, image pull, entrypoint, first process network or file, and resource behavior. Pod Security can expose high-capability fields such as privileged mode host namespaces and hostPath, but overtly anomalous fields describe impact or exposure rather than the stealth source. Joining the first runtime behavior to image or SBOM and approved specification materially weakens both late payloads and specification camouflage.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 纳入新容器/workload 被创建并实际产生攻击者控制执行的行为，要求 create/admission 或 Docker create/start 记录、实际 image/digest 与至少一个 runtime 结果。只推送恶意镜像、只提交被拒绝规范、或创建后未启动均不足以确认 Execution。Deployment、DaemonSet、Job 与单 Pod 是编排差异；privileged、hostPID、hostPath 是能力字段而非子技术。
+    en: Scope includes a new container or workload created and actually producing adversary-controlled execution and requires create or admission or Docker create or start, actual image or digest, and at least one runtime outcome. Pushing a malicious image alone, submitting a denied specification, or creating without start is insufficient for Execution. Deployment DaemonSet Job and Pod are orchestration variants, while privileged hostPID and hostPath are capability fields rather than children.
+  - zh: 既有容器 exec 排除；内部镜像被篡改并在多个未来实例复现时同时归 NJT-0092；供应链外部植入归供应链技术。合法 CI/CD 发布、调试 Pod、Job、扩缩容、系统 DaemonSet 与事件响应可同形。镜像名或 namespace 单独不能定性，必须结合创建身份、实际 digest、批准规范和首个结果。
+    en: Existing-container exec is excluded. A tampered internal image recurring across future instances can also instantiate NJT-0092, while external supply-chain implantation belongs to supply-chain techniques. Legitimate CI or CD releases debug Pods Jobs scaling system DaemonSets and incident response share the shape. Image name or namespace alone is never a verdict and requires creator actual digest approved specification and first outcome.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: 攻击者取得 Docker socket、Kubernetes create 权限、暴露 Dashboard/Portainer、CI 部署令牌或云编排身份后，可创建矿工、后门、扫描器或逃逸容器。为了避开镜像时检测，可部署批准基础镜像后从网络拉取脚本；为了混入集群，可复制应用 image reference、名称、labels、namespace、service account、资源请求与 owner 关系，再把恶意行为放入 entrypoint、args 或启动后阶段。
+      en: After obtaining a Docker socket, Kubernetes create authority, exposed Dashboard or Portainer, CI deployment token, or cloud orchestrator identity, an adversary can create a miner backdoor scanner or escape container. To evade image-time detection, it can deploy an approved base image then retrieve scripts. To blend into a cluster, it can copy application image reference name labels namespace service account resource requests and owner relation and place malicious behavior in entrypoint args or post-start phase.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者需要创建/启动 workload 的权限、可拉取镜像与可执行的运行时路径。良性基础镜像方案还需 egress、包管理器/shell 或可写目录；规范伪装需了解集群命名、标签、身份和资源基线。最小 create 权限、admission、Pod Security、digest pinning、签名/证明、默认拒绝 egress、只读根和 runtime allowlist 会限制。新容器本身仍是明显事件。
+        en: The adversary needs workload create or start authority, image pull capability, and an executable runtime path. A benign-base-image plan also needs egress, package manager or shell, or writable storage; specification camouflage needs knowledge of naming labels identities and resource baselines. Least create authority, admission, Pod Security, digest pinning, signatures or attestations, default-deny egress, read-only root, and runtime allowlists constrain it. The new container remains an observable event.
+    defender_model:
+      paragraphs:
+      - zh: 防守方需保存创建主体/来源、manifest 原文与规范化 diff、admission 决策、image reference 与 resolved digest、签名/attestation/SBOM、runtime create/start、container ID 和启动后首个进程/网络/文件。要区分镜像扫描通过与运行时内容可信，不能因 digest 已批准就忽略 curl/wget、shell、package install 或新二进制。短命 Job/Pod 也需保留销毁前状态。
+        en: Defenders need creator and origin, raw manifest and normalized diff, admission decision, image reference and resolved digest, signature attestation or SBOM, runtime create or start, container ID, and first post-start process network or file. Image-scan success and runtime-content trust must be separate; an approved digest must not suppress curl wget shell package install or new binary. Short-lived Jobs and Pods require pre-destruction retention.
+stealth_mechanisms:
+- mechanism_ref: NM-BT
+  role: primary
+  summary: {zh: 良性基础镜像与启动后恶意运行时内容分离, en: Benign base-image identity separates from malicious post-start runtime content}
+  analysis:
+    paragraphs:
+    - zh: admission 和镜像扫描看到已知 digest/SBOM，攻击者在容器启动后经网络、stdin 或挂载内容形成真实载荷，关键恶意语义落在镜像观察之外，形成行为透明。TeamTNT 安全镜像转变直接支持 high；runtime egress、first process、文件 hash 与 image 声明差分可恢复。签名验证只能证明已签基础内容，不能单独证明运行后行为。
+      en: Admission and image scanning see a known digest or SBOM while the adversary forms the real payload after start through network standard input or mounted content, placing critical malicious semantics outside image observation and producing Behavioral Transparency. TeamTNT's safe-image transition directly supports high confidence. Runtime egress first process file hash and image-declaration differences recover it. Signature verification proves signed base content but not post-start behavior alone.
+  evidence_refs: [REF-000186, REF-000215, REF-000216, REF-000220]
+  confidence: high
+- mechanism_ref: NM-FD
+  role: secondary
+  summary: {zh: 恶意 workload 借用熟悉应用规范与镜像引用特征, en: A malicious workload borrows familiar application-specification and image-reference features}
+  analysis:
+    paragraphs:
+    - zh: 攻击者复制或近似 image reference、名称、namespace、labels、service account、owner 与资源外观，使恶意部署与合法应用共享规范分类特征，形成特征伪装。Aqua 直接证明 `portaienr` 借 Portainer 外观并被部署运行，支持 high；拼写、仓库所有者、digest、入口、工具、C2 和未批准创建主体仍能反证。
+      en: The adversary copies or approximates image reference name namespace labels service account owner and resource appearance so malicious deployment shares specification-classification features with legitimate applications, producing Feature Disguise. Aqua directly establishes `portaienr` borrowing Portainer appearance and being deployed, supporting high confidence. Spelling repository owner digest entrypoint tools command and control and unapproved creator remain disconfirming.
+  evidence_refs: [REF-000221]
+  confidence: high
+subtechnique_taxonomy:
+  narrative:
+    paragraphs:
+    - zh: NJS-0067-001 固定“镜像—运行时内容分离”：规范可以明显异常，但批准基础 image 在启动后才取得恶意载荷，检测核心是 image-to-first-action。NJS-0067-002 固定“规范上下文相似”：载荷可已在镜像内，但可见 image/name/namespace/labels/identity 接近合法应用，检测核心是 specification-to-approval 差分。良性镜像可使用随机名称，伪装规范可引用预装恶意 image，故互不包含。
+      en: "NJS-0067-001 fixes image-to-runtime content separation: the specification may be clearly anomalous but an approved base image retrieves malicious payload only after start, and detection centers on image-to-first-action. NJS-0067-002 fixes specification-context similarity: payload may already reside in the image but visible image name namespace labels or identity resemble a legitimate application, and detection centers on specification-to-approval difference. A benign image can have a random name and a camouflaged specification can reference a preloaded malicious image, so neither contains the other."
+    - zh: ATT&CK 无子项；编排对象、平台和 payload 不拆分。privileged/hostPath 等是可见能力与影响条件，不是匿迹轴；mutable tag 的检查—使用时间差由 NJT-0092 镜像谱系治理，不在此重复。
+      en: ATT&CK has no children and orchestration object platform and payload do not partition the taxonomy. Privileged mode and hostPath are visible capability or impact conditions rather than stealth axes, while mutable-tag time-of-check-to-use belongs to NJT-0092 image-lineage governance and is not duplicated here.
+  coverage: established
+  subtechnique_refs: [NJS-0067-001, NJS-0067-002]
+defense: {detections: {coverage: available, strategy_refs: [DET-000082]}, mitigations: {coverage: available, mitigation_refs: [MIT-000082]}}
+evidence:
+  claim_refs: [CLM-000260, CLM-000261, CLM-000262, CLM-000412, CLM-000413, CLM-000414, CLM-000415, CLM-000416, CLM-000417]
+  case_refs: [CASE-000075, CASE-000076]
+  reference_refs: [REF-000119, REF-000186, REF-000211, REF-000212, REF-000213, REF-000214, REF-000215, REF-000216, REF-000220, REF-000221]
+research:
+  limitations:
+    paragraphs:
+    - zh: TeamTNT/Aqua 案例直接支持两个变量，但主要来自公开云原生滥用与供应镜像调查，不能代表所有企业编排器。规范上下文证据最强地落在 image reference 伪装，名称、labels、service account 等字段向同一变量推广需本地基线验证。签名、SBOM 或 Pod Security 单独不能阻止可信镜像后置载荷；runtime 行为和网络控制不可缺失。
+      en: TeamTNT and Aqua cases directly support both variables but come mainly from public cloud-native abuse and image investigations and do not represent every enterprise orchestrator. Specification-context evidence is strongest for image-reference camouflage; extension to names labels and service accounts requires local baseline validation. Signature SBOM or Pod Security alone cannot stop late payload from a trusted image; runtime behavior and network control remain necessary.
+lifecycle: {status: review, version: 1.1.0, created: '2026-09-10', modified: '2026-09-12', contributors: [Niji Matrix Research], reviewers: []}

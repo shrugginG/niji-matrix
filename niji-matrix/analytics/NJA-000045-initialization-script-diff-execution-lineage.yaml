@@ -1,0 +1,284 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000045
+strategy_ref: DET-000066
+name:
+  zh: 初始化脚本差异—解释器—子进程谱系分析
+  en: Initialization-Script Diff-Interpreter-Child Lineage Analytic
+summary:
+  zh: 对批准脚本版本做命令级差异并关联写入者、生命周期解释器和子进程结果，识别内联与新建脚本驻留。
+  en: Diff approved script versions at command level and correlate writer, lifecycle interpreter, and child outcomes to identify inline and newly
+    created script persistence.
+domains:
+- enterprise
+platforms:
+- ESXi
+- Linux
+- Network Devices
+- Windows
+- macOS
+logic:
+  paragraphs:
+  - zh: 分析维护每个受控初始化脚本的规范路径、平台、用户或系统范围、解释器、所有者、权限、哈希、内容版本和批准来源。文件、注册表脚本值、配置归档或网络设备 startup-config 发生变化时，保存写入主体、进程或管理会话、事件 ID、旧版本和新版本，并按对应语法把注释、空白与命令语句分离。新增下载、执行、权限、挂载、二进制修补、后台启动或外联命令进入高价值
+      diff；无法取得旧内容时只标记来源不足，不能声称内联植入。
+    en: The analytic maintains canonical path, platform, user or system scope, interpreter, owner, permission, hash, content version, and approved
+      source for each controlled initialization script. When a file, registry script value, configuration archive, or network-device startup-config
+      changes, it retains writer principal, process or management session, event ID, old version, and new version and separates comments, whitespace,
+      and commands according to the relevant syntax. Newly added download, execution, permission, mount, binary-patch, background-launch, or egress
+      commands enter a high-value diff. Without prior content, provenance remains insufficient and inline implantation cannot be claimed.
+  - zh: 随后按设备、脚本路径与内容版本连接下一次 boot 或 logon ID。记录实际解释器、完整命令、有效用户、父进程、子进程、加载文件、目标哈希与网络目的地，并确认新增或改写行被执行或影响结果。只有脚本存在而没有消费证据时保持状态异常；解释器执行但无法匹配版本时降级。对于
+      NJS-0085-001，还要求路径和大部分批准语句在前后版本中保持，而恶意命令只占局部差异。
+    en: It then joins the next boot or logon ID by device, script path, and content version. The analytic records actual interpreter, complete
+      command, effective user, parent, child process, loaded file, target hash, and network destination and confirms that an added or rewritten
+      line executed or affected the outcome. A script without consumption evidence remains a state anomaly, and interpreter execution without
+      a matched version is downgraded. NJS-0085-001 additionally requires path and most approved statements to remain across versions while malicious
+      commands occupy only a local difference.
+  - zh: 风险按写入来源、内容差异和执行结果三类评分。合法包或变更单、预期维护窗口和批准管理员可解释变化，但若新增命令绕过校验、恢复被改二进制、启动未知组件或连接业务外目的地，即使脚本名称和绝大多数内容正常也提高风险。至少两类异常且存在后续生命周期执行才确认链；已知恶意命令或目标可提高严重度。
+    en: Risk is scored across writer provenance, content difference, and execution outcome. A legitimate package or change record, expected maintenance
+      window, and approved administrator can explain mutation, but risk rises when added commands bypass verification, restore a modified binary,
+      launch an unknown component, or reach an off-business destination even if script name and most content remain normal. Confirmation requires
+      anomalies in at least two classes and later lifecycle execution; a known-malicious command or target can raise severity.
+  - zh: NJS-0085-002 分支把中央脚本或 GPO mutation_id、policy_version、script_hash 和 target_scope 与每个客户端 applied_policy_version、boot/logon_id、interpreter
+      和 child_process 连接，生成预期主体集合、已执行集合和未确认集合。至少两个下游主体或明确多主体范围及一个后继执行才能进入扇出子项；仅一个端点执行退回父级。TA0004 再按每端 writer/pre-state authorization_set、interpreter_token、effective_authority_delta 与 first_newly_authorized_outcome，把同一扇出版本分为 elevated_set、same_authority_set 和 unresolved_set；只有变化内容被实际消费、delta 为正且结果在 pre-state 会被拒绝时进入 elevated_set。
+    en: The NJS-0085-002 branch joins central script or GPO mutation ID, policy version, script hash, and target scope to each client applied-policy
+      version, boot or logon ID, interpreter, and child process, producing expected, executed, and unconfirmed principal sets. At least two downstream
+      principals, or an explicit multi-principal scope plus one successor execution, are required for fan-out; a single endpoint execution falls
+      back to parent scope. TA0004 then uses per-endpoint writer or pre-state authorization set, interpreter token, effective-authority delta, and
+      first newly authorized outcome to partition the same fan-out version into elevated, same-authority, and unresolved sets. Only an actually
+      consumed content change with positive difference and an outcome denied in pre-state enters the elevated set.
+data_requirements:
+- source_type: initialization-script-version
+  name:
+    zh: 初始化脚本内容与版本快照
+    en: Initialization-script content and version snapshots
+  channel: null
+  required_fields:
+  - snapshot_time
+  - device_id
+  - script_path
+  - content
+  - content_hash
+  - owner
+  - permissions
+  - interpreter
+  - approved_source
+- source_type: script-mutation-audit
+  name:
+    zh: 脚本文件、注册表与配置归档变更审计
+    en: Script file, registry, and configuration-archive mutation audit
+  channel: null
+  required_fields:
+  - timestamp
+  - device_id
+  - script_path
+  - operation
+  - writer_principal_id
+  - writer_process_or_session
+  - old_version_id
+  - new_version_id
+  - event_id
+  - outcome
+- source_type: boot-logon-script-execution
+  name:
+    zh: 启动登录边界与脚本解释器执行
+    en: Boot-logon boundary and script-interpreter execution
+  channel: null
+  required_fields:
+  - timestamp
+  - device_id
+  - boot_or_logon_id
+  - user_id
+  - script_path
+  - content_version_id
+  - interpreter
+  - command
+  - process_id
+  - parent_process_id
+  - outcome
+- source_type: script-child-outcome
+  name:
+    zh: 脚本子进程、文件与网络结果
+    en: Script child-process, file, and network outcomes
+  channel: null
+  required_fields:
+  - timestamp
+  - device_id
+  - process_id
+  - parent_process_id
+  - image
+  - command_line
+  - file_path
+  - file_hash
+  - destination
+  - action
+- source_type: approved-script-change
+  name:
+    zh: 批准脚本版本、包与变更记录
+    en: Approved script version, package, and change records
+  channel: null
+  required_fields:
+  - change_id
+  - script_path
+  - approved_hash_or_diff
+  - package_id
+  - owner
+  - approver
+  - validity_window
+  - deployment_scope
+- source_type: central-script-policy-and-propagation
+  name:
+    zh: 中央脚本策略、共享版本与客户端应用状态
+    en: Central Script Policy, Shared Version, and Client Application State
+  channel: null
+  required_fields:
+  - timestamp
+  - control_plane_id
+  - mutation_id
+  - policy_or_assignment_id
+  - policy_version
+  - script_path
+  - script_hash
+  - target_scope
+  - replication_state
+  - client_id
+  - applied_policy_version
+  - outcome
+- source_type: script-authority-transition-and-privileged-outcome
+  name:
+    zh: 脚本写入者、解释器权限与新获准结果
+    en: Script Writer, Interpreter Authority, and Newly Authorized Outcome
+  channel: null
+  required_fields:
+  - timestamp
+  - device_id
+  - mutation_id
+  - content_version_id
+  - executed_line_or_command_id
+  - writer_or_prestate_principal
+  - writer_or_prestate_authorization_set
+  - interpreter_process_id
+  - interpreter_token_or_security_context
+  - effective_authority_delta
+  - outcome_operation
+  - outcome_resource
+  - prestate_decision
+  - result_decision
+observables:
+- zh: 既有初始化脚本路径和大部分内容不变，但出现未批准下载、执行、修补、权限或外联命令
+  en: An existing initialization-script path and most content remain unchanged while an unapproved download, execution, patch, permission, or
+    egress command appears
+- zh: 写入来自非常见主体、远程管理会话或非软件部署进程，且没有匹配变更记录
+  en: Mutation originates from an uncommon principal, remote-management session, or nondeployment process without a matching change record
+- zh: 新内容版本在下一次启动或登录中由高权限解释器执行并产生未知子进程或目标变化
+  en: The new content version executes under a privileged interpreter at the next boot or logon and produces an unknown child process or target
+    change
+- zh: 同一局部命令在多个设备或重启周期中重复出现，而合法基线未包含该语句
+  en: The same local command recurs across devices or reboot cycles while absent from the approved baseline
+- zh: 一个未经批准的 GPO 或共享脚本版本面向多个用户/设备，随后不同客户端在各自 boot/logon_id 执行相同脚本哈希。
+  en: One unapproved GPO or shared-script version targets multiple users or devices, followed by different clients executing the same script hash
+    at their own boot or logon IDs.
+- zh: 中央写入者、目标范围、客户端策略版本与解释器子进程形成一对多因果图，且脚本命令不在批准版本中。
+  en: Central writer, target scope, client policy version, and interpreter child process form a one-to-many causal graph whose commands are absent
+    from the approved version.
+- zh: 同一变化行由权限高于 writer/pre-state 的 interpreter token 消费，并产生此前被拒绝、现在获准的文件、进程、身份、配置或访问操作。
+  en: The same changed line is consumed under an interpreter token above writer or pre-state authority and produces a file, process, identity,
+    configuration, or access operation previously denied and now authorized.
+- zh: 同一中央脚本版本的客户端被分成 elevated、same-authority 与 unresolved 子集，而不是按目标 OU 或 computer scope 给出统一提权结论。
+  en: Clients consuming one central script version split into elevated, same-authority, and unresolved subsets instead of receiving one elevation
+    verdict from target OU or computer scope.
+correlation:
+  window:
+    zh: 从脚本变更持续到回滚、删除或三次相关启动/登录，默认三十日；每个 boot/logon ID 周围使用前十五分钟至后六十分钟窗口，并为离线设备扩展。必须保存触发时实际内容版本。
+    en: Extend from script mutation until rollback, deletion, or three relevant boots or logons, thirty days by default. Use fifteen minutes before
+      through sixty minutes after each boot or logon ID and extend for offline devices. Preserve the actual content version present at activation.
+  dimensions:
+  - device
+  - script_path
+  - content_version
+  - writer_principal
+  - writer_process_or_session
+  - boot_or_logon
+  - interpreter
+  - command
+  - child_process
+  - target_file
+  - destination
+  - change
+  - control_plane
+  - policy_or_assignment
+  - policy_version
+  - target_scope
+  - client_applied_version
+  - fanout_set
+  - writer_or_prestate_authority
+  - interpreter_token_or_security_context
+  - effective_authority_delta
+  - first_newly_authorized_outcome
+  - authority_outcome_set
+false_positives:
+- zh: 系统升级、固件更新、映像构建和软件安装会合法改变启动或登录脚本并在重启后执行新命令
+  en: System upgrades, firmware updates, image builds, and software installation legitimately change boot or logon scripts and execute new commands
+    after reboot
+- zh: 管理员故障排除、监控代理、备份和网络设备配置下发会向既有脚本追加本地命令
+  en: Administrator troubleshooting, monitoring agents, backup, and network-device configuration deployment append local commands to existing
+    scripts
+- zh: 包管理器或配置管理会重排、格式化或生成脚本，使文本 diff 大于实际语义变化
+  en: Package or configuration management can reorder, format, or generate scripts so textual diff exceeds semantic change
+- zh: 批准的域登录映射、审计、配置、软件部署和故障修复脚本会由一个 GPO 合法扇出到大量客户端。
+  en: Approved domain logon mapping, audit, configuration, software deployment, and break-fix scripts legitimately fan out from one GPO to many
+    clients.
+- zh: 受批准的计算机 startup script 以 Local System 完成补丁、驱动、网络或安全配置，形成真实的正权限差，但其 writer、版本、范围和结果均有有效审批。
+  en: An approved computer startup script completes patching, driver, network, or security configuration as Local System and creates a real positive
+    authority difference, but writer, version, scope, and outcome all have valid approval.
+blind_spots:
+- zh: 没有旧版本、只保存哈希或只在变更后采集时，无法确认哪些行被内联增加
+  en: Without an old version, with only a hash, or when collection starts after mutation, the analytic cannot identify lines added inline
+- zh: 只读固件归档、initramfs 或设备配置没有导出，或早期启动先于传感器时，内容和执行一侧可能缺失
+  en: Content or execution may be missing when read-only firmware archives, initramfs, or device configuration are not exported or early boot
+    precedes sensor startup
+- zh: 攻击者控制批准包、配置管理或合法管理员会话时，写入来源与基线都可能看似正常
+  en: Writer provenance and baseline can both appear normal when the adversary controls an approved package, configuration management, or legitimate
+    administrator session
+- zh: 中央 GPO/共享文件审计与客户端策略版本不汇聚，或客户端使用离线缓存且不报告版本时，真实写入者和执行范围无法连接。
+  en: When central GPO or shared-file audit is not joined with client policy version, or a client uses offline cache without reporting version,
+    the true writer and execution scope cannot be connected.
+- zh: 启动早于 token、授权决策或结果遥测，或设备只报告 root/SYSTEM 标签而无授权集合时，只能确认潜在高权限消费，无法计算有效权限 delta 或首个新获准操作。
+  en: When startup precedes token, authorization-decision, or outcome telemetry, or a device reports only a root or SYSTEM label without authorization
+    set, privileged consumption is only potential and effective-authority difference or first newly authorized operation cannot be calculated.
+tuning_guidance:
+  paragraphs:
+  - zh: 按平台版本、设备角色、脚本路径、解释器、所有者、包来源和管理域建立签名或内容基线；对语法做规范化但保留原始字节和注释证据。允许项必须绑定具体 diff、包、发起者、范围和时间，不能永久放行 `/etc/rc.local`、域登录脚本、管理员或配置管理工具。对无法保存全文的设备至少保留签名哈希、行数、命令摘要和配置事务。
+    en: Establish signed or content baselines by platform version, device role, script path, interpreter, owner, package source, and management
+      domain. Normalize syntax while retaining original bytes and comment evidence. Allowlists bind a concrete diff, package, initiator, scope,
+      and time and never permanently allow `/etc/rc.local`, domain logon scripts, administrators, or configuration-management tools. Devices unable
+      to retain full text should preserve signed hash, line count, command summary, and configuration transaction at minimum.
+  - zh: 将内容异常和确认执行分开输出。只发现 diff 时先保全版本并限制写入；只有新增行与 boot/logon 内解释器或子进程相连时确认持久化。NJS-0085-001 还要求脚本路径及多数合法内容保持，若整个脚本是新建则归父级。部署前用真实升级、配置下发和故障修复流程验证语义
+      diff 与窗口。
+    en: Output content anomaly separately from confirmed execution. On a diff alone, preserve versions and constrain writes. Confirm persistence
+      only when added lines join to an interpreter or child process inside boot or logon. NJS-0085-001 additionally requires script path and most
+      legitimate content to remain; a wholly new script stays at parent scope. Validate semantic diff and windows against real upgrades, configuration
+      deployment, and repair before enforcement.
+  - zh: 为每个集中脚本记录 owner、批准哈希、GPO/分配 ID、目标 OU/组、复制窗口和预期子进程；按 policy_version 而非仅时间连接客户端。先在审计模式计算预期与实际扇出，只有未批准内容和后继执行同时成立才处置，并避免因复制延迟把合法旧版缓存判为攻击。
+    en: Record owner, approved hash, GPO or assignment ID, target OU or group, replication window, and expected child process for every central
+      script, joining clients by policy version rather than time alone. Compute expected and actual fan-out in audit mode first, enforce only
+      when unapproved content and successor execution coexist, and avoid treating legitimate stale cache under replication delay as attack.
+  - zh: TA0004 规则先以真实拒绝/允许结果校准 authorization_set 与 delta，不把 uid=0、SYSTEM、computer scope 或系统路径直接映射为提权。分别输出 content_anomaly、persistence_confirmed、elevation_confirmed 和 authority_unresolved；对中央版本按客户端分组。将批准例外绑定到精确 writer、脚本 diff、consumer token、操作、资源、范围和有效期，避免永久允许管理员、GPO 或启动解释器。
+    en: Calibrate TA0004 authorization set and difference against actual deny and allow outcomes rather than mapping uid 0, SYSTEM, computer scope,
+      or system path directly to elevation. Emit content anomaly, Persistence confirmed, elevation confirmed, and authority unresolved separately,
+      grouping central versions by client. Bind approved exceptions to exact writer, script difference, consumer token, operation, resource, scope,
+      and validity period rather than permanently allowing administrators, GPOs, or startup interpreters.
+evidence_refs:
+- REF-000154
+- REF-000155
+- REF-000156
+- REF-000157
+- REF-000175
+- REF-000176
+lifecycle:
+  status: review
+  version: 1.2.0
+  created: '2026-09-11'
+  modified: '2026-09-13'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

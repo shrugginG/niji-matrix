@@ -1,0 +1,144 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000349
+strategy_ref: DET-000260
+name:
+  zh: TLS carrier 明文中的独立 ciphertext 封套
+  en: Independent Ciphertext Envelope inside TLS Carrier Plaintext
+summary:
+  zh: 区分外层 TLS 解密与内层消息恢复，并验证内层命令对端点动作的影响。
+  en: Separate outer TLS decryption from inner-message recovery and verify that inner commands drive endpoint actions.
+domains:
+- enterprise
+platforms:
+- Network
+- Windows
+- Linux
+logic:
+  paragraphs:
+  - zh: 从 TLS/flow 日志取得 uid、SNI/cert、process 与 tls_decryption_status；在合法授权解密/测试环境将 outer plaintext 存为 content_ref，识别 stable
+      inner frame、wrapped-key/IV slots、message ID 与 ciphertext。将 inner envelope 与同 process 的 crypto context/receiver decrypt
+      连接，并以 recovered command format/outcome 确认。outer TLS 未解密时只能 opaque_nested_candidate；只因 body 高熵不确认。RFC 9850 keylog 仅用于批准诊断/测试，且其
+      secrets 必须按敏感 key material 保护。
+    en: Obtain uid, SNI or certificate, process, and tls_decryption_status from TLS and flow logs. In an authorized decryption
+      or test environment, store outer plaintext as a content reference and identify stable inner framing, wrapped-key and
+      IV slots, message ID, and ciphertext. Join the inner envelope to cryptographic context and receiver decryption in the
+      same process and confirm through recovered command format and outcome. Without outer TLS decryption, report opaque_nested_candidate
+      only; high-entropy body alone does not confirm. RFC 9850 key logs are limited to approved diagnosis or test and their
+      secrets require sensitive-key protection.
+data_requirements:
+- source_type: tls-flow
+  name:
+    zh: TLS 流量与会话元数据
+    en: TLS Flow and Session Metadata
+  channel: Zeek ssl.log/conn.log or equivalent
+  required_fields:
+  - ts
+  - uid
+  - id.orig_h
+  - id.orig_p
+  - id.resp_h
+  - id.resp_p
+  - server_name
+  - version
+  - cipher
+  - established
+  - cert_chain_fuids
+  - process_start_key
+- source_type: authorized-outer-decrypt
+  name:
+    zh: 获批外层解密记录
+    en: Authorized Outer Decryption Records
+  channel: test/decryption proxy or endpoint keylog where permitted
+  required_fields:
+  - timestamp
+  - flow_id
+  - client_random_or_session_id
+  - tls_decryption_status
+  - content_ref
+  - content_length
+  - content_digest
+- source_type: inner-envelope
+  name:
+    zh: 内层密码封套
+    en: Inner Cryptographic Envelope
+  channel: content parser
+  required_fields:
+  - flow_id
+  - message_id
+  - framing_version
+  - wrapped_key_digest
+  - iv_nonce_digest
+  - ciphertext_offset
+  - ciphertext_length
+  - ciphertext_digest
+- source_type: endpoint-crypto-outcome
+  name:
+    zh: 端点密码与任务结果
+    en: Endpoint Cryptography and Task Outcome
+  channel: endpoint instrumentation/EDR
+  required_fields:
+  - timestamp
+  - process_start_key
+  - api_name
+  - key_scope
+  - message_id
+  - plaintext_digest
+  - command_id
+  - process_or_file_outcome
+observables:
+- zh: 外层解密成功后 body 仍为独立密文封套
+  en: Outer decryption succeeds but the body remains an independently encrypted envelope
+- zh: 内层封套结构在消息之间稳定出现
+  en: A stable inner-envelope layout recurs across messages
+- zh: 恢复内层密钥需要与 TLS 不同的材料
+  en: Inner-key recovery requires material distinct from TLS secrets
+- zh: 内层解密命令与端点动作连接
+  en: An inner decrypted command joins to an endpoint outcome
+correlation:
+  window:
+    zh: 覆盖一条 TLS 会话及其内层任务周期；明文和密钥引用仅按获批事件政策短期保留。
+    en: Cover one TLS session and its inner task cycles; retain plaintext and key references only for the period allowed by
+      incident policy.
+  dimensions:
+  - flow_id
+  - uid
+  - process_start_key
+  - client_random_or_session_id
+  - message_id
+  - wrapped_key_digest
+  - time
+false_positives:
+- zh: 合法端到端通信与客户端加密存储
+  en: Legitimate end-to-end messaging and client-side encrypted storage
+- zh: 金融 医疗封套及企业代理应用层密码
+  en: Financial or healthcare envelopes and enterprise-agent application cryptography
+blind_spots:
+- zh: 无法合法取得外层解密或 ECH 及代理缺口
+  en: No authorized outer decryption, ECH, or a proxy visibility gap
+- zh: 内层填充分片及控制端私钥不可得
+  en: Inner padding or fragmentation and unavailable controller private key
+- zh: 端点使用硬件密码模块而无明文观察
+  en: Endpoint hardware cryptography without plaintext observation
+tuning_guidance:
+  paragraphs:
+  - zh: 维护批准 E2EE/app-layer encryption 的 process/service/key owner 清单；未知 inner ciphertext 只有在 unapproved process、稳定 envelope、inner
+      recovery 与恶意 outcome 组合时升级。避免生产环境全局 keylog。
+    en: Maintain approved E2EE and application-layer encryption process, service, and key-owner inventories. Elevate unknown
+      inner ciphertext only with an unapproved process, stable envelope, inner recovery, and malicious outcome. Avoid global
+      production key logging.
+evidence_refs:
+- REF-001148
+- REF-001149
+- REF-001150
+- REF-000920
+- REF-000634
+- REF-001152
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-10-05'
+  modified: '2026-10-05'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

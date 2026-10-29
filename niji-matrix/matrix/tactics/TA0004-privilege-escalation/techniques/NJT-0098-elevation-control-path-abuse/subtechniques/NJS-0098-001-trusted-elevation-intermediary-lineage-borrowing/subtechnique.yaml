@@ -1,0 +1,188 @@
+schema_version: 2.0.0
+type: evasion-subtechnique
+id: NJS-0098-001
+parent_ref: NJT-0098
+name:
+  zh: 受信提权中介谱系借用
+  en: Trusted Elevation-Intermediary Lineage Borrowing
+summary:
+  zh: 攻击者让原生 broker、受信系统组件、已批准应用或委派身份承接提权，使低权限输入与高权限结果显示在不同主体或进程下，借用中介信誉削弱归因。
+  en: An adversary routes elevation through a native broker, trusted system component, approved application, or delegated
+    identity so lower-privilege input and the privileged result appear under different principals or processes, borrowing
+    intermediary reputation to weaken attribution.
+aliases: []
+definition_and_concept:
+  paragraphs:
+  - zh: 本子技术的稳定变量是“高权限结果在遥测中由哪个中介谱系呈现”。攻击者有意选择已经能够自动提升、代理授权、访问受保护资源或被低权限主体模拟的中介，把自己的请求、handler、参数或 delegation 交给它执行。成立条件是攻击者可控输入进入受信中介，并由中介产生更高
+      effective privilege；仅调用普通系统工具、仅存在父子进程或仅使用服务账户名称都不够。
+    en: The stable variable is the intermediary lineage under which the privileged result appears in telemetry. The adversary
+      deliberately selects an intermediary already able to auto-elevate, broker authorization, access a protected resource,
+      or be impersonated by a lower-privilege principal and supplies its request, handler, parameter, or delegation for execution.
+      The subtechnique requires adversary-controlled input to enter a trusted intermediary and the intermediary to produce
+      higher effective privilege. Merely invoking a system tool, observing a parent-child relation, or using a service-account
+      name is insufficient.
+  - zh: 中介可以是 Windows auto-elevating 组件、macOS Authorization Services helper、TCC 已批准应用或云 service account/token broker；这些不是四个子技术，而是同一变量的实现。跨实现不变量是原始
+      requester 与 effective executor 不同，且平台原本赋予 executor 的信任能够影响检测或审计解释。Glupteba 经 HKCU handler 让 CompMgmtLauncher/fodhelper
+      产生 system-level 子进程，是该因果结构的直接观察例。
+    en: The intermediary can be a Windows auto-elevating component, macOS Authorization Services helper, TCC-approved application,
+      or cloud service account or token broker. These are implementations of one variable, not four children. The cross-implementation
+      invariant is that original requester differs from effective executor and platform trust in that executor affects detection
+      or audit interpretation. Glupteba using an HKCU handler so CompMgmtLauncher or fodhelper creates a system-level child
+      is a directly observed instance of the causal structure.
+stealth_characteristics:
+  paragraphs:
+  - zh: 受信提权中介谱系借用使痕迹变化发生在来源与结果之间：攻击者进程可能只留下对正常 broker 的调用或对用户可写状态的修改，而敏感行为从签名系统二进制、高完整性 helper、获批 bundle 或合法 service account
+      出现。若日志不保留 transaction/call key、AttributionChain 或 delegation chain，结果侧无法直接显示原始低权限发起者。中介越常见，基于父进程、签名、服务名或主体信誉的静态规则越容易降权。
+    en: Trusted Elevation-Intermediary Lineage Borrowing changes traces between provenance and outcome. The adversary process
+      can leave only an invocation of a normal broker or mutation of user-writable state, while the sensitive behavior appears
+      from a signed system binary, high-integrity helper, approved bundle, or legitimate service account. If logs omit a transaction
+      or call key, AttributionChain, or delegation chain, the outcome side cannot directly show the original lower-privilege
+      initiator. The more common the intermediary, the more likely static rules based on parent, signing, service name, or
+      principal reputation are to discount the event.
+  - zh: 本子技术不会自动消除痕迹。handler writer、调用者、授权结果、中介父子关系、原始/有效主体与资源结果仍可能分别存在；匿迹效果依赖防守方是否在信任边界处停止关联。若端到端事务键和不可变双身份审计完整保留，借用信誉只改变外观，不能阻止归因。攻击者控制中介本身或日志管道属于更强能力，应在限制中单独说明。
+    en: The subtechnique does not automatically erase traces. Handler writer, caller, authorization result, intermediary parent-child
+      relation, original and effective principal, and resource outcome can still exist separately; the stealth effect depends
+      on defenders stopping correlation at the trust boundary. With complete end-to-end transaction keys and immutable dual-identity
+      audit, borrowed reputation changes appearance without preventing attribution. Control of the intermediary itself or
+      the logging pipeline is a stronger capability addressed separately in limitations.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 与短寿命权限窗口激活的边界在于主要可控变量：本项选择由谁作为可见中介，即使权限持续较长也可以成立；兄弟项选择权限存在多久，即使原始主体与有效主体在日志中清楚连接也可以成立。两者可在同一服务账户模拟或授权代理事件中共存。
+    en: The boundary with Ephemeral Privilege-Window Activation is the primary controlled variable. This child selects who
+      appears as the visible intermediary and can qualify even when authority lasts longer. Its sibling selects how long authority
+      exists and can qualify even when original and effective principals are clearly linked. Both can coexist in one service-account
+      impersonation or authorization-broker event.
+  - zh: 仅伪装进程名称或签名而不经过提权控制、直接操纵 Windows 令牌、一般 IPC Broker 执行以及向身份长期新增密钥或角色分别属于相邻技术。已批准应用或服务身份只有在攻击者控制输入、确实获得更高资源权限并改变来源解释时才进入本项。
+    en: Process-name or signature masquerading without elevation control, direct Windows-token manipulation, ordinary IPC-broker
+      execution, and durable addition of keys or roles to an identity belong to adjacent techniques. An approved application
+      or service identity enters this child only when the adversary controls its input, actually obtains greater resource
+      authority, and changes provenance interpretation.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: Windows 攻击者修改当前用户可写的类 handler 指向恶意内容，再触发会自动提升且常被信任的系统组件；防守方在结果侧看到该系统组件派生高完整性进程。macOS 攻击者把 AppleEvent、文件操作或其他受保护请求交给已有
+        PPPC/TCC 授权的应用或 Authorization Services helper；前台应用的 bundle 与签名可以正常，但 AttributionChain 中的调用者或输入不符合基线。
+      en: A Windows adversary changes a current-user writable class handler to malicious content and then triggers a commonly
+        trusted auto-elevating system component, leaving that component as the parent of a high-integrity process on the outcome
+        side. A macOS adversary passes an AppleEvent, file operation, or other protected request through an application already
+        authorized by PPPC or TCC or through an Authorization Services helper. The foreground application's bundle and signing
+        can be normal while the caller or input in AttributionChain deviates from baseline.
+    - zh: 云攻击者使用已有 impersonation 权限请求 service-account 短期 token，资源侧 API 以 service account 为 effective identity；若审计只保留该身份或检测将其永久
+        allowlist，原始主体被隐藏。平台如果像 Google Cloud 多数审计一样同时保留原始和模拟身份，防守方仍需将 token issuance、delegationInfo、session 与资源操作连接，不能只确认两个名字存在。
+      en: A cloud adversary uses existing impersonation authority to request a short-lived service-account token, causing
+        resource APIs to show the service account as effective identity. If audit retains only that identity or detection
+        permanently allowlists it, the original principal is hidden. Where the platform retains both original and impersonated
+        identities, as most Google Cloud audit logs do, defenders still need to join token issuance, delegation information,
+        session, and resource operation rather than merely confirming that both names exist.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者需要至少一个可调用或可输入的受信中介，以及足以触发其提权语义但低于最终权限的初始能力。该能力可能是写 HKCU handler、向获批应用发送可执行请求、访问 helper 接口，或拥有 getAccessToken/impersonation
+          权限。攻击者会选择能保留正常签名、父进程、应用身份或 service account 名称的路径，并让敏感动作紧随结果以减少额外异常。
+        en: The adversary needs at least one invokable or input-bearing trusted intermediary and initial authority sufficient
+          to trigger its elevation semantics but lower than the final privilege. That authority can be writing an HKCU handler,
+          sending an executable request to an approved application, accessing a helper interface, or holding getAccessToken
+          or impersonation permission. The adversary selects a path preserving normal signing, parent process, application
+          identity, or service-account name and places the sensitive action close to the outcome to minimize additional anomalies.
+    defender_model:
+      paragraphs:
+      - zh: 防守方可能观察到输入写入者、低权限调用者、授权请求、中介身份、派生进程或会话以及敏感资源操作，但这些事实常分布在不同日志中。能够保留中介允许的调用者、输入和目标基线，并使用稳定事务或进程标识连接两端的环境，更容易恢复原始请求者。
+        en: Defenders may observe the input writer, lower-authority caller, authorization request, intermediary identity,
+          derived process or session, and sensitive resource operation, but these facts are often distributed across logs.
+          Environments that retain baselines for allowed callers, inputs, and targets and connect both ends with stable transaction
+          or process identifiers are better able to recover the original requester.
+      - zh: 如果平台只记录中介和结果而没有原始调用者，谱系只能得到有限重建。合法授权助手、隐私代理和服务账户模拟会产生相似链条，必须结合调用来源、输入内容、批准范围和资源结果解释。
+        en: If the platform records only the intermediary and result without the original caller, lineage can be reconstructed
+          only partially. Legitimate authorization helpers, privacy brokers, and service-account impersonation create similar
+          chains and require context from call origin, input content, approved scope, and resource outcome.
+stealth_mechanisms:
+- mechanism_ref: NM-BT
+  role: primary
+  summary:
+    zh: 受信中介把低权限请求与高权限结果置于不同观察边界
+    en: A trusted intermediary places the lower-privilege request and privileged outcome across observation boundaries
+  analysis:
+    paragraphs:
+    - zh: 攻击者把可控 handler、参数、调用或 delegation 输入交给已有高权限能力的中介；痕迹随之从攻击者直接提权变为“低权限请求→正常 broker/受信组件→高权限结果”。请求侧与结果侧由进程、服务或身份信任边界隔开，防守方在任一侧单独观察时分别只看到普通调用或可信
+        executor，直接归因被削弱并产生 Boundary Traversal。关联 writer/caller、事务、授权、中介和 outcome 后，才会重新显现攻击者选择的控制路径。
+      en: The adversary gives a controllable handler, parameter, call, or delegation input to an intermediary that already
+        has privileged capability. The trace changes from direct adversary elevation into lower-privilege request, normal
+        broker or trusted component, and privileged result. Process, service, or identity trust boundaries separate the request
+        and outcome sides. A defender observing either side sees an ordinary invocation or trusted executor, weakening direct
+        attribution and producing Boundary Traversal. Joining writer or caller, transaction, authorization, intermediary,
+        and outcome reveals the selected control path again.
+  evidence_refs:
+  - REF-000318
+  - REF-000322
+  - REF-000323
+  - REF-000325
+  confidence: high
+- mechanism_ref: NM-FD
+  role: secondary
+  summary:
+    zh: 正常签名、父进程、应用或服务身份为高权限结果提供良性特征
+    en: Normal signing parent application or service identity gives the privileged result benign features
+  analysis:
+    paragraphs:
+    - zh: 攻击者保留中介原有签名、路径、bundle 或 service account 名称，使结果事件带有防守规则常用的良性特征；真实变化隐藏在用户可写输入、异常 caller 或 delegation 上。只按可执行文件信誉或身份名称分类时，事件被降权，形成
+        Feature Disguise。该效果不是简单名称伪装：只有这些特征确实来自完成提权的受信中介，并改变防守关联或分流结果时才成立。
+      en: The adversary preserves the intermediary's existing signature, path, bundle, or service-account name, giving outcome
+        events benign features commonly used by defensive rules while the real change resides in user-writable input, anomalous
+        caller, or delegation. Classification by executable reputation or identity name alone discounts the event and creates
+        Feature Disguise. This is not simple name masquerading; it applies only when the features genuinely belong to the
+        trusted intermediary completing elevation and change defensive correlation or triage.
+  evidence_refs:
+  - REF-000318
+  - REF-000322
+  - REF-000323
+  - REF-000325
+  confidence: high
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000095
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000096
+evidence:
+  claim_refs:
+  - CLM-000529
+  - CLM-000531
+  - CLM-000532
+  case_refs:
+  - CASE-000122
+  reference_refs:
+  - REF-000317
+  - REF-000318
+  - REF-000322
+  - REF-000323
+  - REF-000324
+  - REF-000325
+research:
+  limitations:
+    paragraphs:
+    - zh: Glupteba 直接观察支持 Windows 受信父进程实现，Microsoft、Apple 与 Google 官方文档支持其他平台的中介与字段结构；跨平台“攻击者有意借用信誉”仍是强推断，不能把所有合法 broker、TCC-approved
+        app 或 service-account impersonation 自动归为匿迹。缺少原始 caller 的日志既可能是平台设计，也可能是采集失败。
+      en: Direct Glupteba observation supports the Windows trusted-parent implementation, while Microsoft, Apple, and Google
+        documentation supports intermediary and field structures on other platforms. Deliberate cross-platform borrowing of
+        reputation remains a strong inference, so not every legitimate broker, TCC-approved application, or service-account
+        impersonation can be labeled stealth. Missing original-caller data can reflect platform design or collection failure.
+    - zh: 中介谱系与短寿命窗口可在同一云 impersonation 事件中共现；本项只主张可见 executor 与 original requester 分离及其图谱防御差异，不把 token duration 作为成立条件。若未来平台强制不可变端到端双身份事务且检测普遍使用该链，本项的实际匿迹收益应下调，但
+        taxonomy 边界仍可保留用于评估控制完整性。
+      en: Intermediary lineage and temporary lifetime can coexist in one cloud impersonation event. This child claims only
+        separation of visible executor from original requester and its graph-defense difference and does not require token
+        duration. If platforms later enforce immutable end-to-end dual-identity transactions that detection universally consumes,
+        practical stealth benefit should be downgraded, while the taxonomy boundary can remain useful for control-integrity
+        assessment.
+lifecycle:
+  status: review
+  version: 0.2.0
+  created: '2026-09-13'
+  modified: '2026-09-19'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []
+lineage:
+  attck_subtechnique_inherited: false

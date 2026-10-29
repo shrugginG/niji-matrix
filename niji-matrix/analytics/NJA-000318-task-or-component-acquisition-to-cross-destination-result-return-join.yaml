@@ -1,0 +1,132 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000318
+strategy_ref: DET-000244
+name:
+  zh: 任务/组件取得到异目的地结果回传关联
+  en: Task or Component Acquisition to Cross-Destination Result Return Join
+summary:
+  zh: 连接任务或组件取得、本地结果和异目的地回传。
+  en: Join task or component acquisition, local outcome, and return to a different destination.
+domains:
+- enterprise
+platforms:
+- Windows
+- Linux
+logic:
+  paragraphs:
+  - zh: 从第一通道识别脚本/组件响应、命令包或明显入站任务，在同一 DeviceId 和 InitiatingProcessUniqueId/后继 ProcessUniqueId 上关联 PowerShell 4104、WMI/系统枚举、子进程或文件读取，然后在最初
+      0–30 分钟内寻找向不同 RemoteUrl/IP 的 URL 参数、POST 或单向大出站结果。内容可见时比较任务字段、victim/task ID 和结果结构；内容不可见时必须同时具备第一通道取得、对应本地执行和第二目的地回传三段，不能用两个域名和相反流向替代因果。
+    en: Identify script or component responses, command packages, or clear inbound tasking on the first channel. On the
+      same DeviceId and InitiatingProcessUniqueId or successor ProcessUniqueId, correlate PowerShell 4104, WMI or system
+      enumeration, child processes, or file reads, then seek URL parameters, POSTs, or predominantly outbound result
+      traffic to a different RemoteUrl or IP within an initial 0–30 minute window. Where content is visible, compare
+      task fields, victim or task ID, and result structure. With opaque content, require all three segments—first-channel
+      acquisition, matching local execution, and second-destination return—rather than substituting two domains and opposite
+      flow direction for causality.
+data_requirements:
+- source_type: network-http
+  name:
+    zh: ('network_http', 'network_http')
+    en: ('network_http', 'network_http')
+  channel: Zeek/proxy and Defender DeviceNetworkEvents
+  required_fields:
+  - timestamp
+  - device_id
+  - uid
+  - remote_url
+  - remote_ip
+  - method
+  - uri
+  - status_code
+  - request_body_len
+  - response_body_len
+  - initiating_process_unique_id
+- source_type: endpoint-script
+  name:
+    zh: ('endpoint_script', 'endpoint_script')
+    en: ('endpoint_script', 'endpoint_script')
+  channel: Windows PowerShell Operational 4104 when enabled
+  required_fields:
+  - timestamp
+  - computer
+  - event_id
+  - script_block_id
+  - script_block_text
+  - process_id
+- source_type: endpoint-process
+  name:
+    zh: ('endpoint_process', 'endpoint_process')
+    en: ('endpoint_process', 'endpoint_process')
+  channel: Defender DeviceProcessEvents or equivalent
+  required_fields:
+  - timestamp
+  - device_id
+  - process_unique_id
+  - initiating_process_unique_id
+  - file_name
+  - process_command_line
+  - sha1
+- source_type: endpoint-file
+  name:
+    zh: ('endpoint_file', 'endpoint_file')
+    en: ('endpoint_file', 'endpoint_file')
+  channel: Defender DeviceFileEvents or equivalent
+  required_fields:
+  - timestamp
+  - device_id
+  - file_name
+  - folder_path
+  - sha1
+  - file_origin_url
+  - initiating_process_unique_id
+  - action_type
+observables:
+- zh: 任务/组件响应连接匹配的脚本或枚举结果和不同回传目的地
+  en: A task or component response joins a matching script or enumeration result and a different return destination
+- zh: victim/task 标识在取得与结果回传通道间复用
+  en: Victim or task identifiers are reused across acquisition and result-return channels
+correlation:
+  window:
+    zh: 初始零至三十分钟，扩展至完整任务周期并保留二十四小时覆盖延迟收集。
+    en: Initially zero to thirty minutes, extending to a full task cycle and retaining twenty-four hours for delayed
+      collection.
+  dimensions:
+  - device_id
+  - process_unique_id
+  - initiating_process_unique_id
+  - script_block_id
+  - sha1
+  - victim_or_task_id
+  - task_destination
+  - result_destination
+  - time
+false_positives:
+- zh: 企业 agent 获取作业后上传遥测、CI/CD worker、扫描器或备份 agent
+  en: Enterprise agents fetching jobs and uploading telemetry, CI/CD workers, scanners, or backup agents
+blind_spots:
+- zh: 脚本日志缺失、进程注入、TLS 参数不可见或长延迟
+  en: Missing script logs, process injection, opaque TLS parameters, or long delay
+tuning_guidance:
+  paragraphs:
+  - zh: 为批准 agent 定义任务端、结果端、软件签名、脚本/命令类别和执行周期，并要求任务/结果服务属于同一批准产品。白名单应绑定版本与进程摘要；发现未知 task endpoint 或执行超出批准类别时仍保留回传检测。不要仅凭
+      POST 大小或 Base64 判定。
+    en: Define task endpoint, result endpoint, software signature, script or command classes, and execution cycle for
+      approved agents, requiring task and result services to belong to the same approved product. Bind allowlists to
+      version and process digest and retain return-channel detection when task endpoints are unknown or execution exceeds
+      the approved class. Do not decide from POST size or Base64 alone.
+evidence_refs:
+- REF-001054
+- REF-000639
+- REF-000463
+- REF-000604
+- REF-000598
+- REF-000475
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-10-04'
+  modified: '2026-10-04'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

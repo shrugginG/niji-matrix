@@ -1,0 +1,122 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000176
+strategy_ref: DET-000164
+name:
+  zh: 失败主端点至备用端点关联
+  en: Failed Primary to Reserve Endpoint Correlation
+summary:
+  zh: 识别同一进程在首选 C2 失败后转向同协议备用端点并恢复通信。
+  en: Identify one process moving to a same-transport reserve endpoint after preferred C2 failure and resuming communication.
+domains:
+- enterprise
+platforms:
+- Windows
+- Linux
+- macOS
+logic:
+  paragraphs:
+  - zh: 按 device_id、ProcessGuid 或等效进程启动键连接失败连接、阻断决策、DNS 查询和后继成功连接；保留源及目标、协议、状态、时间和进程签名。对同协议路径，要求首选端点最近发生拒绝、超时或预期响应缺失，备用端点在后续窗口首次出现，并与旧路径具有相似请求节律或任务结果。区分健康检查失败、仅有预置地址和真正恢复双向控制的三个证据级别。
+    en: Join failed connections, block decisions, DNS queries, and subsequent successful connections by device_id
+      and ProcessGuid or equivalent process-start key; retain endpoints, protocol, result, time, and process signature.
+      For same-transport paths, require a recent denial, timeout, or missing expected response at the preferred
+      endpoint, first appearance of a reserve endpoint in the successor window, and similar request cadence or task
+      outcome. Keep health-check failure, a configured reserve address only, and actual restoration of bidirectional
+      control as distinct evidence levels.
+  - zh: 将软件清单和批准灾备配置作为反例，并以新目的地后的命令、文件或持久回连提升结论。若进程重启或 NAT/代理改写造成强键缺失，降级为设备级推断，不把两个域名共享时间段直接称为同一植入。
+    en: Use software inventory and approved disaster-recovery configuration as counterexamples, and raise confidence
+      with a command, file action, or sustained callback after the new destination. If process restart or NAT/proxy
+      rewriting removes a strong key, downgrade to device-level inference rather than calling two domains in one
+      time interval the same implant.
+data_requirements:
+- source_type: endpoint-network
+  name:
+    zh: 端点进程网络事件
+    en: Endpoint process network events
+  channel: Sysmon Event 3 or EDR
+  required_fields:
+  - event_time
+  - device_id
+  - process_guid
+  - process_path
+  - destination_ip
+  - destination_port
+  - protocol
+  - result
+- source_type: network-connection
+  name:
+    zh: 连接与拒绝日志
+    en: Connection and denial logs
+  channel: Zeek conn.log or firewall
+  required_fields:
+  - ts
+  - uid
+  - id.orig_h
+  - id.resp_h
+  - id.resp_p
+  - proto
+  - conn_state
+- source_type: dns-resolution
+  name:
+    zh: DNS 查询与答案
+    en: DNS query and answer log
+  channel: Zeek dns.log
+  required_fields:
+  - ts
+  - uid
+  - query
+  - answers
+  - rcode_name
+- source_type: approved-failover-inventory
+  name:
+    zh: 批准的故障切换配置
+    en: Approved failover configuration
+  channel: null
+  required_fields:
+  - software_id
+  - approved_endpoints
+  - failover_policy
+  - owner
+observables:
+- zh: 失败或拒绝后同进程首次联系备用端点
+  en: First same-process contact with a reserve endpoint after failure or denial
+- zh: 旧端点与新端点呈现相似回连节律并有控制样式结果
+  en: Old and new endpoints show comparable callback cadence with control-like results
+correlation:
+  window:
+    zh: 首选路径失败前十五分钟至后两小时；至少保留三十天失败与成功连接摘要。
+    en: From fifteen minutes before preferred-path failure through two hours after; retain failed and successful
+      connection summaries for at least thirty days.
+  dimensions:
+  - device_id
+  - process_guid
+  - source_ip
+  - destination_ip
+  - protocol
+  - time
+false_positives:
+- zh: 合法更新器镜像、CDN 调度、灾备客户端和代理重试
+  en: Legitimate updater mirrors, CDN steering, disaster-recovery clients, and proxy retries
+blind_spots:
+- zh: 仅保存成功连接、没有进程键、NAT 映射缺失或切换晚于保留期
+  en: Successful-only logs, missing process key, absent NAT mapping, or a switch beyond retention
+tuning_guidance:
+  paragraphs:
+  - zh: 按软件与资产角色基线化批准备用集合和健康检查间隔。先以旧失败、新成功及同进程为硬门槛，再评估新端点信誉与后继行为；不能把所有更新器或同组织目的地整体豁免。
+    en: Baseline approved reserve sets and health-check intervals by software and asset role. Gate first on old
+      failure, new success, and same process, then assess destination reputation and successor behavior; do not
+      exempt all updaters or same-organization destinations wholesale.
+evidence_refs:
+- REF-000628
+- REF-000629
+- REF-000634
+- REF-000635
+- REF-000230
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-09-22'
+  modified: '2026-09-22'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

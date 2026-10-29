@@ -1,0 +1,86 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000252
+strategy_ref: DET-000208
+name:
+  zh: EnumDeviceDrivers 结果语义分析
+  en: EnumDeviceDrivers Result-Semantics Analytic
+summary:
+  zh: 在经验证 API telemetry 中区分调用、成功状态和有效驱动地址。
+  en: Separate call occurrence, success status, and usable driver addresses in validated API telemetry.
+domains:
+- enterprise
+platforms:
+- Windows
+logic:
+  paragraphs:
+  - zh: 对 EnumDeviceDrivers 记录调用进程、返回值、result_count、null_count、OS build 和 token privileges。Windows 11 24H2 及以后系统中，调用成功但无 SeDebugPrivilege
+      且地址全 NULL 表示尝试未取得有效地址，不表示无加载驱动。高优先级要求异常调用者、有效结果或相邻恶意行为。
+    en: Record caller, return value, result_count, null_count, OS build, and token privileges for EnumDeviceDrivers. On Windows
+      11 24H2 and later, success with no SeDebugPrivilege and all-NULL addresses means an attempt without usable addresses,
+      not no loaded drivers. High priority requires an unusual caller, usable result, or adjacent malicious behavior.
+data_requirements:
+- source_type: validated-api-sensor
+  name:
+    zh: 经验证的用户态 API 传感器
+    en: Validated user-mode API sensor
+  channel: null
+  required_fields:
+  - timestamp
+  - host_id
+  - process_guid
+  - api_name
+  - return_value
+  - result_count
+  - null_count
+  - os_build
+  - token_privileges
+- source_type: driver-asset-baseline
+  name:
+    zh: 权威驱动资产基线
+    en: Authoritative driver asset baseline
+  channel: null
+  required_fields:
+  - host_id
+  - driver_name
+  - loaded_state
+  - load_address_visibility
+  - last_verified
+observables:
+- zh: 罕见进程调用 EnumDeviceDrivers 并获得有效地址
+  en: A rare process calls EnumDeviceDrivers and receives usable addresses
+- zh: 24H2 无调试权限的成功调用产生全 NULL 结果
+  en: A successful 24H2 call without debug privilege produces all-NULL results
+correlation:
+  window:
+    zh: 一次 API 调用及随后 30 分钟进程结果；调用者流行度按 14 日同类主机基线。
+    en: One API call plus 30 minutes of process outcomes; caller prevalence uses a 14-day peer-host baseline.
+  dimensions:
+  - host_id
+  - process_guid
+  - os_build
+  - privilege_state
+  - result_semantics
+  - time
+false_positives:
+- zh: 安全、取证、性能、诊断和兼容性工具会合法调用
+  en: Security, forensics, performance, diagnostic, and compatibility tools legitimately call the API
+blind_spots:
+- zh: 基础日志通常不记录 API，传感器可能缺输出缓冲、权限或 build；内存内调用与注入会混淆调用者
+  en: Basic logs usually omit the API; sensors can miss output buffers, privilege, or build, while in-memory calls and injection
+    obscure caller attribution
+tuning_guidance:
+  paragraphs:
+  - zh: 按签名主体、哈希、路径、主机角色与版本建立基线，不跨产品使用固定阈值。结果字段不完整时降级为调用线索。
+    en: Baseline by signer, hash, path, host role, and version without cross-product fixed thresholds. Downgrade to a call
+      lead when result fields are incomplete.
+evidence_refs:
+- REF-000825
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-09-27'
+  modified: '2026-09-27'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

@@ -1,0 +1,115 @@
+schema_version: 2.0.0
+type: evasion-subtechnique
+id: NJS-0176-002
+parent_ref: NJT-0176
+name:
+  zh: 既有转发路径抓取
+  en: Existing-Transit-Path Capture
+summary:
+  zh: 攻击者在本来就转发认证流量的设备上本地缓冲或导出报文，保持原通信路径与服务结果不变，同时取得凭据材料。
+  en: An adversary locally buffers or exports packets on a device already forwarding authentication traffic, preserving the
+    original path and service result while acquiring credential material.
+aliases: []
+lineage:
+  attck_subtechnique_inherited: false
+definition_and_concept:
+  paragraphs:
+  - zh: 既有转发路径抓取指攻击者在已经属于认证通信真实转发路径的路由器、交换机、VPN 或边缘节点上启用本地捕获，并从该节点的接口、控制平面或数据面缓冲区取得材料。该节点没有把受害者导向新的服务，也没有把流量复制到另一个持续收集目标；分类变量是“原有转发权同时成为观察权”。
+    en: Existing-Transit-Path Capture enables local capture on a router, switch, VPN, or edge node already forwarding the
+      real authentication communication and obtains material from that node's interface, control plane, or data-plane buffer.
+      The node does not direct the victim to a new service or establish another persistent collector target. The variable
+      is that preexisting forwarding authority becomes observation authority.
+stealth_characteristics:
+  paragraphs:
+  - zh: 既有转发路径抓取保留源、目标和正常转发结果，通常不会让端点产生证书、解析或网关异常；受侵设备还可能缺少 EDR。残余证据包括特权 CLI 会话、monitor capture 或等价对象、过滤器、开始/停止时间、缓冲计数、闪存
+      PCAP 和 TFTP/SCP 等导出。集中 AAA 记账、运行状态盘点和文件清单可恢复这些痕迹，但设备自身日志被清除时置信度下降。
+    en: Existing-Transit-Path Capture preserves source, destination, and forwarding outcome and generally creates no certificate,
+      resolution, or gateway anomaly at endpoints. Compromised appliances may also lack EDR. Residue includes privileged CLI
+      sessions, monitor capture or equivalent objects, filters, start and stop times, buffer counts, PCAPs in device storage,
+      and TFTP or SCP exports. Central AAA accounting, runtime-state inventory, and file inventory can recover these traces,
+      but confidence declines when the appliance clears its own logs.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 纳入要求该设备在攻击前或独立于抓包已经位于目标流的真实路径上，且抓包在设备本地结束或作为一次性产物导出。通过修改路由、DNS、ARP、DHCP 或代理使流量新经过该设备归 NJT-0136；配置 SPAN、ERSPAN 或云镜像形成持续复制目的地归复制观察面抓取。只有转发设备命令而无认证流覆盖与材料结果时仍是尝试。
+    en: Inclusion requires the device to have been on the flow's real path before or independently of the capture, with capture
+      terminating locally or exported as a discrete artifact. Changing routing, DNS, ARP, DHCP, or proxy behavior so traffic
+      newly traverses the device belongs to NJT-0136. Configuring SPAN, ERSPAN, or cloud mirroring to create a persistent
+      copy destination belongs to Replicated-Observation-Plane Capture. Device commands without authentication-flow coverage
+      and a material result remain an attempt.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: 2025 年联合通告记录行为者在受侵 Cisco IOS XE 设备上使用原生嵌入式抓包，创建并导出 `mycap.pcap`、`tac.pcap` 等文件，主要目标被评估为经过 TCP/49 的 TACACS+ 认证流。企业骨干、分支出口、VPN
+        集中器与运营商边缘都可能提供同类位置，只要设备本来就转发该交换。
+      en: The 2025 joint advisory documents actors using native embedded capture on compromised Cisco IOS XE devices and creating
+        or exporting files such as `mycap.pcap` and `tac.pcap`, with TACACS+ authentication over TCP/49 assessed as the primary
+        target. Enterprise cores, branch edges, VPN concentrators, and provider edges provide the same position when they
+        already forward the exchange.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者需要取得转发设备的特权 CLI、管理 API、容器或固件级访问，并选择覆盖认证流的接口和过滤器。能保存 PCAP 不代表能解释材料；明文、弱保护、可取得共享秘密或位于 TLS 终止之后仍是必要条件之一。设备存储、CPU、抓包长度和导出路径限制行动规模。
+        en: The adversary needs privileged CLI, management API, container, or firmware-level access to a forwarding device
+          and must select interfaces and filters covering authentication flows. Saving a PCAP does not make material interpretable.
+          Plaintext, weak protection, possession of a shared secret, or placement after TLS termination remains necessary.
+          Device storage, CPU, capture length, and export path constrain scale.
+    defender_model:
+      paragraphs:
+      - zh: 防守方依赖独立于受侵设备的 AAA 命令记账、配置与运行状态快照、设备文件目录、捕获缓冲参数及向外文件传输记录。检测须把 actor/session、capture name、interface、filter、时间、PCAP
+          hash 与认证流目录连接；不能因命令属于厂商原生功能而放行，也不能因合法网管经常抓包而永久白名单某个账户。
+        en: Defenders depend on AAA command accounting outside the compromised appliance, configuration and runtime snapshots,
+          device file listings, capture-buffer parameters, and outbound file-transfer records. Detection must join actor and
+          session, capture name, interface, filter, time, PCAP hash, and the authentication-flow inventory. Native vendor
+          functionality is not inherently benign, and frequent troubleshooting does not justify a permanent account allowlist.
+stealth_mechanisms:
+- mechanism_ref: NM-FD
+  role: primary
+  summary:
+    zh: 以原生设备诊断命令包装恶意凭据抓取
+    en: Wrap malicious credential capture in native device-diagnostic commands
+  analysis:
+    paragraphs:
+    - zh: 行为者在正常转发设备上使用嵌入式抓包和常见 PCAP 文件格式，命令与故障排查具有相同表面，原认证流继续正常转发。恶意差异只在未经批准的主体、敏感接口/过滤器、异常持续时间和导出目的地中显现。CISA 的实际命令与文件观察及
+        Cisco 的功能说明共同支持该特征相似性；如果集中记账和运行对象盘点完备，伪装效果会显著下降。
+      en: The actor uses embedded capture and ordinary PCAP formats on a normal forwarding device, producing the same visible
+        commands as troubleshooting while the authentication flow continues normally. Malice appears only in the unapproved
+        principal, sensitive interface or filter, anomalous duration, and export destination. CISA's observed commands and
+        files together with Cisco's functional documentation support this feature similarity. Complete centralized accounting
+        and runtime-object inventory substantially reduce the disguise.
+  confidence: medium
+  evidence_refs:
+  - REF-000792
+  - REF-000794
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000203
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000186
+evidence:
+  claim_refs:
+  - CLM-000875
+  case_refs:
+  - CASE-000256
+  reference_refs:
+  - REF-000792
+  - REF-000794
+research:
+  limitations:
+    paragraphs:
+    - zh: 联合通告直接证明原生 PCAP 收集和文件命名，且在至少一案中发现可逆保存的 TACACS+ 共享秘密；但“主要目标”和“可离线解密”仍是分析判断，不能写成行为者已成功解密并使用某个管理员口令。设备厂商对抓包对象、AAA 字段和运行状态保留差异很大。
+      en: The joint advisory directly establishes native PCAP collection and file naming and reports a reversibly stored TACACS+
+        shared secret in at least one case. Its statements about the primary objective and possible offline decryption remain
+        analytic assessments and cannot be rewritten as proven decryption and use of a particular administrator password.
+        Capture objects, AAA fields, and runtime-state retention vary substantially across vendors.
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-09-27'
+  modified: '2026-09-27'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

@@ -1,0 +1,27 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000055
+strategy_ref: DET-000076
+name: {zh: Power Request—状态边界—存续进程分析, en: Power Request-State Boundary-Surviving Process Analytic}
+summary: {zh: 以事件式 power request 和配置历史证明无用户活动时攻击入口跨预期休眠/重启继续。, en: Use event-based power-request and configuration history to prove an adversary entry continues across expected sleep or reboot without user activity.}
+domains: [enterprise]
+platforms: [Windows, Linux, macOS, Network Devices]
+logic: {paragraphs: [{zh: 规范 powercfg/systemd-inhibit/pmset、PowerSetRequest 或配置变化的 timestamp、caller PID/service、principal、request type、reason、old/new value、approval 和 clear/expiry。用资产角色、用户活动与维护窗口建立预期 sleep/lock/reboot 边界；将异常 request/setting 连接到跨边界仍存 PID/session、认证和网络结果。显示-only 变化、合法备份/媒体和 always-on 服务器单独排除。, en: "Normalize timestamp caller PID or service principal request type reason old and new value approval and clear or expiry for powercfg systemd-inhibit pmset PowerSetRequest or configuration changes. Build expected sleep lock or reboot boundaries from asset role user activity and maintenance windows and join anomalous requests or settings to PID or session authentication and network outcomes surviving the boundary. Exclude display-only changes legitimate backup or media and always-on servers separately."}]}
+data_requirements:
+- {source_type: power-setting-and-request, name: {zh: 电源配置与 Request 生命周期, en: Power configuration and request lifecycle}, channel: null, required_fields: [timestamp, device_id, principal_id, caller_process_or_service_id, operation, setting_or_request_type, reason, old_value, new_value, clear_or_expiry, outcome]}
+- {source_type: power-state-and-uptime, name: {zh: 睡眠、锁定、关机、重启与 Uptime, en: Sleep lock shutdown reboot and uptime}, channel: null, required_fields: [timestamp, device_id, state_event, expected_state, uptime, user_activity, power_source, outcome]}
+- {source_type: foothold-survival, name: {zh: 进程、会话、认证与网络存续, en: Process session authentication and network survival}, channel: null, required_fields: [timestamp, device_id, process_or_session_id, start_time, state, principal_id, network_destination, action, outcome]}
+- {source_type: power-change-approval, name: {zh: 电源策略与维护批准, en: Power policy and maintenance approval}, channel: null, required_fields: [change_id, device_id, owner, approved_setting_or_caller, validity_window, maintenance_reboot, status]}
+observables:
+- {zh: 无用户活动时未知进程创建 system-required request 且同一会话跨预期睡眠继续外联, en: An unknown process creates a system-required request without user activity and the same session continues egress across expected sleep}
+- {zh: sleep/hibernate/lock timeout 被非管理主体延长，随后长期运行进程保持原 PID 和远程访问, en: Sleep hibernate or lock timeout is extended by a non-management principal and a long-running process retains its PID and remote access}
+- {zh: reboot/shutdown 工具被删除或禁用且未执行批准维护重启，异常入口持续, en: Reboot or shutdown utilities are removed or disabled approved maintenance reboot does not occur and an anomalous entry continues}
+correlation:
+  window: {zh: request 创建到 clear/进程退出或七日，至少覆盖一个预期空闲/维护边界。, en: Span request creation through clear process exit or seven days and cover at least one expected idle or maintenance boundary.}
+  dimensions: [device, power_setting_or_request, caller, principal, expected_boundary, process_or_session, user_activity, approval, time]
+false_positives: [{zh: 备份、媒体播放、视频会议、更新、工业控制、服务器服务和用户演示模式, en: Backup media playback video conference update industrial control server service and presentation mode}]
+blind_spots: [{zh: 只使用 powercfg /requests 快照而不记录 request 创建/关闭，或平台无精确睡眠基线, en: Only powercfg requests snapshots are available without request create or close events or the platform lacks a precise sleep baseline}]
+tuning_guidance: {paragraphs: [{zh: 按资产角色、caller、reason、用户活动和维护周期建立基线；允许项绑定签名 caller、具体 reason 和最大时长。必须要求依赖进程/会话跨预期边界存续，不能从设置差异直接告警。, en: "Baseline asset role caller reason user activity and maintenance cadence. Bind allowances to a signed caller concrete reason and maximum duration. Require a dependent process or session to survive an expected boundary rather than alerting directly from a setting difference."}]}
+evidence_refs: [REF-000191, REF-000192]
+lifecycle: {status: review, version: 0.1.0, created: '2026-09-11', modified: '2026-09-11', contributors: [Niji Matrix Research], reviewers: []}
+

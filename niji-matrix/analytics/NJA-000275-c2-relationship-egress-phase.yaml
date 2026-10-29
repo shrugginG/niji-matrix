@@ -1,0 +1,112 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000275
+strategy_ref: DET-000223
+name:
+  zh: C2 关系内敏感读取后的出站相位变化
+  en: Post-Sensitive-Read Outbound Phase Change Within a C2 Relationship
+summary:
+  zh: 在已识别 C2 关系中连接敏感读取与后继出站相位增长。
+  en: Join sensitive access to a later outbound phase within an already identified C2 relationship.
+domains:
+- enterprise
+platforms: []
+logic:
+  paragraphs:
+  - zh: 先以设备、进程启动唯一键、目的主机或 SNI、目的端口和协议建立逻辑关系，至少保留若干先前回调或已确认 C2 告警作为关系基线。随后在建议的十五分钟窗口内，把敏感文件对象访问、数据库导出或收集进程结果与该关系中的
+      client-to-server 字节、请求体长度、消息数和方向字节比变化连接；即使没有新的 connect 事件，只要同一关系在读取后进入超出自身历史与资产角色基线的出站相位，也生成候选。以文件敏感度、读取进程与网络进程同一性、接收成功和多个周期重复提高置信度，不以通用一兆字节常量或“目标已知恶意”替代本地基线。
+    en: Build a logical relationship key from device, process-start unique key, destination host or SNI, destination
+      port, and protocol, retaining several preceding callbacks or a confirmed C2 alert as its baseline. Within
+      a suggested 15-minute window, join sensitive object access, database export, or collection-process output
+      to changes in client-to-server bytes, request-body length, message count, and directional byte ratio inside
+      that relationship. Generate a candidate when the same relationship enters an outbound phase beyond its own
+      history and asset-role baseline after the read, even without a new connect event. Raise confidence for data
+      sensitivity, identity between the reader and network process, receiver success, and repetition across cycles.
+      Do not substitute a universal one-megabyte constant or a “known malicious” destination for local baselining.
+data_requirements:
+- source_type: endpoint-object-access
+  name:
+    zh: 端点敏感对象访问
+    en: Endpoint Sensitive Object Access
+  channel: EDR file-access telemetry or Windows Security Event 4663 with deployment-validated SACLs
+  required_fields:
+  - timestamp
+  - device-id
+  - process-id-or-unique-key
+  - user-or-logon-id
+  - object-name
+  - access-type
+- source_type: process-network-connection
+  name:
+    zh: 进程网络连接归属
+    en: Process Network Connection Attribution
+  channel: Sysmon Event ID 3 or equivalent EDR network event
+  required_fields:
+  - timestamp
+  - device-id
+  - process-guid-or-unique-key
+  - image
+  - source-ip
+  - destination-ip
+  - destination-port
+  - protocol
+- source_type: network-flow-summary
+  name:
+    zh: 双向连接流量摘要
+    en: Bidirectional Connection Flow Summary
+  channel: Zeek conn.log or equivalent flow sensor
+  required_fields:
+  - ts
+  - uid
+  - id.orig-h
+  - id.orig-p
+  - id.resp-h
+  - id.resp-p
+  - proto
+  - service
+  - duration
+  - orig-bytes
+  - resp-bytes
+observables:
+- zh: 已知 C2 关系建立后发生敏感读取，随后同一关系的出站字节或消息体增长
+  en: Sensitive access occurs after C2 establishment and outbound bytes or message body grows in the same relationship
+- zh: 控制端、客户端身份和请求族保持不变而数据来源改变
+  en: Controller, client identity, and request family remain stable while data provenance changes
+correlation:
+  window:
+    zh: 覆盖一个正常回调周期至二十四小时，并按该植入历史节律校准。
+    en: Cover one normal callback period through twenty-four hours and calibrate to the implant relationship history.
+  dimensions:
+  - device-id
+  - process-start-key
+  - destination-host-or-sni
+  - destination-ip
+  - destination-port
+  - protocol
+false_positives:
+- zh: 批准远程管理、资产盘点、安全遥测和崩溃报告
+  en: Approved remote administration, asset inventory, security telemetry, and crash reporting
+blind_spots:
+- zh: 加密或自定义协议不能区分消息相位
+  en: Encryption or a custom protocol prevents phase separation
+- zh: 内存采集或共享服务进程缺少敏感读取记录
+  en: In-memory collection or shared service processes lack sensitive-read records
+tuning_guidance:
+  paragraphs:
+  - zh: 按资产角色和具体进程—目的关系学习出站方向、周期与体积分布；对批准代理使用精确软件签名、服务所有权和有期限任务例外，仍保留读取高敏对象后出现新字段、新消息型或异常成功上传的覆盖。
+    en: Learn direction, cadence, and volume per asset role and specific process-destination relationship. Use exact
+      software identity, service ownership, and time-bounded job exceptions for approved agents while retaining
+      coverage for new fields, new message types, or anomalous successful uploads after high-sensitivity reads.
+evidence_refs:
+- REF-000926
+- REF-000230
+- REF-000634
+- REF-000927
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-10-04'
+  modified: '2026-10-04'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

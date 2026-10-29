@@ -1,0 +1,162 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000331
+strategy_ref: DET-000251
+name:
+  zh: 变化通知后监听读取与结果链分析
+  en: Post-Change Listener Read and Outcome-Chain Analytic
+summary:
+  zh: 按对象、主体、会话与结果字段实现“变化通知后监听读取与结果链分析”。
+  en: Implement Post-Change Listener Read and Outcome-Chain Analytic with object, principal, session, and outcome fields.
+domains:
+- enterprise
+platforms:
+- Windows
+logic:
+  paragraphs:
+  - zh: 先在试点终端验证传感器能够记录 listener/viewer 注册、窗口或消息对象、clipboard sequence 或变化事件、读取 API、格式、返回状态和调用进程。以主机、用户、登录会话、不可变进程启动键、窗口句柄及
+      sequence/change 标识建立变化交易；在变化后五秒内查找同一注册主体的成功读取，再在三十秒内或同一持久缓冲中连接文件追加、IPC、压缩/读取或网络发送。只有注册、变化、成功读取和攻击者控制结果闭合时输出 event_coupled_clipboard_capture；缺结果时输出
+      listener_read_lead，只有隐藏窗口或注册时输出 listener_exposure。
+    en: First validate on pilot endpoints that the sensor records listener or viewer registration, window or message objects,
+      clipboard sequence or change events, read APIs, format, return status, and caller process. Build a change transaction
+      by host, user, logon session, immutable process-start key, window handle, and sequence or change identifier. Within
+      five seconds after a change, find a successful read by the same registered actor, then within thirty seconds or the
+      same persistent buffer connect a file append, IPC, compression or read, or network send. Output event_coupled_clipboard_capture
+      only when registration, change, successful read, and an adversary-controlled outcome close. Missing outcome produces
+      listener_read_lead, while a hidden window or registration alone produces listener_exposure.
+  - zh: 对长驻组件按二十四小时汇总变化到读取的重复比例、读取格式、写入路径和上传目的地，并与批准剪贴板工具清单比较。若内容隐私政策允许，可在端点生成短期、加盐或 tenant-scoped 的不可逆内容指纹，将读取结果与日志写入关联；禁止把明文剪贴板集中收集作为检测默认。NightshadeC2
+      类隐藏日志由后继命令上传时，分析应保留“采集已确认”和“外传已确认”的独立状态。
+    en: For long-lived components, summarize the repeated change-to-read ratio, formats, write paths, and upload destinations
+      over twenty-four hours and compare them with the approved clipboard-tool inventory. Where content-privacy policy permits,
+      generate a short-lived salted or tenant-scoped irreversible content token on the endpoint to relate the read result
+      to a log write. Central plaintext clipboard collection must not be the default. When a NightshadeC2-like hidden log
+      is later uploaded by command, retain separate collection-confirmed and exfiltration-confirmed states.
+data_requirements:
+- source_type: validated-clipboard-listener-and-api-event
+  name:
+    zh: 经验证的剪贴板监听与 API 事件
+    en: Validated clipboard-listener and API events
+  channel: null
+  required_fields:
+  - timestamp
+  - host_id
+  - user_id
+  - logon_session_id
+  - process_start_key
+  - pid
+  - api_or_event
+  - window_handle_or_listener_id
+  - clipboard_sequence_or_change_id
+  - format
+  - return_status
+  - returned_size_or_privacy_token
+- source_type: endpoint-process-module-window-lineage
+  name:
+    zh: 终端进程、模块与窗口谱系
+    en: Endpoint process, module, and window lineage
+  channel: verified EDR or memory-forensic sensor
+  required_fields:
+  - timestamp
+  - host_id
+  - process_start_key
+  - parent_process_start_key
+  - executable
+  - hash
+  - signer
+  - loaded_module
+  - window_class
+  - window_style
+  - window_visibility
+- source_type: endpoint-content-outcome
+  name:
+    zh: 终端内容结果与传输事件
+    en: Endpoint content-outcome and transfer events
+  channel: file, IPC, and network telemetry
+  required_fields:
+  - timestamp
+  - host_id
+  - process_start_key
+  - destination_type
+  - path_ipc_or_remote
+  - operation
+  - byte_count
+  - result
+  - content_privacy_token_or_sequence_ref
+- source_type: approved-clipboard-tool-context
+  name:
+    zh: 获批剪贴板工具与会话上下文
+    en: Approved clipboard-tool and session context
+  channel: asset and change-management inventory
+  required_fields:
+  - owner
+  - package_hash
+  - version
+  - signer
+  - approved_user_or_session_scope
+  - approved_clipboard_function
+  - expected_destinations
+  - change_window
+  - expiry
+observables:
+- zh: 非批准进程创建隐藏或仅消息窗口并注册长期剪贴板 listener/viewer
+  en: An unapproved process creates a hidden or message-only window and registers a long-lived clipboard listener or viewer
+- zh: 同一注册主体在多个 sequence/change 事件后短时成功读取内容，空闲期没有固定轮询
+  en: The same registered actor successfully reads content shortly after multiple sequence or change events and has no fixed
+    polling while idle
+- zh: 读取结果随后进入隐藏或异常路径、IPC 缓冲或网络目的地
+  en: Read results subsequently enter a hidden or anomalous path, IPC buffer, or network destination
+correlation:
+  window:
+    zh: 单次变化默认使用五秒变化到读取及三十秒读取到结果窗口；长驻 listener 按二十四小时汇总重复交易并保留七日基线。窗口值须由本地剪贴板负载与传感器延迟校准，不能把 NightshadeC2 的实现当作通用阈值。
+    en: Use a default five-second change-to-read and thirty-second read-to-outcome window for one change. Summarize repeated
+      transactions over twenty-four hours for a long-lived listener and retain a seven-day baseline. Calibrate values to local
+      clipboard load and sensor delay rather than treating NightshadeC2's implementation as universal thresholds.
+  dimensions:
+  - host_id
+  - user_id
+  - logon_session_id
+  - process_start_key
+  - window_handle_or_listener_id
+  - clipboard_sequence_or_change_id
+  - format
+  - content_privacy_token_or_sequence_ref
+  - destination
+  - time
+false_positives:
+- zh: 剪贴板历史和管理器会长期监听并保存变化内容
+  en: Clipboard-history and manager tools listen persistently and save changed content
+- zh: 密码管理器可能读取或清理自己复制的值，DLP 和安全产品可能检查变化内容
+  en: Password managers may read or clear values they copied, while DLP and security products may inspect changed content
+- zh: RDP、远程支持、虚拟机 guest tools、无障碍和自动化工具会同步或处理剪贴板
+  en: RDP, remote support, virtual-machine guest tools, accessibility, and automation tools synchronize or process the clipboard
+blind_spots:
+- zh: 默认进程日志通常不记录每次编译进程内剪贴板 API 调用，未部署经验证传感器时无法确认读取
+  en: Default process logs generally do not record every in-process clipboard API call, preventing read confirmation without
+    a validated sensor
+- zh: 攻击者若注入已批准 listener 主体或直接在内存和加密通道保存内容，基于进程与文件的关联会减弱
+  en: Injection into an approved listener actor or in-memory and encrypted retention weakens process- and file-based correlation
+- zh: 内容隐私限制、极短驻留和传感器丢失可能阻止读取结果与后继写入使用同一对象键
+  en: Content-privacy limits, very short residence, and sensor loss may prevent one object key from linking a read to a later
+    write
+tuning_guidance:
+  paragraphs:
+  - zh: 先在审计模式盘点合法 listener/viewer，并按精确包哈希、版本、owner、用户或会话范围、预期格式和结果目的地建立到期例外；不得按 Microsoft 签名、远程支持类别或窗口隐藏属性整体放行。以成功返回和后继结果作为确认门，API
+      名称或 listener 注册仅产生较低级线索。隐私敏感环境优先使用 sequence、大小、端点生成的不可逆 token 和目的地元数据，不收集明文。
+    en: Inventory legitimate listeners and viewers in audit mode, then build expiring exceptions by exact package hash, version,
+      owner, user or session scope, expected formats, and outcome destinations. Do not globally allow Microsoft-signed code,
+      the remote-support category, or hidden-window properties. Use successful return and downstream outcome as the confirmation
+      gate; an API name or listener registration produces only a lower-level lead. Privacy-sensitive environments should prefer
+      sequence, size, an endpoint-generated irreversible token, and destination metadata over plaintext collection.
+evidence_refs:
+- REF-001097
+- REF-001095
+- REF-001096
+- REF-001099
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-10-05'
+  modified: '2026-10-05'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

@@ -1,0 +1,259 @@
+schema_version: 2.0.0
+type: technique
+id: NJT-0100
+name:
+  zh: 集中策略与信任状态篡改
+  en: Central Policy and Trust-State Mutation
+summary:
+  zh: 攻击者改变域或租户的权威策略/信任版本，让受信传播与评估组件在控制面之外授予新增权限，并可借集中扇出或短暂恶意版本削弱来源归因与状态盘点。
+  en: Adversaries change an authoritative domain or tenant policy or trust version so trusted propagation and evaluation components
+    grant new authority outside the control plane, using central fan-out or a transient malicious version to weaken provenance
+    attribution and state inventory.
+aliases:
+- Domain or Tenant Policy Modification
+- T1484
+classification:
+  tactic_refs:
+  - TA0004
+  origin:
+    kind: attack-adapted
+    source_attack_id: T1484
+    source_attack_version: '19.1'
+  decision_ref: DEC-TA0004-T1484
+definition_and_concept:
+  paragraphs:
+  - zh: 集中策略与信任状态篡改是攻击者创建或修改由域、目录或身份租户权威保存的策略或信任对象，使其经复制、作用域解析或信任评估后扩大某个主体、会话或令牌的有效权限。直接对象是控制授权结果的权威配置，而不是随后出现的计划任务、服务、进程或接口调用；只有被实际消费并带来新的资源访问时，它才构成权限提升。
+    en: Central Policy and Trust-State Mutation occurs when an adversary creates or changes a policy or trust object maintained
+      by a domain, directory, or identity-tenant authority so that replication, scope resolution, or trust evaluation expands
+      the effective authority of a principal, session, or token. The direct object is the authoritative configuration controlling
+      authorization outcomes rather than a downstream task, service, process, or API call. It constitutes privilege escalation
+      only when the change is actually consumed and enables new resource access.
+  - zh: 在 Active Directory 中，权威对象可由目录容器、SYSVOL 模板、链接、版本和作用域共同构成；在域或租户信任中，则可由信任边、身份提供方、签名证书、声明规则和认证模式构成。两类实现都由集中控制面发布，再被端点或身份组件消费并改变跨资源授权，因此产品、文件路径和单个策略字段不构成独立边界。
+    en: In Active Directory, the authoritative object can comprise a directory container, SYSVOL template, links, version,
+      and scope. In domain or tenant trust, it can comprise trust edges, identity providers, signing certificates, claim rules,
+      and authentication mode. Both are published by a centralized control plane and consumed by endpoint or identity components
+      to change authorization across resources, so products, file paths, and individual policy fields do not form independent
+      boundaries.
+stealth_characteristics:
+  paragraphs:
+  - zh: 集中策略与信任状态篡改把一个 writer 的动作与许多 consumer 结果分散到不同信任域。控制面留下 GPO、directory 或 federation change，而 endpoint 侧可能只显示正常 Group
+      Policy client 创建任务、受信服务应用配置，资源侧只显示被认可 issuer 签发的 token 或 effective principal。对象被集中设置一次，复制器、设备或身份验证器随后自行处理；若防守方分别 allowlist
+      管理 API、系统进程或合法身份名称，而没有以 object/version 和 request/session 键贯穿控制面与消费面，攻击来源就会被受信机制的外观稀释。
+    en: Central Policy and Trust-State Mutation distributes one writer action and many consumer outcomes across trust domains.
+      The control plane records a GPO, directory, or federation change, while an endpoint can show only a normal Group Policy
+      client creating a task or a trusted service applying configuration, and a resource can show only a token from an accepted
+      issuer or the effective principal. The object is configured centrally once and replicators, devices, or identity validators
+      later process it themselves. When defenders separately allowlist an administration API, system process, or legitimate
+      identity name without carrying object and version plus request or session keys across control and consumption planes,
+      trusted-mechanism appearance dilutes adversary provenance.
+  - zh: 痕迹不一定减少，而是被版本、作用域和时间重排。GPO 的 AD container 与 SYSVOL template 可能由不同通道复制；trust change、token 签发和资源使用也分属不同日志。攻击者若在目标消费后恢复原状态，之后的
+      current-state inventory 会再次正常，但恶意版本期间签发的 session/token 或已经完成的资源结果可能继续存在。不可变 old/new 历史、双组件一致性、实际命中作用域、consumer application、权限结果与撤销状态仍是残余证据；完整保留和端到端连接会显著限制这种匿迹收益。
+    en: Traces are not necessarily reduced but rearranged by version, scope, and time. A GPO's AD container and SYSVOL template
+      can replicate through different channels, while trust change, token issuance, and resource use also occupy different
+      logs. If an adversary restores original state after target consumption, later current-state inventory looks normal again
+      even though sessions or tokens issued during the malicious version or completed resource outcomes can persist. Immutable
+      old and new history, dual-component consistency, actually matched scope, consumer application, authority outcome, and
+      revocation state remain residual evidence. Complete retention and end-to-end joins materially constrain the stealth
+      advantage.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 本技术纳入攻击者控制的域或租户策略与信任变更，以及这些变更被消费者采用后产生的有效权限增加；新建对象、修改既有对象和恶意版本后的回退都可进入父级。域管理员操作、策略已应用、信任已建立、高权限令牌或系统进程只说明潜在影响，必须结合被采用的对象版本、受影响主体和实际资源权限判断。获批策略发布、证书轮换、域迁移、灾难恢复和应急变更是重要反例。
+    en: This technique includes adversary-controlled domain or tenant policy and trust changes that increase effective authority
+      after consumers adopt them. New objects, changes to existing objects, and restoration after an adversarial version all
+      remain within the parent. An administrator operation, applied policy, established trust, privileged token, or system
+      process shows potential impact only and must be interpreted with the consumed object version, affected principal, and
+      actual resource authority. Approved policy release, certificate rotation, domain migration, disaster recovery, and break-glass
+      change are important counterexamples.
+  - zh: 若策略只关闭防病毒、审计或其他防御而未向攻击主体增加权限，应保留 Defense Impairment，而不是因 T1484 同时映射 权限提升 就宣称提权。由策略触发的计划任务、服务、脚本或载荷执行分别属于其执行 owner；账户自身新增密码、角色、组、key
+      或委派边归 NJT-0083；额外接受攻击者证明或总体认证控制仍启用时的窄例外归 NJT-0093/NJS-0093-001/002；直接/传递授权图拓扑由 NJS-0083-002 处理。GPO 与 trust、cloud 与 on-prem、issuer
+      与证书、用户与设备 scope 均是实现或目标维度，不得机械拆为本技术子项。
+    en: A policy that only disables antivirus, audit, or another defense without adding authority to the adversary principal
+      remains Defense Impairment rather than becoming elevation merely because T1484 also maps to Privilege Escalation. A
+      policy-triggered scheduled task, service, script, or payload belongs to its execution owner. A password, role, group,
+      key, or delegation edge added to the account itself belongs to NJT-0083. Added acceptance of an adversary proof or a
+      narrow exception under an otherwise enabled authentication control belongs to NJT-0093 and NJS-0093-001 or 002. NJS-0083-002
+      handles direct or transitive authorization-graph topology. GPO versus trust, cloud versus on-premises, issuer versus
+      certificate, and user versus device scope are implementation or target dimensions and must not be mechanically split
+      into children of this technique.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: 在 Windows 域中，攻击者通常先取得对某个 GPO、link、security descriptor 或 SYSVOL 内容的委派写入，然后改变用户权限、局部组、登录/启动脚本、计划任务或安全设置，使目标计算机在下一次刷新或启动时以更高系统上下文应用。Microsoft
+        2026 事件说明攻击者可先创建防御篡改 GPO，再创建包含 SYSVOL 载荷与计划任务的第二个 GPO，由设备自行拉取；该案例证明集中扇出与跨平面痕迹，但被阻断且不证明权限提升。若要在本技术下确认 权限提升，还必须显示攻击者控制的较低权限起点经特定
+        policy version 获得了新增资源能力。
+      en: In a Windows domain, an adversary typically first obtains delegated write authority over a GPO, link, security descriptor,
+        or SYSVOL content and then changes user rights, local groups, logon or startup scripts, scheduled tasks, or security
+        settings so target computers apply them at the next refresh or boot under a more privileged system context. Microsoft's
+        2026 incident shows an adversary first creating a defense-tampering GPO and then a second GPO containing a SYSVOL
+        payload and scheduled task that devices would pull themselves. The case proves central fan-out and cross-plane traces
+        but was blocked and does not prove elevation. Confirmation under Privilege Escalation additionally requires showing
+        that an adversary-controlled lower-authority starting point obtained a newly available resource capability through
+        the exact policy version.
+    - zh: 在混合或云身份环境中，攻击者可增加或替换 federated issuer、签名证书、claim rule、domain authentication mode 或跨租户 trust，使原先不被目标接受的 token/subject
+        在资源侧通过。Solorigate 说明攻击者证书被加入既有 federation trust 后，攻击者签发的 SAML token 可被接受并绕过 MFA；但公开资料显示修改前已取得 Azure AD 管理权限，因而案例不能自动证明相对
+        pre-state 的提权。操作者还可能在使用后恢复 trust 或 policy，以缩短暴露窗口，而后续取证必须继续追踪该版本期间签发的 session/token 和已执行操作。
+      en: In hybrid or cloud identity, an adversary can add or replace a federated issuer, signing certificate, claim rule,
+        domain-authentication mode, or cross-tenant trust so a token or subject previously rejected by the target passes on
+        the resource side. Solorigate shows that after an adversary certificate was added to an existing federation trust,
+        attacker-issued SAML tokens could be accepted and bypass MFA. Public reporting also shows the adversary already had
+        Azure AD administrative authority before the mutation, so the case cannot automatically prove elevation relative to
+        pre-state. An operator can also restore trust or policy after use to shorten exposure, while subsequent investigation
+        must continue tracking sessions or tokens issued and operations completed during that version.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者已经能以某个主体、应用或主机访问域/租户管理面，但其起点不必具有目标资源的最终权限。实现 GPO 路径需要找到被委派或错误配置的 policy/link/SYSVOL 写权，理解两部分版本、复制、刷新、scope
+          与 precedence，并能等待目标 consumer 应用；实现 trust 路径需要 federation/domain 管理能力、issuer/certificate/claim 语义知识以及生成或控制可被新信任接受的证明。攻击者还需测试变化不会造成广泛登录或策略故障，因为异常认证、复制不一致或大范围设备错误会快速暴露。
+        en: The adversary can already access a domain or tenant administration plane as some principal, application, or host,
+          but the starting point need not hold final authority over the target resource. A GPO path requires finding delegated
+          or misconfigured write authority over policy, link, or SYSVOL content; understanding dual-component versions, replication,
+          refresh, scope, and precedence; and tolerating delay until a target consumer applies the version. A trust path requires
+          federation or domain administration capability, knowledge of issuer, certificate, and claim semantics, and the ability
+          to generate or control proof accepted by the new trust. The adversary must also test that the change does not cause
+          broad sign-in or policy failure because authentication anomalies, replication inconsistency, or widespread device
+          errors expose the operation quickly.
+      - zh: 为获得匿迹收益，攻击者假定控制面变更、endpoint policy processing、身份请求与资源访问不会被统一连接，或防守方只保存当前策略快照。集中扇出减少逐目标写入，但需要接受传播延迟和多个 consumer
+          产生的残余事件；用后回退要求攻击者知道目标已经消费恶意版本、保存先前状态并在 token/session 或资源结果产生后准确恢复。若不可变审计、独立版本导出和 consumer/result 连接完整，攻击者必须同时控制审批、日志出口或黄金基线才能维持内部一致性。
+        en: To gain stealth, the adversary assumes control-plane changes, endpoint policy processing, identity requests, and
+          resource access are not joined, or that defenders retain only a current policy snapshot. Central fan-out reduces
+          per-target writes but requires tolerating propagation delay and residual events from multiple consumers. Post-use
+          reversion requires knowing that targets consumed the malicious version, preserving prior state, and restoring it
+          accurately after a token, session, or resource outcome exists. When immutable audit, independent version export,
+          and consumer-to-outcome joins are complete, the adversary must additionally control approval, log export, or the
+          golden baseline to maintain internal consistency.
+    defender_model:
+      paragraphs:
+      - zh: 防守模型假定控制面能够提供 policy/trust object ID、完整版本或 old/new 值、container/template 双状态、link/scope、precedence、security descriptor、issuer、证书指纹、claim、writer、来源、transaction/correlation、审批和时间；传播/消费面能够提供
+          domain controller/tenant、consumer ID、observed version、refresh/evaluation、应用结果及错误；身份与资源面能够提供 original/effective principal、request、token/session、matched
+          policy/trust、授权 decision 和资源操作。配置、审批与审计至少有一份位于同一 policy writer 不能删除的独立保留域。
+        en: The defender model assumes the control plane supplies policy or trust object ID, complete version or old and new
+          values, container and template dual state, link or scope, precedence, security descriptor, issuer, certificate fingerprint,
+          claims, writer, origin, transaction or correlation, approval, and time. The propagation or consumption plane supplies
+          domain controller or tenant, consumer ID, observed version, refresh or evaluation, application outcome, and errors.
+          Identity and resource planes supply original and effective principal, request, token or session, matched policy
+          or trust, authorization decision, and resource operation. At least one copy of configuration, approval, and audit
+          resides in an independent retention domain the same policy writer cannot delete.
+      - zh: 主要盲区来自缺失的版本键、组件间复制差异和有限保留期。目录与策略文件可能由不同数据源记录，云审计也可能不公开完整信任材料、每次请求采用的版本或会话撤销状态。当前配置恢复正常并不能说明中间版本未被消费，仍需保留版本历史、消费记录和残留会话视角。
+        en: The main blind spots arise from missing version keys, replication differences among components, and limited retention.
+          Directory and policy files can be recorded by different sources, and cloud audit may omit complete trust material,
+          the version applied to each request, or session-revocation state. A normal current configuration does not show that
+          an intermediate version was never consumed, so version history, consumption records, and residual-session visibility
+          remain necessary.
+stealth_mechanisms:
+- mechanism_ref: NM-BT
+  role: primary
+  summary:
+    zh: 集中控制面写入经受信传播与评估边界转化为分散权限结果
+    en: A central control-plane write becomes distributed authority outcomes across trusted propagation and evaluation boundaries
+  analysis:
+    paragraphs:
+    - zh: 行为设计上，攻击者只改写一个权威 GPO 或 trust version，让域复制器、Group Policy client、身份提供方或资源 trust evaluator 代表它传播并应用。痕迹由“攻击者逐资源修改权限”变成控制面的一次
+        writer event，以及消费面由正常系统组件、合法 issuer 或 effective principal 产生的多个处理与结果事件。只看控制面不能知道谁实际获得权限，只看 endpoint 或资源又看不到原始 writer；管理与消费信任边界切断直接归因，形成
+        Boundary Traversal 匿迹。保存 exact object/version、scope、consumer evaluation、request/session 和首个新获准结果并构图，才能恢复因果链。
+      en: By design, the adversary rewrites one authoritative GPO or trust version and lets domain replicators, Group Policy
+        clients, identity providers, or resource trust evaluators propagate and apply it. The trace changes from adversary
+        permission changes at each resource into one writer event on the control plane plus many processing and outcome events
+        generated by normal system components, a legitimate issuer, or an effective principal on consumption planes. Control-plane-only
+        observation cannot identify who actually gained authority, while endpoint- or resource-only observation cannot see
+        the original writer. Administration and consumption trust boundaries sever direct attribution and create Boundary
+        Traversal stealth. Preserving and graphing the exact object and version, scope, consumer evaluation, request or session,
+        and first newly authorized outcome restores the causal chain.
+  evidence_refs:
+  - REF-000339
+  - REF-000340
+  - REF-000341
+  - REF-000343
+  - REF-000344
+  confidence: medium
+- mechanism_ref: NM-ST
+  role: secondary
+  summary:
+    zh: 恶意策略版本可被回退为正常终态并把有效痕迹压缩到消费区间
+    en: A malicious policy version can be reverted to a normal end state and compress effective traces into its consumption
+      interval
+  analysis:
+    paragraphs:
+    - zh: 行为设计上，攻击者建立恶意 policy/trust version，等待目标应用或请求命中并完成新增权限操作，然后恢复同一对象的先前状态。痕迹从一个持续异常状态变为 mutation、propagation/evaluation、use
+        和 reversion 的有界序列；回退后的盘点只看到正常 current state，而恶意版本期间产生的 token/session 或资源变化可能已离开策略日志窗口。定期快照和短期关联因此无法区分“从未改变”与“曾改变后恢复”，形成
+        Short-lived Trace 匿迹。不可变 old/new 事件、版本有效区间、consumer/request 键和恢复后残留结果检查可揭示该时间结构。
+      en: By design, the adversary establishes a malicious policy or trust version, waits for a target application or request
+        to match and complete a newly authorized operation, and then restores the prior state of the same object. The trace
+        changes from a durable anomaly into a bounded sequence of mutation, propagation or evaluation, use, and reversion.
+        Inventory after reversion sees only a normal current state, while a token or session or resource change created during
+        the malicious version may have left the policy-log window. Periodic snapshots and short joins therefore cannot distinguish
+        never changed from changed and restored, creating Short-lived Trace stealth. Immutable old and new events, a version-validity
+        interval, consumer or request keys, and post-restoration residual-outcome checks expose the temporal structure.
+  evidence_refs:
+  - REF-000338
+  - REF-000342
+  - REF-000343
+  confidence: medium
+subtechnique_taxonomy:
+  narrative:
+    paragraphs:
+    - zh: 用后策略状态回退按“恶意策略或信任版本被实际消费后，同一权威对象又恢复为可信状态”这一变量划分。它改变当前状态快照与历史事实之间的关系，使事后清单看似正常，而恶意版本产生的会话或资源结果可能继续存在。持续保留的恶意状态仍属于父技术。
+      en: Post-Use Policy-State Reversion is partitioned by the variable that an adversarial policy or trust version is actually
+        consumed and the same authoritative object is then restored to a trusted state. It changes the relationship between
+        current-state snapshots and historical fact, allowing later inventory to appear normal while sessions or resource
+        outcomes produced by the malicious version can persist. Adversarial state that remains in place belongs to the parent.
+    - zh: 该边界不按域策略或租户信任、云或本地、证书或声明字段划分。只有同一对象的版本区间、消费事实和恢复后的残余授权共同改变防守观察时，才属于该子技术；普通继承、复制延迟和长期策略修改仍留在父级或相邻对象。
+      en: The boundary is not divided by domain policy versus tenant trust, cloud versus on-premises, or certificate versus
+        claim fields. The child applies only when the version interval of the same object, evidence of consumption, and residual
+        authority after restoration jointly change defender observation. Ordinary inheritance, replication delay, and durable
+        policy changes remain with the parent or adjacent objects.
+  coverage: established
+  subtechnique_refs:
+  - NJS-0100-001
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000097
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000098
+evidence:
+  claim_refs:
+  - CLM-000548
+  - CLM-000549
+  - CLM-000550
+  - CLM-000551
+  case_refs:
+  - CASE-000111
+  - CASE-000126
+  reference_refs:
+  - REF-000304
+  - REF-000338
+  - REF-000339
+  - REF-000340
+  - REF-000341
+  - REF-000342
+  - REF-000343
+  - REF-000344
+research:
+  limitations:
+    paragraphs:
+    - zh: ATT&CK 与平台文档直接支持集中策略或信任变更、传播、消费以及临时修改和恢复，但公开材料很少在同一事件中同时给出攻击者意图、完整恶意版本、消费者、权限变化和恢复。跨实现的匿迹机理因此包含推断，不能把每次短期管理变更都描述为匿迹。
+      en: ATT&CK and platform documentation directly support centralized policy or trust change, propagation, consumption,
+        and temporary modification and restoration, but public material rarely provides adversary intent, a complete malicious
+        version, consumer use, authority change, and restoration in one event. Cross-implementation stealth mechanisms therefore
+        include inference and do not justify describing every short-lived administrative change as evasion.
+    - zh: Solorigate 资料直接证明攻击者向联合信任加入证书并改变令牌接受，但公开信息没有完整展示新增权限；另一案例证明集中组策略扇出，却被阻止且主要服务于防御破坏和载荷分发。两者都不能单独证明用后状态回退，因此该子技术仍需逐事件的版本历史和消费证据。
+      en: Solorigate reporting directly establishes addition of an adversary certificate to federation trust and changed token
+        acceptance, but public information does not fully establish added authority. Another case establishes centralized
+        Group Policy fan-out but was blocked and primarily served defense impairment and payload distribution. Neither independently
+        proves post-use state reversion, so the child still requires event-specific version history and consumption evidence.
+    - zh: 不同平台的可观察性并不等价。目录审计可能依赖额外配置，策略的目录与文件组件可能存在复制延迟或版本不一致，身份平台也可能只暴露当前联合状态、有限旧值或较短保留期。若资源侧不记录采用的策略或信任版本，就难以把控制面变化与实际授权结果连接。
+      en: Observability is not equivalent across platforms. Directory audit can depend on additional configuration, directory
+        and file components of policy can have replication delay or version mismatch, and identity platforms can expose only
+        current federation state, limited prior values, or short retention. If resource-side records omit the applied policy
+        or trust version, linking control-plane change to actual authorization outcome becomes difficult.
+lifecycle:
+  status: review
+  version: 0.2.0
+  created: '2026-09-13'
+  modified: '2026-09-19'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

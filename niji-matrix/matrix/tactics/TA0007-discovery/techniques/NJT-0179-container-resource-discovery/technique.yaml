@@ -1,0 +1,155 @@
+schema_version: 2.0.0
+type: technique
+id: NJT-0179
+name:
+  zh: 容器与资源发现
+  en: Container and Resource Discovery
+summary:
+  zh: 读取容器环境中的集群、节点、命名空间、工作负载、镜像和部署资源图，并借用正常控制器式只读操作降低单事件可区分性。
+  en: Read the cluster, node, namespace, workload, image, and deployment graph in a container environment while using ordinary
+    controller-like reads that reduce single-event distinguishability.
+aliases: []
+classification:
+  tactic_refs:
+  - TA0007
+  origin:
+    kind: attack-retained
+    source_attack_id: T1613
+    source_attack_version: '19.1'
+  decision_ref: DEC-TA0007-T1613
+definition_and_concept:
+  paragraphs:
+  - zh: 容器与资源发现是攻击者在已经进入的容器或编排环境中取得集群、节点、命名空间、Pod、部署、镜像、容器和运行状态之间关系的行为。直接结果是容器资源图，攻击者可据此选择后续 exec、部署、凭据访问或横向路线。
+    en: Container and Resource Discovery acquires relationships among clusters, nodes, namespaces, pods, deployments, images,
+      containers, and runtime state in an accessed container or orchestration environment. The direct result is a container
+      resource graph from which the adversary can select later exec, deployment, credential access, or movement paths.
+  - zh: Kubernetes API、kubelet、Docker daemon、dashboard 和 CLI 只是实现。技术以取得资源实体及关系为界，不以产品或接口定义；容器中的云 IaaS 资源图仍归 NJT-0139，真正执行命令或创建工作负载属于后继技术。
+    en: Kubernetes APIs, kubelet, Docker daemon, dashboards, and CLIs are implementations. Acquisition of resource entities
+      and relationships defines the technique rather than product or interface. Cloud IaaS resource graphs remain under NJT-0139,
+      while actual command execution or workload creation is a later technique.
+stealth_characteristics:
+  paragraphs:
+  - zh: 合法控制器、监控、调度器、GitOps 和安全工具持续发出 list、get 和 watch 请求，攻击者借用已有 ServiceAccount 或本地 daemon 接口时，单条只读事件与正常资源协调外观相近。恶意目的通常只有在陌生来源、越权
+      scope、资源扇出或后继 exec/create 被关联后才更清晰。
+    en: Legitimate controllers, monitoring, schedulers, GitOps, and security tools continuously issue list, get, and watch
+      requests. When an adversary uses an existing ServiceAccount or local daemon interface, one read event resembles ordinary
+      resource coordination. Malicious purpose becomes clearer only after joining unfamiliar origin, excessive scope, resource
+      fan-out, or later exec or create.
+  - zh: 资源读取仍可能保留 Kubernetes audit 的用户、verb、resource、namespace 和状态，或 Docker 请求/调用进程痕迹。节点局部 kubelet 视图、未配置 audit、代理身份折叠和被盗控制器身份会形成盲区；Hildegard
+      案例证明 kubelet 发现，但没有证明攻击者为绕开中央审计而选择它。
+    en: Resource reads can still retain Kubernetes audit user, verb, resource, namespace, and status or Docker request and
+      caller traces. Node-local kubelet views, absent audit, proxy identity collapse, and stolen controller identities create
+      blind spots. Hildegard establishes kubelet discovery but not deliberate selection to bypass central audit.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 纳入取得容器、Pod、节点、命名空间、部署、镜像和集群状态的读取，包括在已入侵容器中寻找 kubelet 或通过 API 建立运行资源图。容器平台服务是否存在是服务发现问题，云实例与网络关系是 NJT-0139，桶内对象键是 NJT-0141。
+    en: Include reads that acquire containers, pods, nodes, namespaces, deployments, images, and cluster state, including
+      finding kubelets from a compromised container or building a runtime resource graph through APIs. Availability of a container
+      platform service is service discovery, cloud instances and network relationships belong to NJT-0139, and in-bucket object
+      keys to NJT-0141.
+  - zh: 容器 exec、工作负载创建、镜像部署、凭据读取和逃逸是后继行为，必须分别有执行或结果证据。合法控制器、运维、CSPM、备份、发布和事件响应是强反例；不能由 kubectl、dashboard 或一次 list 调用单独判恶。
+    en: Container exec, workload creation, image deployment, credential reads, and escape are later behaviors requiring their
+      own execution or outcome evidence. Legitimate controllers, operations, CSPM, backup, release, and incident response
+      are strong counterexamples; kubectl, a dashboard, or one list call is not malicious by itself.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: 攻击者获得 Pod 内执行、ServiceAccount token、开放 kubelet 或 Docker socket 后，可先列出工作负载、节点和镜像，再决定哪里存在更高权限、秘密挂载或可利用执行入口。Unit 42
+        记录 Hildegard 从已入侵容器搜索内部 kubelet并发现运行容器，随后推进执行和挖矿。
+      en: After gaining execution in a pod, a ServiceAccount token, an exposed kubelet, or a Docker socket, an adversary can
+        list workloads, nodes, and images before selecting higher privilege, secret mounts, or an execution entry point. Unit
+        42 records Hildegard searching internal kubelets from a compromised container, discovering running containers, and
+        proceeding to execution and mining.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者需要能访问 Kubernetes、kubelet 或 Docker 资源接口的身份或本地通道，所见范围受 RBAC、namespace、节点、本地 socket 和 API endpoint 限制。查询范围、selector
+          和节奏可控，但目前没有结论级证据证明它们被用于规避检测。
+        en: The adversary needs an identity or local channel able to reach Kubernetes, kubelet, or Docker resource interfaces.
+          RBAC, namespace, node, local socket, and API endpoint constrain visibility. Query scope, selectors, and cadence
+          are controllable, but current evidence does not establish their use for evasion.
+    defender_model:
+      paragraphs:
+      - zh: 防守方可使用 kube-apiserver audit、ServiceAccount/RBAC 基线、来源 IP 和后继 exec/create；Docker 只有在 daemon 请求或调用进程通道经验证时才可覆盖只读列表。Metadata-only
+          audit 看见请求而非完整响应，未启用 audit 或节点局部 API 时须明确标为盲区。
+        en: Defenders can use kube-apiserver audit, ServiceAccount and RBAC baselines, source IP, and later exec or create.
+          Docker read coverage exists only where daemon-request or caller-process telemetry is validated. Metadata-only audit
+          sees requests rather than complete responses, and absent audit or node-local APIs must be explicit blind spots.
+stealth_mechanisms:
+- mechanism_ref: NM-FD
+  role: primary
+  summary:
+    zh: 资源列表读取外观接近正常控制器与平台协调
+    en: Resource-list reads resemble normal controller and platform coordination
+  analysis:
+    paragraphs:
+    - zh: 攻击者以现有容器身份调用正常的 list、get 或 inspect 接口，留下真实只读事件，却与控制器、监控和运维的资源读取共享主体类型与方法。防守方若只看单条请求或产品名，难以辨别目标测绘；把来源、RBAC scope、资源扇出和后继操作接成谱系后，可区分性提高。Hildegard
+        证明恶意资源发现，未提供漏报测量，因此置信度为 medium。
+      en: The adversary uses an existing container identity to call normal list, get, or inspect interfaces, leaving real
+        read events that share actor types and methods with controllers, monitoring, and operations. A single request or product
+        name poorly distinguishes mapping. Origin, RBAC scope, resource fan-out, and later actions improve distinction when
+        joined as lineage. Hildegard establishes malicious resource discovery without measuring misses, so confidence is medium.
+  evidence_refs:
+  - REF-000819
+  - REF-000821
+  - REF-000211
+  confidence: medium
+subtechnique_taxonomy:
+  narrative:
+    paragraphs:
+    - zh: 节点局部视图、namespace 或 selector 限域查询、分页/watch、低速与多来源拼接均已审查。节点局部视图可能改变观察面，但缺同案中央审计对照和攻击者选择证据；scope 与分页还是正常控制器能力，不能由较少事件推导独立匿迹子项。
+      en: Node-local views, namespace or selector-scoped queries, paging or watch, low rate, and multi-origin assembly were
+        reviewed. Node-local views may change observation but lack same-case central-audit comparison and attacker-choice
+        evidence. Scope and paging are ordinary controller capabilities and fewer events do not establish an independent stealth
+        child.
+    - zh: Kubernetes 与 Docker 的日志通道不同，需要不同 Analytic，但平台差异不是 NJS。当前没有轴同时满足稳定变量、恶意证据、痕迹差和不同防御价值，因此 coverage 为 deferred，正式子项为空。
+      en: Kubernetes and Docker need different analytics because their logging channels differ, but platform differences are
+        not NJS. No axis currently combines a stable variable, adversarial evidence, trace difference, and distinct defensive
+        value, so coverage is deferred and the formal child set is empty.
+  coverage: deferred
+  subtechnique_refs: []
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000207
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000189
+evidence:
+  claim_refs:
+  - CLM-000892
+  - CLM-000893
+  case_refs:
+  - CASE-000259
+  reference_refs:
+  - REF-000817
+  - REF-000818
+  - REF-000819
+  - REF-000820
+  - REF-000821
+  - REF-000822
+  - REF-000211
+  - REF-000212
+  - REF-000375
+research:
+  limitations:
+    paragraphs:
+    - zh: Hildegard 提供 kubelet 发现与后继活动的直接事件证据，Peirates 只证明工具能力。公开资料没有将同一样本在 kubelet、kube-apiserver 和 Docker 通道中的完整请求、返回范围和告警结果并列，因此不能证明节点局部、限域或分页轴的实际规避效果。
+      en: Hildegard supplies direct event evidence for kubelet discovery and later activity, while Peirates establishes tool
+        capability only. Public sources do not align one sample’s complete requests, returned scope, and alert outcomes across
+        kubelet, kube-apiserver, and Docker channels, so node-local, scoped, or paged axes lack demonstrated evasion effect.
+    - zh: Kubernetes audit 的 level、policy、backend 和留存决定可见字段；Docker System Events 不是完整的只读请求日志。合法控制器可能使用广域 list/watch，被盗 ServiceAccount
+        也保持正常身份，因此检测阈值和 scope 必须本地回放校准。
+      en: Kubernetes audit level, policy, backend, and retention determine visible fields, while Docker System Events are
+        not complete read-request logs. Legitimate controllers may use broad list or watch and stolen ServiceAccounts retain
+        normal identity, so thresholds and scope require local replay calibration.
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-09-27'
+  modified: '2026-09-27'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

@@ -1,0 +1,135 @@
+schema_version: 2.0.0
+type: evasion-subtechnique
+id: NJS-0177-003
+parent_ref: NJT-0177
+name:
+  zh: 目录复制式认证材料导出
+  en: Directory-Replication Authentication-Material Export
+summary:
+  zh: 攻击者使用获授权的目录复制协议让域控制器返回账户秘密，使材料离开本地数据库和进程读取观察面。
+  en: An adversary uses an authorized directory-replication protocol to make a domain controller return account secrets, moving
+    material outside local database and process-read observation.
+aliases: []
+lineage:
+  attck_subtechnique_inherited: false
+definition_and_concept:
+  paragraphs:
+  - zh: 目录复制式认证材料导出是攻击者控制具有目录复制扩展权限的身份或主机，调用权威目录服务的 GetNCChanges 或等价复制读取，使域控制器按正常协议返回指定账户或 naming context 中的密码散列、历史、Kerberos
+      密钥或等价秘密。稳定变量是“服务端权威导出替代数据库读取”，不是 DCSync、Mimikatz、Impacket、账户名或目标 hash。权限授予和 RPC 连接只是前提，响应中出现认证材料才完成。
+    en: Directory-Replication Authentication-Material Export controls an identity or host with directory-replication extended
+      rights and invokes GetNCChanges or an equivalent replication read against the authoritative directory service, causing
+      a domain controller to return password hashes, history, Kerberos keys, or equivalent secrets for selected accounts or
+      a naming context through the normal protocol. The stable variable is authoritative server export replacing database
+      read, not DCSync, Mimikatz, Impacket, account name, or target hash. Rights and an RPC connection are prerequisites;
+      the child completes when authentication material appears in the response.
+stealth_characteristics:
+  paragraphs:
+  - zh: 目录复制式认证材料导出使用合法 DRS 接口、通过访问检查的账户和域控制器响应，不要求在 DC 上运行 dump 程序或打开 NTDS.dit。只监控文件与 LSASS 的防守方会缺少材料取得事件，域控可能把请求视为复制。异常位于来源主机不在批准
+      DC/同步清单、账户权限和业务用途不符、请求对象或响应范围异常以及后继输出。若批准域控本身被控制，来源 allowlist 也会失效。
+    en: Directory-Replication Authentication-Material Export uses the legitimate DRS interface, an account that passes access
+      checks, and a domain-controller response without running a dump program or opening NTDS.dit on the DC. Defenders watching
+      only files and LSASS lose the material-acquisition event, and the domain controller can treat the request as replication.
+      The anomaly lies in a source host outside approved DC or synchronization inventory, rights inconsistent with purpose,
+      unusual requested object or response scope, and successor output. Compromise of an approved domain controller can also
+      defeat a source allowlist.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 纳入要求未批准或被攻击者控制的 caller、实际 DRS secret-bearing request/response 和材料输出。正常 DC 复制、Entra/身份同步、灾备、迁移及获批目录审计按 host/GUID、账户、权限、naming
+      context、owner、工单和时段排除。T1207/NJT-0171 负责伪造或注册复制来源并向合法 DC 推送目录变化；本子项从合法 DC 拉取秘密。仅枚举复制元数据、取得 Replicating Directory Changes
+      权限或触发被拒请求不完成结果。
+    en: Inclusion requires an unapproved or adversary-controlled caller, an actual DRS request and response carrying secrets,
+      and material output. Normal domain-controller replication, Entra or identity synchronization, disaster recovery, migration,
+      and approved directory audit require exclusion through host or GUID, account, rights, naming context, owner, case, and
+      time. T1207/NJT-0171 owns forged or registered replication origins pushing directory changes to a legitimate DC. This
+      child pulls secrets from a legitimate DC. Enumerating replication metadata, obtaining Replicating Directory Changes
+      rights, or triggering a denied request does not complete the result.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: 具有 Replicating Directory Changes 及读取 secret 所需权利的攻击者可从成员主机请求 krbtgt、管理员或批量账户材料，而无需交互登录 DC 或复制 NTDS.dit。Sean Metcalf
+        的直接实验记录 Mimikatz DCSync 调用 GetNCChanges、所需权限和返回当前及历史散列；Microsoft 开放规范说明服务端访问检查与 replication response。该实验不是在野案例，但足以支持能力和观察差。
+      en: An adversary holding Replicating Directory Changes and the rights needed for secret data can request krbtgt, administrator,
+        or bulk account material from a member host without interactive domain-controller logon or copying NTDS.dit. Sean
+        Metcalf's direct experiment records Mimikatz DCSync invoking GetNCChanges, required rights, and return of current
+        and historical hashes, while Microsoft's open specification defines server access checks and replication response.
+        The experiment is not an in-the-wild case but supports capability and observation difference.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者需要可认证到域控、调用 DRSUAPI、拥有域级复制 secret 权限，并知道域、DC 与目标账户或 naming context。防火墙、分层管理、最小复制 ACL、只允许批准 DC/同步主机、凭据保护和权限监控会限制路径。只拥有全局目录复制权而无
+          secret 权限时可能得不到敏感值；网络中断和版本差异也会导致不完整响应。
+        en: The adversary needs authentication to a domain controller, DRSUAPI reachability, domain-level rights to replicate
+          secret data, and knowledge of domain, DC, and target account or naming context. Firewalls, administrative tiering,
+          minimal replication ACLs, approved-DC or synchronization-host restrictions, credential protection, and rights monitoring
+          constrain the path. Global-catalog replication rights without secret authority can omit sensitive values, while
+          network interruption and version differences can produce incomplete responses.
+    defender_model:
+      paragraphs:
+      - zh: 防守方需要批准 DC/同步主机清单、账户复制权限历史、RPC/DRS 方法与来源、naming context、目标对象或属性类别、response count/bytes/result、Windows Directory
+          Service Access 或 MDI 活动以及后继文件/网络输出。加密 RPC 可能隐藏属性内容，但来源、会话和流量方向仍可用。缺少 DC 传感器、共享 NAT、被攻陷批准主机和服务账户用途漂移是主要盲区。
+        en: Defenders need approved domain-controller and synchronization-host inventory, account replication-rights history,
+          RPC or DRS method and origin, naming context, target object or attribute class, response count, bytes, and result,
+          Windows Directory Service Access or MDI activity, and successor file or network output. Encrypted RPC can hide attribute
+          content while origin, session, and flow direction remain available. Missing DC sensors, shared NAT, a compromised
+          approved host, and service-account purpose drift are major blind spots.
+stealth_mechanisms:
+- mechanism_ref: NM-FD
+  role: primary
+  summary:
+    zh: 合法复制协议与获授权账户掩盖秘密导出目的
+    en: Legitimate replication protocol and authorized account mask secret-export purpose
+  analysis:
+    paragraphs:
+    - zh: 攻击者让域控通过标准 GetNCChanges 返回材料，传感器看到的 protocol、server 与 caller authentication 均可合法；差异是来源和对象范围没有批准的复制关系。REF-000749
+        与 Microsoft 方法规范支持正常语义，DCSync 实验直接证明账户材料可返回，REF-000750 所在官方警报文档描述从 IP 检测 DCSync。高置信仅用于行为与观察差，不把产品警报当作普遍覆盖。
+      en: The adversary makes a domain controller return material through standard GetNCChanges, leaving protocol, server,
+        and caller authentication potentially legitimate. The difference is that origin and object scope lack an approved
+        replication relationship. REF-000749 and the Microsoft method specification support normal semantics, the DCSync experiment
+        directly establishes returned account material, and the official alert documentation represented by REF-000750 describes
+        detecting DCSync from an IP address. High confidence applies to behavior and observation difference rather than universal
+        product coverage.
+  confidence: high
+  evidence_refs:
+  - REF-000749
+  - REF-000750
+  - REF-000807
+  - REF-000808
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000205
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000187
+    - MIT-000134
+evidence:
+  claim_refs:
+  - CLM-000882
+  - CLM-000883
+  case_refs:
+  - CASE-000257
+  reference_refs:
+  - REF-000749
+  - REF-000750
+  - REF-000807
+  - REF-000808
+research:
+  limitations:
+    paragraphs:
+    - zh: DCSync 直接证据主要来自研究实验和官方产品警报语义，本批未找到公开在野事件同时给出 caller、GetNCChanges secret response、输出文件和后继身份使用。批准同步器与域控的合法响应可高度相似，属性级内容也常因加密不可见。正式案例必须保留
+        caller/host、权限前态、response 结果和材料范围，不能从 135/445/RPC 流量或单一 MDI 告警自动断言全域散列已提取。
+      en: Direct DCSync evidence is concentrated in research experimentation and official product-alert semantics. This batch
+        found no public field incident simultaneously publishing caller, GetNCChanges secret response, output file, and later
+        identity use. Legitimate responses to approved synchronizers and domain controllers can look highly similar, and attribute
+        content is often hidden by encryption. A formal case must retain caller or host, prior rights, response result, and
+        material scope rather than infer extraction of every domain hash from RPC traffic or one MDI alert.
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-09-27'
+  modified: '2026-09-27'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

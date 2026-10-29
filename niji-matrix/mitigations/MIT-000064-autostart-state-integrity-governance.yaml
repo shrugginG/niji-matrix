@@ -1,0 +1,198 @@
+schema_version: 2.0.0
+type: mitigation
+id: MIT-000064
+name:
+  zh: 自启动状态完整性与生命周期治理
+  en: Autostart-State Integrity and Lifecycle Governance
+summary:
+  zh: 通过限制启动状态写入、约束 writer-to-consumer 权限边界、维护描述符到真实目标的批准清单、控制制品执行并保留跨重启审计，减少未授权恢复与权限提升路径。
+  en: Reduce unauthorized recovery and privilege-escalation paths by restricting startup-state writes, constraining writer-to-consumer authority boundaries, maintaining an approved descriptor-to-target inventory, controlling artifact execution, and retaining audit across reboot.
+description:
+  paragraphs:
+  - zh: 本缓解把启动或登录自启动视为“持久描述符—真实目标—生命周期激活”三部分控制对象。组织应盘点操作系统实际消费的注册表、目录、登录项、桌面条目、plist、扩展注册和网络设备启动配置，限制能够创建、修改或启用这些映射的主体，并为每项批准状态绑定软件所有者、安装包、可见名称、目标、参数、签名、路径、用户或系统范围和有效期。控制目的不是禁用所有自启动，而是让每条未来激活路径可归因、可验证和可撤销。
+    en: This mitigation treats boot or logon autostart as a three-part control object consisting of durable descriptor, actual target, and lifecycle
+      activation. Organizations should inventory registry, directory, login-item, desktop-entry, plist, extension-registration, and network-device
+      startup configuration actually consumed by the operating system; restrict principals able to create, modify, or enable those mappings; and
+      bind every approved state to software owner, package, visible name, target, arguments, signature, path, user or system scope, and validity.
+      The objective is not to disable all autostart but to make every future activation path attributable, verifiable, and revocable.
+  - zh: 预防与恢复必须同时覆盖映射和载荷。应用控制、受保护目录、签名策略和文件权限用于阻止描述符指向未批准目标；连续状态快照和跨启动审计用于发现已经写入的路径。处置时先保存旧值、新值、写入者、描述符、目标哈希、签名和激活谱系，再禁用映射、隔离目标并验证下一个登录或重启不再恢复代码。软件更新、用户登录项和应急修复需要受限例外，不能用通用更新名称或受信父进程作为永久放行条件。
+    en: Prevention and recovery must cover both mapping and payload. Application control, protected directories, signature policy, and file permissions
+      block descriptors from resolving to unapproved targets, while continuous state snapshots and cross-boot audit reveal paths already written.
+      Response preserves old and new values, writer, descriptor, target hash, signature, and activation lineage before disabling the mapping,
+      isolating the target, and verifying that the next logon or reboot no longer restores code. Software update, user login items, and emergency
+      repair require bounded exceptions; a generic updater name or trusted parent process cannot be a permanent allow condition.
+domains:
+- enterprise
+measures:
+- key: autostart-write-authority-and-approval
+  name:
+    zh: 自启动写入权限与变更审批
+    en: Autostart Write Authority and Change Approval
+  description:
+    paragraphs:
+    - zh: 按用户和系统范围限制自启动注册表、目录、登录项、配置数据库和扩展注册的创建、修改与启用权限；高权限或早期启动位置使用隔离管理员、强认证和双人审批。软件部署工具只获得明确位置与包所需的最小权限，所有变更记录写入者、目标主体、变更单、旧值、新值和结果。
+      en: Restrict create, modify, and enable authority for autostart registry, directories, login items, configuration databases, and extension
+        registrations by user and system scope. Use isolated administrators, strong authentication, and two-person approval for privileged or
+        early-boot locations. Software deployment tools receive minimum permission for explicit locations and packages, and every mutation records
+        writer, target subject, change record, old value, new value, and outcome.
+  control_type: preventive
+- key: descriptor-target-software-inventory
+  name:
+    zh: 描述符、真实目标与软件清单一致性
+    en: Descriptor, Actual Target, and Software-Inventory Consistency
+  description:
+    paragraphs:
+    - zh: 为每个批准自启动项保存稳定描述符、可见名称、目标和参数、文件哈希或受控版本、原始文件名、签名发布者、安装路径、包 ID、所有者和到期时间；连续快照检测新增、替换、删除和权限变化。更新、浏览器、安全或系统主题名称必须解析到对应批准发布者与路径，名称本身不能授予信任。
+      en: For every approved autostart, retain stable descriptor, visible name, target and arguments, file hash or controlled version, original
+        filename, signing publisher, installation path, package ID, owner, and expiry. Successive snapshots detect addition, replacement, deletion,
+        and permission change. Updater, browser, security, or system-themed names must resolve to the corresponding approved publisher and path;
+        the name itself grants no trust.
+  control_type: detective-support
+- key: autostart-target-execution-control
+  name:
+    zh: 自启动目标执行约束
+    en: Autostart Target Execution Constraint
+  description:
+    paragraphs:
+    - zh: 使用应用控制、受保护目录、签名和脚本策略限制启动描述符能够调用的可执行文件、DLL、解释器、脚本和非标准扩展。规则同时检查实际命令行、加载模块和用户上下文，不能因为 explorer、winlogon、launchd、rundll32 或其他系统宿主发起进程就自动放行。
+      en: Use application control, protected directories, signature and script policy to constrain executables, DLLs, interpreters, scripts, and
+        nonstandard extensions callable by startup descriptors. Rules inspect actual command line, loaded module, and user context and do not
+        automatically allow a process because explorer, winlogon, launchd, rundll32, or another system host initiated it.
+  control_type: preventive
+- key: cross-lifecycle-audit-and-recovery
+  name:
+    zh: 跨生命周期审计与证据化恢复
+    en: Cross-Lifecycle Audit and Evidence-Preserving Recovery
+  description:
+    paragraphs:
+    - zh: 保留自启动变更、状态快照、boot 或 logon ID 和后继进程谱系，覆盖组织允许的最长离线与重启周期。发现未知路径时先导出映射、权限、目标、哈希、签名、写入者和执行结果，再禁用描述符、隔离载荷、恢复可信值，并通过受控登录或重启验证不再激活。
+      en: Retain autostart mutation, state snapshots, boot or logon IDs, and successor lineage across the longest offline and reboot interval
+        permitted by the organization. For an unknown path, first export mapping, permission, target, hash, signature, writer, and execution outcome,
+        then disable the descriptor, isolate the payload, restore trusted values, and verify through controlled logon or reboot that activation
+        no longer occurs.
+  control_type: containment
+- key: session-restoration-state-integrity
+  name:
+    zh: 会话恢复状态完整性与来源验证
+    en: Session-Restoration State Integrity and Provenance Validation
+  description:
+    paragraphs:
+    - zh: 保护会话恢复数据库或 plist 的写权限，记录恢复项、写入进程、前序应用活动和用户重新打开选择，并在登录前拒绝没有可信前序来源或不满足应用控制的目标。恢复时保全队列差异并清除恶意项目，而不是禁用全部用户恢复功能。
+      en: Protect write authority for restoration databases or plists, record restoration item, writer process, prior application activity, and
+        user reopen choice, and reject before sign-in a target without trusted prior provenance or application-control eligibility. During recovery,
+        preserve queue difference and remove the malicious item rather than disabling all user restoration.
+  control_type: preventive
+- key: writer-consumer-authority-boundary
+  name:
+    zh: 写入者—生命周期消费者权限边界
+    en: Writer-to-Lifecycle-Consumer Authority Boundary
+  description:
+    paragraphs:
+    - zh: 对每个由 SYSTEM/root、LSA、Winlogon、spooler、内核或其他高权限组件消费的 descriptor，证明写权限不低于其执行权威，或通过受认证、最小权限且绑定 package/target 的 broker 提交。禁止低权限主体直接修改高权限映射或可替换其 target；记录 writer pre-state、consumer security context、审批和预期结果。若平台允许降权，在解析不受信 target 前把 consumer 切换到受限主体、完整性级别或 capability 集合。
+      en: For every descriptor consumed by SYSTEM or root, LSA, Winlogon, spooler, kernel, or another privileged component, require write authority no weaker than execution authority or submission through an authenticated least-privilege broker bound to package and target. Prevent low-authority principals from directly modifying privileged mappings or replacing their targets; record writer pre-state, consumer security context, approval, and expected outcome. Where supported, de-privilege the consumer to a constrained principal, integrity level, or capability set before resolving an untrusted target.
+  control_type: preventive
+applications:
+- target_ref: NJT-0084
+  use:
+    paragraphs:
+    - zh: 对启动或登录自启动执行，建立覆盖所有实际消费位置的状态清单，将变更权限、软件部署审批、目标执行策略和跨生命周期审计连成一项控制。每条映射必须能够回答谁写入、何时生效、由哪个启动/登录边界消费、实际运行什么以及何时撤销；未知项先阻断目标执行并保全证据，再删除或恢复配置。服务、任务、事件订阅和脚本正文由相邻控制对象负责，避免一个泛化策略掩盖所有权。
+      en: For Boot or Logon Autostart Execution, establish state inventory across every consumed location and connect mutation authority, software-deployment
+        approval, target-execution policy, and cross-lifecycle audit into one control. Every mapping must answer who wrote it, when it became
+        effective, which boot or logon boundary consumed it, what actually ran, and when it was revoked. For an unknown item, block target execution
+        and preserve evidence before deleting or restoring configuration. Services, tasks, event subscriptions, and script bodies remain owned
+        by neighboring control objects so one generalized policy does not obscure responsibility.
+    - zh: 对 TA0004，再把 writer/pre-state 权限与 consumer 执行权威作为批准条件：低权限写入不得被高权限生命周期宿主直接放大，合法 broker 必须绑定提交者、包、descriptor、target、预期 token 和操作。发现异常后除禁用映射与隔离载荷，还要终止由该路径产生的高权限进程或模块、撤销会话/token、回滚已执行的权限操作，并用受控启动/登录验证权限差消失。
+      en: For TA0004, make writer or pre-state authority and consumer execution authority part of approval. A low-authority write must not be amplified directly by a privileged lifecycle host, and a legitimate broker must bind submitter, package, descriptor, target, expected token, and operation. After an anomaly, in addition to disabling the mapping and isolating the payload, terminate privileged processes or modules created by the path, revoke sessions or tokens, reverse resulting privileged actions, and use controlled boot or logon to verify the authority difference is gone.
+  expected_effect:
+    paragraphs:
+    - zh: 该应用减少攻击者可写入的启动面，阻止未批准目标借正常生命周期自动恢复，并保留从写入到以后执行的稳定因果键。攻击者需要取得更高价值管理权限、利用批准软件路径或反复修复被回滚的状态，同时产生额外审批、完整性和激活差异。
+      en: This application reduces writable startup surfaces, prevents unapproved targets from automatically returning through normal lifecycle,
+        and preserves stable causal keys from mutation to later execution. The adversary must obtain higher-value administrative authority, abuse
+        an approved software path, or repeatedly repair rolled-back state, producing additional approval, integrity, and activation differences.
+    - zh: 权限边界应用阻止 descriptor 把较低权限写入无条件转换为更高权限执行，并使合法 broker 的授权意图可核验。攻击者必须取得与 consumer 相称的写权限、控制批准 package/broker，或同时规避 token、结果和回滚控制，留下更多身份、审批与执行差异。
+      en: The authority-boundary application prevents a descriptor from unconditionally converting a lower-authority write into higher-authority execution and makes legitimate broker intent verifiable. The adversary must obtain write authority commensurate with the consumer, control an approved package or broker, or evade token, outcome, and rollback controls together, leaving more identity, approval, and execution differences.
+  limitations:
+    paragraphs:
+    - zh: 操作系统、驱动、企业管理、安全软件和用户应用广泛依赖自启动，错误阻断可能导致无法登录、启动失败或业务功能丢失；内核和早期启动对象还可能在传感器前运行。具有合法签名或供应链控制的攻击者可以满足静态清单，用户级允许项也难以统一，因此控制必须分层部署、测试回滚并结合行为检测。
+      en: Operating systems, drivers, enterprise management, security software, and user applications depend broadly on autostart, so erroneous
+        enforcement can prevent logon, break boot, or remove business functions. Kernel and early-boot objects may also execute before sensors.
+        An adversary with a legitimate signature or supply-chain control can satisfy static inventory, and user-scoped allowed items resist uniform
+        policy. Controls therefore require staged deployment, tested rollback, and behavioral detection.
+    - zh: 某些架构本就要求低权限客户端请求高权限安装或维护 broker，简单要求 writer 与 consumer 同权会破坏业务；内核和早期启动还可能无法完整记录 token。控制必须验证委托链与目标绑定，而不是一律禁止权限差。已通过其他路径取得同等权限的攻击者也不会被本措施检测为“新增”提权，仍需完整性与行为监控。
+      en: Some architectures intentionally let low-authority clients request privileged installation or maintenance brokers, so requiring equal writer and consumer authority everywhere breaks business. Kernel and early boot may also lack complete token records. Controls must validate delegation and target binding instead of prohibiting every authority difference. An adversary already holding equivalent authority through another path will not appear as new elevation under this measure and still requires integrity and behavioral monitoring.
+- target_ref: NJS-0084-001
+  use:
+    paragraphs:
+    - zh: 对更新主题自启动描述符伪装，要求更新、浏览器或系统主题名称必须与批准发布者、原始文件名、安装路径、包 ID、实际目标和参数同时一致。任何 EdgeUpdate、MsEdgeMsE 或相似名称若指向 LocalAppData 解释器、非标准扩展、无关 DLL、未知签名或未登记包，先阻断目标而不依赖名称信誉；合法更新器例外绑定具体版本和维护窗口。
+      en: For Update-Themed Autostart Descriptor Camouflage, require an updater, browser, or system-themed name to agree simultaneously with approved
+        publisher, original filename, installation path, package ID, actual target, and arguments. If EdgeUpdate, MsEdgeMsE, or a similar name
+        resolves to an interpreter in LocalAppData, nonstandard extension, unrelated DLL, unknown signature, or unregistered package, block the
+        target without relying on name reputation. Legitimate updater exceptions are bound to a concrete version and maintenance window.
+  expected_effect:
+    paragraphs:
+    - zh: 该应用取消描述符名称提供的隐式信任，使攻击者必须复制更多可验证的软件属性或转向更显著的启动项。名称与目标不一致会产生稳定检测信号，受信父进程也不能覆盖实际载荷的签名、路径和完整性差异。
+      en: This application removes implicit trust granted by descriptor name, forcing the adversary to reproduce more verifiable software attributes
+        or use a more conspicuous startup entry. Name-to-target inconsistency becomes a stable signal, and a trusted parent process cannot override
+        signature, path, and integrity differences of the actual payload.
+  limitations:
+    paragraphs:
+    - zh: 合法更新器可能使用临时目录、解释器、随机文件名或短期无签名组件，严格一致性会产生误阻断；攻击者也可窃取签名、侵入批准包或选择不含更新主题的普通名称。策略必须从审计模式开始，按发布者和包建立期限明确的例外，并始终与变更来源和执行结果关联。
+      en: Legitimate updaters can use temporary directories, interpreters, random filenames, or briefly unsigned components, so strict consistency
+        can block valid activity. An adversary can also steal a signature, compromise an approved package, or choose an ordinary name without
+        an updater theme. Policy must begin in audit mode, use publisher- and package-specific time-bounded exceptions, and always correlate mutation
+        provenance and execution outcome.
+- target_ref: NJS-0084-002
+  use:
+    paragraphs:
+    - zh: 对既有自启动描述符目标替换，为每个批准描述符保存稳定 ID/路径、可信目标和参数版本、包 ID、发布者与升级窗口。任何同对象目标变化必须由对应签名包和工单解释；发现异常时恢复可信描述符值并隔离新目标，同时保留 old/new 与后继执行证据。
+      en: For Established Autostart Descriptor Target Substitution, retain stable ID or path, trusted target and argument version, package ID,
+        publisher, and upgrade window for every approved descriptor. Any same-object target change must be explained by a corresponding signed
+        package and change record. On anomaly, restore the trusted descriptor value and isolate the new target while preserving old and new values
+        and successor execution evidence.
+  expected_effect:
+    paragraphs:
+    - zh: 该应用取消“已有条目即可信”的假设，使攻击者必须同时篡改基线、软件包所有权或审批才能让目标替换通过，并允许恢复原条目而不误删业务自启动。
+      en: This application removes the assumption that an existing item is trusted, forcing the adversary to alter baseline, package ownership,
+        or approval as well for target substitution to pass, while allowing restoration of the business autostart instead of erroneous deletion.
+  limitations:
+    paragraphs:
+    - zh: 软件升级可能重建描述符并改变对象 ID、路径或参数，严格连续性会产生误报；供应链受控的签名包也能合法更新基线。需使用包事务和版本历史校准，不能只依赖文件时间。
+      en: Software upgrades can recreate descriptors and change object ID, path, or arguments, producing false positives under strict continuity.
+        A compromised signed supply-chain package can also update the baseline legitimately. Package transactions and version history must calibrate
+        policy rather than file time alone.
+- target_ref: NJS-0084-003
+  use:
+    paragraphs:
+    - zh: 对会话恢复队列注入，限制恢复状态写入者，保存前序会话应用集合与用户选择，并在下一登录前验证每个目标路径、签名、包归属和应用控制。异常项目单独移除，相关载荷隔离，随后用受控注销/登录验证不再恢复。
+      en: For Session-Restoration Queue Injection, restrict restoration-state writers, retain prior-session application set and user choice, and
+        validate each target path, signature, package ownership, and application control before the next sign-in. Remove anomalous items individually,
+        isolate related payloads, and verify through controlled logout and login that they no longer restore.
+  expected_effect:
+    paragraphs:
+    - zh: 该应用把通常被当作用户体验状态的恢复队列纳入完整性与来源控制，使攻击者不能仅依赖正常系统父体和登录恢复波次隐藏目标。
+      en: This application brings a restoration queue normally treated as user-experience state under integrity and provenance control, preventing
+        an adversary from relying only on a normal system parent and login-restoration wave to hide a target.
+  limitations:
+    paragraphs:
+    - zh: 恢复状态可能频繁变化且属于个人体验，集中阻断可能造成工作丢失或隐私影响；部分系统不记录逐项目写入者。控制应按高风险目标先审计后执行，并保留用户可见的恢复选择。
+      en: Restoration state changes frequently and belongs to personal user experience, so centralized blocking can cause lost work or privacy
+        impact. Some systems omit per-item writers. Controls should audit before enforcement for high-risk targets and preserve user-visible restoration
+        choice.
+evidence_refs:
+- REF-000148
+- REF-000149
+- REF-000150
+- REF-000151
+- REF-000152
+- REF-000153
+- REF-000172
+- REF-000173
+- REF-000174
+lifecycle:
+  status: review
+  version: 1.2.0
+  created: '2026-09-11'
+  modified: '2026-09-13'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

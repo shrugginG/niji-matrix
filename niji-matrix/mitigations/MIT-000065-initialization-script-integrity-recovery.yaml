@@ -1,0 +1,170 @@
+schema_version: 2.0.0
+type: mitigation
+id: MIT-000065
+name:
+  zh: 初始化脚本内容完整性与证据化恢复
+  en: Initialization-Script Content Integrity and Evidence-Preserving Recovery
+summary:
+  zh: 以最小写权限、签名或版本基线、写入者—解释器权限隔离和逐行证据化恢复，减少恶意命令在正常启动脚本中长期存活或借高权限 consumer 扩大权限。
+  en: Reduce malicious commands surviving in normal startup scripts or gaining authority through a privileged consumer by using least write authority,
+    signed or versioned baselines, writer-to-interpreter authority separation, and evidence-preserving line-level recovery.
+description:
+  paragraphs:
+  - zh: 本缓解控制被启动或登录流程执行的脚本正文，而不是笼统管理所有自启动描述符。组织应明确脚本所有者和允许命令，限制本地、域、映像、固件与网络设备脚本的写入接口，使用签名、只读分区、配置版本或受控包保存可信内容，并保留每次变更的逐行差异与发起者。应用控制和解释器策略限制脚本能调用的目标，防止合法脚本路径成为任意代码入口。
+    en: This mitigation controls script bodies executed by boot or logon rather than all autostart descriptors. Organizations define script owners
+      and allowed commands, constrain write interfaces for local, domain, image, firmware, and network-device scripts, preserve trusted content
+      through signing, read-only partitions, configuration versions, or controlled packages, and retain line-level differences and initiators
+      for every change. Application control and interpreter policy constrain targets callable by scripts so a legitimate script path does not
+      become an arbitrary-code entry.
+  - zh: 恢复时必须区分恶意插入行与合法脚本主体。先导出旧/新版本、权限、写入来源、boot/logon 执行和子进程证据，再删除新增命令或恢复完整可信版本，同时隔离载荷并检查相同配置管理范围。盲目删除脚本可能阻断登录、网络和设备启动，故需测试回滚和下次生命周期验证。
+    en: Recovery distinguishes malicious inserted lines from the legitimate script body. Export old and new versions, permission, writer provenance,
+      boot or logon execution, and child-process evidence before removing added commands or restoring a complete trusted version, isolating payloads,
+      and checking the same configuration-management scope. Blind script deletion can break logon, networking, and device boot, requiring tested
+      rollback and next-lifecycle verification.
+domains:
+- enterprise
+measures:
+- key: script-write-authority
+  name:
+    zh: 初始化脚本最小写权限
+    en: Least Initialization-Script Write Authority
+  description:
+    paragraphs:
+    - zh: 将脚本修改限定到隔离管理员、签名部署或受控配置管理，保护注册表、脚本目录、配置归档和设备 startup-config，并记录旧值、新值、主体、会话和审批。
+      en: Limit script mutation to isolated administrators, signed deployment, or controlled configuration management; protect registry, script
+        directories, configuration archives, and device startup-config; and record old value, new value, principal, session, and approval.
+  control_type: preventive
+- key: signed-versioned-script-baseline
+  name:
+    zh: 签名与版本化脚本基线
+    en: Signed and Versioned Script Baseline
+  description:
+    paragraphs:
+    - zh: 保存脚本全文、语义 diff、哈希、签名、所有者、权限、包与设备角色，定期比较运行状态和批准来源，避免只以路径或一次哈希判定。
+      en: Preserve full script, semantic diff, hash, signature, owner, permission, package, and device role and compare runtime state with approved
+        source regularly instead of trusting path or one hash.
+  control_type: detective-support
+- key: interpreter-target-constraint
+  name:
+    zh: 解释器与后继目标约束
+    en: Interpreter and Successor-Target Constraint
+  description:
+    paragraphs:
+    - zh: 限制高权限启动解释器可调用的下载器、shell、修补命令、用户可写路径和未知二进制，并检查命令、有效用户和子进程，而不因脚本路径合法而放行。
+      en: Constrain downloaders, shells, patch commands, user-writable paths, and unknown binaries callable by privileged startup interpreters,
+        checking command, effective user, and child processes rather than allowing a legitimate script path.
+  control_type: preventive
+- key: evidence-preserving-script-recovery
+  name:
+    zh: 逐行证据化恢复
+    en: Evidence-Preserving Line-Level Recovery
+  description:
+    paragraphs:
+    - zh: 发现异常时先保全内容版本、写入者和执行结果，再恢复可信脚本、隔离引用载荷、修复权限，并在受控启动或登录中确认恶意行和子进程不再出现。
+      en: On anomaly, preserve content versions, writer, and execution outcome before restoring trusted script, isolating referenced payloads,
+        repairing permission, and confirming through controlled boot or logon that malicious lines and children no longer appear.
+  control_type: containment
+- key: central-script-assignment-and-propagation-governance
+  name:
+    zh: 中央脚本分配、版本与传播治理
+    en: Central Script Assignment, Version, and Propagation Governance
+  description:
+    paragraphs:
+    - zh: 隔离 GPO、目录分配和 Netlogon/SYSVOL 等共享脚本的写权限，为每次版本变化签名并绑定 owner、目标 OU/组、审批和到期；客户端报告已应用 policy_version 与 script_hash。处置时从中央回滚并验证复制、缓存和各目标客户端，不以删除一个端点副本结束。
+      en: Isolate write authority for GPO, directory assignments, and shared scripts such as Netlogon or SYSVOL; sign every version change and
+        bind it to owner, target OU or group, approval, and expiry; and require clients to report applied policy version and script hash. During
+        response, roll back centrally and verify replication, cache, and every target client rather than ending after one endpoint copy is removed.
+  control_type: preventive
+- key: script-writer-interpreter-authority-boundary
+  name:
+    zh: 脚本写入者—解释器权限边界
+    en: Script Writer-to-Interpreter Authority Boundary
+  description:
+    paragraphs:
+    - zh: 对每个高权限启动或登录脚本列出可写主体、构建/部署输入、签名者、实际 consumer token 与允许结果，确保低权限用户、组、共享目录和委派 GPO 编辑者不能影响更高权限解释器消费的内容。测试写入与执行授权，记录 pre-state 拒绝，并将例外绑定到具体 diff、目标、范围和期限。
+      en: For every privileged boot or logon script, enumerate writable principals, build or deployment inputs, signers, actual consumer token,
+        and allowed outcomes. Ensure lower-authority users, groups, shares, and delegated GPO editors cannot influence content consumed by a
+        higher-authority interpreter. Test mutation and execution authorization, record pre-state denial, and bind exceptions to exact difference,
+        target, scope, and expiry.
+  control_type: preventive
+applications:
+- target_ref: NJT-0085
+  use:
+    paragraphs:
+    - zh: 对所有被启动/登录流程执行的脚本建立所有者、版本、权限和解释器清单，把写入审批、内容 diff、目标控制与跨生命周期验证联动；未知变化先阻断新增命令的目标并保存证据，再恢复可信版本。
+      en: Inventory owner, version, permission, and interpreter for every script executed by boot or logon, linking write approval, content diff,
+        target control, and cross-lifecycle verification. For an unknown change, block the added command's target and preserve evidence before
+        restoring a trusted version.
+    - zh: 对可能进入 TA0004 的脚本，验证所有 writer、构建/部署输入与实际 interpreter token 的权限关系，禁止较低权限主体影响更高权限 consumer 的正文。响应时除恢复脚本外，还要撤销由变化行创建的高权限进程、凭据、文件、配置和访问，并在下一生命周期确认 pre-state 权限边界恢复。
+      en: For scripts that can enter TA0004, verify the authority relationship among every writer, build or deployment input, and actual interpreter
+        token, preventing lower-authority principals from influencing body consumed at higher authority. Response restores the script and revokes
+        privileged processes, credentials, files, configuration, and access created by the changed line, then confirms the pre-state authority
+        boundary at the next lifecycle.
+  expected_effect:
+    paragraphs:
+    - zh: 减少攻击者创建或修改启动脚本的机会，使未批准行和以后执行可归因，并迫使其控制更高价值部署链或产生重复修复痕迹。
+      en: Reduces opportunities to create or change startup scripts, attributes unapproved lines and later execution, and forces the adversary
+        to control a higher-value deployment chain or produce repeated repair traces.
+    - zh: 切断低权限 writer 到高权限 interpreter 的可利用边，或使正权限差与首个新获准结果可审计；即使攻击者保留持久脚本，也不能仅借正常启动宿主扩大授权集合。
+      en: Breaks exploitable edges from lower-authority writer to higher-authority interpreter or makes positive authority difference and first
+        newly authorized outcome auditable. Even if the adversary retains a persistent script, a normal startup host alone cannot expand the
+        authorization set.
+  limitations:
+    paragraphs:
+    - zh: 系统、固件、域策略和设备启动依赖这些脚本；错误回滚可能阻断启动或登录，早期启动也可能先于传感器，故需平台测试、离线取证和恢复路径。
+      en: Systems, firmware, domain policy, and device startup depend on these scripts. Erroneous rollback can break boot or logon and early boot
+        can precede sensors, requiring platform testing, offline forensics, and a recovery path.
+    - zh: 某些合法 startup script 必须以 Local System/root 执行，集中部署还需要委派写权限；完全消除不对称会阻断运维。签名者、包仓库或审批主体被控时，权限边界外观仍可能正常，故需构建来源、实际结果和独立审批证据。
+      en: Some legitimate startup scripts must run as Local System or root and central deployment needs delegated write authority, so eliminating
+        all asymmetry can break operations. If signer, package repository, or approver is compromised, the authority boundary can still appear
+        normal, requiring build provenance, actual outcome, and independent approval evidence.
+- target_ref: NJS-0085-001
+  use:
+    paragraphs:
+    - zh: 对内联植入，必须保存逐版本全文并做语义 diff，批准项绑定具体新增行、包和期限；脚本路径、所有者或大部分内容合法不能豁免局部命令审查，恢复时只在确认后删除恶意行或还原完整版本。
+      en: For inline implantation, retain complete versions and perform semantic diff, binding approval to exact added lines, package, and validity.
+        Legitimate path, owner, or majority content does not exempt local command review; remove malicious lines or restore the full version only
+        after confirmation.
+  expected_effect:
+    paragraphs:
+    - zh: 取消既有脚本身份带来的隐式信任，使少量插入仍产生稳定差异并被连接到解释器结果，提高攻击者维持低差异植入的成本。
+      en: Removes implicit trust from existing script identity, makes small insertions produce stable differences linked to interpreter outcomes,
+        and raises the cost of maintaining a low-difference implant.
+  limitations:
+    paragraphs:
+    - zh: 合法管理员常在故障处置中临时追加命令，生成式脚本也会产生大 diff；语义规范化可能遗漏混淆或多行副作用，因此需保留原文、审批和运行验证。
+      en: Administrators legitimately append commands during repair and generated scripts can produce large diffs. Semantic normalization can
+        miss obfuscation or multiline side effects, so original text, approval, and runtime validation remain necessary.
+- target_ref: NJS-0085-002
+  use:
+    paragraphs:
+    - zh: 对集中初始化脚本扇出，将中央脚本内容、分配关系、复制状态与客户端应用版本纳入同一变更控制。未经批准的版本先冻结传播并保全 GPO/共享文件差异，再恢复可信版本、刷新客户端策略并按目标范围验证每个 boot/logon 不再执行。
+      en: For Centralized Initialization-Script Fan-Out, place central script content, assignment relationship, replication state, and client-applied
+        version under one change control. Freeze propagation of an unapproved version and preserve GPO or shared-file difference before restoring
+        a trusted version, refreshing client policy, and verifying across target scope that no boot or logon executes it.
+  expected_effect:
+    paragraphs:
+    - zh: 该应用减少可写中央脚本的主体，使一次变更的预期范围、实际传播和执行结果可审查，并阻止攻击者在一个上游位置长期维持多个端点入口。
+      en: This application reduces principals able to write central scripts, makes expected scope, actual propagation, and execution results of
+        one change reviewable, and prevents an adversary from maintaining multiple endpoint entries through one upstream location.
+  limitations:
+    paragraphs:
+    - zh: 域复制、离线客户端和策略缓存会延迟回滚；错误冻结或强制刷新可能同时影响大量用户。旧系统可能不报告脚本哈希或应用版本，因此需要分阶段处置、业务所有者验证和端点抽样确认。
+      en: Domain replication, offline clients, and policy caches delay rollback, while an erroneous freeze or forced refresh can affect many users
+        at once. Legacy systems may not report script hash or applied version, requiring staged response, business-owner validation, and endpoint
+        sampling.
+evidence_refs:
+- REF-000154
+- REF-000155
+- REF-000156
+- REF-000157
+- REF-000175
+- REF-000176
+lifecycle:
+  status: review
+  version: 1.2.0
+  created: '2026-09-11'
+  modified: '2026-09-13'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

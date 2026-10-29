@@ -1,0 +1,73 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000012
+strategy_ref: DET-000038
+name:
+  zh: 受信账户诱导与邮箱痕迹完整性关联分析
+  en: Trusted-Account Solicitation and Mailbox-Trace Integrity Correlation Analytic
+summary:
+  zh: 从不可变审计重构受信账户发送的敏感请求及其前后异常会话、删除、规则、转发和可见性变化。
+  en: Reconstruct sensitive requests sent from trusted accounts together with preceding or following anomalous sessions, deletion, rule, forwarding, and visibility changes from immutable audit.
+domains: [enterprise]
+platforms: [Cloud Email, Collaboration]
+logic:
+  paragraphs:
+  - zh: 以账户和会话为轴关联登录来源、设备、认证强度、令牌、邮箱规则、转发、委派、发送、线程、收件人和消息删除事件，并从消息或数据分类结果识别对敏感信息的请求。若异常会话进入既有线程、扩大收件人或向不常联系对象发送请求，则标记受信账户寄生；若发送前后出现删除、隐藏规则、转发变化、审计关闭或普通视图与不可变日志不一致，则另行标记痕迹抑制。两种结果可以同时出现，但不能因真实域认证而相互抵消。
+    en: Correlate login origin, device, authentication strength, token, mailbox rule, forwarding, delegation, send, thread, recipient, and message-deletion events around an account and session, and identify requests for sensitive information through message or data classification. Mark trusted-account parasitism when an anomalous session enters an existing thread, expands recipients, or sends requests to unusual contacts; separately mark trace suppression when deletion, hiding rules, forwarding changes, audit disablement, or inconsistency between ordinary views and immutable logs appears around sending. Both results may co-occur, and genuine domain authentication must not suppress either.
+data_requirements:
+- source_type: identity-session-audit
+  name:
+    zh: 身份与会话审计
+    en: Identity and session audit
+  channel: null
+  required_fields: [timestamp, account_id, session_id, source_ip, device_id, auth_strength, token_id, risk_state]
+- source_type: immutable-mailbox-audit
+  name:
+    zh: 不可变邮箱与协作审计
+    en: Immutable mailbox and collaboration audit
+  channel: null
+  required_fields: [timestamp, account_id, session_id, action, message_id, thread_id, recipients, rule_id, forwarding_target, audit_state]
+- source_type: message-classification
+  name:
+    zh: 消息敏感请求分类
+    en: Message sensitive-request classification
+  channel: null
+  required_fields: [message_id, requested_data_type, sensitivity_level, link_targets, attachment_names]
+observables:
+- zh: 异常设备或会话在受信线程中向原有或新增收件人发送敏感信息请求
+  en: An anomalous device or session sends sensitive-information requests to existing or added recipients in a trusted thread
+- zh: 发送后快速删除消息并新增隐藏、转发或清理规则
+  en: Messages are rapidly deleted after sending while hiding, forwarding, or cleanup rules are added
+- zh: 用户普通邮箱视图与不可变审计中的消息和规则状态不一致
+  en: Message and rule state differs between the user's ordinary mailbox view and immutable audit
+correlation:
+  window:
+    zh: 使用会话内分钟级窗口关联发送与删除，并使用三十日至九十日窗口关联账户登录、规则、转发和线程关系变化。
+    en: Use minute-scale in-session windows to connect sending and deletion and thirty-to-ninety-day windows to correlate account login, rule, forwarding, and thread-relationship changes.
+  dimensions: [account, session, device, token, message, thread, recipient_graph, rule, forwarding_target, time]
+false_positives:
+- zh: 用户清理已发送邮件、自动归档或经批准的委派与转发
+  en: User cleanup of sent mail, automatic archiving, or approved delegation and forwarding
+- zh: 共享邮箱、客服系统和营销平台扩大收件人或复用线程
+  en: Shared mailboxes, support systems, and marketing platforms expanding recipients or reusing threads
+- zh: 合法安全响应删除误发敏感信息并修改规则
+  en: Legitimate security response deleting mistakenly sent sensitive information and changing rules
+blind_spots:
+- zh: 邮箱服务不保留不可变发送、删除和规则审计
+  en: The mailbox service does not retain immutable send, deletion, and rule audit
+- zh: 攻击者使用已知设备和强认证会话且不改变邮箱状态
+  en: The adversary uses a known device and strong-authentication session without changing mailbox state
+- zh: 信息诱导发生在组织不可见的个人通信平台
+  en: Information elicitation occurs on personal communication platforms outside organizational visibility
+tuning_guidance:
+  paragraphs:
+  - zh: 应为共享邮箱、合法委派、归档和转发建立明确所有者、收件范围与有效期，并分别输出账户寄生和痕迹抑制风险。白名单只能降低已批准规则或服务账户的权重，不能删除异常会话、敏感请求和发送后痕迹变化之间的时间关联。
+    en: Establish explicit owners, recipient scope, and validity periods for shared mailboxes, legitimate delegation, archiving, and forwarding, and output separate risks for account parasitism and trace suppression. Allow rules may reduce the weight of approved rules or service accounts but must not remove temporal correlation among anomalous sessions, sensitive requests, and post-send trace changes.
+evidence_refs: [REF-000024, REF-000042]
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-09-09'
+  modified: '2026-09-09'
+  contributors: [Niji Matrix Research]
+  reviewers: []

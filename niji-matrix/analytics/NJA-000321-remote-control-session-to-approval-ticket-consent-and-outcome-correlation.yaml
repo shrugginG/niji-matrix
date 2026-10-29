@@ -1,0 +1,147 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000321
+strategy_ref: DET-000246
+name:
+  zh: 远控会话与批准工单同意结果关联
+  en: Remote-Control Session to Approval Ticket Consent and Outcome Correlation
+summary:
+  zh: 把远控会话连接到批准 ticket、操作者、目标、权限、同意和端点后果。
+  en: Join a remote-control session to approved ticket, operator, target, privilege, consent, and endpoint outcome.
+domains:
+- enterprise
+platforms:
+- Windows
+- Linux
+- macOS
+logic:
+  paragraphs:
+  - zh: 对每个 actual session 用 provider/session/target/controller/time 寻找唯一 approval。比较 operator、tenant、target、tool、mode、window、consent
+      和 status，输出 matched_approved、unmatched_session、expired_or_scope_mismatch。仅当有效 session 产生目标动作且 approval 缺失或多个关键属性不符时输出
+      workflow_detached_confirmed。用户真实点击 Quick Assist Allow 只代表 product consent，若无组织 ticket/helper 验证仍是 mismatch evidence；Quick
+      Assist 无详细 endpoint log 时以进程/网络/后果和用户报告构造 session_candidate 并降低置信。
+    en: For every actual session, seek one approval by provider, session, target, controller, and time. Compare operator,
+      tenant, target, tool, mode, window, consent, and status to emit matched_approved, unmatched_session, or expired_or_scope_mismatch.
+      Emit workflow_detached_confirmed only when a valid session produces a target action and approval is absent or several
+      material attributes disagree. A real Quick Assist Allow click establishes product consent only and remains mismatch
+      evidence without an organizational ticket or helper verification. Where Quick Assist exposes no detailed endpoint
+      session log, construct session_candidate from process, network, outcome, and user report at lower confidence.
+data_requirements:
+- source_type: remote-control-session-audit
+  name:
+    zh: remote control session audit
+    en: remote control session audit
+  channel: vendor/RMM/IDE/helpdesk audit or session export
+  required_fields:
+  - event_time
+  - provider
+  - remote_session_id
+  - controller_principal_id
+  - controller_namespace_id
+  - controller_source_ip
+  - target_capability_id
+  - access_mode
+  - session_start
+  - session_end
+  - controller_auth_method
+  - user_consent_state
+  - remote_action
+  - result_status
+- source_type: approval-workflow
+  name:
+    zh: approval workflow
+    en: approval workflow
+  channel: helpdesk/change/JIT/support/IDE access system
+  required_fields:
+  - approval_id
+  - requestor_id
+  - approved_controller_id
+  - target_device_id
+  - approved_provider
+  - approved_mode
+  - approved_reason
+  - consent_reference
+  - approver_id
+  - valid_from
+  - valid_to
+  - approval_status
+- source_type: identity-signin
+  name:
+    zh: identity signin
+    en: identity signin
+  channel: IdP/Entra/GitHub/vendor identity
+  required_fields:
+  - event_time
+  - controller_principal_id
+  - client_app_id
+  - service_resource_id
+  - controller_source_ip
+  - identity_correlation_id
+  - controller_device
+  - auth_strength
+  - policy_result
+  - sign_in_result
+- source_type: endpoint-session-outcome
+  name:
+    zh: endpoint session outcome
+    en: endpoint session outcome
+  channel: endpoint agent/process/network/file and user report
+  required_fields:
+  - event_time
+  - target_device_id
+  - agent_process_key
+  - remote_session_id
+  - outcome_type
+  - outcome_process
+  - command_line
+  - object_path
+  - remote_target
+  - effective_principal
+observables:
+- zh: 真实远控会话缺少 ticket 或控制者/目标/权限/时间与批准不一致
+  en: A real remote session lacks a ticket or its controller, target, privilege, or time conflicts with approval
+- zh: 会话后出现子进程、文件或配置动作
+  en: Child-process, file, or configuration action follows the session
+correlation:
+  window:
+    zh: 会话起止加三十分钟；批准与操作者历史三十日。
+    en: Session start through end plus thirty minutes and thirty days of approval and operator history.
+  dimensions:
+  - provider
+  - remote_session_id
+  - controller_principal_id
+  - controller_namespace_id
+  - target_device_id
+  - approval_id
+  - access_mode
+  - consent_reference
+  - identity_correlation_id
+  - outcome_id
+  - time
+false_positives:
+- zh: 有事后工单的紧急支持、批准 MSP 跨租户操作或事件响应
+  en: Emergency support with retrospective approval, authorized cross-tenant MSP work, or incident response
+blind_spots:
+- zh: 服务不暴露 helper/session 身份、工单不完整或共享操作者账号
+  en: The service hides helper or session identity, ticket data is incomplete, or operator accounts are shared
+tuning_guidance:
+  paragraphs:
+  - zh: ticket 是组合证据而非恶意判据；紧急流程须 owner/expiry/retrospective approval。provider mappings 逐产品验证，不假定统一字段。无 controller/session
+      ID 时输出 unresolved，不用 signed agent、user consent 或 lack of ticket 单点定性。
+    en: A ticket is combined evidence rather than a maliciousness verdict. Emergency workflows need owner, expiry, and
+      retrospective approval. Validate provider mappings per product and do not assume uniform fields. Without controller
+      or session ID, emit unresolved and do not classify on signed agent, user consent, or missing ticket alone.
+evidence_refs:
+- REF-001063
+- REF-000031
+- REF-001066
+- REF-001069
+- REF-000986
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-10-05'
+  modified: '2026-10-05'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

@@ -1,0 +1,109 @@
+schema_version: 2.0.0
+type: technique
+id: NJT-0075
+name: {zh: 匿迹化计划执行, en: Stealth-Conforming Scheduled Execution}
+summary: {zh: 攻击者把命令登记给系统或编排调度器，并控制任务特征、触发时间、枚举状态或生命周期，使未来执行更难识别和关联, en: Adversaries register commands with system or orchestration schedulers and control task features trigger time enumeration state or lifecycle to make future execution harder to detect and correlate}
+aliases: []
+classification:
+  tactic_refs: [TA0002]
+  origin: {kind: attack-retained, source_attack_id: T1053, source_attack_version: '19.1'}
+  decision_ref: DEC-TA0002-T1053
+definition_and_concept:
+  paragraphs:
+    - zh: 匿迹化计划执行是攻击者在操作系统、设备、虚拟化或容器编排调度器中登记一个任务，使命令、脚本、程序或工作负载在未来时间、启动、登录、事件或控制面条件满足时运行，并有意塑造该任务的特征、时间关系、可枚举状态或生存期。直接目标是在不由原始入侵进程立即启动载荷的情况下获得一次或重复执行，同时借用调度服务的身份、权限与正常运维外观。
+      en: Stealth-Conforming Scheduled Execution registers a task in an operating-system device virtualization or container-orchestration scheduler so a command script program or workload runs when a future time startup login event or control-plane condition is met while deliberately shaping task features temporal relationship enumerable state or lifetime. Its direct objective is one-time or recurring execution without immediate launch by the original intrusion process while borrowing scheduler identity privileges and routine-operations appearance.
+    - zh: “计划”表示平台保存了可在以后求值的触发与动作绑定，不等同于应用内部 sleep、线程 timer 或攻击者手工等待。T1053 在 Execution 下以调度器实际启动攻击者控制动作作为成立点；同一任务也可服务 Persistence 或 Privilege Escalation，但这些结果不改变这里的执行对象。at、cron、Windows Task Scheduler、systemd timer 与 Kubernetes CronJob 是实现面，不是 Niji 子技术。
+      en: Scheduled means that a platform stores a trigger-to-action binding for later evaluation rather than application-internal sleep thread timers or manual waiting by an operator. Under Execution T1053 is established when the scheduler actually starts an adversary-controlled action. The same task may support Persistence or Privilege Escalation but those outcomes do not change this execution object. At cron Windows Task Scheduler systemd timers and Kubernetes CronJobs are implementation surfaces rather than Niji children.
+stealth_characteristics:
+  paragraphs:
+    - zh: 匿迹化计划执行可以同时改变四类观察关系。合形元数据让任务与更新、备份或健康检查共享名称和时间；延期把登记者与载荷执行分到不同分析窗口；枚举抑制让标准 API/UI 看不到仍会运行的对象；一次性任务则在状态扫描前完成 create、run 和 delete，同时让载荷继承 taskhost、cron、systemd 或 Job controller 等受信父级。局部日志因此可能只显示合法调度器或不完整状态。
+      en: Stealth-Conforming Scheduled Execution can change four observation relationships. Conforming metadata makes a task share names and timing with updates backups or health checks. Delay separates registrant and payload execution into different analysis windows. Enumeration suppression hides a still-runnable object from standard API or UI views. One-shot jobs complete create run and delete before state scans while the payload inherits trusted taskhost cron systemd or Job-controller parentage. Local logs may therefore show only a legitimate scheduler or incomplete state.
+    - zh: 调度并不抹除因果。任务创建/更新/删除事件、原始 XML/注册表/unit/CronJob 定义、计划与实际触发时间、标准和高权枚举差分、scheduler-to-process/Job-to-Pod 谱系、动作目标、账户、网络结果与历史基线仍然可用。强制任务成功或伪装名称不能消除异常路径、未安装软件、首次目的地和不一致执行账户等残余；覆盖必须结合状态与事件，而不能只定期抓取当前任务列表。
+      en: Scheduling does not erase causality. Task create update and delete events raw XML registry unit or CronJob definitions scheduled and actual trigger times standard-to-privileged enumeration differences scheduler-to-process or Job-to-Pod lineage action targets accounts network outcomes and historical baselines remain available. Successful execution or a disguised name cannot remove residuals such as anomalous paths absent software first-seen destinations and inconsistent principals. Coverage must combine state and events rather than periodically capture only current task inventory.
+scope_boundary_definition:
+  paragraphs:
+    - zh: 本技术纳入由平台调度器保存并最终执行的恶意 task/job，包括一次性、周期、事件、启动、登录和编排计划。判定至少需要可解析的调度对象或生命周期事件、攻击者控制的动作，以及调度器到实际执行结果的关系。正常补丁、备份、监控、证书更新、批处理与 CronJob 会产生同类事件，只有主体、变更、动作、环境基线与结果共同支持恶意意图时才纳入。
+      en: This technique includes malicious tasks or jobs stored and eventually executed by platform schedulers including one-time periodic event startup login and orchestration schedules. Classification needs at least a resolvable scheduled object or lifecycle event an adversary-controlled action and a relationship from scheduler to actual outcome. Normal patching backups monitoring certificate renewal batch processing and CronJobs produce the same event classes and enter scope only when principal change action environmental baseline and outcome jointly support malicious intent.
+    - zh: 任务载荷使用 PowerShell、shell 或其他解释器时可同时映射 T1059 对应技术；通过 WMI 创建 Windows 任务不改变 T1053 的直接执行对象，除非分析对象是 WMI provider 调用本身。持久 systemd service 但没有 timer 归系统服务，流水线 schedule 触发的 CI job 如果执行入口是 workflow 则优先归 T1677。隐藏任务文件或元数据只有在仍保留计划执行语义时属于本对象，纯 Hide Artifacts 行为不替代 T1053。
+      en: A task payload using PowerShell shell or another interpreter may also map to the T1059-derived technique. Creating a Windows task through WMI does not change T1053's direct execution object unless the analytic object is the WMI provider call itself. A durable systemd service without a timer belongs to System Services and a scheduled CI job belongs primarily to T1677 when its execution entry is a workflow. Hidden task files or metadata belong here only while scheduled execution semantics remain and Hide Artifacts alone does not replace T1053.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+      - zh: 攻击者在已获得本地、远程管理、集群 API 或设备管理访问后使用本技术，把下一阶段下载、C2 重连、横向执行、矿工或破坏载荷交给调度器。时间可以贴合维护窗口、远离最初感染数日、绑定特定事件，或仅用于一次受信父进程代理；任务也可在用户登录、系统启动、节点调度或控制器 reconciliation 时触发。
+        en: Adversaries use the technique after obtaining local remote-administration cluster-API or device-management access and hand later downloads C2 reconnection lateral execution miners or destructive payloads to a scheduler. Timing may align with maintenance windows occur days after initial infection bind to a selected event or serve only as one trusted-parent proxy. Tasks may also trigger at user logon system startup node scheduling or controller reconciliation.
+      - zh: Windows 终端提供丰富的注册与事件案例，但相同匿迹变量也可出现在 cron/systemd 和 Kubernetes。攻击者可以让 cron 名称/路径仿照备份、用 systemd RandomizedDelay/日历掩盖节奏，或让 CronJob 以正常 namespace、service account 和镜像外观创建短驻 Job；正式分类取决于可证明的变量，不从平台形式自动推断。
+        en: Windows endpoints provide rich registration and event cases but the same stealth variables may occur in cron systemd and Kubernetes. An adversary may imitate backup paths in cron exploit systemd calendar or randomized delay appearance or have a CronJob create short-lived Jobs under normal namespaces service accounts and image appearance. Formal classification depends on a demonstrable variable and is not inferred automatically from platform form.
+  threat_model:
+    attacker_model:
+      paragraphs:
+        - zh: 攻击者需要有权创建、修改或触发至少一个调度对象，或取得能直接改变调度后端状态的更高权限，并理解目标平台的动作格式、时区、catch-up、执行账户、并发和历史清理语义。合形轴还需要资产局部知识；延期轴需要时间容忍度；枚举抑制通常要求 SYSTEM/root 或后端访问；一次性轴要求精确协调创建、触发和删除。
+          en: The adversary needs authority to create modify or trigger at least one scheduled object or higher privilege to alter scheduler backend state directly and must understand action format time zone catch-up execution principal concurrency and history-cleanup semantics. The conforming axis also requires asset-local knowledge delay requires time tolerance enumeration suppression often needs SYSTEM root or backend access and the one-shot axis requires precise coordination of creation trigger and deletion.
+        - zh: 调度器可靠性也是约束。主机可能离线、时区或夏令时改变、Kubernetes 控制器可能补跑或并发创建 Job、systemd timer 可能在启动后追赶触发。攻击者若要保持低差异，必须适配这些行为并避免异常重试、失败与任务堆积；这些操作成本会产生可观测偏差。
+          en: Scheduler reliability is also a constraint. Hosts may be offline time zones or daylight saving may change Kubernetes controllers may catch up or create concurrent Jobs and systemd timers may trigger after boot. Maintaining low difference requires adapting to these behaviors and avoiding anomalous retries failures or job accumulation which creates observable operational cost.
+    defender_model:
+      paragraphs:
+        - zh: 防守方假定能集中任务生命周期审计、原始定义与权限、标准 API 枚举、受限或高权后端快照、进程/容器谱系和网络结果，并以稳定 object ID、task path、unit、CronJob UID、Job ownerRef 与 device/cluster 为关联键。Windows 4698 与 Operational 事件只是一个实现；Linux audit/journal 和 Kubernetes audit/controller 事件需要映射到相同语义。
+          en: The defender is assumed to centralize task-lifecycle audit raw definitions and permissions standard API enumeration restricted or privileged backend snapshots process or container lineage and network outcomes using stable object IDs task paths units CronJob UIDs Job owner references and device or cluster as join keys. Windows 4698 and Operational events are one implementation while Linux audit or journal and Kubernetes audit or controller events map to the same semantics.
+        - zh: 覆盖模型同时保留分钟级事务和跨数周长窗。日志轮转、未启用 TaskScheduler Operational、直接注册表修改、cron 文件无审计、systemd journal 不持久、Kubernetes Job history/TTL 清理和短驻 Pod 无运行时遥测都会造成盲区。缺少创建事件时可用状态—执行差分，缺少当前状态时可用生命周期—进程链，但任何单点均应降低置信度。
+          en: Coverage retains both minute-scale transactions and multi-week windows. Log rotation disabled TaskScheduler Operational direct registry changes unaudited cron files nonpersistent systemd journal Kubernetes Job history or TTL cleanup and short-lived Pods without runtime telemetry create blind spots. State-to-execution differentials can compensate for missing creation events and lifecycle-to-process chains for missing current state but any single point lowers confidence.
+stealth_mechanisms:
+  - mechanism_ref: NM-FD
+    role: primary
+    summary: {zh: 任务元数据贴合本机维护对象, en: Task metadata conforms to local maintenance objects}
+    analysis:
+      paragraphs:
+        - zh: 攻击者复制更新或维护任务的名称结构、路径、作者、账户、日历和频率，使恶意对象在任务清单中与正常对象共享可见特征。Guloader 的 Firefox BackgroundUpdate 式名称说明名称信誉可被借用，但未安装 Firefox、regsvr32 动作和用户目录目标仍暴露语义差异。按资产软件和任务角色建立基线可削弱 NM-FD 特征伪装。
+          en: The adversary copies naming structure paths authors accounts calendars and cadence of update or maintenance tasks so the malicious object shares visible inventory features with benign objects. Guloader's Firefox BackgroundUpdate-style name shows that reputation can be borrowed while absent Firefox installation regsvr32 action and user-directory target reveal semantic mismatch. Asset software and task-role baselines weaken NM-FD Feature Disguise.
+    evidence_refs: [REF-000262, REF-000266]
+    confidence: high
+  - mechanism_ref: NM-ST
+    role: primary
+    summary: {zh: 登记与关键执行跨越分析和保留窗口, en: Registration and critical execution cross analysis and retention windows}
+    analysis:
+      paragraphs:
+        - zh: 攻击者把首次关键动作延迟到沙箱、初始告警 triage 或默认 SIEM 窗口结束后，使创建者和未来调度器子进程不再同时出现。Nitrokod 在多次跨日重启后创建任务并将下载推迟十五天，随后再跨日解压与执行，直接展示信号在时间上被稀释。稳定任务身份、长周期日志和虚拟时间推进可以恢复链。
+          en: The adversary delays first critical action until after sandbox initial-alert triage or default SIEM windows end so the creator and future scheduler child no longer co-occur. Nitrokod created tasks after multiple day-separated restarts delayed download by fifteen days and then extracted and executed on later days directly demonstrating temporal dilution. Stable task identity long-retention logs and virtual-time advancement recover the chain.
+    evidence_refs: [REF-000260]
+    confidence: high
+  - mechanism_ref: NM-DO
+    role: secondary
+    summary: {zh: 后端任务状态存在但标准枚举对象缺失, en: Backend task state persists while standard enumeration omits the object}
+    analysis:
+      paragraphs:
+        - zh: 攻击者修改调度器对象的安全描述或索引元数据，使受支持 API/UI 无法列出任务，而后端仍保留触发与动作。Tarrask 删除 SD 后 WinUpdate 从 schtasks 与 UI 消失，却继续重连 C2，形成数据对象在不同观察接口中的不一致。比较原始注册表/文件状态、标准枚举与实际执行能够破坏 NM-DO 数据对象混淆。
+          en: The adversary changes scheduler object security descriptors or index metadata so supported APIs or UI cannot list the task while backend triggers and actions persist. After Tarrask deleted the SD WinUpdate disappeared from schtasks and UI yet continued C2 reconnection creating inconsistent object visibility across interfaces. Comparing raw registry or file state standard enumeration and actual execution defeats NM-DO Data Object Obfuscation.
+    evidence_refs: [REF-000259]
+    confidence: high
+  - mechanism_ref: NM-BT
+    role: secondary
+    summary: {zh: 短驻任务让载荷继承受信调度器父级, en: Ephemeral tasks give payloads trusted scheduler parentage}
+    analysis:
+      paragraphs:
+        - zh: 攻击者用一次性任务在短事务内完成创建、触发、执行和删除，使载荷由签名 taskhost 或等价调度器进程启动，后续状态扫描又找不到登记对象。Serpent 的 EventID 777 任务被报告为检测绕过，直接体现进程谱系的行为透明。生命周期审计若能连接 create/run/delete 与子进程，仍可恢复真实发起者。
+          en: The adversary uses a one-shot task to complete creation triggering execution and deletion in a short transaction so a signed taskhost or equivalent scheduler starts the payload and later state scans find no registration. Serpent's EventID 777 task was reported as detection bypass directly demonstrating behavioral transparency in process lineage. Lifecycle audit joining create run delete and the child process can still recover the true initiator.
+    evidence_refs: [REF-000261]
+    confidence: high
+subtechnique_taxonomy:
+  narrative:
+    paragraphs:
+      - zh: 四个子技术分别固定任务的可见特征、时间距离、枚举状态和生命周期。基线合形要求对象长期或至少可枚举但外观贴合本机；观察窗口外延期关注注册与执行的时间分离；状态枚举抑制要求对象仍可运行但标准管理视图缺失；短驻一次性代理要求对象仅在 create→trigger→run→delete 事务中存在并借用调度器父级。四者需要不同基线、保留期和差分数据，兄弟边界稳定。
+        en: Four children fix visible features temporal distance enumeration state and lifecycle respectively. Baseline conformity requires an object that is at least enumerable but resembles local peers. Observation-window delay concerns time between registration and execution. State-enumeration suppression requires a runnable object missing from standard management views. Ephemeral one-shot brokerage requires an object existing only for a create-trigger-run-delete transaction while borrowing scheduler parentage. They need different baselines retention and differential data and have stable sibling boundaries.
+      - zh: ATT&CK 的五个子项按调度器和平台划分，只作为检索表面。at、cron、Scheduled Task、systemd timer 与 CronJob 都可能实现一个或多个 Niji 变量，也可能只是普通父级行为；日历与事件触发、远程创建、执行账户提权和载荷语言只有在产生上述观察差异时才参与分类，不独立成为子项。
+        en: ATT&CK's five children partition schedulers and platforms and serve only as research surface. At cron Scheduled Task systemd timers and CronJobs may implement one or more Niji variables or only ordinary parent behavior. Calendar versus event triggers remote creation privilege of the execution account and payload language contribute only when they produce one of the stated observation differences and do not become independent children.
+  coverage: established
+  subtechnique_refs: [NJS-0075-001, NJS-0075-002, NJS-0075-003, NJS-0075-004]
+defense:
+  detections: {coverage: available, strategy_refs: [DET-000087]}
+  mitigations: {coverage: available, mitigation_refs: [MIT-000088]}
+evidence:
+  claim_refs: [CLM-000284, CLM-000285, CLM-000286, CLM-000459, CLM-000460, CLM-000461, CLM-000462, CLM-000463, CLM-000464, CLM-000465, CLM-000466, CLM-000467, CLM-000468, CLM-000469, CLM-000470]
+  case_refs: [CASE-000090, CASE-000091, CASE-000092, CASE-000093]
+  reference_refs: [REF-000127, REF-000259, REF-000260, REF-000261, REF-000262, REF-000263, REF-000264, REF-000265, REF-000266]
+research:
+  limitations:
+    paragraphs:
+      - zh: 四项直接案例集中于 Windows，跨平台扩展依据 systemd 和 Kubernetes 的官方对象与生命周期语义，而不是同等强度的 Linux/Kubernetes 攻击者匿迹案例。因此父级跨平台成立，但具体子项在非 Windows 环境的置信度应随本地证据和遥测下降；不能把合法 RandomizedDelay、Job TTL 或权限隔离误当成攻击者选择。
+        en: Four direct cases concentrate on Windows. Cross-platform extension relies on official systemd and Kubernetes object and lifecycle semantics rather than equally strong Linux or Kubernetes adversary-stealth cases. The parent is cross-platform but confidence in a child on non-Windows systems should decrease with local evidence and telemetry. Legitimate RandomizedDelay Job TTL or permission isolation must not be treated as adversary choice.
+      - zh: 任务名称、延迟、枚举缺失或短生命周期任一单独信号都有大量正常原因。系统升级会替换任务，离线主机会补跑，权限隔离会让低权主体看不到对象，Kubernetes 控制器会自动清理历史 Job。正式结论必须连接未经批准的 writer/定义变化、调度器执行和异常结果；未来若新的调度后端无法稳定区分枚举抑制与正常权限视图，应降低或合并该映射。
+        en: Task name delay enumeration absence and short lifetime each have many benign causes. Updates replace tasks offline hosts catch up access separation hides objects from low-privilege users and Kubernetes controllers clean historical Jobs automatically. Formal conclusions must join an unapproved writer or definition change scheduler execution and anomalous outcome. If a new scheduler cannot stably distinguish enumeration suppression from normal permission views the mapping should be lowered or merged.
+lifecycle: {status: review, version: 2.0.0, created: '2026-09-10', modified: '2026-09-12', contributors: [Niji Matrix Research], reviewers: []}

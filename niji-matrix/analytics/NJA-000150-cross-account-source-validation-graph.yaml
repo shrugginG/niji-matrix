@@ -1,0 +1,88 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000150
+strategy_ref: DET-000144
+name:
+  zh: 跨账户与出口认证图关联
+  en: Cross-Account and Egress Authentication Graph Correlation
+summary:
+  zh: 用账号、来源与应用图连接局部低计数的在线候选验证。
+  en: Link locally low-count online candidate testing through a graph of accounts, sources, and applications.
+domains:
+- enterprise
+platforms:
+- Identity Provider
+- Windows
+logic:
+  paragraphs:
+  - zh: 以去重后的失败和挑战记录构建 tenant_id 内的 source_ip 或 ASN、stable_user_id、application_id 二部关联图；在 24 小时及 7 天窗口分别计算每个来源触达的不同身份数、每个身份出现的不同来源数，以及共享客户端属性的失败群。对每个节点局部次数低而跨图覆盖大的簇标记异常，并将后续主凭据匹配、MFA
+      拒绝和真实资源访问分列。不要声称仅凭日志证明使用了相同口令。
+    en: Build a bipartite graph from deduplicated failures and challenges within a tenant, linking source_ip or ASN, stable_user_id, and application_id.
+      In 24-hour and seven-day windows, count distinct principals per source, sources per principal, and failure clusters sharing client attributes.
+      Flag clusters with low local counts but broad graph coverage, separating later primary-secret matches, MFA denials, and real resource access.
+      Do not claim the logs prove a common password was used.
+data_requirements:
+- source_type: identity-signin
+  name:
+    zh: 跨应用认证结果流
+    en: Cross-application authentication outcomes
+  channel: Microsoft Entra SignInLogs or equivalent IdP export
+  required_fields:
+  - tenant_id
+  - stable_user_id
+  - application_id
+  - event_time
+  - request_id
+  - source_ip
+  - result_code
+  - authentication_stage
+  - client_app
+- source_type: network-enrichment
+  name:
+    zh: 来源网络归属
+    en: Source network attribution
+  channel: IP-to-ASN enrichment
+  required_fields:
+  - source_ip
+  - asn
+  - asn_type
+observables:
+- zh: 一个来源触达多身份且单一身份只见少量失败
+  en: One source touches many identities while each identity has few failures
+- zh: 同一身份由多个来源低频尝试并出现共同客户端情境
+  en: One identity receives low-rate attempts from multiple sources with shared client context
+correlation:
+  window:
+    zh: 并行分析二十四小时与七日窗口，分别保留瞬时广度与缓慢来源轮换。
+    en: Analyze twenty-four-hour and seven-day windows in parallel to preserve burst breadth and slower source rotation.
+  dimensions:
+  - tenant_id
+  - stable_user_id
+  - source_ip
+  - asn
+  - application_id
+  - client_app
+false_positives:
+- zh: 企业代理、统一出口、共享终端及大规模受控测试会自然形成多身份来源图。
+  en: Enterprise proxies, shared egress, shared devices, and large authorized tests naturally create multi-principal source graphs.
+blind_spots:
+- zh: 跨租户活动、来源快速轮换、代理用户混杂及可伪造客户端属性会降低图连接可靠性。
+  en: Cross-tenant activity, rapid source rotation, mixed proxy users, and spoofable client attributes weaken graph joins.
+tuning_guidance:
+  paragraphs:
+  - zh: 按企业出口与受控代理清单建立背景图，但不要直接忽略该来源的所有认证；对新 ASN、陌生设备及高风险身份提高权重。把匿名 IP 情报当辅助字段，不以其单独判定攻击；以实际 IdP 的登录语义区分密码失败、挑战和资源成功。
+    en: Build background graphs for enterprise egress and sanctioned proxies without discarding all their sign-ins. Weight new ASNs, unfamiliar
+      devices, and sensitive principals more heavily. Treat anonymous-IP intelligence as enrichment rather than a sole verdict, and use actual
+      IdP semantics to separate password failure, challenge, and resource success.
+evidence_refs:
+- REF-000497
+- REF-000500
+- REF-000502
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-09-22'
+  modified: '2026-09-22'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

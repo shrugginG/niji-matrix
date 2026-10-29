@@ -1,0 +1,110 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000192
+strategy_ref: DET-000176
+name:
+  zh: S3 SSE-C CopyObject 覆写与桶许可分析
+  en: S3 SSE-C CopyObject Overwrite and Bucket-Permission Analytic
+summary:
+  zh: 输出未经批准的客户密钥重加密作业及其对象版本、主体和配置前驱。
+  en: Emit unapproved customer-key re-encryption jobs with object versions, principal, and configuration precursor.
+domains:
+- enterprise
+platforms:
+- IaaS
+logic:
+  paragraphs:
+  - zh: 为关键桶开启 CloudTrail S3 对象数据事件，筛选 s3.amazonaws.com 的 CopyObject，并把请求中的客户密钥算法头规范为 request.sse.customer.algorithm；PutObject
+      和分段上传作为相关写入另行审查。按用户 ARN 或 access key、源地址、桶及可调 10 至 30 分钟窗口计数被覆写的已有对象键，比较批准 SSE-C 作业和历史身份范围；首次使用或异常批量作为候选。不得收集客户密钥内容。
+    en: Enable CloudTrail S3 object data events for critical buckets. Filter s3.amazonaws.com CopyObject and normalize
+      its customer-key algorithm header as request.sse.customer.algorithm; inspect PutObject and multipart upload
+      as related writes separately. Count previously existing keys overwritten by user ARN or access key, source
+      address, bucket, and a tunable 10 to 30 minute window. Compare approved SSE-C jobs and historical identity
+      scope; first use or an anomalous batch creates a candidate. Do not collect customer key material.
+  - zh: 把桶的 BlockedEncryptionTypes 清单与 PutBucketEncryption 管理事件接入，识别先解除 SSE-C 阻止再发生覆写的链；解除配置本身不是加密结果。对候选对象核查新版本标识、组织是否持有所需密钥、合法读取失败及旧版本是否可恢复。若数据事件缺失或获批身份被盗，只凭加密参数无法断定恶意。
+    en: Join bucket BlockedEncryptionTypes inventory and PutBucketEncryption management events to identify a block-removal
+      precursor followed by overwrites; configuration removal alone is not encryption. Check new version IDs, whether
+      the organization holds the needed key, legitimate read failures, and recovery of prior versions. Missing data
+      events or compromise of an approved principal means an encryption parameter alone cannot prove malice.
+data_requirements:
+- source_type: s3-object-data-event
+  name:
+    zh: S3 对象数据事件
+    en: S3 object data events
+  channel: CloudTrail S3 data events
+  required_fields:
+  - event.time
+  - event.source
+  - event.name
+  - user.identity.arn
+  - source.ip
+  - bucket.name
+  - object.key
+  - request.sse.customer.algorithm
+- source_type: s3-encryption-configuration
+  name:
+    zh: 桶加密配置与变更
+    en: Bucket encryption configuration and changes
+  channel: S3 configuration inventory and CloudTrail management events
+  required_fields:
+  - bucket.name
+  - blocked.encryption.types
+  - configuration.event.name
+  - configuration.actor
+  - configuration.time
+- source_type: object-version-read-check
+  name:
+    zh: 对象版本与授权读取验证
+    en: Object version and authorized read verification
+  channel: null
+  required_fields:
+  - bucket.name
+  - object.key
+  - version.id
+  - read.result
+  - key.custodian
+observables:
+- zh: 同一主体短时将许多已有对象覆写为 SSE-C 当前版本
+  en: One principal rapidly overwrites many existing objects as SSE-C current versions
+- zh: SSE-C 阻止被移除后出现未经批准的对象重加密
+  en: Unapproved object re-encryption follows removal of an SSE-C block
+correlation:
+  window:
+    zh: 按身份和桶使用可调 10 至 30 分钟覆写窗口，并回看配置变更及旧版本。
+    en: Use a tunable 10 to 30 minute overwrite window by identity and bucket and look back to configuration changes
+      and prior versions.
+  dimensions:
+  - user.identity.arn
+  - source.ip
+  - bucket.name
+  - object.key
+  - event.time
+  - version.id
+false_positives:
+- zh: 批准的 SSE-C 重密钥、迁移、恢复或批量复制可能形成相似对象序列
+  en: Approved SSE-C rekeying, migration, restore, or bulk copy can create similar object sequences
+blind_spots:
+- zh: 对象数据事件未启用、延迟送达、合法 SSE-C 应用被盗或客户端预先加密上传会避开或混淆该逻辑
+  en: Disabled or delayed object data events, compromise of an approved SSE-C app, or client-side encrypted uploads
+    bypass or confuse this logic
+tuning_guidance:
+  paragraphs:
+  - zh: 以桶和应用维护批准的 SSE-C 例外、身份、源网络、任务标识和对象范围，按受保护资产的重要性调阈值。保留首次使用及跨范围异常，不按合法身份全局放行；对缺少密钥归属或安全读取验证的结果标记为可疑重加密而非已证实勒索。
+    en: Maintain approved SSE-C exceptions, principals, source networks, job IDs, and object scope by bucket and
+      application; tune thresholds to protected asset importance. Keep first-use and cross-scope anomalies rather
+      than globally allowing a valid identity. Where key custody or safe read verification is absent, label suspicious
+      re-encryption rather than confirmed ransom impact.
+evidence_refs:
+- REF-000660
+- REF-000661
+- REF-000663
+- REF-000654
+- REF-000513
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-09-22'
+  modified: '2026-09-22'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

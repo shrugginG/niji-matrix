@@ -1,0 +1,118 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000306
+strategy_ref: DET-000238
+name:
+  zh: 第三方出口完整性—目标最后跳关联分析
+  en: Third-Party Egress Integrity to Target Last-Hop Correlation Analytic
+summary:
+  zh: 把目标最后跳连接到第三方边缘设备的完整性与真实出站流。
+  en: Join a victim last hop to third-party edge-device integrity and actual outbound flow.
+domains:
+- enterprise
+platforms:
+- Linux
+- Network Devices
+logic:
+  paragraphs:
+  - zh: 从目标侧可疑会话取得 last_hop_ip、时间、指纹与目标结果，在获授权的资产所有者或提供方数据中解析该 IP 对应设备和 NAT 时段。要求同一设备在时间和字节容差内具有匹配出站 flow，并存在未批准代理/VPN
+      模块、异常监听或管理变化；若还能连接到上游入站 flow，则输出 provenance_borrowing_confirmed。目标侧仅看到住宅 ASN 或本地地理时输出 last_hop_only；设备完整性异常但无目标配对时输出
+      compromised_relay_risk。
+    en: Obtain last_hop_ip, time, fingerprint, and target outcome from a suspicious target-side session and resolve that
+      IP to a device and NAT interval in authorized asset-owner or provider data. Require a matching outbound flow from
+      that device within time and byte tolerances plus an unauthorized proxy or VPN module, anomalous listener, or management
+      change. Emit provenance_borrowing_confirmed when an upstream inbound flow can also be joined. Residential ASN or
+      local geography at the target alone yields last_hop_only; device-integrity anomaly without a target pair yields
+      compromised_relay_risk.
+data_requirements:
+- source_type: target-network-observation
+  name:
+    zh: target network observation
+    en: target network observation
+  channel: firewall, NDR, VPN, authentication, or service access logs
+  required_fields:
+  - event_time
+  - last_hop_ip
+  - last_hop_port
+  - target_ip
+  - target_port
+  - transport
+  - target_session_id
+  - client_fingerprint
+  - target_identity
+- source_type: edge-device-integrity
+  name:
+    zh: 边缘设备完整性
+    en: Edge-device integrity
+  channel: router/firewall/VPN configuration and process audit
+  required_fields:
+  - event_time
+  - relay_device_id
+  - asset_owner
+  - software_version
+  - lifecycle_state
+  - relay_artifact
+  - relay_listener
+  - integrity_state
+  - management_actor
+  - management_result
+- source_type: edge-egress-flow
+  name:
+    zh: edge egress flow
+    en: edge egress flow
+  channel: device flow, ISP flow, or owner-side NDR
+  required_fields:
+  - event_time
+  - relay_device_id
+  - internal_source
+  - last_hop_ip
+  - target_ip
+  - target_port
+  - transport
+  - bytes_a_to_b
+  - bytes_b_to_a
+  - owner_flow_id
+observables:
+- zh: 目标最后跳映射到被植入边缘设备及其真实出站流
+  en: The victim last hop maps to an implanted edge device and its real outbound flow
+- zh: 多个短寿出口共享客户端指纹、目标和操作时间
+  en: Several short-lived exits share client fingerprint, target, and operating time
+correlation:
+  window:
+    zh: 每对流五分钟；设备完整性和管理历史保留九十日。
+    en: Five minutes per flow pair and ninety days for device integrity and management history.
+  dimensions:
+  - last_hop_ip
+  - nat_interval
+  - relay_device_id
+  - owner_flow_id
+  - target_session_id
+  - client_fingerprint
+  - target_identity
+  - time
+false_positives:
+- zh: 商业住宅代理、CGNAT、合法 VPN 或托管安全出口
+  en: Commercial residential proxies, CGNAT, legitimate VPNs, or managed security egress
+blind_spots:
+- zh: 缺少跨组织授权、设备日志或 CGNAT 映射
+  en: Cross-organizational authority, device logs, or CGNAT mappings are unavailable
+- zh: 内存模块或目标只保留聚合流量
+  en: The relay is memory-resident or the victim retains aggregate traffic only
+tuning_guidance:
+  paragraphs:
+  - zh: 不以 ASN、国家或住宅标签直接阻断；将设备生命周期、具体完整性异常、同一时段 NAT 映射和目标行为作为独立评分。所有者/提供方不可见时明确标记 last_hop_only，不用情报推断填补证据空白。
+    en: Do not block directly on ASN, country, or residential labels. Score device lifecycle, a concrete integrity anomaly,
+      same-interval NAT mapping, and target behavior independently. When owner or provider visibility is absent, explicitly
+      label last_hop_only rather than filling the evidence gap with intelligence inference.
+evidence_refs:
+- REF-000073
+- REF-000074
+- REF-000025
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-10-04'
+  modified: '2026-10-04'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

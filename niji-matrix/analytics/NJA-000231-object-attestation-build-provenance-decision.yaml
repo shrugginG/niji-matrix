@@ -1,0 +1,49 @@
+schema_version: "2.0.0"
+type: detection-analytic
+id: NJA-000231
+strategy_ref: DET-000200
+name: {zh: 对象证明—构建来源—信任裁决分析, en: Object Attestation–Build Provenance–Trust Decision Analytic}
+summary: {zh: 识别签名/证书/notarization 验证有效但密钥控制、构建来源、撤销时间或对象行为与 publisher 基线不一致的接受结果。, en: "Identify accepted objects whose signature, certificate, or notarization verifies while key control, build provenance, revocation timing, or behavior diverges from the publisher baseline."}
+domains: [enterprise]
+platforms: [Windows, macOS, Linux]
+logic:
+  paragraphs:
+    - zh: 为每个 executable/script/package/driver 建立 artifact_id/digest，解析 embedded/catalog/package signature、signer subject/issuer、serial/fingerprint、chain、EKU、timestamp/countersignature、notarization ticket、entitlements 和 verification status。把 signing time、timestamp time 与 certificate validity/revocation/incident time 对齐，并连接 CA transparency、publisher inventory、HSM/key access、CI build/job/source commit、release manifest、distribution channel 和 signer owner，形成 attestation_provenance_id。
+      en: Build an artifact ID and digest for each executable, script, package, or driver and parse embedded, catalog, or package signatures, signer subject and issuer, serial or fingerprint, chain, EKU, timestamp or countersignature, notarization ticket, entitlements, and verification status. Align signing and timestamp time with certificate validity, revocation, and incident time and join CA transparency, publisher inventory, HSM or key access, CI build, job, and source commit, release manifest, distribution channel, and signer owner into an attestation_provenance_id.
+    - zh: 从 WinVerifyTrust、Code Integrity/App Control、Gatekeeper/notarization、package manager 或其他 named consumer 取得 consumer/version、action/policy、cache/revocation mode、decision code、prompt/block/allow 与时间。若对象 valid/trusted/allowed，但 digest 不在 signer 的批准 release/build 中、签名发生在 key compromise 后、distribution 与 publisher 不符或恶意 first process/network/file outcome 出现，则输出 attestation_borrowing；只有有效签名而无 provenance 差/结果保持 valid_attestation。
+      en: Obtain consumer and version, action or policy, cache or revocation mode, decision code, prompt, block, or allow, and time from WinVerifyTrust, Code Integrity or App Control, Gatekeeper or notarization, a package manager, or another named consumer. Emit attestation_borrowing when the object is valid, trusted, or allowed but its digest is absent from the signer's approved release or build, signing occurred after key compromise, distribution mismatches the publisher, or a malicious first process, network, or file outcome follows. A valid signature without provenance difference or outcome remains valid_attestation.
+    - zh: Self-signed/private enterprise certificate 只有在 policy/anchor 明确允许且 owner/用途异常时才升级；signed vulnerable driver 与恶意 signed object 分开标注，因为前者内容可能合法但 capability 被滥用。Revocation 在签名/执行后发生不应倒推事件时一定拒绝，必须保存 decision-time cache 和 chain。
+      en: A self-signed or private-enterprise certificate is promoted only when policy or anchors explicitly allow it and owner or purpose is anomalous. A signed vulnerable driver is labeled separately from a malicious signed object because its content can be legitimate while capability is abused. Revocation after signing or execution cannot be projected backward into event-time rejection, and decision-time caches and chains must be retained.
+data_requirements:
+  - source_type: artifact-signature-attestation
+    name: {zh: 对象签名、证书与 Notarization 证明, en: Artifact Signature Certificate and Notarization Attestation}
+    channel: Authenticode codesign package verification or software inventory
+    required_fields: [timestamp, artifact_id, artifact_digest, artifact_type, file_path, signature_type, signer_subject, signer_issuer, certificate_serial, certificate_fingerprint, chain_fingerprints, eku, signing_time, timestamp_time, notarization_ticket_id, entitlement_hash, verification_status]
+  - source_type: signing-key-build-release-provenance
+    name: {zh: 签名密钥、CI Build 与 Release 来源, en: Signing Key CI Build and Release Provenance}
+    channel: CA transparency HSM audit CI/CD release manifest software repository
+    required_fields: [timestamp, publisher_id, signer_owner, key_id, key_access_principal, certificate_fingerprint, certificate_valid_from, certificate_valid_until, revocation_time, compromise_time, build_id, build_job_id, source_commit, release_id, approved_artifact_digest, distribution_channel, approval_id]
+  - source_type: trust-consumer-decision
+    name: {zh: 签名 Consumer 裁决与首个结果, en: Signature Consumer Decision and First Outcome}
+    channel: WinVerifyTrust Code Integrity App Control Gatekeeper package manager and process telemetry
+    required_fields: [timestamp, host_id, user_id, artifact_id, consumer_id, consumer_version, policy_id, policy_version, action_id, revocation_mode, cache_state, decision_code, decision_result, prompt_result, process_id, parent_process_id, first_outcome_id, outcome_type, outcome]
+observables:
+  - {zh: 有效 signer 的 artifact digest 不在 publisher release/CI manifest，或签名发生于密钥失陷窗口, en: An artifact digest with a valid signer is absent from publisher release or CI manifests or was signed during a key-compromise window}
+  - {zh: Consumer 返回 trusted/allow，但 distribution channel、publisher owner 与对象行为不一致, en: A consumer returns trusted or allow while distribution channel publisher owner and object behavior disagree}
+  - {zh: 同一证书同时签合法 publisher release 与受害环境中的恶意 artifact, en: The same certificate signs both legitimate publisher releases and a malicious artifact in a victim environment}
+correlation:
+  window: {zh: 从 certificate/key 首次生效前七日到最后一次相关 artifact 决策后九十日，并长期保留 build/release/revocation 时间线。, en: "Correlate seven days before certificate or key activation through ninety days after the final related artifact decision and retain build release and revocation timelines long term."}
+  dimensions: [artifact_id, artifact_digest, certificate_fingerprint, key_id, publisher_id, signer_owner, build_id, release_id, distribution_channel, host_id, user_id, consumer_id, policy_id, decision_result, process_id, first_outcome_id, time]
+false_positives:
+  - {zh: 新版/紧急 release 尚未同步到中央 manifest，签名与 publisher 合法, en: A new or emergency release has not yet synchronized to the central manifest while signing and publisher are legitimate}
+  - {zh: 企业私有 CA、自签开发/测试证书或重新打包软件在批准环境中使用, en: Enterprise private CA self-signed development or test certificates or repackaged software are used in approved environments}
+  - {zh: 证书在事件后撤销，历史 decision 当时仍按有效 chain 允许, en: A certificate is revoked after the event while the historical decision legitimately allowed the then-valid chain}
+blind_spots:
+  - {zh: 没有 CI/HSM/release provenance 或外部 CA/revocation 时间，valid signer 无法与合法构建区分, en: Without CI HSM or release provenance or external CA and revocation time a valid signer cannot be distinguished from a legitimate build}
+  - {zh: Consumer 使用离线 cache、catalog 或嵌套签名且日志不保存实际 chain/action, en: The consumer uses an offline cache catalog or nested signature without logging the actual chain or action}
+tuning_guidance:
+  paragraphs:
+    - zh: 以 certificate fingerprint + artifact digest + build/release ID，而非 publisher name 或“signed=true”建白名单。高置信要求 valid/allow decision、独立 build/key provenance 差与恶意结果三者闭合。新证书/新 release 先进入短期观察并核对 CA/owner，不能永久允许 signer 的所有未来对象。
+      en: Build allowlists from certificate fingerprint plus artifact digest plus build or release ID rather than publisher name or signed equals true. High confidence requires closure across a valid or allow decision, independent build or key-provenance difference, and malicious outcome. New certificates or releases enter short observation with CA and owner verification and never permanently allow every future object from one signer.
+evidence_refs: [REF-000281, REF-000763, REF-000769]
+lifecycle: {status: review, version: "1.0.0", created: "2026-09-23", modified: "2026-09-23", contributors: [Niji Matrix Research], reviewers: []}

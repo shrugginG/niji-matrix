@@ -1,0 +1,96 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000156
+strategy_ref: DET-000148
+name:
+  zh: S3 对象重复读取轮次关联
+  en: S3 Object Repeated-Read Pass Correlation
+summary:
+  zh: 在已启用对象数据事件的敏感桶上识别异常主体的重复 GetObject 收集轮次。
+  en: Find repeated GetObject collection passes by unusual principals in sensitive buckets with object data events enabled.
+domains:
+- enterprise
+platforms:
+- IaaS
+logic:
+  paragraphs:
+  - zh: 仅对已开启 CloudTrail S3 对象数据事件的敏感桶，按 IAM 主体、源 IP、userAgent 与时间窗口聚合 GetObject，观察此前少见主体是否在多个轮次读取大量不同对象，或跨轮持续只读取新变更对象。与批准
+      ETL、备份和应用任务的角色及工作时段核对，并与桶的对象变更记录关联。此方案可检测 T1119 父技术的云端自动获取，但当前案例不足以把云端“增量”确立为正式子项证据。
+    en: Only for sensitive buckets with CloudTrail S3 object data events enabled, group GetObject calls by IAM principal,
+      source IP, userAgent, and time window. Identify previously unusual principals reading many different objects across
+      passes or repeatedly selecting newly changed objects. Compare roles and work periods with approved ETL, backup, and
+      application jobs, and correlate with bucket object-change records. This can detect cloud automated acquisition at the
+      T1119 parent level, but current case evidence does not establish cloud incremental behavior as a formal child.
+data_requirements:
+- source_type: cloudtrail-s3-object-read
+  name:
+    zh: CloudTrail S3 对象读取
+    en: CloudTrail S3 object reads
+  channel: CloudTrail S3 data events
+  required_fields:
+  - event_time
+  - event_name
+  - principal_arn
+  - source_ip
+  - user_agent
+  - bucket_name
+  - object_key
+- source_type: cloud-job-inventory
+  name:
+    zh: 云端批准作业清单
+    en: Approved cloud-job inventory
+  channel: null
+  required_fields:
+  - role_arn
+  - bucket_scope
+  - approved_schedule
+- source_type: s3-object-change
+  name:
+    zh: S3 对象变更记录
+    en: S3 object-change records
+  channel: null
+  required_fields:
+  - timestamp
+  - bucket_name
+  - object_key
+  - change_type
+observables:
+- zh: 少见角色跨多个轮次读取同一敏感桶的大量不同对象
+  en: An unusual role reads many distinct objects in the same sensitive bucket across passes
+- zh: 多次读取与批准 ETL 或备份作业的身份及时间不符
+  en: Repeated reads do not match approved ETL or backup identity and schedule
+correlation:
+  window:
+    zh: 关联 7 至 30 天的对象读取和变更记录，并确保至少覆盖两个预期业务作业周期。
+    en: Correlate seven to thirty days of object reads and changes and include at least two expected business-job cycles.
+  dimensions:
+  - principal_arn
+  - bucket_name
+  - object_key
+  - source_ip
+  - user_agent
+  - time
+false_positives:
+- zh: 批量分析、数据管道、灾备和合法同步可产生相同的跨轮 GetObject 模式。
+  en: Batch analytics, data pipelines, disaster recovery, and legitimate sync can create similar repeated GetObject patterns.
+blind_spots:
+- zh: S3 对象数据事件默认不启用，未覆盖的桶或服务不会留下该分析所需读取记录；GetObject 也不能单独证明数据被攻击者保留。
+  en: S3 object data events are not enabled by default; unselected buckets or services lack the required read records, and
+    GetObject alone does not prove adversary retention of data.
+tuning_guidance:
+  paragraphs:
+  - zh: 先对高价值桶启用对象数据事件，再按批准角色、前缀和作业时段建立基线；仅对未知主体、意外前缀或异常跨轮覆盖提高风险，不把所有程序化 API 读取视为恶意。
+    en: Enable object data events on high-value buckets, then baseline approved roles, prefixes, and job windows. Raise risk
+      for unknown principals, unexpected prefixes, or anomalous cross-pass coverage rather than treating all programmatic
+      API reads as malicious.
+evidence_refs:
+- REF-000511
+- REF-000513
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-09-22'
+  modified: '2026-09-22'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

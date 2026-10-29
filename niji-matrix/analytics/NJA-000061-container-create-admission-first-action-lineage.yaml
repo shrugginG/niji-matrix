@@ -1,0 +1,55 @@
+schema_version: "2.0.0"
+type: detection-analytic
+id: NJA-000061
+strategy_ref: DET-000082
+name: {zh: Workload 规范—镜像—运行时首行为差分分析, en: Workload Specification-Image-Runtime First-Action Differential Analytic}
+summary: {zh: 版本化新 workload 的规范与实际 digest，并把启动后内容和行为反馈到部署判断。, en: Version new-workload specifications and actual digests and feed post-start content and behavior back into deployment judgment.}
+domains: [enterprise]
+platforms: [Containers]
+logic:
+  paragraphs:
+  - zh: 为每次 Pod/Deployment/DaemonSet/Job 或 Docker container create 生成 deployment_execution_id，保存 cluster/daemon、creator 与 token/session/source、namespace、object UID/owner、完整 manifest hash 和关键字段、template/commit/approval、image reference、registry owner、admission policy/result、signature/attestation/SBOM 与 resolved digest。连接 runtime create/start、container ID、node 与启动后首个行为。
+    en: Generate a deployment execution ID for each Pod Deployment DaemonSet Job or Docker container create and retain cluster or daemon creator and token or session or source namespace object UID or owner full manifest hash and key fields template or commit or approval image reference registry owner admission policy and result signature attestation or SBOM and resolved digest. Join runtime create or start container ID node and first post-start behavior.
+  - zh: 在一小时首行为窗口内比较 image/SBOM 声明与实际 process/module/file/network。批准基础 image 出现未声明 shell、curl/wget、包管理、下载后执行或新二进制，标记后置载荷；image/name/namespace/labels/service account 与模板相似但 creator、registry owner、digest、entrypoint 或首行为不符，标记规范伪装。对象被拒绝、创建未启动或仅有可疑字段时输出前置风险而不确认 Execution。
+    en: During a one-hour first-action window compare image or SBOM declarations to actual process module file and network. An approved base image producing undeclared shell curl or wget package management download-then-execute or new binary is marked late payload. Image name namespace labels or service account resembling a template while creator registry owner digest entrypoint or first behavior differs is marked specification camouflage. Denied objects creates without start or suspicious fields alone remain pre-execution risk rather than confirmed Execution.
+data_requirements:
+- source_type: workload-create-and-admission
+  name: {zh: Workload 创建、完整规范与准入结果, en: Workload create complete specification and admission outcome}
+  channel: null
+  required_fields: [timestamp, cluster_or_daemon_id, creator_id, token_or_session, source, object_kind, namespace, object_uid, owner_reference, manifest_or_hash, labels_annotations, service_account, command_args, security_context, approval_or_commit, admission_result]
+- source_type: image-identity-and-trust
+  name: {zh: Image 引用、Digest、签名、证明与 SBOM, en: Image reference digest signature attestation and SBOM}
+  channel: null
+  required_fields: [image_reference, registry_owner, resolved_digest, manifest_digest, signature_result, attestation_id, sbom_id, declared_entrypoint, declared_packages_or_processes]
+- source_type: runtime-create-start
+  name: {zh: Runtime create/start 与容器身份, en: Runtime create or start and container identity}
+  channel: null
+  required_fields: [timestamp, object_uid, container_id, node_id, image_digest, event_type, entrypoint, command_args, start_status]
+- source_type: container-first-action
+  name: {zh: 容器首个进程、网络、文件与资源行为, en: Container first process network file and resource behavior}
+  channel: null
+  required_fields: [timestamp, container_id, process_start_key, executable, command_line_or_hash, loaded_module, dns_or_network_destination, downloaded_or_created_file_hash, mount_source, resource_usage, outcome]
+- source_type: approved-workload-baseline
+  name: {zh: 批准模板、仓库、身份与行为基线, en: Approved template repository identity and behavior baseline}
+  channel: null
+  required_fields: [environment, approved_template_or_commit, approved_creator, approved_registry_owner, approved_digest, expected_namespace_labels_owner_service_account, expected_entrypoint_or_first_action, validity]
+observables:
+- {zh: 已批准 Alpine/Ubuntu 等基础 digest 启动后立即访问非常见目的地并执行新下载脚本或二进制, en: An approved Alpine or Ubuntu base digest accesses an uncommon destination immediately after start and executes a newly downloaded script or binary}
+- {zh: image/name 与已批准软件近似，但 registry owner、digest、creator 或模板来源不同，首行为包含扫描、挖矿或后门网络, en: Image or name resembles approved software but registry owner digest creator or template origin differs and first behavior includes scanning mining or backdoor network}
+- {zh: 同一未批准规范通过 Deployment/DaemonSet 扩散多个节点，且容器 first-action 指纹一致, en: The same unapproved specification fans out through a Deployment or DaemonSet across nodes with identical container first-action fingerprints}
+correlation:
+  window: {zh: 从 create 前十五分钟到每个容器启动后一小时；未启动对象保留七日，Job/扩缩容谱系保留三十日。, en: From fifteen minutes before create through one hour after each container start with unstarted objects retained seven days and Job or scaling lineage thirty days.}
+  dimensions: [cluster_or_daemon, creator, token_session, object_uid, owner, namespace, manifest, template_commit, image_reference, registry_owner, digest, admission, container_id, node, first_action, approval, time]
+false_positives:
+- {zh: 合法 CI/CD 发布、init/sidecar 下载、插件与模型加载、debug Pod、系统 DaemonSet、扩缩容、Job 和事件响应, en: Legitimate CI or CD releases init or sidecar downloads plug-in and model loading debug Pods system DaemonSets scaling Jobs and incident response}
+blind_spots:
+- {zh: audit 只保留 Metadata、admission 不记录 resolved digest、runtime 缺首行为或短命容器在采集前销毁, en: Metadata-only audit admission omits resolved digest runtime lacks first action or short-lived container is destroyed before collection}
+- {zh: 被攻陷 builder/registry/creator 和批准模板产生完全一致信任元数据，或载荷通过加密挂载且行为延迟, en: Compromised builder registry creator and approved template produce fully consistent trust metadata or payload arrives through an encrypted mount with delayed behavior}
+tuning_guidance:
+  paragraphs:
+  - zh: 按环境、团队、creator、template/commit、registry owner、digest、namespace/owner/service account 与 first-action 建立批准基线；允许项绑定具体 digest 和模板，不对白名单 image tag、label 或 namespace 永久放行。将“被拒绝高风险规范”“已启动上下文差异”“运行时后置载荷”分级。
+    en: Baseline environment team creator template or commit registry owner digest namespace owner or service account and first action. Bind allowances to concrete digest and template and never permanently allow an image tag label or namespace. Tier denied high-risk specification started context differential and runtime late payload.
+  - zh: 对合法启动下载记录目的地、内容 hash、版本和预期 process，避免把全部网络初始化定性；Pod Security 字段提高风险优先级但须与运行结果结合。确保 runtime 报告实际 digest，并把短命容器 metadata 与 first-action 远程保存。
+    en: For legitimate startup downloads record destination content hash version and expected process rather than classifying all network initialization. Pod Security fields raise risk priority but require outcome context. Ensure runtime reports actual digest and remotely retain short-lived container metadata and first actions.
+evidence_refs: [REF-000186, REF-000211, REF-000213, REF-000214, REF-000215, REF-000216, REF-000220, REF-000221]
+lifecycle: {status: review, version: 0.1.0, created: '2026-09-12', modified: '2026-09-12', contributors: [Niji Matrix Research], reviewers: []}

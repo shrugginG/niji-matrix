@@ -1,0 +1,39 @@
+schema_version: "2.0.0"
+type: evasion-subtechnique
+id: NJS-0073-001
+parent_ref: NJT-0073
+name: {zh: 直接系统调用遥测层绕过, en: Direct-System-Call Telemetry-Layer Bypass}
+summary: {zh: 攻击者从非系统模块、自有内存 stub 或非标准调用栈发出 syscall，跳过安全产品监控的用户态 API 入口。, en: Adversaries issue syscalls from a non-system module private-memory stub or nonstandard call stack and skip user-mode API entries monitored by security products.}
+aliases: [Direct Syscall, Indirect Syscall]
+lineage: {attck_subtechnique_inherited: false}
+definition_and_concept:
+  paragraphs:
+  - zh: 直接系统调用遥测层绕过固定“syscall 指令来源与标准原生库不一致”变量。攻击者构造或定位 syscall stub，设置正确调用号和参数后从 NTDLL/libc 等预期包装层之外进入内核；间接变体可跳回系统库中的 syscall 指令，但真实调用者和过渡栈仍异常。直接目标是完成同一原生服务，同时避开布置在用户态函数入口的监控。
+    en: Direct-System-Call Telemetry-Layer Bypass fixes mismatch between syscall instruction origin and the standard native library path. The adversary constructs or finds a syscall stub, supplies a correct number and arguments, and enters the kernel outside expected wrappers such as NTDLL or libc. An indirect variant can return through a syscall instruction inside a system library while the true caller and transition stack remain abnormal. The direct objective is the same native service while avoiding monitoring at user-mode function entries.
+  - zh: “直接”描述监控路径而非汇编语法；只要真实调用没有经过被监控的标准入口即可。若攻击者仅运行时解析标准 API 地址但仍经过正常入口，归 NJS-0073-002；若先解除/修补 EDR hook，还可能同时属于防御削弱，但本子项从随后 syscall 路径开始。
+    en: Direct describes the monitoring path rather than assembly syntax; the true call must avoid the monitored standard entry. Runtime resolution that still traverses a normal API entry belongs to NJS-0073-002. Removing or patching an EDR hook can also instantiate defense impairment, but this child begins with the subsequent syscall path.
+stealth_characteristics:
+  paragraphs:
+  - zh: 直接系统调用遥测层绕过使依赖 NTDLL/Win32 用户态 hook 的传感器没有记录到命名 API，进程却获得内存、线程或句柄等内核结果。Rhadamanthys 自有 stub 和 Lumma 真实攻击直接支持该观察差异。syscall 来自非系统模块/非映像可执行内存、调用栈缺少预期导出、调用号与 OS build 不符以及后继内存/线程变化仍是残余；内核 ETW/回调与硬件栈采集会削弱效果。
+    en: Direct-System-Call Telemetry-Layer Bypass leaves sensors dependent on NTDLL or Win32 user-mode hooks without a named API record while the process receives kernel memory thread or handle outcomes. Rhadamanthys private stubs and a real Lumma attack directly support the observation difference. Syscall origin in a non-system module or executable unbacked memory, a stack missing expected exports, number mismatch with OS build, and later memory or thread change remain residuals. Kernel ETW or callbacks and hardware stack collection reduce the effect.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 必须识别非标准 syscall 过渡和相关执行结果，并证明它绕过组织实际使用的用户态监控点。仅见 Nt* API、syscall 指令或无符号栈不足；正常运行时、沙箱、反作弊和安全产品可使用类似路径。直接与间接 syscall 在同一子项，因为防守核心都是恢复真实 caller—syscall—结果栈，而不是指令最终位于哪个模块。
+    en: Evidence must identify a nonstandard syscall transition and related execution outcome and show it bypassed an actual user-mode monitoring point. An Nt API syscall instruction or unsymbolized stack alone is insufficient; runtimes sandboxes anti-cheat and security products can use similar paths. Direct and indirect syscalls share this child because defense restores the true caller-to-syscall-to-outcome stack rather than classifying the final instruction module.
+application_scenarios_and_threat_model:
+  application_scenarios: {paragraphs: [{zh: 加载器或注入器预期端点产品 hook VirtualAlloc/WriteProcessMemory/NtCreateThreadEx 等入口时，攻击者使用硬编码或动态取得的 syscall 号完成内存分配、保护、跨进程写入和线程执行，减少用户态 API 告警。, en: When a loader or injector expects endpoint products to hook entries such as VirtualAlloc WriteProcessMemory or NtCreateThreadEx the adversary uses hard-coded or dynamically recovered syscall numbers for allocation protection cross-process writes and thread execution reducing user-mode API alerts.}]}
+  threat_model:
+    attacker_model: {paragraphs: [{zh: 需要架构、calling convention、参数和 OS build 对应的调用号知识，间接调用还需可信指令位置；错误会导致崩溃。CFG/CET、内核回调、驱动遥测和非映像内存执行策略会限制。, en: Requires architecture calling convention arguments and syscall-number knowledge matching the OS build while indirect calls need a trusted instruction location. Errors can crash the process. CFG or CET kernel callbacks driver telemetry and unbacked-executable-memory policy constrain it.}]}
+    defender_model: {paragraphs: [{zh: 防守方需取得内核级敏感操作、完整线程调用栈、模块/内存映射、syscall 号与 build、进程实体和结果。只在用户态 hook 会完全漏掉入口；只有内核结果无栈时可发现异常效果但难确认本子项。, en: Defenders need kernel-level sensitive operations complete thread call stacks module or memory maps syscall number and build process identity and outcomes. User-mode hooks alone miss the entry entirely; kernel outcome without a stack can reveal effects but cannot confidently identify this child.}]}
+stealth_mechanisms:
+- mechanism_ref: NM-BT
+  role: primary
+  summary: {zh: syscall 结果发生而被监控用户态入口未被经过, en: A syscall outcome occurs without traversing the monitored user-mode entry}
+  analysis: {paragraphs: [{zh: 自有或异常 stub 将关键调用移出 hook 的有效覆盖，防守方看到结果却缺失标准 API 事件，形成行为透明。Rhadamanthys、Lumma 和 Elastic 调用栈证据支持 high；恢复 syscall 来源、完整栈和结果即可反证。, en: A private or abnormal stub moves the critical invocation outside effective hook coverage so defenders see an outcome without the standard API event producing Behavioral Transparency. Rhadamanthys Lumma and Elastic call-stack evidence support high confidence; recovering syscall origin full stack and outcome can disconfirm it.}]}
+  evidence_refs: [REF-000222, REF-000223, REF-000225]
+  confidence: high
+defense: {detections: {coverage: available, strategy_refs: [DET-000061]}, mitigations: {coverage: available, mitigation_refs: [MIT-000083]}}
+evidence: {claim_refs: [CLM-000278, CLM-000418, CLM-000422], case_refs: [CASE-000077], reference_refs: [REF-000222, REF-000223, REF-000225]}
+research:
+  limitations: {paragraphs: [{zh: 直接证据为 Windows；其他 OS 的系统调用路径只有等价概念，不能复用 Windows 模块/事件字段。某些合法低层软件同样绕过常规 wrapper，高置信度表示机制存在而非单一非标准栈即恶意。, en: Direct evidence is Windows-specific. Other operating systems share only the equivalent system-call-path concept and cannot reuse Windows module or event fields. Some legitimate low-level software also bypasses wrappers so high confidence establishes the mechanism rather than making one nonstandard stack malicious.}]}
+lifecycle: {status: review, version: 1.1.0, created: '2026-09-10', modified: '2026-09-12', contributors: [Niji Matrix Research], reviewers: []}

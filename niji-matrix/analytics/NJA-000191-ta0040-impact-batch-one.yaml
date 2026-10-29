@@ -1,0 +1,96 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000191
+strategy_ref: DET-000175
+name:
+  zh: 业务文件进程写入与稀疏密文差分分析
+  en: Business-File Process Writes and Sparse Ciphertext Differential Analytic
+summary:
+  zh: 输出异常写入者跨文件改写及经内容传感器确认的稀疏密文区域。
+  en: Emit unusual cross-file rewriting by one process and sparse ciphertext regions confirmed by a content sensor.
+domains:
+- enterprise
+platforms:
+- Windows
+logic:
+  paragraphs:
+  - zh: 采集 DeviceFileEvents 的文件创建、修改和重命名，按 DeviceId、InitiatingProcessUniqueId 及可调 15 分钟窗口聚合不同业务路径。与批准备份、同步、构建和加密迁移任务比较；多个目录受同一异常写入者修改时产生候选，不要求勒索字条、新扩展名或整文件高熵。
+    en: Ingest DeviceFileEvents file creation, modification, and rename, grouping distinct business paths by DeviceId,
+      InitiatingProcessUniqueId, and a tunable 15-minute window. Compare approved backup, sync, build, and encryption-migration
+      jobs. An unusual writer changing files across directories creates a candidate without requiring a ransom note,
+      new extension, or high whole-file entropy.
+  - zh: 对候选文件由独立内容或完整性传感器安全比较前后版本的改写偏移、局部熵和格式解析结果。多个文件显示相似稀疏区段、保留大量原文且业务打开失败时升级子项置信度；DeviceFileEvents 的标准字段没有这些内容差分，因此无该传感器时只输出可疑批量改写，不声称确认局部加密。
+    en: For candidate files, a separate content or integrity sensor safely compares changed offsets, regional entropy,
+      and parse results between versions. Similar sparse regions across files, much preserved original content,
+      and failed business reads raise child confidence. Standard DeviceFileEvents fields lack these content differences;
+      without that sensor emit suspicious bulk rewriting, not confirmed regional encryption.
+data_requirements:
+- source_type: defender-device-file-events
+  name:
+    zh: Defender 设备文件事件
+    en: Defender device file events
+  channel: DeviceFileEvents
+  required_fields:
+  - timestamp
+  - device.id
+  - action.type
+  - folder.path
+  - file.name
+  - initiating.process.unique.id
+  - initiating.process.account
+- source_type: regional-content-integrity
+  name:
+    zh: 文件区域内容与完整性比较
+    en: File regional content and integrity comparison
+  channel: null
+  required_fields:
+  - device.id
+  - file.id
+  - version.before
+  - version.after
+  - changed.offsets
+  - regional.entropy
+  - parse.result
+observables:
+- zh: 同一异常写入进程在多个业务目录中修改文件
+  en: One unusual writer modifies files in multiple business directories
+- zh: 文件内被改写高熵区段与保留原文区段并存且应用解析失败
+  en: Changed high-entropy regions coexist with preserved plaintext and application parsing fails
+correlation:
+  window:
+    zh: 按设备与进程在可调的 15 分钟窗口聚合；区域比较只对候选文件及受控诱饵执行。
+    en: Aggregate by device and process over a tunable 15-minute window; perform regional comparison only on candidate
+      files and controlled canaries.
+  dimensions:
+  - device.id
+  - initiating.process.unique.id
+  - file.id
+  - folder.path
+  - timestamp
+false_positives:
+- zh: 批准的备份还原、同步、数据库整理、构建或合法重密钥会改变许多文件
+  en: Approved backup restore, sync, database compaction, build, or rekeying changes many files
+blind_spots:
+- zh: 没有前版本或内容传感器、文件共享未受管及原文件已加密时，无法判定区域布局
+  en: Absent prior versions or content sensors, unmanaged shares, and already encrypted source files prevent regional
+    classification
+tuning_guidance:
+  paragraphs:
+  - zh: 按主机角色和业务目录维护获批批量写入程序、签名、账户及维护窗口；严重度要求异常写入广度与内容或业务读失败证据结合。若只有文件事件，保留较低置信输出而不以提高整文件熵阈值来掩盖稀疏路径。
+    en: Baseline approved bulk writers, signatures, accounts, and maintenance windows by host role and business
+      directory. Severity requires unusual write breadth plus content or business-read evidence. With file events
+      alone, keep a lower-confidence result rather than raising a whole-file entropy threshold that hides the sparse
+      path.
+evidence_refs:
+- REF-000659
+- REF-000475
+- REF-000662
+- REF-000658
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-09-22'
+  modified: '2026-09-22'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

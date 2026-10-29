@@ -1,0 +1,59 @@
+schema_version: 2.0.0
+type: evasion-subtechnique
+id: NJS-0076-001
+parent_ref: NJT-0076
+name: {zh: 短驻函数实例执行, en: Ephemeral Function-Instance Execution}
+summary: {zh: 攻击者让代码在无稳定客户主机且调用后运行态被回收的托管函数实例中执行，使传统端点取证失去对象, en: Adversaries execute code in managed function instances without stable customer hosts whose runtime state is reclaimed after invocation depriving traditional endpoint forensics of an object}
+aliases: []
+lineage: {attck_subtechnique_inherited: false}
+definition_and_concept:
+  paragraphs:
+    - zh: 短驻函数实例执行是攻击者代码在提供商按需创建和回收的函数运行时中被调用，客户只能管理函数定义、角色和事件而不能持续观察具体宿主进程的行为。直接目的可以是计算、矿工、数据访问或后续 API 操作；该子项固定无稳定主机与调用后运行态消失的观察变量，不以 ZIP、容器镜像、语言或冷/热启动形式划分。
+      en: Ephemeral Function-Instance Execution invokes adversary code in a function runtime created and reclaimed on demand by a provider where customers manage function definitions roles and events but cannot continuously observe concrete host processes. Immediate objectives include computation mining data access or downstream API operations. The child fixes absence of a stable host and disappearance of runtime state after invocation rather than package image language or cold versus warm start.
+stealth_characteristics:
+  paragraphs:
+    - zh: 短驻函数实例执行把进程、内存、/tmp 和网络活动限制在提供商实例生命周期内，传统 EDR 和事后磁盘镜像无法覆盖。大量正常短 invocation、并发扩缩和实例复用又使某次恶意运行不对应唯一主机。Denonia 的 Lambda handler、/tmp 配置、内存 XMRig 与 DoH 展示了这种环境，但其部署路径未知，故匿迹结论保持 medium。
+      en: Ephemeral Function-Instance Execution confines processes memory temporary storage and network activity to provider instance lifetime beyond traditional EDR and post-event disk images. High volumes of normal short invocations concurrency scaling and instance reuse also prevent one malicious run from mapping to a unique host. Denonia's Lambda handler temporary configuration in-memory XMRig and DoH illustrate the environment but its deployment path is unknown so the stealth conclusion remains medium.
+    - zh: function/version、code digest、role、Invoke、request ID、duration、concurrency、application logs、下游 API 与网络/成本仍可跨实例聚合。未启用 Invoke data events、函数未写结构化日志或 CreateFunction 省略代码参数时链条会断裂。客户可通过发布时快照代码与配置、强制应用日志和服务级结果关联补偿没有主机的缺口。
+      en: Function and version code digest role Invoke request ID duration concurrency application logs downstream APIs and network or cost remain aggregatable across instances. The chain breaks when Invoke data events are disabled functions lack structured logs or CreateFunction omits code parameters. Customers compensate for absent hosts through deployment-time code and configuration snapshots required application logging and service-level outcome correlation.
+scope_boundary_definition:
+  paragraphs:
+    - zh: 本轴要求攻击者控制代码在托管函数实例中实际运行，且无稳定客户主机和运行态回收对调查构成实质影响。合法短函数、自动扩缩和低 duration 不因短驻自动纳入；容器作业、CI runner、VM serverless-like 服务若客户可持续管理宿主则归相邻对象。由正常业务事件触发但短驻性不是主要差异时优先归 NJS-0076-002。
+      en: This axis requires adversary-controlled code actually running in a managed function instance and absence of a stable customer host plus runtime reclamation materially affecting investigation. Legitimate short functions autoscaling and low duration do not qualify automatically. Container jobs CI runners and serverless-like VMs with customer-managed durable hosts belong to adjacent objects. Normal business-event activation whose primary difference is not ephemerality belongs primarily to NJS-0076-002.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+      - zh: 攻击者在能创建、更新或调用云函数后，用短驻实例执行矿工、扫描、凭据/数据访问或网络中继，期望活动随调用结束而失去主机现场。它适合不需要长期本地状态、可把结果发送外部服务且能在 timeout 内完成的负载；大量正常 invocation 的函数应用会提供背景噪声。
+        en: After gaining function create update or invoke authority adversaries use ephemeral instances for miners scanning credential or data access or network relays expecting the host scene to disappear when the invocation ends. It suits workloads without durable local state that export results and finish before timeout and high-volume normal function applications provide background noise.
+  threat_model:
+    attacker_model:
+      paragraphs:
+        - zh: 攻击者需适配 runtime、handler、只读文件系统、/tmp、memory、timeout、concurrency 和 egress，并获得足以运行代码的 IAM 权限。状态丢失迫使其外部化配置或结果，造成 API/网络痕迹；配额和成本限制矿工等长计算，代码签名和不可变版本限制修改。
+          en: The adversary must adapt to runtime handlers read-only filesystems temporary storage memory timeout concurrency and egress and obtain IAM authority sufficient to run code. State loss forces external configuration or results creating API and network traces while quotas and cost constrain long computation such as mining and code signing or immutable versions constrain modification.
+    defender_model:
+      paragraphs:
+        - zh: 防守方没有宿主管理员权限，依赖控制面代码/配置快照、execution role、invocation 数据事件、应用日志、下游 API 和网络/成本指标。关联键必须穿透实例变化并以 function version 与 invocation 为中心；若服务不提供网络流或代码内容，检测只能利用行为和结果，不能声称观察了宿主进程。
+          en: Defenders lack host administrator access and rely on control-plane code or configuration snapshots execution roles invocation data events application logs downstream APIs and network or cost metrics. Join keys cross instance changes and center function version and invocation. When services omit network flow or code content detection uses behavior and outcomes and cannot claim observation of host processes.
+stealth_mechanisms:
+  - mechanism_ref: NM-ST
+    role: primary
+    summary: {zh: 函数调用结束即回收运行态并跨实例分散结果, en: Function completion reclaims runtime state and disperses outcomes across instances}
+    analysis:
+      paragraphs:
+        - zh: 攻击者把执行压缩到短 invocation，平台随后冻结或销毁实例，客户无法对同一主机延续采集，产生时空释痕。Denonia 报告直接指出短运行、执行量和动态实例对调查的困难，但未证明攻击者如何部署样本，因此置信度限于 medium。按版本聚合 Invoke、应用日志、API 与网络结果可削弱这种分散。
+          en: The adversary compresses execution into short invocations after which the platform freezes or destroys instances preventing continuous collection from one host and producing Spatiotemporal Trace Dilution. The Denonia report directly notes investigative difficulty from short duration execution volume and dynamic instances but does not prove sample deployment so confidence is limited to medium. Aggregating Invoke application logs API and network outcomes by version weakens dispersion.
+    evidence_refs: [REF-000267, REF-000269, REF-000272]
+    confidence: medium
+defense:
+  detections: {coverage: available, strategy_refs: [DET-000088]}
+  mitigations: {coverage: available, mitigation_refs: [MIT-000089]}
+evidence:
+  claim_refs: [CLM-000288, CLM-000471, CLM-000474, CLM-000476, CLM-000477, CLM-000478]
+  case_refs: [CASE-000094]
+  reference_refs: [REF-000128, REF-000267, REF-000269, REF-000270, REF-000272]
+research:
+  limitations:
+    paragraphs:
+      - zh: Denonia 是样本分析而非完整云事件响应，作者未发现部署路径，并指出样本也可在普通 Amazon Linux 环境继续运行。因此它支持 Lambda 定向设计、短驻观察和 DoH 行为，不支持认定某个真实 AWS 账户被哪种身份创建函数。任何案例映射都必须另有控制面 invocation 或租户证据。
+        en: Denonia is sample analysis rather than a complete cloud incident response and the authors did not identify deployment while noting that the binary could continue on ordinary Amazon Linux. It supports Lambda-targeted design ephemeral observation and DoH behavior but not attribution of function creation in a real AWS account. Any case mapping requires separate control-plane invocation or tenant evidence.
+lifecycle: {status: review, version: 2.0.0, created: '2026-09-10', modified: '2026-09-12', contributors: [Niji Matrix Research], reviewers: []}

@@ -1,0 +1,59 @@
+schema_version: 2.0.0
+type: evasion-subtechnique
+id: NJS-0078-001
+parent_ref: NJT-0078
+name: {zh: 受信管理 Agent 命令代理, en: Trusted Management-Agent Command Brokerage}
+summary: {zh: 攻击者使中央恶意任务由既有管理 Agent 以 SYSTEM 或管理账户在端点启动，隐藏直接控制面发起者, en: Adversaries cause central malicious jobs to launch through existing management agents as SYSTEM or administrative accounts hiding the direct control-plane initiator}
+aliases: [Approved Deployment-Window Camouflage]
+lineage: {attck_subtechnique_inherited: false}
+definition_and_concept:
+  paragraphs:
+    - zh: 受信管理 Agent 命令代理是攻击者在软件部署或配置控制面创建/调用 package、script 或 task，由端点已经注册和信任的 agent 下载内容并以本地 SYSTEM、root 或管理账户启动的行为。直接目的在于把攻击者的远程控制转换成合法管理通道和 agent 子进程，而无需在端点建立交互式攻击者会话。稳定变量是控制面到 agent 的来源翻译，不是部署时间窗口或工具品牌。
+      en: Trusted Management-Agent Command Brokerage creates or invokes a package script or task in a deployment or configuration control plane and has an already enrolled and trusted endpoint agent download it and launch it as local SYSTEM root or an administrative account. Its objective is to translate adversary remote control into legitimate management channels and agent child processes without an interactive adversary session on the endpoint. The stable variable is control-plane-to-agent provenance translation rather than deployment window or brand.
+stealth_characteristics:
+  paragraphs:
+    - zh: 受信管理 Agent 命令代理让端点网络连接指向内部 ePO/PDQ/BigFix/SCCM 服务器，父进程是签名 agent，用户是系统账户，均与补丁和支持活动相同。APT32 让所有系统从 ePO 拉取载荷，AvosLocker 通过 PDQ 分发工具，说明端点局部信誉可以与恶意控制面意图分离。EDR 若排除管理 agent 或仅标记未知远程源，会产生盲区。
+      en: Trusted Management-Agent Command Brokerage makes endpoint network connections point to internal ePO PDQ BigFix or SCCM servers with signed agents as parents and system accounts as users just like patch and support activity. APT32 caused all systems to pull payloads from ePO and AvosLocker distributed tools through PDQ showing local endpoint reputation can diverge from malicious control-plane intent. EDR that excludes management agents or flags only unknown remote sources develops a blind spot.
+    - zh: operator login、role、script/package author 与 approver、内容 digest、operation/job、target、agent receipt、缓存文件、子进程和结果仍可连接。未经批准的脚本、用户目录 payload、异常代理二进制、与包名称不一致的 hash 和高风险终端动作会削弱透明。仅看到 agent 子进程不能确定攻击者，必须取得控制面证据。
+      en: Operator login role script or package author and approver content digest operation or job target agent receipt cache file child process and outcome remain joinable. Unapproved scripts user-directory payloads anomalous proxy binaries hashes inconsistent with package identity and high-risk endpoint actions weaken transparency. Agent children alone cannot attribute an adversary without control-plane evidence.
+scope_boundary_definition:
+  paragraphs:
+    - zh: 本轴只纳入已建立的 enterprise management agent 执行中央攻击者任务的来源代理。攻击者新装 AnyDesk 等仅用于单机交互归 Remote Services；合法 SCCM script、EDR remote shell 和补丁部署只有 operator/package/scope 或结果异常时才属于攻击。一个 job 同时影响多个端点时还可映射 NJS-0078-002，但 agent 代理在单目标也成立。
+      en: This axis includes only established enterprise management agents executing central adversary jobs. Newly installed AnyDesk-like tools used for one-host interaction belong to Remote Services. Legitimate SCCM scripts EDR remote shells and patch deployment become malicious only with anomalous operator package scope or outcome. A job affecting many endpoints may also map to NJS-0078-002 while agent brokerage exists for one target.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+      - zh: 攻击者在控制部署管理员、服务账户、MSP 或管理服务器后，用内置 Run Script、product deployment、package、fixlet 或 remote command 运行 loader、侦察和 ransomware。安全管理 agent 特别有价值，因为其高权限、网络放行和广泛安装会让恶意执行看起来像防御或更新活动。
+        en: After controlling deployment administrators service accounts MSPs or management servers adversaries use built-in Run Script product deployment package fixlet or remote-command features to run loaders reconnaissance and ransomware. Security-management agents are especially valuable because high privilege allowed network paths and broad installation make malicious execution resemble defense or update activity.
+  threat_model:
+    attacker_model:
+      paragraphs:
+        - zh: 攻击者需要控制能提交或批准任务的身份，或直接改变管理数据库/package repository，并理解 agent 执行账户和缓存路径。author/approver 分离和签名 package 会要求更多身份；错误包或不兼容端点会生成失败回执和支持事件，扩大可见性。
+          en: The adversary must control an identity that submits or approves jobs or directly alter management databases or package repositories and understand agent execution accounts and cache paths. Author and approver separation and signed packages require more identities while incorrect packages or incompatible endpoints create failure receipts and support events that increase visibility.
+    defender_model:
+      paragraphs:
+        - zh: 防守方需要从控制面到端点的共同 operation/package/script ID，保存 operator/approval、target、agent receipt 与子进程。管理团队和 SOC 若不能共享日志，端点会只显示受信 agent；平台若不记录谁运行脚本或 agent 不传递 job ID，只能按 digest 与时间概率关联并降低置信度。
+          en: Defenders need shared operation package or script identifiers from control plane to endpoint and retain operator approval target agent receipt and child process. If management teams and SOC cannot share logs endpoints show only trusted agents. If platforms omit who ran a script or agents do not propagate job IDs correlation falls back to digest and time at lower confidence.
+stealth_mechanisms:
+  - mechanism_ref: NM-BT
+    role: primary
+    summary: {zh: 管理 Agent 与系统账户替代攻击者成为本地执行来源, en: Management agents and system accounts replace adversaries as local execution provenance}
+    analysis:
+      paragraphs:
+        - zh: 攻击者在中央控制面提交任务，受信 agent 按正常协议获取并启动载荷，端点只见签名父进程和系统账户，形成行为透明。APT32 ePO 与 AvosLocker PDQ 是直接案例。把 operator、package digest、operation 和 agent receipt 连接到子进程能够恢复来源，任何 agent 全局排除都会放大匿迹。
+          en: The adversary submits a central job and trusted agents retrieve and launch the payload through normal protocols leaving signed parents and system accounts on endpoints and creating Behavioral Transparency. APT32 ePO and AvosLocker PDQ are direct cases. Joining operator package digest operation and agent receipt to child processes recovers provenance and any global agent exclusion amplifies stealth.
+    evidence_refs: [REF-000273, REF-000274, REF-000276]
+    confidence: high
+defense:
+  detections: {coverage: available, strategy_refs: [DET-000089]}
+  mitigations: {coverage: available, mitigation_refs: [MIT-000090]}
+evidence:
+  claim_refs: [CLM-000294, CLM-000479, CLM-000481, CLM-000482, CLM-000483, CLM-000484, CLM-000485]
+  case_refs: [CASE-000096, CASE-000097, CASE-000098]
+  reference_refs: [REF-000130, REF-000273, REF-000274, REF-000275, REF-000276, REF-000278]
+research:
+  limitations:
+    paragraphs:
+      - zh: 案例直接证明 ePO、PDQ 和 BigFix/PDQ 被滥用，但公开材料没有统一披露 agent process、job identifier 或 operator session。子项 high 表示来源代理事实强，不表示任一管理 agent 子进程都恶意。合法事件响应也会用同一功能部署工具；没有控制面异常或 payload/结果差异时只能保持低置信调查。
+        en: Cases directly prove abuse of ePO PDQ and BigFix or PDQ but do not publish uniform agent processes job identifiers or operator sessions. High confidence applies to provenance brokerage rather than making every management-agent child malicious. Legitimate incident response uses the same features and absent control-plane anomaly or payload or outcome difference the event remains a low-confidence investigation.
+lifecycle: {status: review, version: 2.0.0, created: '2026-09-10', modified: '2026-09-12', contributors: [Niji Matrix Research], reviewers: []}

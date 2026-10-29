@@ -1,0 +1,39 @@
+schema_version: "2.0.0"
+type: evasion-subtechnique
+id: NJS-0070-001
+parent_ref: NJT-0070
+name: {zh: 受信加载器搜索优先级阴影, en: Trusted-Loader Search-Precedence Shadowing}
+summary: {zh: 攻击者在现有搜索或解析顺序的更早可控位置放置同名代码，使签名 launcher 保持不变却选择攻击者候选。, en: Adversaries place same-named code at an earlier controllable position in an existing search or resolution order so a signed launcher remains unchanged but selects the attacker candidate.}
+aliases: [DLL Search Order Hijacking, DLL Side-Loading]
+lineage: {attck_subtechnique_inherited: false}
+definition_and_concept:
+  paragraphs:
+  - zh: 受信加载器搜索优先级阴影固定“新增候选赢得既有解析顺序”变量。攻击者不覆盖 launcher 或合法依赖，而是在当前目录、应用目录、PATH、动态 linker 路径、相对路径或缺失依赖位置放置匹配名称/导出的恶意 DLL、dylib、共享对象或可执行文件；正常程序启动后，loader 按原规则先选中攻击者候选并转移控制。
+    en: Trusted-Loader Search-Precedence Shadowing fixes a new candidate winning an existing resolution order. The adversary does not overwrite the launcher or legitimate dependency but places a malicious DLL dylib shared object or executable with matching name or exports in a current application or PATH directory dynamic-linker path relative path or missing-dependency location. On normal program start the loader follows its original rule and selects the attacker candidate first.
+  - zh: “阴影”要求合法候选仍存在或本应从后续/固定位置解析，且攻击者通过更高优先级遮住它；若直接覆盖原文件、service ImagePath 或依赖内容，归 NJS-0070-002。若只是应用明确加载一个插件而无搜索竞争，不属于本子项。
+    en: Shadowing requires the legitimate candidate to remain or normally resolve from a later or fixed location while attacker precedence hides it. Directly overwriting the original file service ImagePath or dependency content belongs to NJS-0070-002. Explicit loading of a plug-in without search competition is outside this child.
+stealth_characteristics:
+  paragraphs:
+  - zh: 受信加载器搜索优先级阴影保留签名 launcher、命令行、依赖名和常见进程身份，只改变 resolved path/hash；基于进程签名或允许应用的规则可能自动放行。FIN7 BOOSTWRITE、2013 定向侧加载和 PRIVATELOG 直接展示此效果。恶意文件写入、目录权限、加载候选顺序、实际 module path、签名/hash、异常导出和后继内存/网络仍是残余；完整路径和安全搜索模式会限制。
+    en: Trusted-Loader Search-Precedence Shadowing preserves signed launcher command line dependency name and familiar process identity while changing resolved path or hash, so rules based on process signing or allowed applications can suppress it. FIN7 BOOSTWRITE a 2013 targeted side-load and PRIVATELOG directly demonstrate the effect. Malicious file write directory permissions candidate order actual module path signature or hash abnormal exports and later memory or network remain residuals. Fully qualified paths and safe search modes constrain it.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 必须证明攻击者控制较早搜索位置、放置匹配候选、受信 consumer 实际解析并加载它，以及执行结果。仅发现缺失 DLL、可写 PATH 或易受攻击程序是暴露而非执行；开发目录、便携应用、软件升级和插件测试可能合法从本地目录加载，需与批准包和 hash 比较。按 DLL/dylib/ELF、目录类型或 launcher 产品不拆分。
+    en: Evidence must show attacker control of an earlier search location placement of a matching candidate actual resolution and load by a trusted consumer and execution outcome. A missing DLL writable PATH or vulnerable program alone is exposure rather than execution. Development directories portable applications updates and plug-in tests can legitimately load locally and require comparison with approved packages and hashes. DLL dylib ELF directory type and launcher product do not partition the child.
+application_scenarios_and_threat_model:
+  application_scenarios: {paragraphs: [{zh: 攻击者取得用户可写目录后，选择签名程序缺失/相对依赖或服务/升级组件的可控搜索路径，复制 launcher 与恶意依赖到同一目录或污染 PATH，再诱导/等待程序正常启动以取得其身份和权限。, en: After gaining a writable directory the adversary selects a missing or relative dependency of a signed program or a controllable search path of a service or updater copies the launcher and malicious dependency together or poisons PATH and induces or waits for normal start to gain its identity and privilege.}]}
+  threat_model:
+    attacker_model: {paragraphs: [{zh: 需要准确依赖名、导出、位数、加载顺序和触发条件，并控制先搜索目录；错误导出/架构会崩溃。完整路径、SafeDllSearch、LOAD_LIBRARY_SEARCH、只读安装目录、签名 DLL 策略和模块完整性会限制。, en: Requires exact dependency name exports architecture load order and trigger plus control of an earlier directory; wrong exports or architecture cause failure. Full paths safe search LOAD_LIBRARY_SEARCH read-only installation directories signed-library policy and module integrity constrain it.}]}
+    defender_model: {paragraphs: [{zh: 需记录 writer、目录 ACL、launcher 与实际 resolved module path/hash/signature、加载顺序和后继结果，并保存软件批准 manifest。只看进程名称/签名或请求依赖名会漏掉选中候选。, en: Defenders record writer directory ACL launcher actual resolved module path hash or signature load order and later outcomes and retain approved software manifests. Process name or signature and requested dependency name alone miss the selected candidate.}]}
+stealth_mechanisms:
+- mechanism_ref: NM-FD
+  role: primary
+  summary: {zh: 恶意候选借用签名 launcher 与正常依赖名称, en: A malicious candidate borrows a signed launcher and normal dependency name}
+  analysis: {paragraphs: [{zh: loader 按原规则选择更早恶意候选，使恶意代码与合法程序共享 launcher、进程和依赖名特征，形成特征伪装。三类现场/样本证据和 Microsoft 搜索语义支持 high；writer—candidate—resolved path—load—outcome 可反证。, en: The loader follows its original rule and selects an earlier malicious candidate so attacker code shares launcher process and dependency-name features with legitimate software producing Feature Disguise. Three field or sample sources plus Microsoft search semantics support high confidence; writer-candidate-resolved-path-load-outcome lineage disconfirms it.}]}
+  evidence_refs: [REF-000233, REF-000234, REF-000235, REF-000236, REF-000239]
+  confidence: high
+defense: {detections: {coverage: available, strategy_refs: [DET-000084]}, mitigations: {coverage: available, mitigation_refs: [MIT-000085]}}
+evidence: {claim_refs: [CLM-000268, CLM-000430, CLM-000436], case_refs: [CASE-000081], reference_refs: [REF-000233, REF-000234, REF-000235, REF-000236, REF-000239]}
+research:
+  limitations: {paragraphs: [{zh: 直接案例集中于 Windows DLL；macOS/Linux 只按等价 loader precedence 推广。侧加载在便携软件和升级中可能合法，且签名 launcher 不证明 DLL 恶意；high 表示变量证据强，归因必须有未批准 writer/path/hash 和结果。, en: Direct cases concentrate on Windows DLLs and macOS or Linux generalize only through equivalent loader precedence. Side-loading can be legitimate in portable software and updates and a signed launcher does not prove a malicious library. High confidence establishes the variable while attribution requires unapproved writer path or hash and outcome.}]}
+lifecycle: {status: review, version: 1.1.0, created: '2026-09-10', modified: '2026-09-12', contributors: [Niji Matrix Research], reviewers: []}

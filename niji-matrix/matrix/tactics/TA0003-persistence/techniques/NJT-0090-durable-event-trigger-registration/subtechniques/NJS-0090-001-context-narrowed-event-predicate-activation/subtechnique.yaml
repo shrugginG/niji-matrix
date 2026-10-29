@@ -1,0 +1,171 @@
+schema_version: 2.0.0
+type: evasion-subtechnique
+id: NJS-0090-001
+parent_ref: NJT-0090
+name:
+  zh: 上下文收窄事件谓词激活
+  en: Context-Narrowed Event-Predicate Activation
+summary:
+  zh: 攻击者把持久回调限制为目标相关、低频或分析环境难以复现的条件，使动作只在少数可预测情境激活并降低短窗口痕迹密度。
+  en: Adversaries constrain a durable callback to target-relevant, sparse, or analysis-resistant conditions so the action
+    activates only in a few predictable contexts and reduces short-window trace density.
+aliases: []
+lineage:
+  attck_subtechnique_inherited: false
+definition_and_concept:
+  paragraphs:
+  - zh: 上下文收窄事件谓词激活是攻击者在持久注册中有意限定进程、对象属性、uptime、信号、设备 match key、用户状态、消息或管理操作等条件，使 action 仅在具有操作价值的少数事件上执行的匿迹子技术。其直接目标是在保留自动恢复能力时，减少日常事件、通用沙箱和短调查窗口触发载荷的机会。
+    en: Context-Narrowed Event-Predicate Activation is an evasion sub-technique in which an adversary deliberately constrains
+      a durable registration by process, object attribute, uptime, signal, device match key, user state, message, management
+      operation, or a similar condition so the action runs only on a few operationally useful events. Its direct objective
+      is to preserve automatic recovery while reducing opportunities for routine events, generic sandboxes, and short investigations
+      to trigger the payload.
+  - zh: 区分变量是攻击者控制的候选事件集合和实际匹配率，不是 WMI、udev、Emond 或应用规则产品。Microsoft WMI 永久 consumer 的 __EventFilter 保存 WQL Query，只有匹配事件才交付给
+      consumer；Mandiant 以 uptime 条件展示可配置选择性。事件本来低频、系统拥塞或损坏注册造成的低触发不属于该变量，因为攻击者没有有意改变谓词。
+    en: The distinguishing variable is the adversary-controlled candidate-event set and actual match rate rather than WMI,
+      udev, Emond, or an application-rule product. A Microsoft WMI permanent consumer stores a WQL Query in __EventFilter
+      and delivers only matching events to the consumer, while Mandiant uses an uptime condition to demonstrate configurable
+      selectivity. An inherently sparse event, system congestion, or broken registration is outside the variable because the
+      adversary did not deliberately change the predicate.
+stealth_characteristics:
+  paragraphs:
+  - zh: 上下文收窄事件谓词激活让静态注册可以跨重启长期存在，却在不具目标进程、对象、用户状态或 uptime 的环境中没有行为。匹配事件占候选事件的比例和局部异常进程密度下降，首次激活可以推迟数小时或数日；只进行一次通用触发或只看短期进程遥测的防守方容易把注册误判为未使用配置。
+    en: Context-Narrowed Event-Predicate Activation lets static registration survive restart for a long period while producing
+      no behavior in an environment lacking the target process, object, user state, or uptime. The proportion of candidate
+      events that match and local anomalous-process density fall, and first activation can be delayed for hours or days. A
+      defender performing one generic trigger or reviewing only short-term process telemetry can mistake the registration
+      for unused configuration.
+  - zh: 谓词、引用字段、候选事件、命中事件、首次触发时间和 action 结果仍可观察。静态解析可以识别目标特异条件，长期事件流可以计算匹配率，多情境回放可以验证哪些上下文激活；但无法读取加密/脚本化条件或未保留谓词所需事件字段时，只能确认一个有风险的持久回调。合法备份、监控和设备自动化也会使用窄条件，必须以
+      owner 和业务频率排除。
+    en: Predicate, referenced fields, candidate events, matching events, first-trigger time, and action outcome remain observable.
+      Static parsing can identify target-specific conditions, a long event stream can calculate match rate, and multi-context
+      replay can determine which contexts activate. If an encrypted or scripted condition cannot be read or the event stream
+      omits predicate fields, defenders can establish only a risky durable callback. Legitimate backup, monitoring, and device
+      automation also use narrow conditions and require owner and business-frequency counterexamples.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 本子技术纳入攻击者选择的持久谓词显著缩小可触发事件集合，并能证明该集合在目标环境至少产生一次后继 action。判定需要注册版本、谓词规范形、候选事件总量、实际命中或可复现回放以及结果；只有条件表达式很长、事件稀少或 action
+      延迟不足以成立。进程、对象、设备、用户和消息字段是可组合条件，不分别成为子项。
+    en: This child includes an adversary-selected durable predicate that materially narrows the triggerable event set and
+      can be shown to produce at least one downstream action in the target environment. Classification requires registration
+      version, normalized predicate, candidate-event population, actual match or reproducible replay, and outcome. A long
+      condition expression, rare event, or delayed action alone is insufficient. Process, object, device, user, and message
+      fields are composable conditions rather than separate children.
+  - zh: 纯日历或固定间隔条件归 T1053；父级框架不可配置的默认事件仍属 NJT-0090 核心；攻击者进程自身轮询没有持久 Broker 注册。因环境变化、队列拥塞、权限错误或 consumer 崩溃而少触发属于故障。合法低频告警与应急自动化若有
+      owner、批准、预期匹配集合和测试记录，应作为反例而非匿迹。
+    en: A pure calendar or fixed-interval condition belongs to T1053, while a nonconfigurable default event in the parent
+      framework remains NJT-0090 core. Direct polling by the adversary's own process lacks a durable broker registration.
+      Sparse triggering caused by environmental change, queue congestion, permission error, or consumer failure is a fault.
+      Legitimate sparse alerts and emergency automation with an owner, approval, expected match set, and test record are counterexamples
+      rather than stealth.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: 攻击者可以创建只在系统 uptime 达到阈值、目标进程出现、特定文件/消息/对象变化、某设备属性匹配或用户进入指定状态时激活的 WMI filter、设备规则或应用回调。原会话退出后，注册持续等待真实工作负载中的目标事件；通用分析环境若没有相同字段和值，不会运行
+        action，而目标环境出现条件时载荷自动恢复。
+      en: An adversary can create a WMI filter, device rule, or application callback that activates only after an uptime threshold,
+        appearance of a target process, a selected file, message, or object change, a matching device attribute, or a chosen
+        user state. After the original session exits, registration continues waiting for the target event in the real workload.
+        A generic analysis environment without the same fields and values does not run the action, while the payload automatically
+        returns when the condition appears in the target.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者需要写入持久 filter/rule 和 action 的权限，理解事件 schema、字段语义、目标基线和 Broker 重启行为，并能估计条件的可靠性与等待时间。越窄的条件越依赖目标知识，也越容易因进程名、设备、业务流程或策略变化而永远不触发；过宽则失去低密度优势。攻击者必须测试条件而避免产生大量试运行记录。
+        en: The adversary needs authority to write a durable filter or rule and action, knowledge of event schema, field semantics,
+          target baseline, and broker restart behavior, and ability to estimate condition reliability and waiting time. A
+          narrower condition depends more on target knowledge and is more likely never to trigger after process-name, device,
+          workflow, or policy change, while a broader condition loses the low-density advantage. The adversary must test the
+          condition without generating many trial records.
+      - zh: 规范化谓词审查、可疑目标字段阻断、JIT 注册权、多情境测试和长期匹配率监控会提高成本。若 action 需要即时执行、目标事件不可预测或注册不能跨重启，本变量不适合；错误 predicate 也可能产生 WinMgmt
+          error、持续重试或业务中断并暴露。
+        en: Normalized-predicate review, blocking suspicious target fields, JIT registration authority, multi-context testing,
+          and long-horizon match-rate monitoring raise cost. The variable is unsuitable when action must be immediate, the
+          target event is unpredictable, or registration cannot survive restart. A bad predicate can also generate WinMgmt
+          errors, repeated retries, or business disruption and expose the registration.
+    defender_model:
+      paragraphs:
+      - zh: 防守方需要保存注册 object/filter ID、writer/CreatorSID、完整谓词与规范形、action/consumer、Broker、版本、owner 和创建/修改时间；事件流必须包含谓词引用字段并区分候选、匹配和未匹配事件。匹配后还要以
+          callback/object、设备、目标与时间连接 action、进程/模块和资源结果，才能证明选择性与实际持久执行。
+        en: Defenders need registration object or filter ID, writer or CreatorSID, complete predicate and normalized form,
+          action or consumer, broker, version, owner, and create or modify time. The event stream must contain fields referenced
+          by the predicate and distinguish candidate, matching, and nonmatching events. After a match, callback or object,
+          device, target, and time must join action, process or module, and resource outcome to establish selectivity and
+          actual persistent execution.
+      - zh: 匹配率基线需要覆盖完整业务周期和首次触发延迟，远长于短期进程窗口。极低频对象可能长期只留下静态定义而没有激活痕迹；条件不可解析、事件字段未保留或注册日志先于首次触发过期时，防守方无法可靠判断谓词究竟收窄到什么程度。合法低频自动化需要所有者、变更记录和历史匹配分布作为背景。
+        en: Match-rate baselines need to cover a full business cycle and first-trigger delay, well beyond a short process
+          window. Extremely sparse objects may leave only a static definition for a long period without activation traces.
+          When a condition is opaque, event fields are not retained, or registration logs expire before first trigger, defenders
+          cannot reliably determine how narrowly the predicate was scoped. Legitimate sparse automation requires ownership,
+          change records, and historical match distribution as context.
+stealth_mechanisms:
+- mechanism_ref: NM-ST
+  role: primary
+  summary:
+    zh: 目标相关谓词降低短窗口激活密度
+    en: A target-relevant predicate reduces activation density in short windows
+  analysis:
+    paragraphs:
+    - zh: 攻击者把 action 分布到长时间内少数满足条件的事件，注册始终存在但大多数候选事件没有后继执行。短窗口频率规则和一次性沙箱重放看到的异常次数下降，注册与结果又在不同时间出现，形成时空释痕。Microsoft 的 permanent
+        consumer/Query 模型与 Mandiant uptime 条件直接证明这种选择能力。
+      en: The adversary distributes the action across the few events satisfying the condition over a long period. Registration
+        remains present, but most candidate events have no downstream execution. Short-window frequency rules and one-time
+        sandbox replay see fewer anomalies, while registration and outcome occur at different times, producing Spatiotemporal
+        Trace Dilution. Microsoft's permanent-consumer and Query model plus Mandiant's uptime condition directly establish
+        this selection capability.
+    - zh: 防守方可以从谓词、候选事件、匹配率、首次触发延迟和结果恢复链条。公开材料没有证明每个现实攻击者都为降低检测而选择窄条件，Solorigate 也未公开完整 WQL，因此机理为 medium。只有低频而没有攻击者可控谓词或实际
+        action 时，不得借此标签提高结论。
+      en: Defenders can recover the chain from predicate, candidate events, match rate, first-trigger delay, and outcome.
+        Public material does not establish that every real adversary selected a narrow condition to reduce detection, and
+        Solorigate does not disclose complete WQL, so mechanism confidence is medium. Sparse activity without an adversary-controlled
+        predicate or actual action cannot raise the conclusion under this label.
+  evidence_refs:
+  - REF-000183
+  - REF-000312
+  - REF-000313
+  confidence: medium
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000070
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000069
+evidence:
+  claim_refs:
+  - CLM-000368
+  - CLM-000557
+  - CLM-000558
+  case_refs: []
+  reference_refs:
+  - REF-000183
+  - REF-000312
+  - REF-000313
+  - REF-000353
+  - REF-000354
+research:
+  limitations:
+    paragraphs:
+    - zh: Microsoft 官方材料直接证明永久 consumer、WQL filter 与只有匹配事件才触发的结构，Mandiant 红队工程直接展示 uptime 条件和监控字段；它们支持稳定变量，但不提供独立真实攻击者的完整谓词—长期匹配率—匿迹意图链。因此子项存在性为
+        high，匿迹机理保持 medium，案例字段为空而不是把 Solorigate 未公开的谓词越级引用。
+      en: Microsoft documentation directly establishes permanent consumers, WQL filters, and trigger-only-on-match structure,
+        while Mandiant red-team engineering demonstrates an uptime condition and monitoring fields. They support the stable
+        variable but do not provide an independent real-adversary chain containing complete predicate, long-term match rate,
+        and stealth intent. Child existence is high confidence and the stealth mechanism remains medium, while case references
+        stay empty rather than overextending Solorigate's undisclosed predicate.
+    - zh: 事件匹配率受业务周期、设备离线、数据缺失和环境变化影响；加密或脚本谓词可能无法静态解析。没有候选事件全集时不能把“仅触发一次”量化为窄条件，没有 action 结果时只能确认休眠注册。合法监控和应急自动化同样使用极低频条件，必须保留
+        owner、批准与预期事件集合。
+      en: Event match rate depends on business cycles, offline devices, missing data, and environmental change, while encrypted
+        or scripted predicates may resist static parsing. Without the candidate-event population, one trigger cannot be quantified
+        as a narrow condition, and without action outcome only a dormant registration is established. Legitimate monitoring
+        and emergency automation also use extremely sparse conditions and require owner, approval, and expected event set.
+lifecycle:
+  status: review
+  version: 1.2.0
+  created: '2026-09-11'
+  modified: '2026-09-19'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

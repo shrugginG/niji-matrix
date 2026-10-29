@@ -1,0 +1,65 @@
+schema_version: "2.0.0"
+type: detection-analytic
+id: NJA-000133
+strategy_ref: DET-000131
+name:
+  zh: 报告健康—真实结果差分
+  en: Reported Health–Real Outcome Differential
+summary:
+  zh: 比较界面与管理 API 的健康、进度和成功声明同真实组件、版本、签名与 canary 结果。
+  en: Compare UI and management-API health, progress, and success claims with real components, versions, signatures, and canary outcomes.
+domains: [enterprise]
+platforms: []
+logic:
+  paragraphs:
+    - zh: 收集本地 UI、托盘、CLI、管理 API 和升级任务报告的 status、progress、reported_version、result、transaction_id、reporter path/hash/signature，并从不同 authority 获取服务与进程状态、已安装版本、签名文件 hash、启动分区或组件清单。为高价值防御功能登记非破坏 canary，例如受控测试事件、预期阻断样本或只读版本验证，记录 expected_result 与 observed_result。
+      en: Collect status, progress, reported_version, result, transaction_id, and reporter path, hash, and signature from local UI, tray, CLI, management API, and upgrade-task reports. Obtain service and process state, installed version, signed-file hashes, boot partition, or component inventory from a different authority. Register nondestructive canaries for high-value defensive functions, such as a controlled test event, an expected-block sample, or read-only version verification, and record expected_result and observed_result.
+    - zh: 缓存或滚动升级容差内的不一致标记 transient_mismatch。超过容差后，若界面或 API 报 healthy/success/complete，但真实版本未推进、服务缺失、签名文件偏离或 canary 失败，则输出 health_feedback_forgery_suspected；再连接未经批准的 UI/reporting code 变化、异常 reporter、升级拦截或攻击者会话时输出 health_feedback_forgery_confirmed。真实状态异常但没有正向健康声明只属于可用性或完整性问题，不归本分析的反馈伪造。
+      en: Mark disagreement within cache or rolling-upgrade tolerance as transient_mismatch. Beyond tolerance, when a UI or API reports healthy, success, or complete while real version does not advance, a service is absent, signed files differ, or a canary fails, emit health_feedback_forgery_suspected. Emit health_feedback_forgery_confirmed after joining an unapproved UI or reporting-code change, anomalous reporter, intercepted upgrade, or adversary session. Abnormal real state without a positive healthy claim is an availability or integrity problem, not feedback forgery under this analytic.
+data_requirements:
+  - source_type: reported-tool-health
+    name: {zh: 本地界面与管理 API 健康、进度和成功状态, en: "Local-interface and management-API health, progress, and success state"}
+    channel: null
+    required_fields: [timestamp, asset_id, tool_instance_id, transaction_id, status, progress, reported_version, result, reporter_path, reporter_hash, reporter_signer]
+  - source_type: authoritative-component-state
+    name: {zh: 不同权来源的组件、版本与签名状态, en: "Differently authorized component, version, and signature state"}
+    channel: null
+    required_fields: [timestamp, asset_id, tool_instance_id, service_state, process_state, installed_version, component_id, file_hash, signer, boot_or_partition_id]
+  - source_type: functional-canary-result
+    name: {zh: 防御功能 canary 与验证结果, en: Defensive-function canary and validation result}
+    channel: null
+    required_fields: [timestamp, asset_id, tool_instance_id, canary_id, canary_type, expected_result, observed_result, verifier_authority]
+  - source_type: interface-update-audit
+    name: {zh: 界面、报告逻辑与升级流程变化审计, en: "Interface, reporting-logic, and upgrade-flow change audit"}
+    channel: null
+    required_fields: [timestamp, asset_id, actor_id, component_id, action, old_hash, new_hash, transaction_id, request_id, approval_id]
+observables:
+  - {zh: 界面显示健康或升级完成但实际服务缺失或版本未变化, en: The interface reports healthy or upgrade complete while the real service is absent or version does not change}
+  - {zh: 报告组件或 UI 文件的 hash 与签名偏离批准基线, en: Reporting-component or UI file hash and signature differ from the approved baseline}
+  - {zh: 管理面成功状态与非破坏 canary 失败同属一个工具实例, en: Management-plane success and a failed nondestructive canary refer to the same tool instance}
+  - {zh: 假进度或健康声明与升级拦截、异常 reporter 或攻击者会话关联, en: "Fake progress or health claims correlate with upgrade interception, an anomalous reporter, or an adversary session"}
+correlation:
+  window:
+    zh: 按同一 transaction_id 即时关联，并从报告完成前十五分钟延伸至后两小时；跨重启升级按批准流程最长延长至二十四小时。
+    en: Correlate immediately by transaction_id and from fifteen minutes before reported completion through two hours after it; extend to twenty-four hours for approved reboot-spanning upgrades.
+  dimensions: [asset_id, tool_instance_id, transaction_id, component_id, reported_version, installed_version, reporter_hash, canary_id, actor_id, approval_id, time]
+false_positives:
+  - {zh: 正常缓存延迟、最终一致性、滚动升级或等待重启, en: "Normal cache delay, eventual consistency, rolling upgrade, or pending reboot"}
+  - {zh: 高可用集群中 UI 查询节点与被验证节点不同, en: The UI queries a different node than the validated node in a high-availability cluster}
+  - {zh: canary 本身配置错误、过期或被安全策略禁止, en: "The canary is misconfigured, expired, or prohibited by security policy"}
+blind_spots:
+  - {zh: 健康声明、真实状态和 canary 都由同一受损 authority 产生, en: "Health claim, real state, and canary all originate from the same compromised authority"}
+  - {zh: 设备不公开已安装版本、签名清单或可安全执行的功能验证, en: "The device exposes no installed version, signed inventory, or safely executable functional test"}
+  - {zh: 离线设备只能通过已被替换的本地 UI 观察, en: An offline device is observable only through the replaced local UI}
+tuning_guidance:
+  paragraphs:
+    - zh: 为每个产品定义允许缓存时间、升级阶段、重启要求、版本来源优先级和 canary 安全范围；将 UI 与 API 视为声明而非真相。已批准自定义界面也必须绑定 hash、signer、transaction 和目标版本，不能按路径或品牌永久放行。若没有独立 verifier，只输出 state_unverified，避免把同步延迟误判为伪造。
+      en: Define allowed cache time, upgrade stages, reboot requirements, version-source priority, and safe canary scope for each product, treating UI and API as claims rather than truth. Approved customized interfaces still bind hash, signer, transaction, and target version and are never permanently allowed by path or brand. Without an independent verifier, emit state_unverified to avoid misclassifying synchronization delay as forgery.
+evidence_refs: [REF-000446, REF-000449, REF-000450]
+lifecycle:
+  status: review
+  version: "1.0.0"
+  created: "2026-09-22"
+  modified: "2026-09-22"
+  contributors: [Niji Matrix Research]
+  reviewers: []

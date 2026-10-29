@@ -1,0 +1,153 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000147
+strategy_ref: DET-000142
+name:
+  zh: 选择性认证路径差分分析
+  en: Selective Authentication-Path Divergence Analytic
+summary:
+  zh: 找出少数终端接受非授权网络指向并在该路径上发起认证的序列。
+  en: Find sequences in which a few endpoints accept unauthorized network direction and authenticate along that path.
+domains:
+- enterprise
+platforms:
+- Windows
+- Linux
+- macOS
+- Network Devices
+logic:
+  paragraphs:
+  - zh: 对每台终端构建分钟级路径时间线，记录 DHCPv6 提供者及 DNS 选项、DNS/LLMNR 回答者与答案，以及 ARP 邻居映射；按接入端口、VLAN、终端与查询名对照批准权威清单和近期变更。把首次不一致指向后十五分钟内同终端到该地址或代理的 SMB、HTTP、LDAP
+      等认证流连接；只有出现认证流或服务端结果时才提升为 TA0006 路径介入候选。短 TTL、短租期和少数主机受影响应以同 VLAN 终端作对照，不能要求全网异常总量先升高。
+    en: Build a minute-level path timeline per endpoint from DHCPv6 providers and DNS options, DNS or LLMNR responders and answers, and ARP neighbor
+      mappings. Compare these by access port, VLAN, endpoint, and query name with approved authority inventories and recent changes. Join the
+      first divergent direction to that endpoint's SMB, HTTP, LDAP, or other authentication flow toward the address or proxy within fifteen minutes.
+      Escalate to a TA0006 path-intervention candidate only when an authentication flow or service-side outcome is present. Use same-VLAN endpoints
+      as a contrast for short TTLs, short leases, and few-host effects rather than requiring a network-wide anomaly count.
+data_requirements:
+- source_type: dhcpv6-packet
+  name:
+    zh: DHCPv6 请求与回答
+    en: DHCPv6 requests and answers
+  channel: null
+  required_fields:
+  - event.timestamp
+  - client.mac
+  - client.fqdn
+  - server.duid
+  - dns.option
+  - lease.seconds
+- source_type: dns-answer
+  name:
+    zh: DNS 查询与回答
+    en: DNS queries and answers
+  channel: null
+  required_fields:
+  - event.timestamp
+  - client.ip
+  - query.name
+  - responder.ip
+  - response.address
+  - response.ttl
+- source_type: endpoint-address-map
+  name:
+    zh: 终端地址映射
+    en: Endpoint address mapping
+  channel: null
+  required_fields:
+  - event.timestamp
+  - endpoint.id
+  - client.mac
+  - client.ip
+- source_type: endpoint-auth-flow
+  name:
+    zh: 终端认证网络流
+    en: Endpoint authentication network flow
+  channel: null
+  required_fields:
+  - event.timestamp
+  - endpoint.id
+  - destination.ip
+  - destination.port
+  - authentication.protocol
+- source_type: access-segment-map
+  name:
+    zh: 接入端口与 VLAN 归属
+    en: Access port and VLAN membership
+  channel: null
+  required_fields:
+  - event.timestamp
+  - endpoint.id
+  - client.mac
+  - vlan.id
+  - switch.port
+- source_type: arp-neighbor-binding
+  name:
+    zh: 终端 ARP 邻居映射与接入检查
+    en: Endpoint ARP neighbor mappings and access inspection
+  channel: null
+  required_fields:
+  - event.timestamp
+  - endpoint.id
+  - neighbor.ip
+  - neighbor.mac
+  - switch.port
+- source_type: network-authority-inventory
+  name:
+    zh: 批准网络权威与变更清单
+    en: Approved network authorities and change inventory
+  channel: null
+  required_fields:
+  - authority.id
+  - vlan.id
+  - authority.role
+  - valid.from
+  - valid.to
+  - approval.id
+observables:
+- zh: 同 VLAN 少数终端接受非授权 DHCP/DNS 回答或短时网关映射后向回答地址发起认证
+  en: Only a few endpoints on one VLAN accept an unauthorized DHCP or DNS answer or brief gateway mapping, then authenticate toward the answering
+    address
+- zh: 同一查询存在授权与非授权竞争回答，且受影响终端的后续认证路径与同网段对照终端不同
+  en: Authorized and unauthorized answers compete for one query, and the affected endpoint's later authentication path differs from peers on the
+    same segment
+correlation:
+  window:
+    zh: 从首次非授权指向前五分钟至接受后十五分钟关联，并保留二十四小时同网段路径对照。
+    en: Correlate from five minutes before first unauthorized direction through fifteen minutes after acceptance and retain twenty-four hours
+      of same-segment path comparison.
+  dimensions:
+  - endpoint.id
+  - vlan.id
+  - switch.port
+  - query.name
+  - responder.ip
+  - response.address
+  - destination.ip
+  - event.timestamp
+false_positives:
+- zh: 经批准的故障切换、分流 DNS、短期 DHCP 配置、NAC 隔离与红队演练
+  en: Approved failover, split-horizon DNS, short DHCP configuration, NAC quarantine, and authorized exercises
+blind_spots:
+- zh: 未受管终端、外部无线网、无镜像/控制器日志、加密 DNS、随机 MAC 和 DHCPv6 请求缺少 FQDN
+  en: Unmanaged endpoints, external Wi-Fi, absent packet or controller logs, encrypted DNS, randomized MACs, and DHCPv6 requests without FQDN
+tuning_guidance:
+  paragraphs:
+  - zh: 维护带有效期和负责人信息的授权 DHCP、DNS、BSSID、网关及代理清单，按网段基线区别多租户与漫游环境；即便在批准来源上仍检查目标主机与实际认证目的地，避免白名单消掉供应链或配置失陷。先以认证连接确认优先级，再以竞争应答及配置漂移提高置信度，不把单个新 BSSID
+      或短 TTL 当成恶意结论。
+    en: Maintain time-bound inventories with owners for approved DHCP, DNS, BSSID, gateway, and proxy infrastructure, and baseline segments separately
+      for multi-tenant and roaming environments. Continue checking affected hosts and actual authentication destinations even for approved sources
+      so allowlists do not erase compromised infrastructure. Prioritize cases with authentication connections and raise confidence through competing
+      answers and configuration drift; a new BSSID or short TTL alone is not a malicious conclusion.
+evidence_refs:
+- REF-000489
+- REF-000491
+- REF-000495
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-09-22'
+  modified: '2026-09-22'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

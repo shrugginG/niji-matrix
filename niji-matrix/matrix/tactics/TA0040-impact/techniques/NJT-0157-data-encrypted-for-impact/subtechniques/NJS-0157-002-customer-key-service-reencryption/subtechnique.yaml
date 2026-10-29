@@ -1,0 +1,133 @@
+schema_version: 2.0.0
+type: evasion-subtechnique
+id: NJS-0157-002
+parent_ref: NJT-0157
+name:
+  zh: 客户密钥服务端重加密
+  en: Customer-Key Service-Side Re-encryption
+summary:
+  zh: 攻击者借有效对象权限让存储服务用攻击者掌握的客户密钥重加密现有对象，移出主机文件监测范围。
+  en: An adversary uses valid object authority to have a storage service re-encrypt existing objects under an attacker-held
+    customer key, moving outside host file monitoring.
+aliases: []
+lineage:
+  attck_subtechnique_inherited: false
+definition_and_concept:
+  paragraphs:
+  - zh: 客户密钥服务端重加密是攻击者使用有权读取和覆写对象的身份，让存储服务对已有对象产生一个以攻击者掌握的客户密钥保护的当前版本。原对象名和服务路径可保持正常，但组织缺少读取当前版本所需密钥；分类变量是加密执行主体和密钥归属从主机工作流移到对象服务，不是云供应商名称。
+    en: Customer-Key Service-Side Re-encryption uses an identity authorized to read and overwrite objects to make
+      a storage service create a current version protected by a customer key held by the attacker. Object names
+      and service routes may remain normal while the organization lacks the key for current-version reading. The
+      variable is the encryption executor and key custody moving from host workflow to object service, not a cloud
+      vendor name.
+  - zh: 当前结论级证据是 AWS CIRT 观察到的 SSE-C CopyObject 大量覆写。它证明该服务实例的行为和审计面，却不足以假定所有对象存储服务都有相同参数、默认许可或版本语义；其他平台须另证执行与观察差异。
+    en: Current conclusion-level evidence is AWS CIRT's observed mass SSE-C CopyObject overwrites. It establishes
+      that service instance and audit surface, not identical parameters, default permission, or version semantics
+      in every object store. Other platforms need separate proof of the execution and observation difference.
+stealth_characteristics:
+  paragraphs:
+  - zh: 客户密钥服务端重加密保留对象键和存储 API 的正常响应表象，却不会在受害主机产生同等规模的加密进程或文件改写。持有效凭据的 CopyObject 在操作类别上接近合法复制，主机侧或仅看管理事件的监控难以识别密钥归属变化；对象数据事件里的客户密钥算法参数、同主体大量覆写和新版本仍能暴露行为。
+    en: Customer-Key Service-Side Re-encryption preserves object keys and an apparently normal storage API surface
+      without a comparable encryptor process or file-write burst on victim hosts. CopyObject under valid credentials
+      resembles authorized copying at the operation level, so host or management-only monitoring misses changed
+      key custody. Customer-key algorithm parameters in object data events, mass same-principal overwrites, and
+      new versions remain visible.
+  - zh: 若目标桶维持 SSE-C 阻止状态，攻击路径会在写入前受限；若有例外或攻击者先改配置，解除阻止的配置事件又增加一个可见前驱。版本控制或对象锁可能保留旧版本，但无法凭此否定当前版本一度不可读。
+    en: If the target bucket retains SSE-C blocking, the pathway is constrained before writes. An exception or attacker
+      change to the setting adds an observable precursor configuration event. Versioning or Object Lock may preserve
+      older versions without disproving that the current version was temporarily unreadable.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 纳入已有对象被未授权地由服务端重加密、当前密钥不在组织正常控制中且合法读取受阻，并能查明客户密钥请求和对象版本变化的情形。合规 SSE-C 且组织保有密钥、正常重密钥迁移、只改变 ACL 或 KMS 授权而没有重加密都不属于本项。
+    en: Include unauthorized service-side re-encryption of existing objects where the current key is outside normal
+      organizational custody and legitimate reading is impaired, with customer-key requests and object-version change
+      established. Approved SSE-C with organizational key custody, normal rekeying, or changing only ACL or KMS
+      grants without re-encryption falls outside this child.
+  - zh: 攻击者若先通过 PutBucketEncryption 移除默认阻止，这只是前置配置变化；没有随后对象覆写不能宣称子项已完成。客户密钥参数本身也不证明密钥由攻击者掌握，需要批准作业、密钥治理和安全读取验证交叉确认。
+    en: If an actor first removes a default block through PutBucketEncryption, that is a precursor configuration
+      change. Without subsequent object overwrites, the child has not occurred. A customer-key parameter alone does
+      not prove adversary key custody; approved jobs, key governance, and safe read tests must corroborate it.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: AWS CIRT 报告攻击者取得客户有效凭据后，以 SSE-C CopyObject 重加密许多现有 S3 对象。当前 AWS 环境中，攻击者需选中允许 SSE-C 的桶，或另有权启用该类型，再批量覆写对象；防守方的主机文件改写告警不会覆盖这条服务端路径。
+      en: AWS CIRT reported actors obtaining valid customer credentials and re-encrypting many existing S3 objects
+        with SSE-C CopyObject. In current AWS environments, the actor needs a bucket permitting SSE-C or separate
+        authority to enable it before bulk overwrites. Host file-rewrite alerts do not cover this service-side path.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者需可读取并复制覆写目标对象，能提供并控制客户密钥，并了解桶是否阻止 SSE-C。2026 年的新桶默认阻止以及部分既有桶的默认阻止提高前置条件；若攻击者有配置权限，PutBucketEncryption
+          变更会留下额外痕迹。身份、来源地址、对象键和版本标识仍可归集。
+        en: The actor needs permission to read and copy-overwrite targets, control a customer-provided key, and
+          know whether the bucket blocks SSE-C. The 2026 default block on new and some existing buckets raises prerequisites.
+          If the actor can change configuration, PutBucketEncryption leaves another trace. Identity, source address,
+          object keys, and version IDs remain aggregatable.
+    defender_model:
+      paragraphs:
+      - zh: 防守方按桶清点 BlockedEncryptionTypes，保留 PutBucketEncryption 管理事件，并为关键桶开启 S3 对象数据事件。对 CopyObject 的客户密钥参数按主体、来源和对象键跨窗口聚合，再核验批准作业、版本和合法读取结果；只看主机
+          EDR、未采对象事件或合法 SSE-C 应用被盗用都会使恶意判断变弱。
+        en: Defenders inventory BlockedEncryptionTypes by bucket, retain PutBucketEncryption management events,
+          and enable S3 object data events for critical buckets. They aggregate customer-key parameters on CopyObject
+          by principal, source, and object key, then verify approved jobs, versions, and legitimate read results.
+          Host-only EDR, absent object events, or compromise of an approved SSE-C app weakens maliciousness assessment.
+stealth_mechanisms:
+- mechanism_ref: NM-BT
+  role: primary
+  summary:
+    zh: 服务端重加密跨越主机文件传感器边界
+    en: Service-side re-encryption crosses the host file-sensor boundary
+  analysis:
+    paragraphs:
+    - zh: 攻击者以有权身份把现有对象的重加密交给存储服务，并由自己掌握客户密钥；加密与版本变化落在服务数据面，受害主机不会产生同等文件写入。仅监控主机的防守方因观察域缺失而漏看这一影响，但云数据事件中的 CopyObject、SSE-C
+        参数及对象版本仍可揭示。
+      en: Using an authorized identity, the attacker delegates re-encryption of existing objects to the storage
+        service under a customer key the attacker holds. Encryption and version change occur in the service data
+        plane without comparable victim-host file writes. Host-only defenders miss the impact across that observation
+        boundary, while cloud data events for CopyObject, SSE-C parameters, and object versions can reveal it.
+  evidence_refs:
+  - REF-000660
+  - REF-000661
+  - REF-000663
+  confidence: high
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000176
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000159
+evidence:
+  claim_refs:
+  - CLM-000783
+  case_refs:
+  - CASE-000216
+  reference_refs:
+  - REF-000660
+  - REF-000661
+  - REF-000663
+  - REF-000654
+  - REF-000513
+research:
+  limitations:
+    paragraphs:
+    - zh: AWS CIRT 确认恶意大规模 SSE-C 覆写并给出对象数据事件线索，但未公开逐受害者的完整读取验证或时间线。该案例可证明观察到的操作模式，不能证明每个对象均永久无法恢复，也不能推广成所有云平台的通用
+        API 字段。
+      en: AWS CIRT confirms malicious mass SSE-C overwrites and object-data-event leads but does not publish a complete
+        read test or timeline for each victim. The case proves the observed operation pattern, not permanent unrecoverability
+        for every object or universal API fields across cloud platforms.
+    - zh: AWS 在 2026 年默认阻止多类桶的新 SSE-C 写入，因此必须按桶核实当前允许状态和配置变更；历史攻击报告不能代表现在所有桶都易受此路径影响。组织持有旧版本时可能恢复，但当前版本的读取中断仍须独立确认。
+      en: AWS's 2026 default blocks new SSE-C writes for multiple bucket classes, so permission state and configuration
+        changes must be checked per bucket. A historical incident report does not establish susceptibility of every
+        bucket today. Older versions may aid recovery, while current-version read interruption requires independent
+        verification.
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-09-22'
+  modified: '2026-09-22'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

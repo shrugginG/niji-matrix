@@ -1,0 +1,195 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000076
+strategy_ref: DET-000096
+name:
+  zh: 令牌权限前后态—消费结果关联分析
+  en: Token Privilege Before/After State–Consumption Outcome Correlation Analytic
+summary:
+  zh: 为同一令牌构造权限 disabled→enabled→恢复区间，将变更者、权限语义与首个受保护操作连接，并用合法工具、资产角色和工单排除预期激活。
+  en: Construct disabled-to-enabled-to-restored intervals for privileges in one token, join the adjuster and privilege semantics
+    to the first protected operation, and exclude expected activation through legitimate tooling, asset role, and work records.
+domains:
+- enterprise
+platforms:
+- Windows
+logic:
+  paragraphs:
+  - zh: 分析以 host_id、token_id/AuthenticationId 和 privilege LUID 为状态键，从 token snapshot 或内核/ETW/EDR adjustment 事件保留 previous
+      attributes、requested new attributes、effective new attributes、API result/GetLastError、adjusting process start key/TID
+      与 token owner process。只有 previous state 明确为 present-disabled 且 effective state 为 enabled 才建立 activation interval；权限不存在、ERROR_NOT_ALL_ASSIGNED
+      且无变化、仅查询或已经 enabled 的普通使用不进入该区间。
+    en: The analytic keys state by host ID, token ID or AuthenticationId, and privilege LUID. Token snapshots or kernel, ETW,
+      or EDR adjustment events retain previous attributes, requested and effective new attributes, API result or GetLastError,
+      adjusting process start key or TID, and token-owner process. An activation interval begins only when previous state
+      is explicitly present but disabled and effective state enabled. An absent privilege, ERROR_NOT_ALL_ASSIGNED without
+      a transition, query only, or ordinary use of an already-enabled privilege does not enter the interval.
+  - zh: 对每个 interval，分析用 privilege-to-operation map 搜索首个匹配消费：SeDebug 对高权限进程 handle/memory/debug，SeLoadDriver 对驱动加载/服务或注册表驱动状态，SeBackup/Restore
+      对绕过普通 ACL 的文件或对象操作，其他权限按平台文档映射。必须保留 target、access mask/action、outcome 与敏感度；仅出现 API 名称或启用成功而无消费，输出“已激活未观察消费”。若记录恢复 previous
+      state，则关闭 interval；否则以 token/process 结束或短上限关闭。
+    en: For each interval, the analytic searches a privilege-to-operation map for first matching consumption—SeDebug against
+      privileged-process handles, memory, or debugging; SeLoadDriver against driver load, service, or driver-registry state;
+      SeBackup or SeRestore against file or object operations bypassing ordinary ACLs; and other privileges mapped through
+      platform documentation. It retains target, access mask or action, outcome, and sensitivity. An API name or successful
+      enablement without consumption produces activated with no observed consumption. Restoration of previous state closes
+      the interval; otherwise token or process end or a short cap closes it.
+  - zh: 风险由初始主体、adjuster、权限、持续时间、工具信誉、批准与消费结果共同决定。高置信要求同一 token 的明确前后态、非批准变更者、比 previous context 更强的有效能力以及成功敏感消费；SUNSPOT 式
+      SeDebug→其他进程内存和 PipeMon 式 SeLoadDriver→载荷安装是校准案例。若只有 4672 登录时分配权限，它证明 privilege presence 但不证明后来 enable；若只有 4673/4674
+      使用事件，降级为可能消费。
+    en: Risk combines original principal, adjuster, privilege, duration, tool reputation, approval, and consumption outcome.
+      High confidence requires explicit before and after state in the same token, an unapproved adjuster, effective capability
+      stronger than previous context, and successful sensitive consumption. SUNSPOT-like SeDebug to other-process memory and
+      PipeMon-like SeLoadDriver to payload installation are calibration cases. A 4672 event at logon proves privilege presence
+      but not later enablement; 4673 or 4674 use without the transition is only possible consumption.
+data_requirements:
+- source_type: token-privilege-state-change
+  name:
+    zh: Token privilege 前后态与调用结果
+    en: Token privilege before and after state and call result
+  channel: null
+  required_fields:
+  - timestamp
+  - host_id
+  - token_id
+  - token_authentication_id
+  - token_user_sid
+  - owner_process_start_key
+  - adjusting_process_start_key
+  - adjusting_thread_id
+  - privilege_luid
+  - privilege_name
+  - previous_attributes
+  - requested_attributes
+  - effective_attributes
+  - api_result
+  - last_error
+- source_type: token-and-process-lifecycle
+  name:
+    zh: Token/进程生命周期与静态清单
+    en: Token and process lifecycle and static inventory
+  channel: null
+  required_fields:
+  - timestamp
+  - host_id
+  - token_id
+  - token_authentication_id
+  - process_start_key
+  - process_id
+  - image_path
+  - image_hash
+  - signer
+  - user_sid
+  - group_sids
+  - integrity_level
+  - token_created
+  - process_ended
+- source_type: privilege-consumption-outcome
+  name:
+    zh: 权限消费与受保护对象结果
+    en: Privilege consumption and protected-object outcome
+  channel: null
+  required_fields:
+  - timestamp
+  - host_id
+  - token_id
+  - process_start_key
+  - thread_id
+  - privilege_name
+  - target_object_type
+  - target_object
+  - access_mask_or_action
+  - outcome
+  - sensitivity
+- source_type: authorization-and-change-context
+  name:
+    zh: 运维批准、工具和资产角色上下文
+    en: Administrative approval tooling and asset-role context
+  channel: null
+  required_fields:
+  - timestamp
+  - host_id
+  - asset_role
+  - work_record_id
+  - approved_principal
+  - approved_binary_hash
+  - approved_privilege
+  - approved_target
+  - validity_start
+  - validity_end
+observables:
+- zh: 未批准进程在同一 token 中把 SeDebugPrivilege 从 disabled 改为 enabled，并在数秒内以更高 access mask 打开 SYSTEM/受保护进程或读取其内存。
+  en: An unapproved process changes SeDebugPrivilege from disabled to enabled in the same token and within seconds opens a
+    SYSTEM or protected process with higher access or reads its memory.
+- zh: SeLoadDriverPrivilege 激活后紧接未知/未签名驱动加载、驱动服务/注册表写入或安全控制变化，随后权限被恢复或进程退出。
+  en: SeLoadDriverPrivilege activation is followed by unknown or unsigned driver load, driver service or registry write, or
+    security-control change, after which the privilege is restored or the process exits.
+- zh: 长驻签名工具平时不启用高危权限，却在无工单时首次出现 privilege delta 与敏感目标，不能因 signer 或管理员身份降权。
+  en: A long-running signed tool that normally does not enable a dangerous privilege shows a first privilege delta and sensitive
+    target without a work record and is not discounted by signer or administrator identity.
+- zh: 只有启用记录，没有匹配消费或 previous state；分别输出“未观察消费”或“前态未知”，不确认提权。
+  en: Enablement has no matching consumption or no previous state, producing no observed consumption or unknown prior state
+    rather than confirmed elevation.
+correlation:
+  window:
+    zh: 以 token_id+privilege_luid 从明确 enable 覆盖到 restore、token/process 结束；没有结束记录时默认十五分钟，高风险备份/长任务按批准最长二小时。消费默认搜索前后五分钟，若工具异步队列有稳定
+      transaction key 可延长。状态/批准基线保留至少九十日。
+    en: Key intervals by token ID plus privilege LUID from explicit enable through restore or token or process end, defaulting
+      to fifteen minutes without an end record and extending to at most two hours for approved backup or long tasks. Search
+      consumption within five minutes by default and extend only with a stable transaction key for asynchronous tools. Retain
+      state and approval baselines for at least ninety days.
+  dimensions:
+  - host
+  - token
+  - authentication_id
+  - process_start_key
+  - thread
+  - privilege
+  - previous_state
+  - new_state
+  - adjuster
+  - duration
+  - target_object
+  - action
+  - outcome
+  - asset_role
+  - approval
+  - time
+false_positives:
+- zh: 调试器、备份/恢复代理、安装器、驱动管理、反病毒/EDR、故障转储与系统服务会按设计临时启用权限并访问敏感对象。
+  en: Debuggers, backup and restore agents, installers, driver management, antivirus or EDR, crash dump, and system services
+    temporarily enable privileges and access sensitive objects by design.
+- zh: 管理员测试和事件响应可能临时启用 SeDebug/SeBackup；只有批准主体、受控二进制、目标、工单、时间和恢复行为一致才作为反例。
+  en: Administrator testing and incident response can temporarily enable SeDebug or SeBackup and qualify as counterexamples
+    only when approved principal, controlled binary, target, work record, time, and restoration behavior agree.
+blind_spots:
+- zh: 标准 Windows 安全日志通常不完整记录每次 privilege attributes 前后态；缺少内核/EDR token telemetry 时只能从 4672/4673/4674 与结果作低置信推断。
+  en: Standard Windows Security logs do not generally record complete before and after attributes for every privilege transition,
+    allowing only low-confidence inference from 4672, 4673, 4674, and outcomes without kernel or EDR token telemetry.
+- zh: 内核级攻击者可直接改写 token 或关闭 provider；某些操作由内核间接消费权限，target/action 字段不暴露，无法证明因果。
+  en: A kernel-level adversary can directly alter a token or disable the provider, and some operations consume privilege indirectly
+    in the kernel without exposing target or action fields, preventing causal proof.
+tuning_guidance:
+  paragraphs:
+  - zh: 权限映射按 Windows build、资产角色和保护策略版本管理，分别测试 privilege presence、enable success 与 operation success。不要用 privilege name 或
+      4672 计数代替状态机；将 previous state unknown、enable without consumption、matched consumption 与 restored 四类结果分开。
+    en: Manage privilege-to-operation mappings by Windows build, asset role, and protection-policy version and test privilege
+      presence, enable success, and operation success separately. Never replace the state machine with privilege name or 4672
+      counts; keep unknown previous state, enablement without consumption, matched consumption, and restored as separate outcomes.
+  - zh: 为批准工具绑定 hash/signer、服务身份、允许权限与 target class、工单和最长 interval，并定期用受控 AdjustTokenPrivileges 测试 provider。签名或管理员身份不是永久白名单；被接管工具在错误目标、时段或调用链启用权限仍应告警。
+    en: Bind approved tools to hash or signer, service identity, permitted privilege and target class, work record, and maximum
+      interval, and periodically test the provider with controlled AdjustTokenPrivileges. Signing or administrator identity
+      is not a permanent allowlist; a compromised tool enabling privilege for the wrong target, time, or call chain must still
+      alert.
+evidence_refs:
+- REF-000327
+- REF-000331
+- REF-000252
+- REF-000281
+lifecycle:
+  status: review
+  version: 0.2.0
+  created: '2026-09-13'
+  modified: '2026-09-19'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

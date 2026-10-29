@@ -1,0 +1,106 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000159
+strategy_ref: DET-000151
+name:
+  zh: GuardDuty 探测器状态读取与后继变化分析
+  en: GuardDuty Detector-State Read and Successor Analytic
+summary:
+  zh: 识别非常用身份跨区域查询 GuardDuty 状态并随后改变防护配置。
+  en: Identify an unusual identity querying GuardDuty state across Regions before changing protection configuration.
+domains:
+- enterprise
+platforms:
+- AWS
+logic:
+  paragraphs:
+  - zh: 从已保留的 GuardDuty CloudTrail 管理事件提取 ListDetectors 与 GetDetector，按账户、区域、身份、来源和会话把探测器 ID 发现与状态读取连接。与安全团队批准的健康检查、CSPM 作业和区域覆盖清单比较；新主体或来源跨多区域反复读取、随后同身份出现防护控制变更时提高优先级。ListDetectors
+      只返回 ID，GetDetector 才可回答状态；CloudTrail 事件未必保存完整状态响应，须与独立配置快照对照。
+    en: Extract ListDetectors and GetDetector from retained GuardDuty CloudTrail management events and join detector-ID discovery
+      to state reads by account, Region, identity, origin, and session. Compare approved security-team health checks, CSPM
+      jobs, and a regional coverage inventory. Prioritize a new actor or origin reading across Regions followed by a protection-control
+      change by the same identity. ListDetectors supplies IDs whereas GetDetector answers state; CloudTrail need not retain
+      full state responses, so compare an independent configuration snapshot.
+data_requirements:
+- source_type: aws-guardduty-cloudtrail
+  name:
+    zh: GuardDuty CloudTrail 控制面事件
+    en: GuardDuty CloudTrail control-plane events
+  channel: organization trail or event data store
+  required_fields:
+  - event_time
+  - event_source
+  - event_name
+  - user_identity
+  - recipient_account_id
+  - aws_region
+  - source_ip_address
+  - request_parameters
+- source_type: guardduty-coverage-baseline
+  name:
+    zh: GuardDuty 区域覆盖基线
+    en: GuardDuty regional coverage baseline
+  channel: null
+  required_fields:
+  - account_id
+  - aws_region
+  - detector_id
+  - expected_status
+  - job_owner
+  - approved_window
+- source_type: aws-security-control-changes
+  name:
+    zh: AWS 安全控制后继变化
+    en: AWS later security-control changes
+  channel: CloudTrail management events
+  required_fields:
+  - event_time
+  - event_name
+  - user_identity
+  - recipient_account_id
+  - aws_region
+observables:
+- zh: 陌生主体先找探测器 ID 再查看状态或功能
+  en: An unfamiliar principal lists detector IDs then reads status or features
+- zh: 服务状态查询后同一身份改变安全控制
+  en: A security-control change follows state reads by the same identity
+correlation:
+  window:
+    zh: 先在同账户/区域以 30 分钟合并列表与状态读取，再以 24 小时连接后继变化；周期应按安全巡检节奏校准。
+    en: Start with a 30-minute list-to-state join in one account and Region, then a 24-hour join to later changes; calibrate
+      to security-review cadence.
+  dimensions:
+  - account_id
+  - aws_region
+  - principal_id
+  - source_ip
+  - detector_id
+  - time
+false_positives:
+- zh: SOC 健康巡检、CSPM、安全配置审计和真实事件响应都会读取防护状态
+  en: SOC health checks, CSPM, security audits, and real incident response all read protection state
+blind_spots:
+- zh: GCP ListServices 不产生日志，Azure Activity Log 通常缺读事件；CloudTrail 若未集中保留或状态响应不可见，也不能判断攻击者具体读到的覆盖配置
+  en: GCP ListServices produces no audit log and Azure Activity Log generally omits reads; without centralized CloudTrail
+    or visible response state, the exact coverage configuration read remains uncertain
+tuning_guidance:
+  paragraphs:
+  - zh: 为批准的 GuardDuty 巡检记录身份、区域、频率、作业 owner 和变更单，不按安全工具服务名全面放行。新区域、新来源或状态读后配置变化应保留评分；GCP/Azure 分支在未验证替代遥测前只能声明盲区，不能从缺少事件判定未发生发现。
+    en: Register identity, Region, cadence, job owner, and change ticket for approved GuardDuty checks rather than globally
+      allowing a security-service name. Preserve scoring for new Regions, origins, or configuration changes after reads. GCP
+      and Azure branches remain blind spots without validated alternate telemetry; missing events cannot establish that discovery
+      did not occur.
+evidence_refs:
+- REF-000530
+- REF-000531
+- REF-000532
+- REF-000533
+- REF-000524
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-09-22'
+  modified: '2026-09-22'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

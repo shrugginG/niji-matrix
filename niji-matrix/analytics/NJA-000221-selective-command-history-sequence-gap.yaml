@@ -1,0 +1,49 @@
+schema_version: "2.0.0"
+type: detection-analytic
+id: NJA-000221
+strategy_ref: DET-000195
+name: {zh: 选择性命令—历史序列缺口分析, en: Selective Command-to-History Sequence Gap Analytic}
+summary: {zh: 在 history 仍正常写入的交互 session 中，识别独立命令命中活动 predicate 后未进入相邻历史序列的局部缺口。, en: "Within an interactive session whose history still writes normally, identify local gaps where independently observed commands match an active predicate and do not enter the neighboring history sequence."}
+domains: [enterprise]
+platforms: [Linux, Windows, Network Devices]
+logic:
+  paragraphs:
+    - zh: 为每个 interactive session 建立按时间与 shell event 顺序排列的 independent_command_sequence，使用 session-scoped HMAC、leading-space flag、normalized token class、multiline group、process_id 和 outcome 表示命令；并从目标 store 建立 history_sequence，保留 entry_id/index、timestamp、受控 hash、write event 和相邻关系。加载该时刻 HISTCONTROL/HISTIGNORE、PSReadLine AddToHistoryHandler 或 CLI filter 的 predicate_version、规范化顺序、owner、approval 和生效范围。
+      en: Build an independent_command_sequence ordered by time and shell event for each interactive session, representing commands with a session-scoped HMAC, leading-space flag, normalized token class, multiline group, process ID, and outcome. Build a history_sequence from the target store with entry ID or index, timestamp, controlled hash, write event, and neighbor relationships. Load the predicate version, normalization order, owner, approval, and effective scope for HISTCONTROL or HISTIGNORE, PSReadLine AddToHistoryHandler, or a CLI filter at that time.
+    - zh: 按平台规范执行相同 expansion、multiline folding、deduplication 和过滤顺序，把每个独立 command_event 与 history_entry 匹配。若同 session 前后条目/写入正常，未匹配命令命中未批准 predicate，并观察到对应 process/file/network/config outcome，则输出 selective_omission；predicate 改变后只遗漏匹配类可提高置信。未命中 predicate 的孤立缺口输出 sequence_gap，不归因本技术。
+      en: Apply the platform's normalization order for expansion, multiline folding, deduplication, and filtering and match each independent command event to a history entry. Emit selective_omission when neighboring entries or writes in the same session are normal, the unmatched command satisfies an unapproved predicate, and a corresponding process, file, network, or configuration outcome is observed. Omission only of the matching class after a predicate change raises confidence. An isolated gap that does not match a predicate is sequence_gap and is not attributed to this technique.
+    - zh: 批准的秘密脱敏、重复命令折叠、空命令、控制字符编辑、粘贴多行、history expansion 和管理员 HISTIGNORE 通过 versioned normalization/approval 排除。若整个时间窗都没有 history writes，转交 NJA-000220；若条目曾写入后消失，转交 NJT-0112 的擦除检测。
+      en: Exclude approved secret redaction, duplicate-command folding, empty commands, control-character editing, multiline paste, history expansion, and administrator-approved HISTIGNORE through versioned normalization and approval. If no history writes exist for the entire interval, hand off to NJA-000220. If the entry was written and later disappears, hand off to NJT-0112 erasure detection.
+data_requirements:
+  - source_type: independent-interactive-command-sequence
+    name: {zh: 独立命令序列与最小化输入特征, en: Independent Command Sequence and Minimized Input Features}
+    channel: Remote TTY session broker shell pre-exec hook process audit
+    required_fields: [timestamp, host_or_device_id, session_id, command_event_id, sequence_number, session_scoped_hmac, leading_space_flag, normalized_token_class, multiline_group_id, process_id, outcome_ref]
+  - source_type: history-entry-sequence
+    name: {zh: History 条目、写入事件与相邻序列, en: History Entries Write Events and Neighbor Sequence}
+    channel: History file audit PSReadLine or CLI history export
+    required_fields: [timestamp, host_or_device_id, session_id, expected_store, entry_id, entry_index, entry_hmac, write_event_id, previous_entry_id, next_entry_id, store_version]
+  - source_type: history-predicate-audit
+    name: {zh: History Predicate、规范化和审批版本, en: History Predicate Normalization and Approval Versions}
+    channel: Environment profile and history API audit
+    required_fields: [timestamp, host_or_device_id, session_id, predicate_name, predicate_value_or_hash, predicate_version, normalization_version, actor_id, owner_id, approval_id, effective_scope]
+observables:
+  - {zh: 相邻 history 条目正常，而独立观察到的 leading-space 或模式匹配命令缺失, en: Neighboring history entries persist normally while an independently observed leading-space or pattern-matching command is absent}
+  - {zh: predicate 变更后只有命中类别出现序列缺口，未命中类别仍写入, en: After a predicate change sequence gaps affect only the matching class while nonmatching commands continue to write}
+  - {zh: 缺失命令产生可见进程/文件/网络/配置结果，排除未执行解释, en: The missing command produces a visible process file network or configuration outcome excluding non-execution}
+correlation:
+  window: {zh: 以 session 为边界，并在每个缺失 command_event 前后各关联十个 history 条目或十五分钟。, en: "Use the session as the outer boundary and correlate ten history entries or fifteen minutes on each side of each missing command event."}
+  dimensions: [host_or_device_id, session_id, command_event_id, sequence_number, predicate_version, normalization_version, expected_store, store_version, process_id, time]
+false_positives:
+  - {zh: 管理员批准的秘密/隐私过滤或合规要求禁止特定输入持久化, en: Administrator-approved secret or privacy filtering or compliance policy that forbids persistence of particular input}
+  - {zh: shell 按设计去重、折叠多行、忽略空命令或处理 history expansion, en: Shell behavior that deduplicates folds multiline input ignores empty commands or performs history expansion by design}
+  - {zh: TTY 与 history 时钟/编码/规范化不一致导致错误匹配, en: TTY and history clock encoding or normalization mismatch causing an incorrect comparison}
+blind_spots:
+  - {zh: 没有独立命令序列或平台在 process exec 前不会暴露 shell built-in, en: No independent command sequence or a platform that does not expose shell built-ins before process execution}
+  - {zh: 攻击者控制 predicate telemetry 并伪造批准版本，或命令不产生独立结果, en: The adversary controls predicate telemetry and forges an approved version or the command produces no independent outcome}
+tuning_guidance:
+  paragraphs:
+    - zh: 为每个平台实现并测试相同的 raw-input 到 history-entry 规范化器，尤其处理多行、别名、扩展、去重和编码。只有“同 session 正常写入 + 独立命令缺失 + 命中未批准 predicate”三项成立时归因；加上命令结果为高置信。对 leading-space 仅保留布尔特征即可，不要默认采集所有敏感明文。
+      en: Implement and test the same raw-input-to-history-entry normalizer for each platform, especially multiline input, aliases, expansion, deduplication, and encoding. Attribute only when normal writes in the same session, an independently observed missing command, and a match to an unapproved predicate all hold. Add command outcome for high confidence. A Boolean leading-space feature is sufficient; do not collect all sensitive plaintext by default.
+evidence_refs: [REF-000737, REF-000738, REF-000740]
+lifecycle: {status: review, version: "1.0.0", created: "2026-09-23", modified: "2026-09-23", contributors: [Niji Matrix Research], reviewers: []}

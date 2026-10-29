@@ -1,0 +1,63 @@
+schema_version: "2.0.0"
+type: evasion-subtechnique
+id: NJS-0127-002
+name: {zh: 启动信任回退, en: Boot-Trust Rollback}
+summary: {zh: 旧启动或虚拟化安全组件在重启后实际加载，使表面已更新的设备失去受信启动或内核保护。, en: "An older boot or virtualization-security component actually loads after reboot, weakening trusted boot or kernel protection on an apparently updated device."}
+aliases: []
+parent_ref: NJT-0127
+lineage: {attck_subtechnique_inherited: false}
+definition_and_concept:
+  paragraphs:
+    - zh: 启动信任回退是攻击者使低于批准基线的引导、Secure Kernel 或虚拟化安全组件在重启时进入实际信任链，并导致本应由新版本维持的启动完整性、隔离或内核保护下降。直接对象是加载链和保护结果，而不是磁盘上某个旧映像的存在、更新任务是否返回成功或重启本身。
+      en: Boot-Trust Rollback is adversary placement of a boot, Secure Kernel, or virtualization-security component below the approved baseline into the actual trust chain at reboot, reducing startup integrity, isolation, or kernel protection expected from the current version. The direct object is the loaded chain and protection outcome, not an old image sitting on disk, an update task's success response, or the reboot itself.
+    - zh: 与短时旧运行时审计缺口不同，此变量跨重启并改变底层信任前提。公开的 Windows Downdate 研究显示受信更新外观可与真实组件版本及 VBS 状态分离；该研究证明可行性，不自动代表被观察到的每次现场攻击。
+      en: Unlike a short legacy-runtime audit gap, this variable crosses a reboot and changes a lower-level trust premise. Public Windows Downdate research shows that trusted-update appearance can diverge from real component version and VBS state. It establishes feasibility, not every observed field attack.
+stealth_characteristics:
+  paragraphs:
+    - zh: 启动信任回退使更新管理面仍可显示当前版本，而实际加载的旧组件缺少最新撤销或虚拟化安全约束；恶意后继活动因此发生在防守方误认为受保护的启动状态内。可观察残余包括更新事务、EFI 文件、TPM 事件日志、PCR 值、撤销列表和 VBS/HVCI 有效状态，其证据分布在不同信任层。
+      en: Boot-Trust Rollback can leave the update plane reporting a current version while the older loaded component lacks current revocation or virtualization-security constraints. Follow-on malicious activity then occurs in a boot state defenders mistakenly consider protected. Residue includes update transactions, EFI files, TPM event logs, PCR values, revocation lists, and effective VBS or HVCI state across different trust layers.
+    - zh: 这种外观差在管理面与加载测量未关联时最明显；若设备按厂商指导部署撤销、持有可信测量根并逐次验证保护功能，旧组件即使留下文件也难以产生同等匿迹效果。硬件不支持 VBS 或原本未启用保护时，不能宣称该项保护被回退。
+      en: The appearance gap is strongest when management state is not joined to load measurements. Vendor-guided revocations, a trusted measurement root, and post-boot functional validation limit the effect even if old files remain. If hardware never supported VBS or protection was never enabled, that protection cannot be claimed as rolled back.
+scope_boundary_definition:
+  paragraphs:
+    - zh: 纳入攻击者控制的回退路径使旧组件在启动周期中真正加载，且 Secure Boot、VBS 或内核完整性能力相对该设备的批准基线下降。只改更新记录、复制旧映像但未加载、或经批准的固件恢复且等效控制仍在，均不构成完成；证据需包含启动测量或等价可信加载证明。
+      en: Include adversary-controlled rollback paths only when an older component actually loads in a boot cycle and Secure Boot, VBS, or kernel-integrity capability declines relative to that device's approved baseline. Editing update history, copying an old image without loading it, or approved firmware recovery with equivalent controls is not completed impairment. Boot measurement or equivalent trusted load proof is required.
+    - zh: 系统映像被补丁修改但不涉及版本回退，归 T1601；漏洞利用随后提权可并记 T1687 或提权对象，但不能用提权结果代替本项的受信启动差。NJS-0127-001 处理进程内脚本内容审计，本子项处理跨重启信任和防护功能，不按 OEM、固件文件或 Windows 版本拆分。
+      en: Patching a system image without rollback belongs to T1601. Subsequent exploitation or elevation may also map to T1687 or privilege-escalation objects, but elevation cannot substitute for this trusted-boot differential. NJS-0127-001 handles in-process script-content audit; this child handles cross-reboot trust and protective function rather than OEM, firmware file, or Windows release.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+      - zh: 攻击者已取得足够更新或启动控制权，准备在保护组件复位后执行会遭 VBS 或启动完整性拦截的动作，于是先使旧组件通过更新链或恢复链进入下一次启动。公开研究演示了更新流程滥用和 VBS 退化；真实环境中仍需证明同一设备的重启、加载版本和后继保护状态。
+        en: An adversary with enough update or boot control intending to perform actions that VBS or startup integrity would block first drives an older component into the next boot through an update or recovery path. Public research demonstrates abuse of update flow and VBS regression. A real deployment still requires proof of the same device's reboot, loaded version, and subsequent protection state.
+  threat_model:
+    attacker_model:
+      paragraphs:
+        - zh: 攻击者通常需要高权限更新或启动写权、可接受的旧组件和计划重启时间，并了解平台撤销列表及固件约束。它可借合法更新组件减少异常文件写入的可见性，却可能被可信启动、只读引导分区、撤销与远端证明阻断。
+          en: The adversary generally needs high-privilege update or boot write authority, an older component accepted by the platform, a reboot opportunity, and knowledge of revocation lists and firmware constraints. Legitimate update components can reduce anomalous file-write visibility, but trusted boot, read-only boot partitions, revocations, and remote attestation can block the path.
+    defender_model:
+      paragraphs:
+        - zh: 防守方不能仅信任更新服务自报版本，而应保存受批准 hash、固件/EFI 快照、TPM 测量、撤销状态、重启 ID 和 VBS/HVCI 的实际功能结果。部分测量只能证明加载了何物而不能证明安全功能有效；另需产品健康或受控验证，且采集权应与可改写更新链的账户分离。
+          en: Defenders cannot rely only on the update service's reported version. They retain approved hashes, firmware and EFI snapshots, TPM measurements, revocation state, reboot ID, and actual VBS or HVCI functional outcomes. Some measurements show what loaded but not whether security functions operate; product health or controlled validation is additionally needed, with collection authority separated from update-chain writers.
+stealth_mechanisms:
+  - mechanism_ref: NM-FD
+    role: primary
+    summary: {zh: 已更新表象掩盖真实启动组件与保护状态回退, en: Apparent update compliance conceals rollback of boot components and protection}
+    analysis:
+      paragraphs:
+        - zh: 攻击者使旧安全组件通过受信更新或启动链加载，同时留下正常的更新来源和“当前版本”管理特征；真正变化的是 TPM/EFI 测量与防护能力。防守方若按更新结果而非实际加载状态分类，会把受损设备视为合规实体，后继行为更难与回退关联。跨信任层的测量与功能对照能够揭示这种特征伪装。
+          en: The adversary has an old security component load through a trusted update or boot chain while ordinary update provenance and a current-version management feature remain. TPM or EFI measurements and protective capability are what actually change. Defenders classifying by update result instead of loaded state can treat the impaired device as compliant, obscuring the rollback-to-follow-on link. Cross-trust-layer measurement and function comparison expose this feature disguise.
+    evidence_refs: [REF-000462, REF-000464, REF-000465]
+    confidence: medium
+defense:
+  detections: {coverage: available, strategy_refs: [DET-000136]}
+  mitigations: {coverage: available, mitigation_refs: [MIT-000125]}
+evidence:
+  claim_refs: [CLM-000682]
+  case_refs: []
+  reference_refs: [REF-000462, REF-000464, REF-000465]
+research:
+  limitations:
+    paragraphs:
+      - zh: SafeBreach 研究是实验性证明，Microsoft 的撤销指导是控制文档，二者不能共同证明任意组织中发生了成功的恶意回退。设备型号、撤销部署环与 VBS 配置会改变预期保护；若只见旧磁盘文件而无实际加载或功能下降，必须保持未确认。更新链被完全控制时，同权测量也可能被污染。
+        en: SafeBreach research is an experimental demonstration and Microsoft's revocation guidance is control documentation; together they do not prove successful malicious rollback in an arbitrary organization. Device model, revocation ring, and VBS configuration change expected protection. An old disk file without actual loading or functional decline remains unconfirmed. Measurements sharing authority with a fully compromised update chain can also be contaminated.
+lifecycle: {status: review, version: "0.1.0", created: "2026-09-22", modified: "2026-09-22", contributors: [Niji Matrix Research], reviewers: []}

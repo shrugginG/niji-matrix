@@ -1,0 +1,203 @@
+schema_version: 2.0.0
+type: technique
+id: NJT-0210
+name:
+  zh: 角色化多通道控制编排
+  en: Role-Segmented Multi-Channel Control
+summary:
+  zh: 攻击者让多个 C2 通道分别承担引导、操作、任务或结果角色，通过有条件交接拆散完整控制链的可见痕迹。
+  en: Adversaries assign bootstrap, operational, tasking, or result roles to separate C2 channels and conditionally hand
+    off among them, fragmenting the visible control chain.
+aliases:
+- T1104
+- Multi-Stage Channels
+classification:
+  tactic_refs:
+  - TA0011
+  origin:
+    kind: attack-adapted
+    source_attack_id: T1104
+    source_attack_version: '19.1'
+  decision_ref: DEC-TA0011-T1104
+definition_and_concept:
+  paragraphs:
+  - zh: 角色化多通道控制编排指同一植入或其直接后继组件使用两个以上逻辑通道完成一条 C2 控制链，每个通道承担预先设计的阶段或功能。例如自动化引导端只返回第二阶段地址和被选主机列表，随后完整控制器才建立交互会话；或者一个端点只提供任务/枚举组件，另一个端点接收执行结果。直接目的是让低风险引导、完整操作与数据回传不集中在同一会话或基础设施上。
+    en: Role-Segmented Multi-Channel Control means one implant or its direct successor component uses two or more logical
+      channels to complete one C2 control chain, with each channel assigned a designed stage or function. An automated
+      bootstrap endpoint may return the second-stage address and selected-host list before a full controller establishes
+      an interactive session. Alternatively, one endpoint can supply tasking or an enumeration component while another
+      receives execution results. The direct purpose is to keep low-risk bootstrap, full operation, and data return from
+      concentrating in one session or infrastructure set.
+  - zh: “通道”以独立端点、服务资源、协议会话或能单独阻断/审计的逻辑路径为单位；同一 TCP/HTTP 请求中的发送和响应不是两个通道。判定需要识别共同 host/victim ID、同一进程或父子进程、第一通道下发的地址/令牌/文件以及第二通道的后继连接或结果。只有加载器下载了程序而没有证据表明新程序建立另一个角色化
+      C2 时，属于载荷执行链而不是本项。
+    en: A channel is an independent endpoint, service resource, protocol session, or logical path that can be blocked
+      or audited separately; sending and receiving in one TCP or HTTP request are not two channels. Classification requires
+      a shared host or victim ID, the same process or parent-child process, an address, token, or file delivered by the
+      first channel, and a successor connection or result on the second. A loader that merely downloads a program, without
+      evidence that the new program establishes another role-assigned C2, is a payload execution chain rather than this
+      technique.
+stealth_characteristics:
+  paragraphs:
+  - zh: 角色分工把可疑度分散到不同时间、目的地和遥测对象。第一阶段可以只进行低带宽自动轮询、版本检查或目标筛选，第二阶段只在被选主机上出现交互命令；功能分离时，指令来源与结果出口也不会出现在同一连接历史中。按单域名、单进程会话或单传感器生成的告警因此只看到半条链，难以把低噪声引导与后续高能力活动归为同一控制操作。
+    en: Role assignment distributes suspicion across time, destinations, and telemetry objects. A first stage may perform
+      only low-bandwidth automated polling, version checks, or victim selection, while interactive commands appear on
+      a second stage only for selected hosts. With functional separation, the task source and result destination do not
+      share one connection history. Alerts keyed to one domain, one process session, or one sensor therefore see only
+      half the chain and struggle to attribute low-noise bootstrap and later high-capability activity to one control
+      operation.
+  - zh: 分散不会消除交接痕迹。第一阶段回复中的目标地址/端口、connect/host 列表、配置或新载荷摘要，第二阶段连接的时间、同一 victim ID、相同 ProcessGuid 或父子进程，以及任务后的脚本/文件/出站结果均可形成桥接键。若通道共用进程和清晰标识、TLS
+      被解密或端点网络事件完整，交接反而能被精确恢复；若长延时、内存注入或不同传感器保留期造成断点，结论必须降低。
+    en: Dispersion does not erase handoff traces. A target address and port, connect or host list, configuration, or
+      new-payload digest in the first-stage response can bridge to the second-stage connection time, the same victim
+      ID, the same ProcessGuid or a child process, and scripts, files, or outbound results after tasking. Complete endpoint
+      network events, decrypted TLS, or clear shared identifiers can reconstruct the handoff precisely. Long delays,
+      in-memory injection, or mismatched sensor retention create gaps and require lower-confidence conclusions.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 纳入需要至少两个可独立识别的通道、稳定的阶段/功能角色、攻击者控制的交接条件，以及同一受害者上的后继控制结果。多个域名、IP、URL、CDN 节点或 RAT 组件不足以证明本项；负载均衡、灾备、软件更新、CDN 重定向、微服务控制面/数据面和合法远程管理也会产生相似痕迹，须用交接内容、进程谱系和批准服务目录排除。
+    en: Inclusion requires at least two independently identifiable channels, stable stage or functional roles, an actor-controlled
+      handoff condition, and a successor control outcome on the same victim. Multiple domains, IPs, URLs, CDN nodes,
+      or RAT components are insufficient. Load balancing, disaster recovery, software updates, CDN redirection, microservice
+      control and data planes, and legitimate remote administration can look similar and must be excluded using handoff
+      content, process lineage, and an approved-service catalog.
+  - zh: NJT-0153 以主路径失败/被阻断触发备用路径为变量；本项的交接由目标选择、阶段就绪、能力升级或功能角色触发，BACKSPACE 中备用第一阶段仍单独归 NJT-0153。T1090 多跳代理是在同一逻辑会话中改变转发路径，不自动产生阶段角色。T1102
+      负责合法 Web 服务资源的中继，多个 Web 资源只有在承担不同阶段/功能时才可并列本项。NJT-0160 负责各通道的应用协议事务，本项只负责通道之间的角色与交接。
+    en: NJT-0153 uses primary-path failure or blocking as the variable that activates a reserve path. This technique
+      uses victim selection, stage readiness, capability escalation, or functional role to trigger handoff; BACKSPACE's
+      backup first stage still belongs separately to NJT-0153. T1090 multihop proxying changes a forwarding path within
+      one logical session and does not automatically create stage roles. T1102 owns relay through legitimate Web-service
+      resources, and multiple Web resources coexist here only when they carry different stages or functions. NJT-0160
+      owns each channel's application transaction, while this technique owns roles and handoffs between channels.
+  - zh: 一次请求和对应响应属于普通会话，不因上下行方向不同而成为任务/结果分离；命令包内指定同一 URL 回传也仍是单通道。加载器、Stage 1/2 文件、进程注入或模块下载只有在后继组件建立不同角色的 C2 时才形成通道交接。第一通道只发布地址的死信箱可同时属于
+      T1102，但服务品牌或资源数量不是本项子技术分类。
+    en: One request and its response remain an ordinary session and do not become task and result separation merely because
+      directions differ. A command package that names the same URL for result return remains one channel. A loader, Stage
+      1 or 2 file, process injection, or module download creates a channel handoff only when the successor establishes
+      a differently assigned C2 channel. A dead-drop first channel that only publishes an address may also satisfy T1102,
+      but service brand or resource count does not define this taxonomy.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: 长期驻留行动可让所有主机只访问自动化第一阶段，取得版本、基础指令与第二阶段配置；操作者仅把高价值主机加入 connect 列表，才允许其连接完整控制器。另一场景是脚本化植入从下载服务器取得枚举逻辑，在本地执行 WMI/系统查询，再向不同结果服务器上传数据，使查封一个端点不能同时暴露任务来源和回传路径。
+      en: A long-running intrusion can have every host contact only an automated first stage for versioning, basic instructions,
+        and second-stage configuration. The operator adds only high-value hosts to a connect list before they reach the
+        full controller. In another scenario, a scripted implant obtains enumeration logic from a download server, executes
+        WMI or system queries locally, and uploads data to a different result server, preventing seizure of one endpoint
+        from revealing both task source and return path.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者需要在植入中保存通道角色和状态，控制第一阶段内容或选择列表，并协调第二阶段基础设施、令牌、地址或后继组件。顺序交接要求处理阶段超时、版本不一致和目标选择；功能分离要求在任务与结果通道之间维持 victim
+          ID、密钥或任务 ID。更多通道增加运营成本、配置错误和可关联桥接痕迹，且每个通道都可能成为阻断点。
+        en: The actor must preserve channel role and state in the implant, control first-stage content or selection lists,
+          and coordinate second-stage infrastructure, tokens, addresses, or successor components. Sequential handoff
+          must handle stage timeout, version mismatch, and victim selection. Functional separation must carry a victim,
+          key, or task identifier between task and result channels. More channels increase operational cost, configuration
+          errors, and bridgeable traces, and each channel becomes another possible blocking point.
+    defender_model:
+      paragraphs:
+      - zh: 防守方假定至少可从代理/Zeek 取得每次连接的时间、设备、目的地、URI、方法、状态、请求/响应长度与文件 ID，并从端点取得网络发起进程、ProcessUniqueId、父子进程、文件来源/摘要和脚本执行。在内容不可见时可按进程—目的地序列和后继执行提出候选；只有恢复配置地址、selection/token/task
+          ID 或明确任务—结果关系时，才能高置信声明多阶段角色。
+        en: The defender is assumed to obtain time, device, destination, URI, method, status, request and response lengths,
+          and file IDs for each connection from a proxy or Zeek, plus initiating process, ProcessUniqueId, parent-child
+          process, file origin or digest, and script execution from endpoints. With opaque content, process-to-destination
+          sequences and successor execution support a candidate finding. A high-confidence multi-stage role requires
+          recovered configuration addresses, selection, token, or task IDs, or an explicit task-to-result relationship.
+stealth_mechanisms:
+- mechanism_ref: NM-ST
+  role: primary
+  summary:
+    zh: 阶段与功能分工把完整控制链分散到多个通道
+    en: Stage and function roles disperse the complete control chain across channels
+  analysis:
+    paragraphs:
+    - zh: 攻击者让第一通道只暴露自动引导或任务取得，让第二通道只暴露交互控制或结果回传；任何单一目的地/时间窗口中的信号因此比完整 C2 更弱，跨事件重建成本上升。BACKSPACE 的选择列表和第二控制器、oemd 的 UDP
+        地址接收后 TCP 连接、BlackWater 的组件服务器与结果 C2 直接支持这条行为—痕迹—观察因果链。若防守以设备/进程和交接内容跨通道关联，释痕收益会收缩。
+      en: The actor exposes only automated bootstrap or task acquisition on one channel and only interactive control
+        or result return on another. Signals at one destination or in one time window are therefore weaker than the complete
+        C2 chain and cross-event reconstruction becomes harder. BACKSPACE's selection list and second controller, oemd's
+        UDP address receipt followed by TCP, and BlackWater's component server and result C2 directly support this behavior-to-trace-to-observation
+        chain. The dilution benefit shrinks when defenders correlate across channels by device, process, and handoff
+        content.
+  evidence_refs:
+  - REF-001052
+  - REF-001053
+  - REF-001054
+  - REF-000639
+  confidence: high
+subtechnique_taxonomy:
+  narrative:
+    paragraphs:
+    - zh: 两项子技术按通道承担的角色关系划分。引导—操作通道交接以地址、选择、配置或能力阶段完成触发从低功能通道转到操作通道；任务—结果通道功能分离让任务/组件取得与结果回传由不同通道承担。前者不要求结果通道独立，后者不要求存在引导阶段。
+      en: Two children use channel-role relationships. Bootstrap-to-Operational Channel Handoff uses address, selection,
+        configuration, or capability-stage completion to move from a low-function channel to an operational one. Task–Result
+        Functional Channel Separation assigns task or component acquisition and result return to different channels.
+        The first does not require an independent result channel, and the second does not require a bootstrap stage.
+    - zh: 失败触发备用路径、多跳代理、多个服务资源、协议选择和普通 payload/process stage 不形成本分类；必须证明多个逻辑 C2 通道及其角色交接或分工。
+      en: Failure-triggered fallback, proxy hops, multiple service resources, protocol choice, and ordinary payload or
+        process stages do not define this taxonomy. Multiple logical C2 channels and their role handoff or division must
+        be established.
+  coverage: established
+  subtechnique_refs:
+  - NJS-0210-001
+  - NJS-0210-002
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000243
+    - DET-000244
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000215
+    - MIT-000216
+evidence:
+  claim_refs:
+  - CLM-001038
+  - CLM-001039
+  - CLM-001040
+  - CLM-001041
+  - CLM-001042
+  - CLM-001043
+  - CLM-001044
+  case_refs:
+  - CASE-000309
+  - CASE-000310
+  - CASE-000311
+  - CASE-000312
+  reference_refs:
+  - REF-000625
+  - REF-001052
+  - REF-001053
+  - REF-001054
+  - REF-000639
+  - REF-000632
+  - REF-000634
+  - REF-000604
+  - REF-000598
+  - REF-000475
+  - REF-000463
+  - REF-000637
+  - REF-000772
+research:
+  limitations:
+    paragraphs:
+    - zh: APT30、Juniper 与 BlackWater 直接支持不同的角色交接；LunarWeb 只直接支持首次联系与命令 URL 分工，有限恢复样本中 output URL 与 command URL 相同，不能将其写成已观察的任务—结果分离。
+      en: APT30, Juniper, and BlackWater directly support distinct role handoffs. LunarWeb directly supports first-contact
+        and command URL roles only; in limited recovered samples the output and command URLs were the same, so observed
+        task-result separation cannot be claimed.
+    - zh: 内容不可见、内存配置、进程注入、长延迟和共享 CDN 会破坏谱系。零至六十分钟、七日和二十四小时窗口是工程起点，必须按软件首次运行、更新、远程支持和企业 agent 基线调整；多个域名或进程阶段本身不证明多个 C2
+        通道。
+      en: Opaque content, in-memory configuration, process injection, long delay, and shared CDNs break lineage. Zero-to-sixty-minute,
+        seven-day, and twenty-four-hour windows are engineering starting points that require calibration to software
+        first run, update, remote support, and enterprise-agent baselines. Multiple domains or process stages alone do
+        not prove multiple C2 channels.
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-10-04'
+  modified: '2026-10-04'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

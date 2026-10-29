@@ -1,0 +1,103 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000219
+strategy_ref: DET-000194
+name:
+  zh: 登录页面 Origin、提交目标与 IdP 事务差分
+  en: Login Page Origin, Submission Target, and IdP Transaction Differential
+summary:
+  zh: 比较登录页面身份、表单目标和权威 IdP 事务，识别攻击者控制的接收来源。
+  en: Compare sign-in page identity, form destination, and authoritative IdP transactions to identify an attacker-controlled
+    receiver origin.
+domains:
+- enterprise
+platforms:
+- Windows
+- Linux
+- macOS
+logic:
+  paragraphs:
+  - zh: 对受管浏览器的登录导航建立品牌与权威 IdP origin 清单，关联重定向链、证书、页面 origin、表单提交目标和十五分钟内的 IdP transaction_id。若页面声称某企业或 IdP 身份却把提交送往未授权 origin，或没有对应
+      IdP 请求而出现表单提交元数据，则标 impersonated receiver；不采集字段值。合法多租户回调必须以租户和应用注册验证。
+    en: Maintain a brand-to-authoritative-IdP origin inventory for managed-browser sign-in navigation and join redirect chain,
+      certificate, page origin, form destination, and IdP transaction_id within fifteen minutes. If a page claims an enterprise
+      or IdP identity but sends submission to an unauthorized origin, or form-submission metadata appears without a corresponding
+      IdP request, label an impersonated receiver without collecting field values. Validate legitimate multitenant callbacks
+      against tenant and app registration.
+data_requirements:
+- source_type: browser-navigation-submission
+  name:
+    zh: 浏览器导航与表单提交元数据
+    en: Browser navigation and form-submission metadata
+  channel: managed browser, secure web gateway, or endpoint browser telemetry
+  required_fields:
+  - timestamp
+  - device_id
+  - user_id
+  - browser_profile
+  - page_origin
+  - redirect_chain
+  - certificate_subject
+  - form_destination
+  - request_method
+- source_type: identity-provider-transaction
+  name:
+    zh: 权威身份提供方事务
+    en: Authoritative identity-provider transaction
+  channel: IdP sign-in and application registration logs
+  required_fields:
+  - timestamp
+  - user_id
+  - transaction_id
+  - relying_party
+  - redirect_uri
+  - authentication_method
+  - result
+observables:
+- zh: 品牌与来源不匹配
+  en: Brand-to-origin mismatch
+- zh: 未批准表单目的地
+  en: Unauthorized form destination
+- zh: 无身份事务的登录表单提交
+  en: Login-form submission without an IdP transaction
+- zh: 云托管凭据诱饵
+  en: Cloud-hosted credential lure
+correlation:
+  window:
+    zh: 在页面导航和表单提交前后十五分钟关联同一用户、浏览器配置与权威身份提供方事务。
+    en: Join page navigation and form submission to an authoritative identity-provider transaction for the same user and browser
+      profile within fifteen minutes.
+  dimensions:
+  - device_id
+  - user_id
+  - browser_profile
+  - page_origin
+  - form_destination
+  - relying_party
+  - transaction_id
+false_positives:
+- zh: 新 SSO 应用、合法代理、区域域名、测试租户、品牌外包和 IdP 故障页可能造成来源差；须核对应用注册、变更单、租户所有者和 redirect URI。
+  en: New SSO apps, legitimate proxies, regional domains, test tenants, outsourced branding, and IdP error pages can create
+    origin differences. Check app registration, change record, tenant owner, and redirect URI.
+blind_spots:
+- zh: 未受管浏览器、缺少表单目标遥测、TLS 检查受限和攻击者使用已攻陷合法域会降低区分力；实时代理可能产生真实 IdP 事务，需要 NJT-0136 的路径关联。
+  en: Unmanaged browsers, absent form-target telemetry, constrained TLS inspection, and compromised legitimate domains reduce
+    discrimination. A real-time proxy may create a genuine IdP transaction and requires NJT-0136 path correlation.
+tuning_guidance:
+  paragraphs:
+  - zh: 从 IdP 应用注册自动生成 origin 与 redirect URI 允许图，按租户和环境版本化；对新注册和维护期降权但保留原始链，优先处理无对应事务、提交到新域和密码管理器拒绝自动填充的页面。
+    en: Generate a versioned origin and redirect-URI allow graph from IdP app registrations by tenant and environment. Down-weight
+      approved new registrations and maintenance while retaining the raw chain, and prioritize pages with no corresponding
+      transaction, submission to a new domain, or refused password-manager autofill.
+evidence_refs:
+- REF-000731
+- REF-000733
+- REF-000499
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-09-23'
+  modified: '2026-09-23'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

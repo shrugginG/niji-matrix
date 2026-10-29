@@ -1,0 +1,163 @@
+schema_version: 2.0.0
+type: technique
+id: NJT-0140
+name:
+  zh: 云服务发现
+  en: Cloud Service Discovery
+summary:
+  zh: 识别环境具备或启用的云服务及安全、日志覆盖状态；特定读取方法可能落在提供方审计盲区。
+  en: Identify available or enabled cloud services and security or logging coverage; specific read methods may fall outside
+    provider audit.
+aliases: []
+classification:
+  tactic_refs:
+  - TA0007
+  origin:
+    kind: attack-adapted
+    source_attack_id: T1526
+    source_attack_version: '19.1'
+  decision_ref: DEC-TA0007-T1526
+definition_and_concept:
+  paragraphs:
+  - zh: 云服务发现是攻击者在已进入的云账户、订阅或项目中确认哪些服务能力可以使用、哪些防护与日志功能已启用，以及保护状态适用于什么范围。其直接成果是服务与覆盖状态图，可用于选择后续目标或判断某种防护是否需要规避或削弱。
+    en: Cloud Service Discovery is the adversary’s determination, inside an accessed cloud account, subscription, or project,
+      of which service capabilities are available, which security and logging functions are enabled, and where protective
+      state applies. Its direct output is a service and coverage-state map for later target choice or assessment of defenses
+      to evade or impair.
+  - zh: 本 Niji 版本将 ATT&CK 父级的宽泛资源示例收紧到“服务是否具备、启用或有效覆盖”的问题。某个 EC2 实例或桶的存在属于 T1580 资源图，桶内部对象键属于 T1619；云控制台只是可能的阅读界面，不因它呈现状态而另造一个父行为。
+    en: This Niji adaptation narrows ATT&CK’s broad resource examples to the question of service availability, enablement,
+      or effective coverage. The existence of an EC2 instance or bucket belongs to T1580’s resource graph and keys inside
+      a bucket to T1619. A cloud dashboard is a possible reading interface, not a separate parent behavior merely because
+      it displays state.
+stealth_characteristics:
+  paragraphs:
+  - zh: 云服务状态读取的痕迹取决于具体方法，而不是“云查询”这一总称。AWS GuardDuty 的控制面请求可以进入 CloudTrail；Google Service Usage 官方明确将 ListServices 列为不产生日志的方法，Azure
+      Activity Log 通常也不收读取。攻击者若选择能够回答能力问题而提供方不记录逐次调用的路径，只看该审计面的防守方会缺少本次服务状态查询。
+    en: Trace availability for service-state reads depends on the actual method rather than a generic cloud-query category.
+      AWS GuardDuty control-plane requests can enter CloudTrail. Google Service Usage explicitly lists ListServices as producing
+      no audit log, and Azure Activity Log generally omits reads. If an adversary chooses a method that answers a capability
+      question but produces no provider per-call log, a defender limited to that audit surface lacks the present state inquiry.
+  - zh: 日志缺席不是一切观察都消失：身份授权、受管管理终端的网络或会话、独立覆盖快照和后续控制变更仍可能提供线索。Storm-0501 案例证实攻击者测绘 Azure 防护状态，但没有列出它使用哪一个无审计接口；将“有条件的无日志查询”作为本项匿迹可能性，需要与在野使用事实分层表达。
+    en: 'A missing provider log does not erase every observation: identity authorization, managed-admin endpoint network or
+      session records, independent coverage snapshots, and later control changes may still provide clues. Storm-0501 establishes
+      adversarial mapping of Azure protections but does not identify a particular unlogged interface. The conditional unlogged-query
+      effect must therefore be distinguished from what the incident actually proves.'
+scope_boundary_definition:
+  paragraphs:
+  - zh: 纳入以服务可用、启用、运行或保护覆盖为直接信息目标的读取，例如探测器状态、服务注册或日志收集选择。具体 VM、数据库、快照和桶的清单归 T1580；已知桶内对象键归 T1619。若同一请求同时返回能力标识与资源 ID，按攻击者真正回答的问题和后继使用判定，不按字段自动双计。
+    en: Include reads directly aimed at service availability, enablement, operation, or protective coverage, such as detector
+      state, service registration, or logging selection. Inventories of specific VMs, databases, snapshots, and buckets belong
+      to T1580; keys inside a known bucket belong to T1619. When one request returns both capability labels and resource IDs,
+      classify by the question actually answered and later use, not by every field automatically.
+  - zh: 合法安全巡检、CSPM、租户治理、成本管理和事件响应同样需要查询防护状态；查询成功或数据量小并不证明恶意。改变 GuardDuty 或日志服务配置是后继防御削弱行为，T1526 只记录测绘；T1538 GUI 路径也不证明 API
+      或提供方日志缺席。
+    en: Legitimate security reviews, CSPM, tenant governance, cost management, and incident response also query protective
+      state. A successful or low-volume read does not establish maliciousness. Changing GuardDuty or logging configuration
+      is later defense impairment; T1526 records discovery. A T1538 GUI path likewise does not prove absent APIs or provider
+      logs.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: 攻击者获得云管理会话后，可能先检查防护服务、策略与数据不可变性，再决定哪些资源值得接近或哪些控制妨碍后续行动。微软记录 Storm-0501 理解 Azure 策略、锁与存储不可变性，之后尝试移除保护；这一顺序证明状态信息有攻击用途，却不证明其读取过程使用无日志方法。
+      en: After gaining a cloud-management session, an adversary may inspect protective services, policies, and data immutability
+        before deciding which resources to approach or controls to impair. Microsoft records Storm-0501 understanding Azure
+        policies, locks, and storage immutability before trying to remove protections. That sequence proves operational value
+        of state information but not use of an unlogged method to obtain it.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者需要对目标账户、项目或订阅具有相应服务状态读取权限；某些 API 只返回注册或探测器 ID，需再读状态才能回答覆盖问题。其可控选择是通过哪一服务方法及身份读取，所见范围仍受区域、租户、权限与服务部署限制；不默认具有写入防护配置的权限。
+        en: The adversary needs rights to read relevant service state in the target account, project, or subscription. Some
+          APIs return registration or detector IDs and need a second state read to answer coverage questions. The attacker
+          can choose method and identity, while Region, tenant, authorization, and deployment still limit visibility; permission
+          to change protection is not assumed.
+    defender_model:
+      paragraphs:
+      - zh: 防守方可拥有 CloudTrail GuardDuty 事件、Entra 登录、组织防护清单和管理终端遥测，但没有任何单一日志面保证覆盖所有云服务状态读取。对 GCP ListServices 的提供方日志缺席是明确方法事实，Azure
+          Activity Log 的读缺口也是通道范围；若无经验证的代理或会话记录，只能由身份和后继变更推断，不能伪造一次具体查询。
+        en: The defender may have GuardDuty CloudTrail events, Entra sign-ins, an organization protection inventory, and administrator-endpoint
+          telemetry, but no single source covers every cloud service-state read. Missing provider audit for GCP ListServices
+          is method-specific, and Azure Activity Log’s read gap is channel-specific. Without validated proxy or session records,
+          identity and later changes support only inference, not an invented particular query.
+stealth_mechanisms:
+- mechanism_ref: NM-BT
+  role: primary
+  summary:
+    zh: 特定服务状态读取不生成提供方逐次审计事件
+    en: Specific service-state reads produce no provider per-call audit event
+  analysis:
+    paragraphs:
+    - zh: 在能够回答服务启用问题的路径中，攻击者可选择调用 Google Service Usage ListServices 等官方列为不产生日志的方法。本次服务状态可以被返回，而提供方审计面没有对应逐次读取事件；只以该事件源为条件的检测无法还原“谁在何时查询了启用服务”。身份授权、管理终端网络流量及后继操作仍可能可见。方法的日志性质有官方直接证据，但现有
+        Storm-0501 报告没有证明该演员选用此类路径，所以作为攻击者实施的匿迹效果保持假设置信度。
+      en: Among paths that answer service-enablement questions, an adversary can select a method such as Google Service Usage
+        ListServices that the provider officially lists as producing no audit log. Service state can be returned without a
+        corresponding per-call provider event, so a rule dependent on that source cannot reconstruct who queried enabled services
+        and when. Identity authorization, administrator-endpoint network traffic, and later actions can still remain visible.
+        Official documentation directly supports the method’s logging behavior, but Storm-0501 does not establish actor use
+        of such a path; the adversarial stealth effect remains a hypothesis.
+  evidence_refs:
+  - REF-000531
+  - REF-000534
+  - REF-000530
+  confidence: hypothesis
+subtechnique_taxonomy:
+  narrative:
+    paragraphs:
+    - zh: 没有证据把某一云、服务名或 API 单独提升为 Niji 子项。已审查无审计读取路径、预存服务状态快照、按保护状态门控后继行为以及跨范围稀释等不同变量；Storm-0501 仅证明防护状态被理解，不能证明它选择了无日志方法、只攻击无保护区或读取既存快照。
+      en: No provider, service name, or API is promoted into a Niji child by label alone. The search examined unaudited read
+        paths, preexisting service-state snapshots, gating later behavior on protection state, and cross-scope dilution. Storm-0501
+        proves that protective state was understood, not that an unlogged method or stored snapshot was chosen or that only
+        unprotected areas were attacked.
+    - zh: 这些轴若要正式化，需同案请求或客户端执行记录、对应提供方和独立观察面的痕迹对照，并证明与父级不同的检测和缓解价值。目前这些不同轴已被搜索，但子级存在性仍不足，故 coverage 为 deferred、正式 NJS 为空。
+      en: Formalizing these axes requires same-incident request or client execution records, a trace comparison between provider
+        and independent observation, and distinct detection and mitigation value. These different axes were searched, but
+        child existence remains insufficient; coverage is deferred and the formal NJS set is empty.
+  coverage: deferred
+  subtechnique_refs: []
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000151
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000140
+evidence:
+  claim_refs:
+  - CLM-000719
+  - CLM-000720
+  case_refs:
+  - CASE-000188
+  reference_refs:
+  - REF-000529
+  - REF-000530
+  - REF-000531
+  - REF-000532
+  - REF-000533
+  - REF-000534
+  - REF-000524
+  - REF-000665
+research:
+  limitations:
+    paragraphs:
+    - zh: Storm-0501 的防护状态测绘和后续删除尝试是直接事件事实，但报告没有逐次读取请求或审计缺口，因此不能把 GCP ListServices 或 Azure Activity Log 的通道性质归给该案。官方无日志方法证明观察能力差，却不证明攻击者主观规避动机或检测成功率；假设机理需要未来在野调用记录或受控攻防对照提升置信度。
+      en: Storm-0501’s protective-state mapping and later deletion attempts are direct incident facts, but the report has
+        no per-read request or audit-gap record, so GCP ListServices or Azure Activity Log channel behavior cannot be attributed
+        to that case. An officially unlogged method proves an observation difference, not adversarial motive or detection
+        efficacy. The hypothesized mechanism needs future in-the-wild calls or controlled adversarial comparisons for stronger
+        confidence.
+    - zh: AWS GuardDuty 分析仅覆盖实际启用 CloudTrail 管理事件的账户和区域；ListDetectors 返回 ID 并不证明功能状态，GetDetector 的完整响应也不保证在日志中可得。GCP 的方法性无日志不能通过简单开启
+        Data Access 补救；没有受控管理端点的代理或会话遥测时，对该分支必须公开承认检测盲区。
+      en: The AWS GuardDuty analytic covers only accounts and Regions where management events are retained. ListDetectors
+        IDs do not establish feature state, and GetDetector’s full response is not guaranteed in logs. GCP’s method-level
+        absence cannot be repaired by simply enabling Data Access. Without validated proxy or session telemetry on managed
+        administration endpoints, that branch remains an explicit detection blind spot.
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-09-22'
+  modified: '2026-09-22'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

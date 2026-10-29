@@ -1,0 +1,344 @@
+schema_version: 2.0.0
+type: mitigation
+id: MIT-000102
+name:
+  zh: 进程上下文写入、运行时完整性与来源治理
+  en: Process-Context Write, Runtime-Integrity, and Provenance Governance
+summary:
+  zh: 以最小跨进程访问、动态代码/运行时完整性、创建期来源和角色绑定代码治理降低注入可行性，并保全 writer→dispatch→result 谱系以支持内存感知遏制与权限恢复。
+  en: Reduce injection feasibility through least cross-process access, dynamic-code and runtime integrity, birth-time provenance,
+    and role-bound code governance, while preserving writer-to-dispatch-to-result lineage for memory-aware containment and
+    authority recovery.
+description:
+  paragraphs:
+  - zh: 本缓解把 process context 视为同时受 access control、code provenance、dispatch integrity 与 effective authority 约束的对象。为高价值 service、browser、credential、security
+      与 management processes 维护 exact executable/hash/version、service/profile role、owner、token/capabilities、normal source
+      relationships、允许的 modules/code regions、dynamic-code need 和 resource/action baseline；按最小权限收紧 process handle/task-port/ptrace/procfs、debug/impersonation
+      privileges、namespace/LSM 与 service identity。Windows ACG/CFG/CIG、protected-process 或等价 controls，Linux Yama/LSM/seccomp/no-new-privileges，以及
+      macOS Hardened Runtime/library validation 按兼容性分阶段启用，不能从平台开关推定所有进程受保护。
+    en: This mitigation treats process context as an object jointly constrained by access control, code provenance, dispatch
+      integrity, and effective authority. Maintain exact executable, hash, and version, service or profile role, owner, token
+      or capabilities, normal source relationships, allowed modules or code regions, dynamic-code need, and resource or action
+      baseline for high-value service, browser, credential, security, and management processes. Tighten process handles, task
+      ports, ptrace and procfs, debug or impersonation privileges, namespaces and LSM, and service identity by least privilege.
+      Stage Windows ACG, CFG, CIG, protected-process or equivalent controls, Linux Yama, LSM, seccomp, and no-new-privileges,
+      and macOS Hardened Runtime and library validation according to compatibility; a platform switch cannot imply that every
+      process is protected.
+  - zh: 预防之外，必须把 process start identity、source/target access rights、memory/section/module write and backing、protection change、thread/context/APC/callback/message
+      dispatch、creation file/section/image、first instruction、approved-code role 与 first target behavior 导出到攻击者难以回写的关联存储。策略分开
+      exposure、attempt、payload_staged、injection_confirmed、non_elevating、authority_unresolved 和 elevation_confirmed；合法 debugger、EDR、JIT、sandbox、updater
+      与 assistive tooling 的例外绑定 exact package/hash/version、owner、source-target relation、操作/效果和到期窗口，不按 publisher 或 process
+      name 永久信任。
+    en: Beyond prevention, export process-start identity, source-target access rights, memory, section, or module writes and
+      backing, protection changes, thread, context, APC, callback, or message dispatch, creation file, section, and image,
+      first instruction, approved-code role, and first target behavior to correlation storage the adversary cannot readily
+      rewrite. Separate exposure, attempt, payload_staged, injection_confirmed, non_elevating, authority_unresolved, and elevation_confirmed
+      states. Exceptions for debuggers, EDR, JIT, sandboxes, updaters, and assistive tooling bind exact package, hash, or
+      version, owner, source-target relation, operation and effect, and expiry, with no permanent trust by publisher or process
+      name.
+  - zh: 响应先保全 source/target memory、VAD/maps、thread/context/callback state、loaded modules/sections、process creation file object、payload/config、handles/IPC
+      和资源结果，再隔离 source 与 affected target。只结束 source、删除 DLL 或重启 target 不能证明恢复：要检查同角色进程的 reinjection、persistence/token/credential/network
+      effects 和受保护资源变化，撤销可疑 handle/token/secret，恢复 approved image/module/role state；若 kernel/controller 或 security sensor
+      受影响，使用独立 control-plane、可信启动或重建。最后用非破坏 canary 验证原 source 对 protected operation 恢复 expected deny，并确认 target 只从 approved
+      code provenance 执行。
+    en: Response first preserves source and target memory, VADs or maps, thread, context, and callback state, loaded modules
+      and sections, process-creation file object, payload and configuration, handles and IPC, and resource outcomes, then
+      isolates the source and affected target. Ending the source, deleting a DLL, or restarting the target cannot prove recovery.
+      Check reinjection into same-role processes, persistence, token, credential, and network effects, and protected-resource
+      changes; revoke suspicious handles, tokens, and secrets and restore approved image, module, and role state. If a kernel
+      or controller path or security sensor is affected, use independent control-plane evidence, trusted boot, or rebuild.
+      Finally, a nondestructive canary verifies that the original source again receives expected deny for the protected operation
+      and that the target executes only approved code provenance.
+domains:
+- enterprise
+measures:
+- key: least-cross-process-access-and-debug-authority
+  name:
+    zh: 最小跨进程访问与调试权限
+    en: Least Cross-Process Access and Debug Authority
+  description:
+    paragraphs:
+    - zh: 按 source-target pair、owner、purpose 和操作集合收紧 process handle/task port、ptrace/procfs、debug/impersonation privilege
+        与 IPC ACL；让 service 仅持必要 token/capability/resource，并对跨 integrity/session/namespace 的 write、thread/context 与 task access
+        默认拒绝和审计。
+      en: Tighten process handles, task ports, ptrace and procfs, debug or impersonation privilege, and IPC ACLs by source-target
+        pair, owner, purpose, and operation set. Grant services only required tokens, capabilities, and resources, and deny
+        and audit cross-integrity, session, or namespace write, thread or context, and task access by default.
+  control_type: preventive
+- key: target-process-dynamic-code-and-runtime-integrity
+  name:
+    zh: Target process 动态代码与运行时完整性
+    en: Target-Process Dynamic-Code and Runtime Integrity
+  description:
+    paragraphs:
+    - zh: 对无需 JIT/plugin 的高价值 target 启用 ACG/CIG/CFG、protected process、Hardened Runtime/library validation、W^X、seccomp/LSM
+        或等价机制；需要动态代码时把受信 allocator/loader、module hashes、code-signing identity 和 writable-to-executable transition 缩到具体 profile/version，并先在
+        audit/compatibility 环境验证。
+      en: Enable ACG, CIG, CFG, protected processes, Hardened Runtime and library validation, W^X, seccomp or LSM, or equivalents
+        for high-value targets that do not need JIT or plugins. Where dynamic code is required, constrain trusted allocator
+        or loader, module hashes, code-signing identity, and writable-to-executable transitions to a concrete profile and
+        version after audit and compatibility validation.
+  control_type: preventive
+- key: independent-process-memory-and-dispatch-audit
+  name:
+    zh: 独立进程内存与调度审计
+    en: Independent Process-Memory and Dispatch Audit
+  description:
+    paragraphs:
+    - zh: 将 exact process start key、access rights、write/map/load/protection、backing、thread/context/APC/callback/message 与
+        first execution 发送到隔离存储；对 direct syscall/kernel path 使用 kernel、policy 或 hypervisor 等独立观察，并显式记录 blocked、missing 与 sensor-integrity
+        状态。
+      en: Export exact process-start key, access rights, write, map, load, and protection, backing, thread, context, APC,
+        callback, or message dispatch, and first execution to isolated storage. Observe direct-syscall or kernel paths through
+        independent kernel, policy, or hypervisor planes and explicitly record blocked, missing, and sensor-integrity states.
+  control_type: detective-support
+- key: executable-memory-backing-and-content-integrity
+  name:
+    zh: 可执行内存 backing 与内容完整性
+    en: Executable-Memory Backing and Content Integrity
+  description:
+    paragraphs:
+    - zh: 为敏感 target 建立 approved file/section/module→memory content→execution 映射，审计 private/anonymous executable pages、modified-image
+        pages、unknown section、write→execute transition 与 unapproved first instruction；保留 memory hash/content 以便在 region free/restore
+        前取证，而不把 RWX 单点当 verdict。
+      en: Establish approved file, section, or module-to-memory-content-to-execution mappings for sensitive targets. Audit
+        private or anonymous executable pages, modified-image pages, unknown sections, write-to-execute transitions, and unapproved
+        first instructions. Preserve memory hash or content before region free or restoration without treating one RWX signal
+        as a verdict.
+  control_type: detective-support
+- key: existing-flow-and-callback-integrity
+  name:
+    zh: 既有执行流与 callback 完整性
+    en: Existing-Flow and Callback Integrity
+  description:
+    paragraphs:
+    - zh: 对高价值 thread/context、APC/callback/message 与 handler table 保存 pre-state 和合法 setter/queue source，限制外部修改权并验证 trigger
+        后 instruction pointer/call stack；对批准 instrumentation 绑定 exact component/version、target、callback purpose 和到期例外。
+      en: Preserve pre-state and legitimate setter or queue sources for high-value threads, contexts, APCs, callbacks, messages,
+        and handler tables. Restrict external mutation rights and validate instruction pointer and call stack after triggering.
+        Bind approved instrumentation to exact component, version, target, callback purpose, and expiring exception.
+  control_type: preventive
+- key: process-birth-image-provenance-integrity
+  name:
+    zh: 进程创建映像来源完整性
+    en: Process-Birth Image Provenance Integrity
+  description:
+    paragraphs:
+    - zh: 将 creation file object/path/hash、mapped section/image、initial memory/entry 和 first instruction 作为同一 birth transaction；限制普通进程创建
+        suspended child 后的 unmap/write/context/resume，并为 updater/sandbox/virtualization 保存 exact expected transition。出现 divergence
+        时先保全 file/section/memory 再遏制。
+      en: Treat creation file object, path and hash, mapped section or image, initial memory and entry, and first instruction
+        as one birth transaction. Restrict ordinary processes from unmapping, writing, changing context, and resuming suspended
+        children, and preserve exact expected transitions for updaters, sandboxes, and virtualization. Preserve file, section,
+        and memory before containment when divergence appears.
+  control_type: preventive
+- key: role-bound-approved-code-and-outcome-policy
+  name:
+    zh: 角色绑定批准代码与结果策略
+    en: Role-Bound Approved-Code and Outcome Policy
+  description:
+    paragraphs:
+    - zh: 按 service group/browser profile/version 将正常 action/resource/destination 与 approved executable/module/code region
+        同时绑定；主体和动作常见但代码来源异常时不降噪。对 extension、security、backup 与 automation 以 owner、package/hash、source relation、resource scope
+        和 expiry 建细粒度 allow。
+      en: Bind normal actions, resources, and destinations together with approved executable, module, or code region per service
+        group, browser profile, and version. Do not suppress an ordinary subject and action when code provenance is abnormal.
+        Build fine-grained allows for extensions, security, backup, and automation from owner, package or hash, source relation,
+        resource scope, and expiry.
+  control_type: governance
+- key: memory-aware-containment-and-authority-recovery
+  name:
+    zh: 内存感知遏制与权限恢复
+    en: Memory-Aware Containment and Authority Recovery
+  description:
+    paragraphs:
+    - zh: 在终止前保全 source/target memory、threads、sections/modules、creation provenance、payload config、handles/IPC 与结果；隔离并枚举 reinjection、token/credential/persistence/network/protected-resource
+        effects，撤销 secrets 和异常 authority。kernel/sensor integrity 不可证时可信重启或重建，并以 deny canary 和 approved-code check 验证恢复。
+      en: Before termination, preserve source and target memory, threads, sections and modules, creation provenance, payload
+        configuration, handles and IPC, and results. Isolate and enumerate reinjection, token, credential, persistence, network,
+        and protected-resource effects, then revoke secrets and abnormal authority. Trusted-boot or rebuild when kernel or
+        sensor integrity is not provable, and verify recovery with a deny canary and approved-code check.
+  control_type: containment
+applications:
+- target_ref: NJT-0103
+  use:
+    paragraphs:
+    - zh: 对跨进程执行上下文嵌入，先为高价值 target 定义允许 source、所需 rights、loader/dynamic-code mode、合法 dispatch 与 target 权限上限，收紧 debug/task/ptrace/procfs
+        和跨 integrity/session/namespace access。运行时保留 source→access→write/map/load→dispatch→target execution→first resource
+        result；attempt、staged、confirmed 与 elevation 分级。确认后保全内存/线程/section/handle，隔离 source/target，检查派生 token、credential、persistence
+        和资源变化，再恢复 approved code 与 least authority。
+      en: For Cross-Process Execution-Context Embedding, define allowed sources, required rights, loader or dynamic-code mode,
+        legitimate dispatch, and target authority ceiling for high-value targets, then tighten debug, task, ptrace, procfs,
+        and cross-integrity, session, or namespace access. At runtime retain source-to-access-to-write, map, or load-to-dispatch-to-target-execution-to-first-resource-result
+        lineage and tier attempt, staged, confirmed, and elevation states. After confirmation, preserve memory, threads, sections,
+        and handles, isolate source and target, inspect derived tokens, credentials, persistence, and resource changes, then
+        restore approved code and least authority.
+  expected_effect:
+    paragraphs:
+    - zh: 最小访问和 runtime controls 消除或限制 source 写入/调度条件；跨层谱系使后继行为不能只借 target 名称归因，并把同权限 injection 与实际权限提升分开。攻击者需要额外突破 target
+        admission、code/dispatch integrity 和独立记录，短暂 source 退出也不会切断 transaction。
+      en: Least access and runtime controls remove or constrain source write and dispatch prerequisites. Cross-layer lineage
+        prevents follow-on behavior from being attributed solely to target name and separates same-authority injection from
+        actual privilege elevation. The adversary must additionally defeat target admission, code and dispatch integrity,
+        and independent records, while a short-lived source exit no longer breaks the transaction.
+  limitations:
+    paragraphs:
+    - zh: EDR、JIT、browser sandbox、assistive/debug 与 hot patch 可能合法需要跨进程 access/dynamic code，强制策略会影响兼容性和可用性；Linux/macOS/Windows
+        信号不完全同形，kernel compromise 可破坏 host data。缺 source pre-state、actual execution 或 resource decision 时只能保持 unresolved；生产验证不得通过真实恶意
+        payload 或破坏性提权完成。
+      en: EDR, JIT, browser sandboxes, assistive or debugging tools, and hot patching can legitimately require cross-process
+        access or dynamic code, so enforcement can affect compatibility and availability. Linux, macOS, and Windows signals
+        are not identical, and kernel compromise can damage host data. Missing source pre-state, actual execution, or resource
+        decisions leaves the result unresolved. Production validation must not use a real malicious payload or destructive
+        elevation.
+- target_ref: NJS-0103-001
+  use:
+    paragraphs:
+    - zh: 对无背衬载荷内存嵌入，在无需动态代码的 target 强制 signed/image-backed code 与 W^X/ACG/CIG/Hardened Runtime 等效策略；需要 JIT/plugin 时限定 approved
+        allocator/loader、module/hash、profile 和 transition。连续连接 allocation/writer、bytes/hash、file/section/module backing、protection
+        history 与 first execution，优先保全 private/anonymous/modified-image region 后再终止。
+      en: For Unbacked Payload Memory Embedding, enforce signed or image-backed code plus W^X, ACG, CIG, Hardened Runtime,
+        or equivalent policy on targets that do not need dynamic code. Where JIT or plugins are needed, restrict approved
+        allocator or loader, module or hash, profile, and transition. Continuously join allocation and writer, bytes or hash,
+        file, section, or module backing, protection history, and first execution, preserving private, anonymous, or modified-image
+        regions before termination.
+  expected_effect:
+    paragraphs:
+    - zh: 预防控制阻止未知 writer 把 anonymous/private pages 变为可执行或使 target 加载未批准内容；来源—内容—执行三联保留即使 payload 短暂、加密或随后 free/restore 也能建立矛盾。攻击者被迫使用可审计
+        approved loader/backing、另行绕过 code policy，或接受可见 write→execute/first-instruction 痕迹。
+      en: Preventive controls stop unknown writers from making anonymous or private pages executable or causing the target
+        to load unapproved content. Preserving provenance, content, and execution exposes the contradiction even when payloads
+        are brief, encrypted, or later freed or restored. The adversary must use an auditable approved loader and backing,
+        separately bypass code policy, or accept visible write-to-execute and first-instruction traces.
+  limitations:
+    paragraphs:
+    - zh: JIT、managed runtime、packer、security agent 与 compatibility layer 会产生合法 private executable/modified pages；周期性 scan
+        可能错过短生命 region，memory capture 有性能、隐私和敏感数据风险。单个 RWX/private flag 不能证明本子项，标准 file-backed DLL injection 仍需父级防御，policy
+        bypass 或 kernel write 需要独立观察。
+      en: JIT, managed runtimes, packers, security agents, and compatibility layers create legitimate private executable or
+        modified pages. Periodic scans can miss short-lived regions, while memory capture has performance, privacy, and sensitive-data
+        risks. One RWX or private flag cannot prove this child. Standard file-backed DLL injection still requires parent defense,
+        and policy bypass or kernel writes require independent observation.
+- target_ref: NJS-0103-002
+  use:
+    paragraphs:
+    - zh: 对既有执行流调度替换，限制外部 thread/context/APC/callback/message mutation rights，为敏感 target 记录 carrier pre-state、合法 setter/queue
+        source、trigger 与 expected handler。将 source set/queue/write、target trigger、instruction-pointer/call-stack divergence、payload
+        region 和 first behavior 关联；对 approved instrumentation/assistive tooling 只给予 exact target/purpose/version 和到期例外。
+      en: For Existing-Flow Dispatch Substitution, restrict external thread, context, APC, callback, and message mutation
+        rights and record carrier pre-state, legitimate setter or queue source, trigger, and expected handler for sensitive
+        targets. Correlate source set, queue, or write, target trigger, instruction-pointer or call-stack divergence, payload
+        region, and first behavior. Grant approved instrumentation or assistive tooling only exact target, purpose, version,
+        and expiring exceptions.
+  expected_effect:
+    paragraphs:
+    - zh: 对既有 carrier 的 pre/post 差分使“没有 new remote thread”不再构成盲区，并让 callback/message 名称无法替代真实 handler 来源。攻击者要么创建更可见的新线程，要么同时绕过
+        carrier integrity、payload provenance 和独立 dispatch audit；未触发的 queued work 也会保留 staged/unresolved 状态。
+      en: Pre-state and post-state comparison for an existing carrier prevents the absence of a new remote thread from remaining
+        a blind spot and stops callback or message names from substituting for actual handler provenance. The adversary must
+        create a more visible new thread or defeat carrier integrity, payload provenance, and independent dispatch audit together.
+        Queued work that never triggers also remains staged or unresolved.
+  limitations:
+    paragraphs:
+    - zh: 高吞吐 GUI/message、runtime callback 与 APC telemetry 量大且平台覆盖不均，合法 profiler/debugger/security tooling 会修改 context；queued
+        callback 可能长期不触发，采样 call stack 也可能错过短指令。只有 API/queue 事件没有 target execution 时不得宣称成功，allow 若过宽会重新引入 carrier blind spot。
+      en: High-volume GUI or message, runtime-callback, and APC telemetry is large and uneven across platforms, while legitimate
+        profilers, debuggers, and security tooling modify context. A queued callback can remain untriggered for a long time,
+        and sampled call stacks can miss brief execution. An API or queue event without target execution cannot establish
+        success, and broad allows reintroduce the carrier blind spot.
+- target_ref: NJS-0103-003
+  use:
+    paragraphs:
+    - zh: 对创建期映像来源分离，将 process creation 的 file object/path/hash、mapped section/image、initial memory/entry 与 first instruction
+        绑定；限制非批准 creator 对 suspended child 的 unmap/map/write/context/resume。为合法 updater、sandbox 和 virtualization 登记 exact
+        package/version、creation flags、expected file/section transition、entry 与窗口；出现不一致时保全 transient file object、section 和
+        memory。
+      en: For Birth-Time Image Provenance Divergence, bind the process-creation file object, path and hash, mapped section
+        or image, initial memory and entry, and first instruction. Restrict unapproved creators from unmapping, mapping, writing,
+        changing context, or resuming suspended children. Register exact package and version, creation flags, expected file
+        or section transition, entry, and window for legitimate updaters, sandboxes, and virtualization. Preserve transient
+        file object, section, and memory when layers disagree.
+  expected_effect:
+    paragraphs:
+    - zh: 三层来源比较拆除合法 path/signature 或已消失 backing 对实际首段代码的替代；攻击者必须保持 creation、mapped image 和 execution 一致，另行突破 child-mutation
+        controls，或留下可关联的 suspend/mutation/resume 与 entry mismatch。合法转换由版本化预期解释，不再按 deleted file 或 signer 单点告警。
+      en: Three-layer provenance comparison prevents a legitimate path, signature, or disappeared backing from substituting
+        for actual initial code. The adversary must keep creation, mapped image, and execution consistent, separately defeat
+        child-mutation controls, or leave a correlatable suspend, mutation, resume, and entry mismatch. Versioned expectations
+        explain legitimate transitions without alerting solely on a deleted file or signer.
+  limitations:
+    paragraphs:
+    - zh: OS callback/scan 时序和可用字段会随版本变化，合法 self-update/virtualization/packer 也可能产生差异；缺 file-object/section identity 或 first
+        instruction 时只能输出 provenance_signal。阻止 suspended creation/mutation 可能破坏软件部署与 sandbox，需 audit-first；已经执行后仅恢复磁盘文件不能证明
+        memory/process state 清洁。
+      en: OS callback and scan timing and available fields change by version, while legitimate self-update, virtualization,
+        and packers can also diverge. Missing file-object or section identity or first instruction permits only provenance_signal.
+        Blocking suspended creation or mutation can break deployment and sandboxes and requires audit-first rollout. Restoring
+        the disk file after execution does not prove memory or process state clean.
+- target_ref: NJS-0103-004
+  use:
+    paragraphs:
+    - zh: 对角色贴合目标上下文选择，按具体 service group/browser profile/version 建 target role，绑定 approved executable/modules/code regions、正常
+        source relationships、action/resource classes 和 destinations/protocols。将 target enumeration/selection、payload purpose、injection
+        provenance 与 first action 连接；即使 browser 网络或 service resource access 常见，只要执行 region/module 未批准就不降噪。对 extension/security/backup
+        例外绑定 owner、hash、资源范围和 expiry。
+      en: For Role-Conforming Target Context Selection, build a target role per concrete service group, browser profile, and
+        version, binding approved executable, modules, or code regions, normal source relationships, action and resource classes,
+        and destinations or protocols. Join target enumeration and selection, payload purpose, injection provenance, and first
+        action. Even when browser networking or service resource access is common, do not suppress it if the executing region
+        or module is unapproved. Bind extension, security, and backup exceptions to owner, hash, resource scope, and expiry.
+  expected_effect:
+    paragraphs:
+    - zh: 检测从“谁做了常见动作”转为“哪段批准代码经何来源做了动作”，拆除正常主体—动作组合的角色伪装。攻击者不能只选 browser/svchost/security process 获得低风险评分，还需仿造 approved module/region、正常
+        source relation 与目的/目标内容；重复枚举、reinjection 和 IPC 进一步恢复控制者归因。
+      en: Detection shifts from which subject performed a common action to which approved code reached it through what provenance,
+        removing disguise from an ordinary subject-action pair. Choosing a browser, svchost, or security process no longer
+        earns a low-risk score by itself; the adversary must also imitate approved modules or regions, normal source relationships,
+        and purpose or destination content. Repeated enumeration, reinjection, and IPC further recover controller attribution.
+  limitations:
+    paragraphs:
+    - zh: 准确 role baseline 需要 owner 与版本维护，browser/extensions、microservice destinations 和 security tooling 行为变化快；payload purpose/selection
+        logic 若未保全，单个 target 事件可能只能 unresolved。TLS/encryption 会隐藏 destination content，合法插件也可从未常见 region 执行；不能按 target 名称、常见动作或角色贴合本身证明
+        injection 或 TA0004。
+      en: Accurate role baselines require owner and version maintenance, while browser extensions, microservice destinations,
+        and security-tool behavior change rapidly. If payload purpose or selection logic is not preserved, a single-target
+        event can remain unresolved. TLS and encryption hide destination content, and legitimate plugins can execute from
+        uncommon regions. Target name, common action, or role conformity alone proves neither injection nor TA0004.
+- target_ref: NJS-0214-002
+  use:
+    paragraphs:
+    - zh: 对浏览器、编辑器、邮件和业务应用按 source-target pair 收紧跨进程写入、调试和模块装载权，启用兼容的动态代码、CIG/ACG/CFG 或等效完整性策略，并把批准 DLP、EDR、无障碍和插件绑定到精确 hash、owner、目标进程、函数用途与到期窗口。
+      en: For browsers, editors, mail, and business apps, tighten cross-process write, debug, and module-load rights by source-target
+        pair; enable compatible dynamic-code, CIG, ACG, CFG, or equivalent integrity policy; bind approved DLP, EDR, accessibility,
+        and plug-ins to exact hash, owner, target, function, and expiry.
+  expected_effect:
+    paragraphs:
+    - zh: 未批准代码更难进入正常粘贴消费者或改变剪贴板返回路径，受信进程名不能覆盖异常模块、调用栈和第二内容结果。
+      en: Unapproved code has less ability to enter a normal paste consumer or alter clipboard returns, and a trusted process
+        name no longer masks anomalous modules, call stacks, and second content outcomes.
+  limitations:
+    paragraphs:
+    - zh: 合法 DLP、EDR、无障碍、输入法、JIT、调试和热补丁可能需要进程内介入；内核或受陷签名组件仍可绕过，且没有剪贴板结果时不能确认本子项。
+      en: Legitimate DLP, EDR, accessibility, input methods, JIT, debugging, and hot patching may require in-process interposition.
+        Kernel or compromised signed components can bypass controls, and missing clipboard outcome prevents confirmation.
+evidence_refs:
+- REF-000108
+- REF-000243
+- REF-000362
+- REF-000363
+- REF-000364
+- REF-000365
+- REF-000366
+- REF-000367
+- REF-000369
+- REF-000370
+- REF-000371
+- REF-001098
+lifecycle:
+  status: review
+  version: 1.1.0
+  created: '2026-09-13'
+  modified: '2026-10-05'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

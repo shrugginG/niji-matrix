@@ -1,0 +1,117 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000303
+strategy_ref: DET-000237
+name:
+  zh: 关键后果通知与洪泛埋没分析
+  en: Consequential Notification and Flood-Burial Analytic
+summary:
+  zh: 输出密码、金融或安全通知与同 recipient 洪泛同步且业务 action/SLA 延迟的链。
+  en: Emit chains where password, financial, or security notifications synchronize with same-recipient flooding and
+    business action or SLA is delayed.
+domains:
+- enterprise
+platforms:
+- SaaS
+logic:
+  paragraphs:
+  - zh: 维护 consequential notification registry，包含 source event、expected sender/domain、message ID correlation、recipient、expected
+      time、priority、required action 和 SLA。把实际 Graph/EmailEvents message 以 NetworkMessageId/internetMessageId/time/recipient
+      匹配 registry，并计算前后 5/15/60 分钟 recipient fan-in。
+    en: Maintain a consequential-notification registry with source event, expected sender or domain, message ID correlation,
+      recipient, expected time, priority, required action, and SLA. Match actual Graph or EmailEvents messages to
+      the registry by NetworkMessageId or internetMessageId, time, and recipient and calculate fan-in over surrounding
+      5, 15, and 60 minutes.
+  - zh: 连接 delivery/folder/isRead/MailItemsAccessed、独立通知和 required action completion。只有 consequential message、异常洪泛与
+      action/SLA miss 或实际损失共同成立才输出；无 access event 不能 alone 判未读。
+    en: Join delivery, folder, read state, MailItemsAccessed, independent notification, and required-action completion.
+      Emit only when consequential message, abnormal flood, and action or SLA miss or actual loss all hold; absent
+      access events alone do not prove unread.
+data_requirements:
+- source_type: consequential-notification
+  name:
+    zh: 关键后果通知注册
+    en: Consequential-notification registry
+  channel: null
+  required_fields:
+  - source.event.id
+  - notification.type
+  - expected.sender
+  - recipient.address
+  - expected.time
+  - priority
+  - required.action
+  - sla.deadline
+  - correlation.id
+- source_type: mail-message-state
+  name:
+    zh: 邮件投递、文件夹与访问状态
+    en: Mail delivery, folder, and access state
+  channel: EmailEvents, Graph message, MailItemsAccessed
+  required_fields:
+  - message.id
+  - network.message.id
+  - internet.message.id
+  - received.time
+  - recipient.address
+  - delivery.status
+  - folder.id
+  - is.read
+  - access.time
+  - access.type
+- source_type: business-action-outcome
+  name:
+    zh: 业务 action 与独立通知
+    en: Business action and independent notification
+  channel: null
+  required_fields:
+  - source.event.id
+  - action.id
+  - action.completed
+  - completed.time
+  - sla.met
+  - independent.channel.status
+  - loss.outcome
+observables:
+- zh: 关键通知在同 recipient 高 fan-in 窗口内投递
+  en: A consequential notice is delivered during a high-fan-in window for the same recipient
+- zh: required action/SLA 延迟或损失结果出现
+  en: Required action or SLA is delayed or a loss outcome appears
+correlation:
+  window:
+    zh: 通知周围 5/15/60 分钟，action/SLA 至 24 小时或业务定义窗口。
+    en: Use 5, 15, and 60 minutes around the notice and up to 24 hours or business-defined window for action or SLA.
+  dimensions:
+  - source.event.id
+  - notification.type
+  - recipient.address
+  - network.message.id
+  - correlation.id
+  - action.id
+  - event.time
+false_positives:
+- zh: 合法告警 storm、批量重置、财务月结、事件响应、通知服务延迟和用户已通过其他渠道处理
+  en: Legitimate alert storms, bulk resets, financial close, incident response, notification-service delay, and users
+    acting through other channels
+blind_spots:
+- zh: notification registry 不完整、message ID 不贯通、offline read、共享邮箱、用户认知不可测或 action 系统无 correlation
+  en: Incomplete notification registry, disconnected message IDs, offline read, shared mailbox, unmeasurable human
+    awareness, or action system without correlation
+tuning_guidance:
+  paragraphs:
+  - zh: 只纳入有明确 owner/action/SLA 的关键通知，使用独立 push/SMS/portal channel 验证。MailItemsAccessed 缺失降置信，不作为未读事实。
+    en: Include only consequential notices with explicit owner, action, and SLA and verify through independent push,
+      SMS, or portal channels. Missing MailItemsAccessed lowers confidence and is not an unread fact.
+evidence_refs:
+- REF-001016
+- REF-001020
+- REF-000567
+- REF-001022
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-10-04'
+  modified: '2026-10-04'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

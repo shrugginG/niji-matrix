@@ -1,0 +1,39 @@
+schema_version: "2.0.0"
+type: evasion-subtechnique
+id: NJS-0066-001
+parent_ref: NJT-0066
+name: {zh: 既有工作负载执行上下文借用, en: Existing-Workload Exec-Context Borrowing}
+summary: {zh: 攻击者 exec 进入已运行的批准 workload，使后置命令继承其 image、namespace、labels、网络、卷与应用身份而不触发新部署。, en: Adversaries exec into a running approved workload so later commands inherit its image namespace labels network volumes and application identity without a new deployment.}
+aliases: []
+lineage: {attck_subtechnique_inherited: false}
+definition_and_concept:
+  paragraphs:
+  - zh: 既有工作负载执行上下文借用固定“容器对象不变”变量：攻击者通过 exec 管理接口在已运行容器内启动新命令，而 Pod/Deployment 规范、image digest、owner 与容器创建时间保持不变。直接结果是容器内新增进程，独立匿迹效果是恶意行为继承已有应用的身份、网络、卷和监控标签，并避开只审查 create/admission 的控制。
+    en: Existing-Workload Exec-Context Borrowing fixes an unchanged-container-object variable. An adversary starts a new command through an exec interface while Pod or Deployment specification, image digest, owner, and container creation time remain unchanged. The direct outcome is a new in-container process, while the independent stealth effect is inheritance of application identity network volumes and monitoring labels and avoidance of controls focused on create or admission.
+  - zh: 本子项不要求工作负载名称故意伪装，因为合法对象已经存在；也不要求请求身份正常。若攻击者创建新容器再运行命令归 NJT-0067；若只利用应用漏洞且没有 exec 管理请求，则不属于本子项。
+    en: This child does not require deliberate workload-name camouflage because the legitimate object already exists and does not require a normal request identity. Creating a new container before commands belongs to NJT-0067; exploiting the application without an exec management request is outside this child.
+stealth_characteristics:
+  paragraphs:
+  - zh: 既有工作负载执行上下文借用让 GitOps、admission 和镜像扫描看到无变化的批准定义，runtime 进程却在稍后出现。TeamTNT 与外部蜜罐攻击均直接进入既有 Pod 并下载/执行载荷；API exec、container ID、runtime 父级、TTY、文件和网络仍能恢复。容器销毁和短审计保留会使事后只剩应用流量或资源异常。
+    en: Existing-Workload Exec-Context Borrowing leaves GitOps admission and image scanning with an unchanged approved definition while runtime processes appear later. TeamTNT and an external honeypot attacker both directly entered existing Pods and retrieved or executed payloads. API exec container ID runtime parent TTY files and network remain recoverable; container destruction and short retention can leave only application traffic or resource anomalies.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 必须证明目标容器在请求前已存在、exec/attach 类接口产生了新进程，并且 workload 规范未因该命令改变。合法开发或 SRE 调试同形，需结合请求来源、工单、命令、文件/网络结果。无新部署不是恶意证据，只是本子项稳定边界。
+    en: Evidence must show the target container existed before the request, an exec or attach-like interface produced a process, and the workload specification did not change for that command. Legitimate developer or SRE debugging shares the shape and requires request origin ticket command file and network outcome. Absence of a deployment is not malicious evidence; it is only the stable boundary.
+application_scenarios_and_threat_model:
+  application_scenarios: {paragraphs: [{zh: 攻击者选择具有业务 egress、挂载 secrets、云身份或宽网络许可的长期 Pod，通过 kubectl/kubelet/Docker exec 执行发现、下载、挖矿或横向命令，从而借用现有应用通路。, en: An adversary selects a long-lived Pod with business egress mounted secrets cloud identity or broad network allowance and uses kubectl kubelet or Docker exec for discovery download mining or lateral commands thereby borrowing existing application paths.}]}
+  threat_model:
+    attacker_model: {paragraphs: [{zh: 需要 exec 权限或错误配置入口及可用容器工具；distroless/不可交互镜像、只读文件系统、最小 volume 与 egress 会限制，但攻击者可能上传静态二进制。runtime 审计和快速隔离缩短收益。, en: Requires exec permission or a misconfigured entry and usable container tooling. Distroless or noninteractive images read-only filesystems minimal volumes and egress constrain it though an adversary may upload a static binary. Runtime audit and rapid isolation shorten benefit.}]}
+    defender_model: {paragraphs: [{zh: 需把 API exec 与 container ID/进程关联并保留至容器销毁后，比较镜像声明进程、工作负载基线和后置结果；只看 YAML 与镜像 SBOM 不足。, en: Defenders join API exec to container ID and process and retain the link after destruction comparing image-declared processes workload baseline and later outcomes. YAML and image SBOM alone are insufficient.}]}
+stealth_mechanisms:
+- mechanism_ref: NM-BT
+  role: primary
+  summary: {zh: 新命令落在部署审查之外并继承既有容器身份, en: New commands fall outside deployment review and inherit existing container identity}
+  analysis: {paragraphs: [{zh: 控制面 exec 请求和 runtime 进程分处不同观察面，Pod 定义无变化，部署视角看不到后置语义，形成行为透明。两个直接案例与 Microsoft 狩猎资料支持 high；跨层关联、runtime 文件/网络与 Docker exec 事件可恢复。, en: Control-plane exec request and runtime process occupy different vantages and the Pod definition does not change so deployment review misses later semantics producing Behavioral Transparency. Two direct cases and Microsoft hunting guidance support high confidence; cross-plane joins runtime file or network and Docker exec events recover it.}]}
+  evidence_refs: [REF-000214, REF-000217, REF-000218, REF-000219]
+  confidence: high
+defense: {detections: {coverage: available, strategy_refs: [DET-000081]}, mitigations: {coverage: available, mitigation_refs: [MIT-000081]}}
+evidence: {claim_refs: [CLM-000258, CLM-000406, CLM-000410, CLM-000411], case_refs: [CASE-000073, CASE-000074], reference_refs: [REF-000214, REF-000217, REF-000218, REF-000219]}
+research:
+  limitations: {paragraphs: [{zh: 案例来自暴露/蜜罐环境，不能用于估计企业攻击频率；但 exec 进入既有容器和后继载荷是直接观察。合法调试可完全同形，因此 high 只描述变量证据，不表示单一 exec 高置信恶意。, en: Cases come from exposed or honeypot environments and cannot estimate enterprise attack frequency but directly observe exec into existing containers and later payloads. Legitimate debugging can be identical so high describes evidence for the variable not maliciousness of one exec.}]}
+lifecycle: {status: review, version: 1.1.0, created: '2026-09-10', modified: '2026-09-12', contributors: [Niji Matrix Research], reviewers: []}

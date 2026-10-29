@@ -1,0 +1,39 @@
+schema_version: "2.0.0"
+type: evasion-subtechnique
+id: NJS-0072-001
+parent_ref: NJT-0072
+name: {zh: 受信进程执行代理, en: Trusted-Process Execution Brokerage}
+summary: {zh: 攻击者通过 IPC 请求让受信或高权限 server 进程承担可见执行，使结果来源表现为 broker 而非真实客户端。, en: Adversaries use an IPC request to have a trusted or privileged server process perform visible execution so outcome provenance appears to be the broker rather than the true client.}
+aliases: []
+lineage: {attck_subtechnique_inherited: false}
+definition_and_concept:
+  paragraphs:
+  - zh: 受信进程执行代理固定“可见执行者与请求者不同”变量。攻击者控制 IPC client、文档字段或消息，将执行方法和参数交给已运行的 Office、Finder、COM server、XPC helper 或其他受信 broker；后者以自身签名、权限和应用身份启动命令、修改资源或运行 helper。直接结果由 broker 产生，独立匿迹效果是单点归因把行为归给合法进程。
+    en: Trusted-Process Execution Brokerage fixes visible executor differing from requester. An adversary controls an IPC client document field or message and supplies an execution method and arguments to a running Office Finder COM server XPC helper or other trusted broker, which launches commands modifies resources or runs a helper under its own signature privilege and application identity. The broker produces the direct outcome and point attribution assigns behavior to a legitimate process.
+  - zh: broker 必须在请求前具有独立合法身份和服务用途；攻击者自有两个恶意模块用 pipe 通信不满足“受信代理”，但可属于父级或 NJS-0072-002。若攻击者直接注入 broker 进程而非发送 IPC 执行请求，则归进程注入。
+    en: The broker must have an independent legitimate identity and service purpose before the request. Two adversary-owned modules communicating by pipe do not satisfy trusted brokerage but may instantiate the parent or NJS-0072-002. Direct injection into the broker without an IPC execution request belongs to process injection.
+stealth_characteristics:
+  paragraphs:
+  - zh: 受信进程执行代理使文件、进程和权限日志看到 Office/Finder/helper 的正常签名与身份，却缺少真正控制请求者。恶意 DDE 借 Office 触发命令，DEEPBREATH 借 Finder Full Disk Access 重命名受保护 TCC 目录，均直接证明来源替代。客户端 PID/签名/entitlement、IPC endpoint/method、broker 输入与结果时序仍可恢复；进程祖先或签名永久放行会放大效果。
+    en: Trusted-Process Execution Brokerage leaves file process and privilege logs with the normal signature and identity of Office Finder or a helper but without the true controlling requester. Malicious DDE triggering commands through Office and DEEPBREATH using Finder Full Disk Access to rename protected TCC directories directly establish provenance substitution. Client PID signature or entitlement endpoint or method broker input and outcome timing remain recoverable; permanent allowlisting of ancestry or signature widens the effect.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 必须证明攻击者控制 IPC 请求、接收者是预存受信/高权限 broker，且可见结果由 broker 产生。仅见受信进程执行异常操作、仅建立 IPC 连接或用户合法自动化不足；需连接客户端、方法、参数摘要与结果。消息是否短驻不影响本项，可与 NJS-0072-002 共现。
+    en: Evidence must show adversary control of an IPC request, a preexisting trusted or privileged broker receiver, and a visible outcome produced by that broker. An anomalous trusted-process action, an IPC connection, or legitimate user automation alone is insufficient; client method argument digest and outcome must be joined. Message transience does not determine this child and can coexist with NJS-0072-002.
+application_scenarios_and_threat_model:
+  application_scenarios: {paragraphs: [{zh: 攻击者希望借 Office 子进程、Finder/系统 helper 的受保护访问、COM server 的功能或 XPC daemon 权限执行，而端点策略主要信任签名进程、父级或权限主体时使用。, en: The adversary uses this to execute through Office child processes Finder or system-helper protected access COM server functionality or XPC daemon privilege when endpoint policy mainly trusts signed processes parentage or privileged principals.}]}
+  threat_model:
+    attacker_model: {paragraphs: [{zh: 需要可调用的 broker、正确 endpoint/object/method 和参数，并满足或绕过 ACL、签名、entitlement、session 与用户提示。输入验证、peer requirement、最小 helper 方法和应用沙箱会限制；错误请求可崩溃或记录。, en: Requires a callable broker correct endpoint object or method and arguments and satisfaction or bypass of ACL signing entitlement session and user prompts. Input validation peer requirements least helper methods and application sandboxing constrain it; bad requests can crash or log.}]}
+    defender_model: {paragraphs: [{zh: 需同时观察 client 与 broker 身份、连接/method、消息摘要、broker 调用栈/子进程及资源结果，并把签名与权限视为属性而非信誉。缺少 client telemetry 时只能看到 broker 结果，难以归因。, en: Defenders observe client and broker identity connection or method message digest broker stack or child and resource outcome and treat signature and privilege as attributes rather than reputation. Without client telemetry only broker outcome remains and attribution is weak.}]}
+stealth_mechanisms:
+- mechanism_ref: NM-FD
+  role: primary
+  summary: {zh: broker 的合法身份替代攻击者客户端成为可见来源, en: The broker's legitimate identity replaces the adversary client as visible provenance}
+  analysis: {paragraphs: [{zh: IPC 把实际动作交给受信进程，恶意结果与 broker 的合法功能共享签名、权限和父级特征，形成特征伪装。DDE 与 DEEPBREATH 是直接现场证据，支持 high；恢复 client—method—broker—result 链可反证。, en: IPC delegates the action to a trusted process so malicious outcomes share signature privilege and parent features with legitimate broker functionality producing Feature Disguise. DDE and DEEPBREATH are direct field evidence supporting high confidence; restoring the client-method-broker-result chain disconfirms it.}]}
+  evidence_refs: [REF-000227, REF-000229, REF-000232]
+  confidence: high
+defense: {detections: {coverage: available, strategy_refs: [DET-000083]}, mitigations: {coverage: available, mitigation_refs: [MIT-000084]}}
+evidence: {claim_refs: [CLM-000275, CLM-000424, CLM-000428, CLM-000429], case_refs: [CASE-000079, CASE-000080], reference_refs: [REF-000227, REF-000229, REF-000232]}
+research:
+  limitations: {paragraphs: [{zh: 现场案例覆盖 Office 与 Finder，COM/XPC 的其他 broker 按等价 client—server 因果推广；Migraine 是能力研究而非野外利用。合法辅助功能、自动化和集成同样借 broker 权限，必须结合未批准 client、参数与结果，不能按 broker 名称定性。, en: Field cases cover Office and Finder while other COM or XPC brokers generalize only through equivalent client-server causality. Migraine is capability research rather than field exploitation. Legitimate accessibility automation and integrations also borrow broker privilege and require unapproved client arguments and outcome rather than broker-name classification.}]}
+lifecycle: {status: review, version: 1.1.0, created: '2026-09-10', modified: '2026-09-12', contributors: [Niji Matrix Research], reviewers: []}

@@ -1,0 +1,1264 @@
+handoff_schema_version: "2.0.0"
+type: technique-research-handoff
+batch_ref: BATCH-TA0006-009
+work_item_ref: WORK-TA0006-T1528
+temporary_key_prefix: TMP-TA0006-009-T1528
+candidate:
+  temporary_key: TMP-TA0006-009-T1528-PARENT
+  source_type: attack
+  source_attack_id: T1528
+  name:
+    zh: 窃取应用访问令牌
+    en: Steal Application Access Token
+  fixed_baseline:
+    domain: enterprise-attack
+    version: "19.1"
+    attack_object_version: "1.5"
+recommendation:
+  decision: adapt
+  confidence: medium
+  original_attack_subtechniques_imported: false
+  rationale:
+    paragraphs:
+      - zh: >-
+          ATT&CK Enterprise 19.1 的 T1528 以应用访问令牌被窃为父行为，覆盖容器服务账户令牌、CI/CD/API 令牌、云资源附加身份经元数据服务返回的短期令牌、恶意 OAuth 应用取得的访问令牌和刷新令牌。TA0006 应保留“既有或由正规权威返回的应用令牌实际进入攻击者控制面”这一核心，并明确令牌发现、同意或签发、缓存存在、读取尝试、材料返回、材料有效性、后继使用与资源访问是不可互换的证据阶段。
+        en: >-
+          ATT&CK Enterprise 19.1 anchors T1528 in theft of application access tokens and covers container service-account tokens, CI/CD and API tokens, short-lived tokens returned through metadata services for attached cloud identities, access tokens issued to malicious OAuth applications, and refresh tokens. Under TA0006, preserve the core result that an existing application token or one returned by a legitimate authority actually enters adversary control, while treating discovery, consent or issuance, cache presence, read attempt, material return, material usability, follow-on use, and resource access as non-interchangeable evidence stages.
+      - zh: >-
+          直接事件与平台材料支持这一收敛。Unit 42 记录 TeamPCP 从受侵 CI/CD 端点的 IMDS 收集云凭据、直接读取 runner.worker 进程内存提取明文 token，并把收获材料外传；同一报告和 Kubernetes/GitHub 官方说明支持文件、投影卷、环境与运行内存中的不同暴露面。GTIG 则确认 UNC6395 使用已受损的 Drift OAuth token 访问 Salesforce 与少量 Workspace 邮箱，证明材料已在攻击者控制下并触发撤销，但未公开 token 最初如何离开供应商控制面。因此父级可准入，三个取得路径的直接证据强度并不完全相同，整体置信度保持 medium。
+        en: >-
+          Direct incident and platform evidence support this convergence. Unit 42 documents TeamPCP harvesting cloud credentials through IMDS on compromised CI/CD endpoints, reading runner.worker process memory directly to extract plaintext tokens, and exfiltrating collected material. The same report plus Kubernetes and GitHub documentation support distinct exposure surfaces in files, projected volumes, environment, and volatile memory. GTIG confirms UNC6395 use of compromised Drift OAuth tokens against Salesforce and a small number of Workspace mailboxes, establishing adversary control and triggering revocation, but not disclosing how the tokens first left vendor control. The parent is admissible, while direct evidence strength differs among the three acquisition paths, keeping overall confidence at medium.
+  completion_gate:
+    required:
+      - application_token_value_or_equivalent_refresh_material
+      - successful_return_read_or_copy
+      - attacker_controlled_recipient_process_artifact_or_service
+      - causal_link_between_material_instance_and_recipient
+    separately_graded:
+      - token_validity_at_acquisition
+      - audience_and_scope
+      - sender_constraint_and_key_possession
+      - refresh_capability
+      - successor_presentation
+      - relying_party_acceptance
+      - protected_resource_access
+    insufficient_alone:
+      - token_or_secret_name_discovery
+      - application_registration_or_consent
+      - issuance_event_without_attacker_controlled_recipient
+      - cache_path_or_environment_variable_presence
+      - failed_read_or_empty_response
+      - token_identifier_without_material
+      - downstream_API_activity_without_acquisition_evidence
+proposed_content:
+  name:
+    zh: 应用访问令牌取得
+    en: Application Access Token Acquisition
+  summary:
+    zh: 攻击者通过接管签发返回面、读取持久工件或提取易失运行态，使访问令牌或刷新材料实际进入其控制面，并借正规令牌外观和分散观察面降低获取行为的可见性。
+    en: An adversary brings an access token or refresh material under its control by taking over an issuance return, reading a persisted artifact, or extracting volatile runtime state, reducing acquisition visibility through legitimate token appearance and separated observation planes.
+  definition_and_concept:
+    paragraphs:
+      - zh: >-
+          应用访问令牌取得是攻击者获得一个由应用、工作负载或用户身份使用的访问令牌，或获得能够向授权服务器换取新访问令牌的刷新材料，并使该材料落入攻击者可读、可保存或可传递的进程、文件、服务或基础设施。令牌可由正规签发权威在受控请求中返回，也可从既有持久工件或运行态中被读取；完成点是材料本身进入攻击者控制面，不要求攻击者已经向资源服务器提交。
+        en: >-
+          Application Access Token Acquisition occurs when an adversary obtains an access token used by an application, workload, or user identity, or refresh material capable of obtaining new access tokens from an authorization server, and brings that material into an adversary-readable, storable, or transferable process, artifact, service, or infrastructure. The token may be returned by a legitimate issuing authority in a controlled request or read from an existing persisted or runtime location. Completion is the token material entering adversary control and does not require presentation to a resource server.
+      - zh: >-
+          材料取得与材料可用性必须分开。令牌在取得时可能仍有效、已过期、已撤销、受 audience/scope 限制，或采用 sender constraint 而攻击者没有相应私钥；这些状态改变后继风险和处置优先级，但不能由后继 API 成功或失败反向替代取得证据。仅得到 token ID、JWT header/claims、日志中掩码或资源活动线索而没有完整可提交材料，不满足本概念。
+        en: >-
+          Material acquisition and usability must remain separate. At acquisition, a token may be valid, expired, revoked, restricted by audience or scope, or sender-constrained without the corresponding private key. Those states change downstream risk and response priority, but later API success or failure cannot substitute for acquisition evidence. A token ID, JWT header or claims, masked log entry, or resource-activity clue without complete presentable material does not meet this concept.
+  stealth_characteristics:
+    paragraphs:
+      - zh: >-
+          令牌取得常发生在 IdP 与资源服务常规审计之间。元数据服务或 token endpoint 看到一次由真实工作负载、合法 client 或已有 consent 发起的返回；文件系统只看到受信 runner、容器或 SDK 读取预期路径；运行进程继续完成正常构建或应用功能。攻击者控制的接收者与令牌的正规 issuer、subject、audience 和 scope 可同时存在，使单看签发成功、应用名称或后继 API 身份的防守方难以识别控制权已转移。
+        en: >-
+          Token acquisition often occurs between identity-provider and resource-service audit planes. A metadata service or token endpoint may see a return to a real workload, legitimate client, or existing consent. A filesystem may show a trusted runner, container, or SDK reading an expected path, and the runtime may continue its normal build or application function. An adversary-controlled recipient can coexist with a legitimate issuer, subject, audience, and scope, making control transfer hard to recognize from issuance success, application name, or downstream API identity alone.
+      - zh: >-
+          残余痕迹仍分布在取得路径。签发返回面留下 request、client/workload、redirect/recipient、audience/scope 和 response；持久工件读取留下 object version、mount、reader、path、bytes 和结果；运行态提取留下 source-target process、memory/env/IPC 访问、job/workflow 和第二输出。短寿令牌会压缩窗口，刷新令牌或供应商集成 token 会延长风险；令牌绑定能限制后继使用，却不会撤销“材料已被复制”这一事实。
+        en: >-
+          Residue remains distributed by acquisition path. Issuance returns leave request, client or workload, redirect or recipient, audience or scope, and response evidence. Persisted-artifact retrieval leaves object version, mount, reader, path, bytes, and outcome. Runtime extraction leaves source and target process, memory, environment or IPC access, job or workflow, and a second output. Short-lived tokens compress the window, while refresh or vendor-integration tokens extend risk. Token binding can restrict later use without undoing the fact that material was copied.
+  scope_boundary_definition:
+    paragraphs:
+      - zh: >-
+          纳入要求访问令牌、刷新令牌或等价应用 API 授权材料实际返回、被读取或被复制到攻击者控制接收者。T1606/NJT-0166 拥有在正规签发链之外新构造令牌、断言或 Web 认证材料；正规 issuer 返回原令牌给恶意 client、受侵工作负载或被接管 redirect 属本对象。T1550.001 拥有已取得应用访问令牌的提交与使用；T1078/NJT-0061 拥有身份或会话被 relying party 接受并形成入口。三者可按取得、呈现和接受分别并列，任何后继阶段都不能补写前一阶段。
+        en: >-
+          Inclusion requires an access token, refresh token, or equivalent application API authorization material to be returned, read, or copied into an adversary-controlled recipient. T1606/NJT-0166 owns construction of a new token, assertion, or web authentication material outside the legitimate issuance chain. An original token returned by the legitimate issuer to a malicious client, compromised workload, or captured redirect belongs here. T1550.001 owns presentation and use of an acquired application token, while T1078/NJT-0061 owns relying-party acceptance that creates entry. Acquisition, presentation, and acceptance may be co-recorded separately, and a later stage cannot backfill an earlier one.
+      - zh: >-
+          T1539 处理浏览器或 Web 应用以 Cookie 语义维护的会话状态；T1528 处理面向 API/resource server、具有 issuer/audience/scope 或等价授权语义的应用令牌。如果同一 bearer 值既作为 Cookie 又作为 API token，必须依据实际材料格式、投递方式和依赖方用途证明两个对象。T1555/NJT-0147 处理受管理保管库或解锁边界的读取路径，普通文件或配置中的散落秘密可能归 T1552；当其中返回的材料是应用令牌时可与本对象并列，但只发现或打开存储对象不足以证明令牌值已取得。
+        en: >-
+          T1539 covers browser or web-application session state maintained with cookie semantics. T1528 covers application tokens presented to an API or resource server with issuer, audience, scope, or equivalent authorization meaning. If one bearer value serves as both a cookie and an API token, both objects require evidence from material format, delivery method, and relying-party purpose. T1555/NJT-0147 owns retrieval through a managed vault or unlock boundary, and loose secrets in ordinary files or configuration may belong to T1552. Either can coexist when the returned material is an application token, but finding or opening the storage object does not prove the token value was acquired.
+      - zh: >-
+          T1056/NJT-0169 处理口令、表单或其他认证输入被截获；若认证成功后另有 token response 被复制，输入与令牌结果分别成立。合法 OAuth 委派、云 attached identity、容器 service account、CI/CD runner 和第三方集成都会正常取得 token；须以 app/workload owner、批准 client/redirect、scope、资源用途、运行代码来源和 recipient 控制权排除。既有第三方集成被供应商攻陷可由 NJS-0086-003 描述持久关系控制转移，而具体 token 材料落入攻击者控制面仍由本对象另证。
+        en: >-
+          T1056/NJT-0169 covers interception of passwords, forms, or other authentication input. If a token response is separately copied after authentication, input and token outcomes can both apply. Legitimate OAuth delegation, cloud attached identity, container service account, CI/CD runner, and third-party integration all normally obtain tokens and require exclusion through application or workload owner, approved client and redirect, scope, resource purpose, runtime-code provenance, and recipient control. NJS-0086-003 may describe durable integration-control transfer after vendor compromise, while this object separately requires evidence that concrete token material entered adversary control.
+  application_scenarios_and_threat_model:
+    application_scenarios:
+      paragraphs:
+        - zh: >-
+            在受侵云工作负载或恶意 OAuth client 场景中，攻击者可让正规权威把新 token 直接返回到其控制的进程、redirect 或应用。ATT&CK 19.1 明确包含从 Azure IMDS 请求短期 token 和诱导用户向恶意应用授予 OAuth 访问；Unit 42 记录 TeamPCP 从受侵 CI/CD 端点的 IMDS 立即收集云凭据。这里没有先存在的 token 文件，关键证据是 request—issuance—response—recipient。
+          en: >-
+            In a compromised cloud workload or malicious OAuth-client scenario, the adversary causes a legitimate authority to return a fresh token directly to a controlled process, redirect, or application. ATT&CK 19.1 explicitly covers requesting short-lived tokens from Azure IMDS and inducing a user to grant OAuth access to a malicious application. Unit 42 records TeamPCP immediately harvesting cloud credentials through IMDS on compromised CI/CD endpoints. No preexisting token file is necessary; the decisive chain is request, issuance, response, and recipient.
+        - zh: >-
+            在容器、CI/CD 和开发环境中，令牌可存在于投影卷、Secret、工作目录、生成脚本、环境或运行进程。TeamPCP 的恶意 action 直接读取 runner.worker 内存提取明文 token，并收集云凭据、Kubernetes 材料和本地配置后外传；取得的 npm/GitHub token 又被用于后继供应链动作。正式 T1528 在 material 已进入恶意脚本或归档时完成，后继发布、API 查询和资源访问另行记录。
+          en: >-
+            In container, CI/CD, and developer environments, tokens can reside in projected volumes, Secrets, work directories, generated scripts, environment, or running processes. TeamPCP's malicious action read runner.worker memory directly to extract plaintext tokens and collected cloud credentials, Kubernetes material, and local configuration for exfiltration. Harvested npm and GitHub tokens were later used for supply-chain actions. Formal T1528 completes when material enters the malicious script or archive; publishing, API queries, and resource access remain separate successor records.
+    threat_model:
+      attacker_model:
+        paragraphs:
+          - zh: >-
+              攻击者至少需要控制一个可接收签发响应的 client/workload/redirect，读取保存 token 的对象，或读取持有 token 的易失进程状态。签发返回面要求合法工作负载身份、用户 consent、authorization grant、元数据端点可达性或等价前提；工件路径要求文件/Secret/仓库读取权限；运行态要求同 job 代码执行、进程内代码、ptrace/procfs/debug 权限或 token broker 接口。取得 bearer token 通常不需要原口令，但 sender-constrained token 还需要绑定私钥才能后继使用。
+            en: >-
+              The adversary needs control of a client, workload, or redirect able to receive an issuance response, authority to read an object storing a token, or access to volatile process state holding one. Issuance return requires a legitimate workload identity, user consent, authorization grant, metadata-endpoint reachability, or equivalent prerequisite. Artifact retrieval requires file, Secret, or repository read authority. Runtime extraction requires code in the job or process, ptrace, procfs or debug authority, or access to a token-broker interface. A bearer token usually does not require the original password, but a sender-constrained token also requires its bound private key for later use.
+      defender_model:
+        paragraphs:
+          - zh: >-
+              防守方假定能够取得至少两个相邻观察面：issuer/token service 的 request/issuance 元数据，workload、container、runner 或客户端的进程/对象读取，token material 的本地受限分类，以及 resource server 的后继接受/拒绝。原 token 值不得写入通用日志；优先使用 issuer token ID、JWT jti、token family、受控 HMAC fingerprint、artifact hash 和 request ID。缺少稳定 token 标识时，可以确认某路径发生读取，但不能把后继 API 活动精确回连到该材料实例。
+            en: >-
+              The defender is assumed to obtain at least two adjacent views: request and issuance metadata from the issuer or token service, process and object reads on the workload, container, runner, or client, restricted local classification of token material, and later acceptance or rejection at resource servers. Raw token values must not enter general logs. Prefer issuer token ID, JWT jti, token family, a controlled HMAC fingerprint, artifact hash, and request ID. Without a stable token identifier, defenders may confirm an acquisition path but cannot precisely link downstream API activity to that material instance.
+          - zh: >-
+              防守结论按阶段输出：exposed_location 只说明 token 所在位置；read_or_return_succeeded 说明数据已返回；material_acquired 还要求攻击者控制接收者和完整材料；usable_at_acquisition 记录有效期、scope/audience、刷新能力与 sender constraint；presented、accepted 和 resource_access 只作为后继阶段。撤销后必须按 token family、grant、client/workload 和各 audience 验证拒绝传播，不能把一次 revoke API 成功视为处置完成。
+            en: >-
+              Defender conclusions should be staged. exposed_location identifies where a token may reside. read_or_return_succeeded establishes a data return. material_acquired additionally requires adversary control of the recipient and complete material. usable_at_acquisition records validity, scope and audience, refresh capability, and sender constraint. presented, accepted, and resource_access remain successor stages. After revocation, denial propagation must be verified by token family, grant, client or workload, and each audience. One successful revoke API call is not completed containment.
+  stealth_mechanisms:
+    - mechanism_ref: NM-BT
+      role: primary
+      summary:
+        zh: 将 token 复制放在签发与资源使用之间的低可见观察面
+        en: Place token copying in low-visibility planes between issuance and resource use
+      analysis:
+        paragraphs:
+          - zh: >-
+              攻击者在 token 正常返回、被 SDK/容器读取或存在于运行进程时复制材料，IdP 仍记录合法 issuer、subject、client 或 workload，资源方此时甚至没有请求。行为设计把取得动作放在 identity 与 resource 两套常规审计之间；trace 变为 IMDS/token response、对象 read、memory/env/IPC 访问及第二输出，未覆盖 workload/runner 的防守方看不到关键转移。Unit 42 的 IMDS、文件与 runner.worker 观察以及 GitHub 对受侵 runner 可收获 token 的说明支持这一差异。
+            en: >-
+              The adversary copies material as a token is normally returned, read by an SDK or container, or held in a running process. The identity provider still records a legitimate issuer, subject, client, or workload, and the resource server may not yet receive any request. The design places acquisition between routine identity and resource audit planes, changing residue into IMDS or token response, object read, memory, environment or IPC access, and a second output. Defenders without workload or runner coverage miss the transfer. Unit 42's IMDS, file, and runner.worker observations plus GitHub's warning that compromised runners can harvest tokens support this difference.
+      evidence_keys:
+        - TMP-TA0006-009-T1528-REF-ATTACK
+        - TMP-TA0006-009-T1528-REF-UNIT42-TEAMPCP
+        - TMP-TA0006-009-T1528-REF-GITHUB-RUNNER
+      confidence: medium
+    - mechanism_ref: NM-FD
+      role: secondary
+      summary:
+        zh: 正规 issuer、client、workload 或集成身份掩盖接收者控制权变化
+        en: Legitimate issuer, client, workload, or integration identity masks changed recipient control
+      analysis:
+        paragraphs:
+          - zh: >-
+              签发返回、投影 token 和 CI/CD secret injection 都由正常平台完成，令牌结构、issuer、scope 与签名保持真实；供应商 token 被夺取后，资源调用还可能继续显示批准的 client ID。恶意差异位于谁控制接收进程、运行代码或供应商连接，而不是 token 外观。REF-000178 证明既有 Drift 集成的受损 OAuth token 被用于跨客户活动，Unit 42 证明受信安全扫描流程保持正常结果时后台提取 token；两者支持特征相似性，但前者不揭示最初取得路径。
+            en: >-
+              Issuance returns, projected tokens, and CI/CD secret injection are performed by legitimate platforms, so token structure, issuer, scope, and signature remain authentic. After a vendor token is taken, resource calls may continue displaying an approved client ID. The malicious difference is who controls the recipient process, runtime code, or vendor connection, not token appearance. REF-000178 shows compromised OAuth tokens from an existing Drift integration used across customers, while Unit 42 shows token extraction behind an otherwise normal security-scanning result. Both support feature similarity, although the former does not disclose the initial acquisition path.
+      evidence_keys:
+        - REF-000178
+        - TMP-TA0006-009-T1528-REF-UNIT42-TEAMPCP
+      confidence: medium
+  subtechnique_taxonomy:
+    proposed_coverage: established
+    proposed_child_count: 3
+    narrative:
+      paragraphs:
+        - zh: >-
+            建议按完整 token 材料在被取走前的稳定位置和取得路径建立三项 Niji 原生子技术。签发返回面令牌取得发生在 authority 新返回 token 的事务中，不读取旧材料；持久令牌工件读取从文件、Secret、投影卷、仓库或持久 cache 取得已存在 token；易失运行态令牌提取从进程内存、环境、临时脚本、broker/IPC 或仅在 job 生命周期存在的状态取得 token。三者分别需要 issuer/request、object-read 和 process-runtime 观察面。
+          en: >-
+            Propose three Niji-native children based on the stable location of complete token material immediately before acquisition and the acquisition path. Issuance-Return Token Acquisition occurs in the transaction where an authority newly returns a token and does not read existing material. Persisted Token-Artifact Retrieval obtains an existing token from a file, Secret, projected volume, repository, or durable cache. Volatile Runtime Token Extraction obtains one from process memory, environment, a temporary script, broker or IPC, or state existing only for the job lifetime. The three require issuer and request, object-read, and process-runtime observation respectively.
+        - zh: >-
+            OAuth、云厂商、容器、设备、应用、API、产品和 token 格式只是实现维度。材料有效性横跨三项：任何位置都可能保存有效、过期、撤销或 sender-constrained token，因此它是结果分级而不是第四子项。CASE-000064 证明 token 在攻击者控制下和完整撤销需求，却没有说明其来自返回、工件还是运行态，故只支持父级与防御，不用于任一子项成立。
+          en: >-
+            OAuth, cloud vendor, container, device, application, API, product, and token format are implementation dimensions. Material usability crosses all three children because any location can contain a valid, expired, revoked, or sender-constrained token, so it is an outcome grade rather than a fourth child. CASE-000064 establishes adversary control of tokens and the need for complete revocation without identifying whether acquisition came from return, artifact, or runtime, and therefore supports only the parent and defense rather than any child.
+  evidence:
+    claim_keys:
+      - TMP-TA0006-009-T1528-CLM-ADMISSION
+      - TMP-TA0006-009-T1528-CLM-STAGES
+      - TMP-TA0006-009-T1528-CLM-BOUNDARY
+      - TMP-TA0006-009-T1528-CLM-RETURN
+      - TMP-TA0006-009-T1528-CLM-ARTIFACT
+      - TMP-TA0006-009-T1528-CLM-RUNTIME
+      - TMP-TA0006-009-T1528-CLM-DELEGATION
+      - TMP-TA0006-009-T1528-CLM-REVOCATION
+    case_keys:
+      - TMP-TA0006-009-T1528-CASE-TEAMPCP
+      - CASE-000064
+    reference_keys:
+      - TMP-TA0006-009-T1528-REF-ATTACK
+      - TMP-TA0006-009-T1528-REF-UNIT42-TEAMPCP
+      - REF-000070
+      - REF-000178
+proposed_subtechniques:
+  - temporary_key: TMP-TA0006-009-T1528-CHILD-RETURN
+    name:
+      zh: 签发返回面令牌取得
+      en: Issuance-Return Token Acquisition
+    disposition: formal
+    confidence: medium
+    stable_variable: 正规签发或 token service 在当前事务中新返回 token，攻击者控制 response recipient、client、redirect 或 workload
+    trace_change: 无旧 token 对象读取；新增或异常的是 token request、grant/consent、client/workload、redirect/recipient 和成功 response
+    defender_observation_difference: 需要 issuer/token endpoint/IMDS 与 recipient 运行身份关联，文件和 memory read 规则不能单独覆盖
+    prerequisites: 攻击者控制可请求或接收 token 的 workload、client、redirect 或恶意应用，并满足签发所需 grant、consent 或附加身份条件
+    evidence_keys:
+      - TMP-TA0006-009-T1528-REF-ATTACK
+      - TMP-TA0006-009-T1528-REF-UNIT42-TEAMPCP
+      - TMP-TA0006-009-T1528-REF-AZURE-IMDS
+      - TMP-TA0006-009-T1528-REF-RFC6749
+    proposed_content:
+      summary:
+        zh: 攻击者控制正规权威的 token 返回接收者，使新签发的访问或刷新材料直接落入其进程、应用或 redirect，而无需读取已有 token 工件。
+        en: An adversary controls the recipient of a legitimate authority's token return so newly issued access or refresh material lands directly in a controlled process, application, or redirect without reading an existing token artifact.
+      definition_and_concept:
+        paragraphs:
+          - zh: >-
+              签发返回面令牌取得是攻击者利用已控 workload identity、元数据服务可达性、authorization grant、用户 consent 或被接管 redirect，让授权服务器或等价 token service 在正常事务中把新 token 返回给攻击者控制接收者。令牌保持正规签名和 issuer，行为不等于离权威伪造；分类变量是新材料首次离开权威时的接收控制权。
+            en: >-
+              Issuance-Return Token Acquisition uses a controlled workload identity, metadata-service reachability, authorization grant, user consent, or captured redirect so an authorization server or equivalent token service returns a fresh token to an adversary-controlled recipient in a normal transaction. The token retains legitimate signature and issuer and is not off-authority forgery. The variable is recipient control when new material first leaves the authority.
+      stealth_characteristics:
+        paragraphs:
+          - zh: >-
+              签发返回面令牌取得可呈现为成功 token issuance、真实 managed identity、合法 client ID 或用户完成 consent，令牌本身完全合规；异常只存在于 workload 运行代码、redirect 归属、app owner、request source 与业务用途不一致。仍可观察 request ID、client/workload、grant、audience/scope、recipient、response status 与 token reference。若平台只保留签发成功而不记录接收进程或 redirect，控制转移会落入盲区。
+            en: >-
+              Issuance-Return Token Acquisition can appear as successful token issuance for a real managed identity, legitimate client ID, or completed user consent, with a fully valid token. The anomaly lies in mismatch among workload code, redirect ownership, application owner, request source, and business purpose. Request ID, client or workload, grant, audience or scope, recipient, response status, and token reference remain observable. A platform retaining issuance success without recipient process or redirect leaves control transfer blind.
+      scope_boundary_definition:
+        paragraphs:
+          - zh: >-
+              纳入要求 token response 成功返回并由攻击者控制的 process/app/redirect 接收。仅创建 app、发起 device code、显示 consent、调用 IMDS 或出现 200 以外响应是前置/尝试。批准应用按既定 owner、redirect、scope 和用途取得 token 是合法委派；攻击者自行计算 token 归 NJT-0166；已取得 token 的 API 提交归 T1550.001。
+            en: >-
+              Inclusion requires a successful token response received by an adversary-controlled process, application, or redirect. Merely creating an app, initiating a device code, displaying consent, calling IMDS, or receiving a non-success response is precursor or attempt. An approved application obtaining a token for its owned redirect, scope, and purpose is legitimate delegation. Adversary-computed tokens belong to NJT-0166, and API presentation of an acquired token belongs to T1550.001.
+      application_scenarios_and_threat_model:
+        application_scenarios:
+          paragraphs:
+            - zh: >-
+                受侵 VM、runner 或容器可向 IMDS 请求附加身份 token；恶意 connected app 可在用户 consent 后从 authorization server 接收 access/refresh token；AiTM 若接管 token response 的实际 recipient，可与 NJT-0136 并列。三者共同点是材料由正规权威在当前事务中新返回。
+              en: >-
+                A compromised VM, runner, or container can request an attached-identity token from IMDS. A malicious connected application can receive access or refresh tokens from the authorization server after consent. An AiTM that controls the actual token-response recipient may coexist with NJT-0136. All share new material returned by the legitimate authority in the current transaction.
+        threat_model:
+          attacker_model:
+            paragraphs:
+              - zh: >-
+                  攻击者需在可访问 token service 的环境中执行代码，或控制注册 client/redirect 并取得所需 consent/grant。它必须知道 resource/audience、client 或 managed identity 选择，并让 response 到达其接收者。严格 redirect 匹配、PKCE、workload network isolation、metadata access control、管理员 consent 与 sender constraint 会增加成本。
+                en: >-
+                  The adversary needs code in an environment able to reach the token service, or control of a registered client or redirect plus the required consent or grant. It must select resource or audience, client or managed identity, and cause the response to reach its recipient. Exact redirect matching, PKCE, workload network isolation, metadata access controls, administrator consent, and sender constraint increase cost.
+          defender_model:
+            paragraphs:
+              - zh: >-
+                  防守方连接 token request/issuance 与实际 workload process、app owner、redirect 和批准用途；issuer 只看到合法 subject 时不能独自判恶。可用键包括 request ID、tenant、issuer、subject、client/workload、grant、audience、scope、token family/reference、source、recipient 和 process start key，原 token 不进入日志。
+                en: >-
+                  Defenders join token request and issuance to the actual workload process, application owner, redirect, and approved purpose. An issuer seeing only a valid subject cannot judge malice alone. Useful keys include request ID, tenant, issuer, subject, client or workload, grant, audience, scope, token family or reference, source, recipient, and process start key, without logging the raw token.
+      stealth_mechanisms:
+        - mechanism_ref: NM-FD
+          role: primary
+          summary:
+            zh: 以正规签发和真实 workload/client 外观掩盖攻击者控制的 token 接收者
+            en: Use legitimate issuance and real workload or client appearance to mask an adversary-controlled token recipient
+          analysis:
+            paragraphs:
+              - zh: >-
+                  攻击者让真实 token service 按已有身份或 grant 签发材料，token 的 issuer、签名和结构不变，签发日志也可显示成功。改变的是接收进程、redirect 或 app 控制者，导致只按 token 合法性判断的防守方误把取得视为正常 SDK/集成行为。Unit 42 的受侵端点 IMDS 收集与 Azure 官方返回字段支持该因果链；是否每个平台保留 recipient 归因字段仍需实测。
+                en: >-
+                  The adversary causes a real token service to issue material under an existing identity or grant. Issuer, signature, and token structure remain valid and issuance logs may show success. The changed element is the recipient process, redirect, or application controller, so a defender judging only token legitimacy can mistake acquisition for normal SDK or integration behavior. Unit 42's IMDS harvesting from compromised endpoints and Azure's documented response support the chain, while recipient-attribution fields require platform validation.
+          evidence_keys:
+            - TMP-TA0006-009-T1528-REF-UNIT42-TEAMPCP
+            - TMP-TA0006-009-T1528-REF-AZURE-IMDS
+          confidence: medium
+      research_limitations:
+        paragraphs:
+          - zh: >-
+              Unit 42 直接描述从 IMDS 收集云凭据，但没有为每个云提供方逐一公布 request、response 和 token 值；Azure 文档只证明成功请求会返回 access_token。恶意 consent 的父范围由 ATT&CK 锚定，缺少本批单一一手事件对 app 注册、用户 consent、token response 与攻击者接收四步全部公开取证。
+            en: >-
+              Unit 42 directly describes cloud-credential harvesting from IMDS but does not publish per-provider requests, responses, and token values. Azure documentation only establishes that a successful request returns an access_token. ATT&CK anchors malicious consent in parent scope, while this batch lacks one first-party incident exposing all four steps of application registration, user consent, token response, and adversary receipt.
+  - temporary_key: TMP-TA0006-009-T1528-CHILD-ARTIFACT
+    name:
+      zh: 持久令牌工件读取
+      en: Persisted Token-Artifact Retrieval
+    disposition: formal
+    confidence: medium
+    stable_variable: 完整 token 在读取前作为文件、Secret、投影卷、仓库对象或持久 cache 存在，攻击者通过对象读取取得
+    trace_change: 留下 object version、mount、reader、path/key、read outcome、bytes 和复制/归档产物；不要求 token service 新签发
+    defender_observation_difference: 以文件/Secret/仓库读取和对象访问控制为主，与 issuer-return 和 process-memory telemetry 不同
+    prerequisites: 攻击者能读取存放 token 的持久对象或其挂载视图，且对象内材料完整、未被安全边界重新封装或不可恢复
+    evidence_keys:
+      - TMP-TA0006-009-T1528-REF-UNIT42-TEAMPCP
+      - TMP-TA0006-009-T1528-REF-K8S-SA
+      - TMP-TA0006-009-T1528-REF-GITHUB-RUNNER
+    proposed_content:
+      summary:
+        zh: 攻击者从文件、Secret、投影卷、仓库或持久 cache 读取已存在的应用 token，并把完整材料复制到受控进程或产物。
+        en: An adversary reads an existing application token from a file, Secret, projected volume, repository, or durable cache and copies complete material into a controlled process or artifact.
+      definition_and_concept:
+        paragraphs:
+          - zh: >-
+              持久令牌工件读取要求 token 在攻击者动作前已经作为可寻址对象存在，并由未获批准的 reader 成功返回完整值。对象可以由平台自动投影、应用缓存、CI/CD 生成或人员保存；分类依据是持久对象读取，不是 Kubernetes、GitHub、某个 path、JWT 或厂商。
+            en: >-
+              Persisted Token-Artifact Retrieval requires the token to exist as an addressable object before the adversary action and an unauthorized reader to successfully receive the complete value. The object may be projected by a platform, cached by an application, generated by CI/CD, or saved by a person. The boundary is persisted-object retrieval, not Kubernetes, GitHub, a path, JWT, or vendor.
+      stealth_characteristics:
+        paragraphs:
+          - zh: >-
+              token 文件常被合法 SDK、容器或构建步骤周期读取，恶意 reader 可寄生同一 workload、路径和账户，使目录存在和普通 open/read 缺少判定力。残余差异包括非预期 process/container、跨 namespace 或 job 的 mount、批量扫描、异常 read frequency、复制到归档以及 owner/purpose 不符。没有 object-level read audit 时，防守方可能只看到后继 API 使用。
+            en: >-
+              Token files are routinely read by legitimate SDKs, containers, or build steps. A malicious reader can inhabit the same workload, path, and account, leaving directory presence and an ordinary open or read inconclusive. Residual differences include an unexpected process or container, cross-namespace or cross-job mount, broad scanning, unusual read frequency, copying into an archive, and owner or purpose mismatch. Without object-level read audit, defenders may see only later API use.
+      scope_boundary_definition:
+        paragraphs:
+          - zh: >-
+              纳入要求完整 token 值从持久对象返回给攻击者控制 reader；只列出路径、Secret 名称、token 类型、JWT claims 或 read denied 不成立。受管理保管库解锁/返回可与 NJT-0147 并列，普通散落配置可与 T1552 并列；本项只声明返回材料是应用 token。Cookie 数据库归 T1539，除非对象中的值具有独立 API access token 语义。
+            en: >-
+              Inclusion requires the complete token value to return from a persisted object to an adversary-controlled reader. Listing a path, Secret name, token type, JWT claims, or denied read is insufficient. Unlock and return from a managed vault may coexist with NJT-0147, and loose configuration with T1552; this child asserts only that the returned material is an application token. A cookie database belongs to T1539 unless the stored value independently functions as an API access token.
+      application_scenarios_and_threat_model:
+        application_scenarios:
+          paragraphs:
+            - zh: >-
+                Kubernetes 默认可把 service account token 投影到 Pod 文件系统，任何挂载该卷的 container 都可访问；CI/CD 还可能把 token 写入脚本、工作区、缓存或仓库 Secret。受侵 workload 或恶意依赖扫描这些对象并把匹配材料加入归档，即形成本项；是否随后调用 API 不影响取得完成点。
+              en: >-
+                Kubernetes may project a service-account token into a Pod filesystem and any container mounting that volume can access it. CI/CD may also place tokens in scripts, workspaces, caches, or repository Secrets. A compromised workload or malicious dependency that scans those objects and adds matching material to an archive instantiates this child regardless of later API calls.
+        threat_model:
+          attacker_model:
+            paragraphs:
+              - zh: >-
+                  攻击者需要目标文件/Secret/仓库对象的读权限、共享 mount、宿主或容器逃逸能力，或以合法 consumer 身份运行代码。它还需识别 token 格式或用途并复制完整值。只读文件模式、namespace/runner 隔离、automount 关闭、短期投影 token 和细粒度 Secret RBAC 会缩小机会。
+                en: >-
+                  The adversary needs read authority to the target file, Secret, or repository object, a shared mount, host or container escape, or code execution as a legitimate consumer. It must recognize token form or purpose and copy the complete value. Read-only modes do not prevent reading, while namespace and runner isolation, disabled automount, short-lived projected tokens, and fine-grained Secret RBAC reduce opportunity.
+          defender_model:
+            paragraphs:
+              - zh: >-
+                  防守方维护 token artifact inventory，记录 owner、expected reader、path/object ID、mount、audience/scope、TTL 与 rotation，并把 open/read/get 与 process/container/job、bytes returned、artifact hash 及第二输出关联。内容确认在本地受限 scanner 生成 token class 和 HMAC fingerprint，不把值写入审计。
+                en: >-
+                  Defenders maintain a token-artifact inventory with owner, expected reader, path or object ID, mount, audience or scope, TTL, and rotation, joining open, read, or get to process, container or job, bytes returned, artifact hash, and a second output. Restricted local scanning emits token class and an HMAC fingerprint without writing the value into audit.
+      stealth_mechanisms:
+        - mechanism_ref: NM-BT
+          role: primary
+          summary:
+            zh: 在合法 workload 的普通对象读取中取得 token 而不触发新的身份事务
+            en: Acquire a token through ordinary object reads in a legitimate workload without creating a new identity transaction
+          analysis:
+            paragraphs:
+              - zh: >-
+                  攻击代码读取平台本来就投影或应用本来就缓存的对象，不需要向 IdP 发出新请求，资源服务也尚未见到使用。identity 日志因此没有对应异常，关键 trace 只在 object reader、mount 和复制产物。Kubernetes 官方文档证明 token 对容器可读及生命周期，Unit 42/GitHub 证明受侵 runner 可收获并外传这些材料；具体 read audit 可用性随平台变化。
+                en: >-
+                  Malicious code reads an object the platform already projects or the application already caches, without a new identity-provider request, while the resource server has not yet seen use. Identity logs therefore lack a corresponding anomaly, and decisive traces remain in object reader, mount, and copied artifact. Kubernetes documentation establishes container-readable token placement and lifetime, while Unit 42 and GitHub show compromised runners harvesting and exfiltrating such material. Availability of detailed read audit varies by platform.
+          evidence_keys:
+            - TMP-TA0006-009-T1528-REF-K8S-SA
+            - TMP-TA0006-009-T1528-REF-UNIT42-TEAMPCP
+            - TMP-TA0006-009-T1528-REF-GITHUB-RUNNER
+          confidence: medium
+      research_limitations:
+        paragraphs:
+          - zh: >-
+              Kubernetes 文档证明默认投影、TokenRequest、有效期和 invalidation 语义，不是攻击案例。Unit 42 报告把云 token、Kubernetes secrets、配置与其他秘密共同描述，未逐个公开每个 token 的原路径、完整值或有效期。对象读取与最终外传之间缺少稳定 ID 时只能保留中等置信关联。
+            en: >-
+              Kubernetes documentation establishes default projection, TokenRequest, lifetime, and invalidation semantics rather than an attack case. Unit 42 reports cloud tokens, Kubernetes secrets, configuration, and other secrets together without publishing every token's original path, full value, or validity. Correlation remains medium confidence when object read and final exfiltration lack a stable shared identifier.
+  - temporary_key: TMP-TA0006-009-T1528-CHILD-RUNTIME
+    name:
+      zh: 易失运行态令牌提取
+      en: Volatile Runtime Token Extraction
+    disposition: formal
+    confidence: high
+    stable_variable: token 只在当前 process/job 的 memory、environment、generated script、broker/IPC response 或其他易失状态中可用，攻击者从运行边界提取
+    trace_change: 出现 source-target process memory/env/IPC 访问、debug/procfs/ptrace、job 内异常代码与第二输出；持久 token 文件读取不是必要条件
+    defender_observation_difference: 需要 process/runtime/CI job provenance、memory access 和 egress telemetry；对象清单或 issuer 日志不能独立覆盖
+    prerequisites: 攻击者在持有 token 的 job/process 内执行代码，或具有跨进程 memory/debug/env/IPC 读取权限，并能复制材料到受控状态
+    evidence_keys:
+      - TMP-TA0006-009-T1528-REF-UNIT42-TEAMPCP
+      - TMP-TA0006-009-T1528-REF-GITHUB-RUNNER
+    proposed_content:
+      summary:
+        zh: 攻击者从进程内存、环境、临时脚本或 token broker/IPC 中提取只在当前运行生命周期可见的 token，并把明文材料复制到第二输出。
+        en: An adversary extracts a token visible only in the current runtime lifecycle from process memory, environment, a temporary script, or token broker or IPC and copies plaintext material into a second output.
+      definition_and_concept:
+        paragraphs:
+          - zh: >-
+              易失运行态令牌提取发生在 token 已进入合法运行进程或 job，但尚未或不会作为持久工件存在时。攻击代码可读取自身 environment、生成脚本、broker response，或跨进程读取持有 token 的 memory。分类依据是易失 runtime boundary，不是 CI/CD、Linux、runner.worker、某个变量名或内存 API。
+            en: >-
+              Volatile Runtime Token Extraction occurs after a token enters a legitimate process or job but before it is persisted, or when it is never persisted. Malicious code may read its own environment or generated script, a broker response, or another process's token-bearing memory. The boundary is the volatile runtime boundary, not CI/CD, Linux, runner.worker, a variable name, or memory API.
+      stealth_characteristics:
+        paragraphs:
+          - zh: >-
+              平台可能在日志中掩码 secret，却必须把明文交给实际 consumer；恶意代码若与 consumer 同 job/process 或拥有调试权限，可在掩码前复制。合法流程继续并产生正常结果，外部只看到受信 runner 或应用。残余痕迹包括 process provenance、/proc/pid/mem/ptrace/debug、env read、临时脚本、unexpected child、archive 与 egress；同进程读取和内核级攻击会削弱归因。
+            en: >-
+              A platform may mask a secret in logs while still delivering plaintext to the real consumer. Malicious code in the same job or process, or with debug authority, can copy it before masking. The legitimate workflow continues and returns a normal result, leaving a trusted runner or application appearance. Residue includes process provenance, procfs memory, ptrace or debug, environment reads, temporary scripts, unexpected children, archives, and egress. Same-process reads and kernel compromise weaken attribution.
+      scope_boundary_definition:
+        paragraphs:
+          - zh: >-
+              纳入要求 runtime 中存在完整 token 且复制进入攻击者控制输出。仅 crash dump、debug attach、environment 枚举或 secret 名称发现不足；批准 debugger、APM、EDR、support bundle 和故障转储是强反例。若 token 从持久文件读取后只暂存在内存，以最初取得路径归持久工件；若正规 token service 在当前 request 返回则归签发返回面。
+            en: >-
+              Inclusion requires complete token material in runtime and a copy into an adversary-controlled output. A crash dump, debug attach, environment enumeration, or secret-name discovery alone is insufficient. Authorized debuggers, APM, EDR, support bundles, and crash collection are strong counterexamples. If a token is first read from a persisted file and then held in memory, Persisted Token-Artifact Retrieval owns initial acquisition. If a legitimate token service returns it in the current request, Issuance-Return Token Acquisition applies.
+      application_scenarios_and_threat_model:
+        application_scenarios:
+          paragraphs:
+            - zh: >-
+                TeamPCP 在被污染 GitHub Actions 执行期间直接读取 runner.worker 的 `/proc/<pid>/mem` 提取明文 token，并在正常安全扫描继续时把材料加入加密外传。GitHub 官方说明 `GITHUB_TOKEN` 和已引用 secrets 在受侵 runner 中可被确定的攻击者收获，且日志 redaction 不是安全边界。
+              en: >-
+                During poisoned GitHub Actions execution, TeamPCP read runner.worker through `/proc/<pid>/mem` to extract plaintext tokens and added the material to encrypted exfiltration while normal security scanning continued. GitHub documentation states that `GITHUB_TOKEN` and referenced secrets can be harvested by a determined attacker on a compromised runner and that log redaction is not a security boundary.
+        threat_model:
+          attacker_model:
+            paragraphs:
+              - zh: >-
+                  攻击者需要让未受信代码与 token consumer 共处一个 runner/job/process，或取得目标 process 的 memory/debug/env/IPC 读取权限，并在 token 过期或 job 结束前复制。隔离 runner、禁止不受信代码接触 secrets、最小 job permission、受保护进程、ptrace 限制和短期 token 会降低机会；同进程恶意依赖仍是难点。
+                en: >-
+                  The adversary must co-locate untrusted code with the token consumer in a runner, job, or process, or obtain memory, debug, environment, or IPC read authority over the target process, then copy material before expiry or job completion. Isolated runners, denying secrets to untrusted code, least job permissions, protected processes, ptrace restriction, and short-lived tokens reduce opportunity. A malicious dependency in the same process remains difficult.
+          defender_model:
+            paragraphs:
+              - zh: >-
+                  防守方把 workflow/repository/ref/action digest、runner/job、process start key、target process、memory/env/IPC operation、token material assessment、archive 和 destination 连接。检测不应采集任意 process memory 到 SIEM；本地受限 scanner 只输出 token class、HMAC fingerprint、target region 和 artifact hash。
+                en: >-
+                  Defenders join workflow, repository, ref, action digest, runner and job, process start key, target process, memory, environment or IPC operation, token-material assessment, archive, and destination. Detection should not collect arbitrary process memory into the SIEM. A restricted local scanner emits only token class, HMAC fingerprint, target region, and artifact hash.
+      stealth_mechanisms:
+        - mechanism_ref: NM-FD
+          role: primary
+          summary:
+            zh: 在受信 runner 或应用保持正常输出时从其运行态复制 token
+            en: Copy tokens from a trusted runner or application runtime while its normal output continues
+          analysis:
+            paragraphs:
+              - zh: >-
+                  恶意代码寄生受信 CI/security workflow，读取消费者必须持有的明文状态，并让正常扫描或构建继续。外部特征仍是合法 runner、真实 token 和成功 job，控制差异藏在 action digest、process memory access 和第二输出。Unit 42 直接记录 runner.worker 明文 token 提取、正常扫描结果和外传，形成完整行为—trace—观察差因果链。
+                en: >-
+                  Malicious code inhabits a trusted CI or security workflow, reads plaintext state the consumer must hold, and lets normal scanning or building continue. External features remain a legitimate runner, authentic token, and successful job, while the control difference hides in action digest, process-memory access, and second output. Unit 42 directly documents plaintext token extraction from runner.worker, normal scan results, and exfiltration, establishing the complete behavior, trace, and observation-effect chain.
+          evidence_keys:
+            - TMP-TA0006-009-T1528-REF-UNIT42-TEAMPCP
+          confidence: high
+      research_limitations:
+        paragraphs:
+          - zh: >-
+              TeamPCP 是对 CI runner 的强直接事件，但不能自动推广为所有 SaaS、移动应用或 token broker 的 memory 语义。GitHub 官方材料证明受侵 runner 的 secrets 可被收获，但不提供通用 process-memory 审计字段；同进程恶意代码可能没有跨进程 memory-read 事件，需依赖 workflow provenance 与第二输出。
+            en: >-
+              TeamPCP is strong direct evidence for CI runners but cannot automatically generalize memory semantics to every SaaS client, mobile application, or token broker. GitHub documentation establishes that compromised-runner secrets can be harvested but does not provide universal process-memory audit fields. Malicious code in the same process may generate no cross-process memory-read event, requiring workflow provenance and second-output evidence.
+defense_candidates:
+  detection_strategies:
+    - temporary_key: TMP-TA0006-009-T1528-DET-ACQUISITION-LINEAGE
+      name:
+        zh: Token 请求/读取—材料取得—撤销传播谱系
+        en: Token Request or Read–Material Acquisition–Revocation Propagation Lineage
+      objective:
+        zh: 分别关联签发返回、持久对象读取和易失运行态提取到攻击者控制的 token 材料结果，并在处置后验证 token family、grant 和各 audience 的实际拒绝。
+        en: Separately join issuance returns, persisted-object reads, and volatile-runtime extraction to an adversary-controlled token-material result, then verify actual denial across token family, grant, and audiences after containment.
+      subjects:
+        - TMP-TA0006-009-T1528-PARENT
+        - TMP-TA0006-009-T1528-CHILD-RETURN
+        - TMP-TA0006-009-T1528-CHILD-ARTIFACT
+        - TMP-TA0006-009-T1528-CHILD-RUNTIME
+      analytic_refs:
+        - TMP-TA0006-009-T1528-NJA-RETURN
+        - TMP-TA0006-009-T1528-NJA-ARTIFACT
+        - TMP-TA0006-009-T1528-NJA-RUNTIME
+        - TMP-TA0006-009-T1528-NJA-REVOCATION
+      evidence_keys:
+        - TMP-TA0006-009-T1528-REF-UNIT42-TEAMPCP
+        - TMP-TA0006-009-T1528-REF-AZURE-IMDS
+        - TMP-TA0006-009-T1528-REF-K8S-SA
+        - TMP-TA0006-009-T1528-REF-GITHUB-RUNNER
+        - REF-000070
+        - REF-000178
+      confidence: medium
+  detection_analytics:
+    - temporary_key: TMP-TA0006-009-T1528-NJA-RETURN
+      strategy_ref: TMP-TA0006-009-T1528-DET-ACQUISITION-LINEAGE
+      name:
+        zh: Token 签发请求—Response—接收者控制差分
+        en: Token Issuance Request–Response–Recipient Control Differential
+      logic:
+        paragraphs:
+          - zh: >-
+              建立 token request/issuance/response 事务，保存 issuer、subject、client/workload、grant/consent、audience/scope、redirect/recipient、source、request ID、response status、token reference/family 和 TTL。把成功 response 连接到实际请求 process、container/job 或 app owner，并与批准 workload、client、redirect 和用途比较。只有 response 成功且 recipient 被已知恶意代码、未批准 app/redirect 或受侵 workload 控制时输出 material_acquired；后继 API 仅作独立 corroboration。
+            en: >-
+              Build token request, issuance, and response transactions retaining issuer, subject, client or workload, grant or consent, audience or scope, redirect or recipient, source, request ID, response status, token reference or family, and TTL. Join successful responses to the actual requesting process, container or job, or application owner and compare against approved workload, client, redirect, and purpose. Emit material_acquired only when the response succeeds and the recipient is controlled by known malicious code, an unapproved application or redirect, or a compromised workload. Downstream API activity remains independent corroboration.
+      data_requirements:
+        - source_type: token-issuance-transaction
+          name:
+            zh: Token 请求、签发与返回事件
+            en: Token request, issuance, and return events
+          channel: authorization server, token service, IMDS, or equivalent
+          required_fields: [timestamp, tenant_or_issuer, request_id, subject_id, client_or_workload_id, grant_or_consent_id, audience_or_resource, scope_or_role, source, redirect_or_recipient, response_status, token_reference_or_family, issued_at, expires_at]
+        - source_type: workload-client-process
+          name:
+            zh: Workload/client 接收进程与代码 Provenance
+            en: Workload or client recipient process and code provenance
+          channel: EDR, container runtime, CI/CD, application, or proxy telemetry
+          required_fields: [timestamp, asset_or_workload_id, container_or_job_id, process_start_key, process_image, code_or_action_digest, principal_id, request_id, destination, outcome]
+        - source_type: oauth-app-grant-inventory
+          name:
+            zh: 应用、redirect、同意与批准用途清单
+            en: Application, redirect, consent, and approved-purpose inventory
+          channel: identity and application control plane
+          required_fields: [tenant_id, app_or_client_id, publisher, owner, redirect_uri, grant_or_consent_id, approved_scope, approved_workload, purpose, valid_from, valid_to]
+        - source_type: restricted-token-material-assessment
+          name:
+            zh: 受限 Token 材料与可用性评估
+            en: Restricted token material and usability assessment
+          channel: local privacy-controlled assessment
+          required_fields: [case_id, request_or_artifact_id, token_class, token_reference_or_hmac_fingerprint, complete_material, valid_at_acquisition, audience, scope, refresh_capable, sender_constrained, bound_key_obtained, reviewer_id, raw_token_retained]
+      observables:
+        - zh: 受侵 runner 或容器中的非基线进程请求 attached identity token，并成功收到与其业务用途不符的 audience/scope
+          en: A nonbaseline process in a compromised runner or container requests an attached-identity token and successfully receives audience or scope inconsistent with business purpose
+        - zh: 新应用或异常 redirect 在 consent/grant 后立即收到 access/refresh token，而 app owner、publisher 或用途未获批准
+          en: A new application or anomalous redirect receives access or refresh tokens immediately after consent or grant while owner, publisher, or purpose is unapproved
+      correlation:
+        window:
+          zh: Token request 到 response 使用同一 request ID 的实时窗口；consent/grant 到首次 token 返回默认九十日并覆盖 grant 寿命，IMDS process 请求使用五分钟。
+          en: Use a real-time request-ID window from token request to response. Span consent or grant to first token return for ninety days by default or the grant lifetime, and use five minutes for an IMDS process request.
+        dimensions: [tenant_or_issuer, request_id, subject_id, app_or_client_id, workload_id, process_start_key, grant_or_consent_id, audience, scope, redirect_or_recipient, token_family, time]
+      false_positives:
+        - zh: 正常 SDK refresh、自动扩缩容、管理员 CLI、批准 connected app 上线、灾备 workload 和用户合法 consent
+          en: Normal SDK refresh, autoscaling, administrator CLI, approved connected-app onboarding, disaster-recovery workloads, and legitimate user consent
+      blind_spots:
+        - zh: IMDS 不记录 calling process、issuer 不公开 token reference、恶意代码运行在批准 process 内、redirect 日志缺失，以及同一 workload owner 本身被攻陷
+          en: IMDS lacking calling-process data, issuer omission of token reference, malicious code inside an approved process, missing redirect logs, and compromise of the approved workload owner
+      tuning_guidance:
+        paragraphs:
+          - zh: >-
+              按 workload/app 的 owner、code digest、允许 audience/scope、redirect、source 和 refresh cadence 建立基线；不能永久放行 managed identity 或某个 client ID。token 值只在本地生成 HMAC fingerprint。缺少 recipient 控制证据时输出 issuance_anomaly，不升级 material_acquired。
+            en: >-
+              Baseline workload or application owner, code digest, allowed audience and scope, redirect, source, and refresh cadence. Do not permanently allow a managed identity or client ID. Generate token HMAC fingerprints locally only. Without evidence of recipient control, output issuance_anomaly rather than material_acquired.
+      evidence_keys: [TMP-TA0006-009-T1528-REF-AZURE-IMDS, TMP-TA0006-009-T1528-REF-UNIT42-TEAMPCP, TMP-TA0006-009-T1528-REF-RFC6749]
+      confidence: medium
+    - temporary_key: TMP-TA0006-009-T1528-NJA-ARTIFACT
+      strategy_ref: TMP-TA0006-009-T1528-DET-ACQUISITION-LINEAGE
+      name:
+        zh: 持久 Token 对象—Reader—材料返回关联
+        en: Persisted Token Object–Reader–Material Return Correlation
+      logic:
+        paragraphs:
+          - zh: >-
+              从 token artifact inventory 取得 object ID/path/version、owner、expected readers、mount、audience/scope 和 TTL，连接 file open/read、Secret get、repository read 或 cache access 的 actor/process/container/job、bytes 和结果。再连接本地材料分类与复制/归档/第二输出。只有完整材料返回给攻击者控制 reader 时报告取得；路径枚举、permission check、denied read 或 token name 只报告 exposure/attempt。
+            en: >-
+              Start from a token-artifact inventory containing object ID or path and version, owner, expected readers, mount, audience or scope, and TTL. Join file open or read, Secret get, repository read, or cache access to actor, process, container or job, bytes, and outcome, then to local material classification and copying, archive, or second output. Report acquisition only when complete material returns to an adversary-controlled reader. Path enumeration, permission check, denied read, or token name remains exposure or attempt.
+      data_requirements:
+        - source_type: token-artifact-inventory
+          name:
+            zh: Token 持久对象与挂载清单
+            en: Persisted token object and mount inventory
+          channel: filesystem, secret manager, Kubernetes, CI/CD, or repository inventory
+          required_fields: [snapshot_time, object_id, object_version, path_or_key, token_class, owner, expected_readers, workload_or_namespace, mount_id, audience, scope, issued_at, expires_at, rotation_id]
+        - source_type: token-object-read
+          name:
+            zh: 文件、Secret、仓库或 Cache 读取
+            en: File, Secret, repository, or cache read
+          channel: host, container, cloud audit, or application object access
+          required_fields: [timestamp, object_id, object_version, actor_id, process_start_key, container_or_job_id, operation, bytes_returned, outcome, request_id]
+        - source_type: token-copy-artifact
+          name:
+            zh: Token 复制、归档与第二输出
+            en: Token copy, archive, and second output
+          channel: file, process, DLP, and egress telemetry
+          required_fields: [timestamp, process_start_key, source_object_id, output_artifact_id, output_hash, destination, bytes, operation, outcome]
+        - source_type: restricted-token-material-assessment
+          name:
+            zh: 受限 Token 材料与可用性评估
+            en: Restricted token material and usability assessment
+          channel: local privacy-controlled assessment
+          required_fields: [case_id, request_or_artifact_id, token_class, token_reference_or_hmac_fingerprint, complete_material, valid_at_acquisition, audience, scope, refresh_capable, sender_constrained, bound_key_obtained, reviewer_id, raw_token_retained]
+        - source_type: object-read-approval
+          name:
+            zh: 令牌对象批准 Reader 与用途
+            en: Approved token-object readers and purpose
+          channel: workload, application, and change management
+          required_fields: [object_id, reader_identity_or_digest, workload_or_job, purpose, valid_from, valid_to, owner, change_id]
+      observables:
+        - zh: 不在 expected reader 清单的进程或容器读取 service account token、CI token 或持久 cache 并立即生成归档/外连
+          en: A process or container outside expected readers reads a service-account token, CI token, or durable cache and immediately creates an archive or egress
+        - zh: 同一恶意 job 跨多个 token object/path 扫描并取得非零 bytes，读取范围与业务用途不符
+          en: One malicious job scans multiple token objects or paths and receives nonzero bytes outside its business purpose
+      correlation:
+        window:
+          zh: 从对象首次 read 前十五分钟覆盖复制、归档、删除和外传后二十四小时；按 object version、process start key、job 与 artifact hash 关联，token 生命周期用于可用性分级。
+          en: Start fifteen minutes before first object read and span copying, archive, deletion, and twenty-four hours after egress. Join by object version, process start key, job, and artifact hash, using token lifetime for usability grading.
+        dimensions: [object_id, object_version, path_or_key, actor_id, process_start_key, container_or_job_id, workload_or_namespace, token_fingerprint, output_artifact_id, destination, time]
+      false_positives:
+        - zh: 正常 SDK、kubelet、sidecar、backup、secret scanner、DLP、轮换作业、事件响应和支持工具
+          en: Normal SDKs, kubelet, sidecars, backups, secret scanners, DLP, rotation jobs, incident response, and support tools
+      blind_spots:
+        - zh: 无 object-read audit、root/kernel 绕过、shared mount 无 reader 身份、token 被同进程直接消费、短寿对象在采集前删除，以及本地分类器不能识别 opaque token
+          en: Missing object-read audit, root or kernel bypass, shared mounts without reader identity, direct same-process consumption, short-lived objects deleted before collection, and local classifiers unable to recognize opaque tokens
+      tuning_guidance:
+        paragraphs:
+          - zh: >-
+              对每个 token object 建立 exact reader identity/digest、namespace/job、时间和用途，不按通用 path 永久白名单。优先关闭不需要的 automount 并以良性 SDK 读取验证 bytes/outcome 字段。扫描器只返回 token class 与 HMAC fingerprint；无完整材料证据时保持 read_risk。
+            en: >-
+              Establish exact reader identity or digest, namespace or job, time, and purpose for every token object rather than permanently allowing a generic path. Disable unnecessary automount first and validate bytes and outcome fields with benign SDK reads. Scanners return only token class and HMAC fingerprint. Without complete material evidence, retain read_risk.
+      evidence_keys: [TMP-TA0006-009-T1528-REF-K8S-SA, TMP-TA0006-009-T1528-REF-UNIT42-TEAMPCP, TMP-TA0006-009-T1528-REF-GITHUB-RUNNER]
+      confidence: medium
+    - temporary_key: TMP-TA0006-009-T1528-NJA-RUNTIME
+      strategy_ref: TMP-TA0006-009-T1528-DET-ACQUISITION-LINEAGE
+      name:
+        zh: 运行态 Token Consumer—Memory/Env/IPC—第二输出关联
+        en: Runtime Token Consumer–Memory or Environment or IPC–Second Output Correlation
+      logic:
+        paragraphs:
+          - zh: >-
+              识别持有 token 的 process/job 与其 code provenance，关联 source process 对 target memory、procfs、ptrace/debug、environment、generated script 或 broker/IPC response 的读取。把成功操作连接到本地材料分类、archive/child process 和 network/repository output。跨进程 memory read 是高信号；同 process 恶意依赖需以 action/package digest、workflow change 与第二输出证明。只有完整 token 复制到恶意状态才升级取得。
+            en: >-
+              Identify the token-consuming process or job and its code provenance, then correlate a source process reading target memory, procfs, ptrace or debug, environment, generated script, or broker or IPC response. Join successful operations to local material classification, archive or child process, and network or repository output. Cross-process memory reads are high signal. Malicious dependencies in the same process require action or package digest, workflow change, and second-output evidence. Upgrade to acquisition only when complete token material is copied into malicious state.
+      data_requirements:
+        - source_type: runtime-token-consumer
+          name:
+            zh: Token consumer、job 与代码 Provenance
+            en: Token consumer, job, and code provenance
+          channel: EDR, CI/CD, container runtime, application inventory
+          required_fields: [timestamp, host_or_runner_id, job_or_workflow_id, repository_or_application, ref_or_version, code_or_action_digest, process_start_key, process_image, principal_id, expected_token_class, approved]
+        - source_type: runtime-secret-access
+          name:
+            zh: Process memory、environment、临时脚本与 IPC 访问
+            en: Process memory, environment, temporary script, and IPC access
+          channel: kernel, EDR, debug, procfs, file, or broker telemetry
+          required_fields: [timestamp, host_or_runner_id, source_process_start_key, target_process_start_key, operation, target_region_or_variable_or_channel, bytes_returned, privilege, outcome]
+        - source_type: runtime-token-output
+          name:
+            zh: 运行态提取后的归档、子进程与外传
+            en: Archive, child process, and egress after runtime extraction
+          channel: process, file, repository, and network telemetry
+          required_fields: [timestamp, source_process_start_key, output_process_or_artifact, output_hash, destination, protocol_or_service, bytes, outcome]
+        - source_type: restricted-token-material-assessment
+          name:
+            zh: 受限 Token 材料与可用性评估
+            en: Restricted token material and usability assessment
+          channel: local privacy-controlled assessment
+          required_fields: [case_id, request_or_artifact_id, token_class, token_reference_or_hmac_fingerprint, complete_material, valid_at_acquisition, audience, scope, refresh_capable, sender_constrained, bound_key_obtained, reviewer_id, raw_token_retained]
+      observables:
+        - zh: CI runner 中非批准脚本读取 token consumer 的 procfs memory 后生成加密归档并向新域名或受害组织仓库写入
+          en: An unapproved script on a CI runner reads procfs memory of a token consumer, creates an encrypted archive, and writes it to a new domain or victim-organization repository
+        - zh: 同 job 恶意 action 读取 secret-bearing environment 或 generated script，合法 job 仍成功且出现未经批准第二输出
+          en: A malicious action in the same job reads a secret-bearing environment or generated script while the legitimate job succeeds and an unapproved second output appears
+      correlation:
+        window:
+          zh: 覆盖完整 job/process 生命周期；跨进程 read 到 archive/egress 默认十分钟，同 process 以 workflow/action 版本为键覆盖 job 起止及其后二十四小时。
+          en: Span the complete job or process lifetime. Use ten minutes from cross-process read to archive or egress, and for same-process activity key on workflow or action version through job end and twenty-four hours afterward.
+        dimensions: [host_or_runner_id, job_or_workflow_id, repository_or_application, code_or_action_digest, source_process_start_key, target_process_start_key, target_region_or_variable_or_channel, token_fingerprint, output_hash, destination, time]
+      false_positives:
+        - zh: 调试器、crash dump、APM/EDR、support bundle、性能 profiler、批准 secret injection 和事件响应内存采集
+          en: Debuggers, crash dumps, APM or EDR, support bundles, performance profilers, approved secret injection, and incident-response memory collection
+      blind_spots:
+        - zh: 同进程直接读取无独立事件、内核攻击、memory telemetry 不可用、短 job 已销毁、加密 broker、平台隐私限制，以及 output 只在攻击者内存存在
+          en: Same-process reads without independent events, kernel compromise, unavailable memory telemetry, destroyed short-lived jobs, encrypted brokers, platform privacy limits, and output existing only in adversary memory
+      tuning_guidance:
+        paragraphs:
+          - zh: >-
+              CI/CD allowlist 绑定 immutable action/package digest、repository/ref、job、runner group、secret scope 和 owner，不能按进程名或 vendor 名放行。跨进程 memory read 先按 target role 和授权 debugger 调优；同 process 分支至少要求 provenance 差和第二输出。禁止集中采集完整 memory。
+            en: >-
+              Bind CI/CD allowlists to immutable action or package digest, repository or ref, job, runner group, secret scope, and owner rather than process or vendor name. Tune cross-process memory reads by target role and authorized debugger. Same-process branches require at least provenance difference and second output. Do not centralize complete memory.
+      evidence_keys: [TMP-TA0006-009-T1528-REF-UNIT42-TEAMPCP, TMP-TA0006-009-T1528-REF-GITHUB-RUNNER]
+      confidence: high
+    - temporary_key: TMP-TA0006-009-T1528-NJA-REVOCATION
+      strategy_ref: TMP-TA0006-009-T1528-DET-ACQUISITION-LINEAGE
+      name:
+        zh: Token Family 撤销传播与残余接受验证
+        en: Token-Family Revocation Propagation and Residual Acceptance Verification
+      logic:
+        paragraphs:
+          - zh: >-
+              从已确认取得的 token reference/family、subject、client/workload、grant、audience 和有效期建立处置集合，连接 revoke/disable/rotate/delete 请求、provider confirmation、expected effect time 与各 resource server 的实际拒绝。区分旧 access token 仍在 TTL 内、refresh family 仍能换新 token、第三方 integration 未同步撤销、resource cache 延迟和攻击者取得全新合法 token。一次控制面成功不关闭事件；所有已知 audience 拒绝或材料过期且不能刷新后才标 containment_verified。
+            en: >-
+              Build a containment set from the confirmed acquired token reference or family, subject, client or workload, grant, audiences, and validity. Join revoke, disable, rotate, or delete requests, provider confirmation, expected effect time, and actual denial at each resource server. Separate an old access token still within TTL, a refresh family still minting tokens, an unsynchronized third-party integration, resource-cache delay, and the adversary obtaining a new legitimate token. One control-plane success does not close the incident. Mark containment_verified only after every known audience rejects the old material or it expires without refresh capability.
+      data_requirements:
+        - source_type: token-revocation-control
+          name:
+            zh: Token、grant、client/workload 撤销控制
+            en: Token, grant, client or workload revocation control
+          channel: identity, application, Kubernetes, CI/CD, and vendor control plane
+          required_fields: [timestamp, response_action_id, tenant_or_issuer, subject_id, token_reference_or_family, grant_or_consent_id, client_or_workload_id, operation, expected_effect_time, provider_confirmation, outcome]
+        - source_type: resource-token-decision
+          name:
+            zh: Resource server Token 接受/拒绝结果
+            en: Resource-server token acceptance or rejection result
+          channel: API gateway, SaaS, cloud, container, or application authorization log
+          required_fields: [timestamp, audience_or_resource, request_id, token_reference_or_family, subject_id, client_or_workload_id, authorization_decision, error_or_reason, cache_or_node_id]
+        - source_type: token-lifecycle-inventory
+          name:
+            zh: Token family、有效期、刷新与绑定清单
+            en: Token family, validity, refresh, and binding inventory
+          channel: issuer and incident evidence store
+          required_fields: [token_reference_or_family, issued_at, expires_at, refresh_capable, sender_constrained, bound_key_status, known_audiences, associated_sessions]
+        - source_type: containment-validation-plan
+          name:
+            zh: 撤销传播验证计划
+            en: Revocation-propagation validation plan
+          channel: incident response
+          required_fields: [case_id, token_reference_or_family, audience_or_resource, validation_method, safe_test_identity, expected_denial, deadline, owner, result]
+      observables:
+        - zh: Refresh token revoke 后同一 family 仍成功换取新 access token，或某 resource 在 expected effect time 后仍接受旧 token
+          en: The same family still exchanges for a new access token after refresh-token revocation, or a resource accepts an old token after expected effect time
+        - zh: 供应商称已撤销 integration token，但部分连接 tenant 或 audience 继续接受同一 token family
+          en: A vendor reports integration-token revocation while some connected tenant or audience continues accepting the same token family
+      correlation:
+        window:
+          zh: 从最早 revoke 前十五分钟覆盖最大 access-token TTL、refresh/grant 生命周期或 provider SLA，并继续观察二十四小时；长期集成按所有连接确认完成。
+          en: Start fifteen minutes before the earliest revoke and span the maximum access-token TTL, refresh or grant lifetime, or provider SLA, then observe for twenty-four hours. Long-lived integrations remain open until every connection confirms.
+        dimensions: [case_id, tenant_or_issuer, subject_id, token_family, grant_or_consent_id, client_or_workload_id, audience_or_resource, cache_or_node_id, response_action_id, time]
+      false_positives:
+        - zh: 最终一致性、时钟偏差、离线客户端、合法新签发 token、token ID 复用和资源不支持即时 introspection
+          en: Eventual consistency, clock skew, offline clients, legitimately newly issued tokens, token-ID reuse, and resources without immediate introspection
+      blind_spots:
+        - zh: 第三方不返回 stable token ID、无法安全重放真实被盗 token、opaque token 缺乏 family、资源不记录拒绝、攻击者同时取得新的 grant/client secret
+          en: Third parties omitting stable token IDs, inability to safely test a real stolen token, opaque tokens without family, resources not logging denials, and adversary possession of a new grant or client secret
+      tuning_guidance:
+        paragraphs:
+          - zh: >-
+              优先使用 provider-supported introspection、synthetic/canary token 或资源审计验证，避免把真实被盗 token 广泛重放。把新签发 token 与旧 family 分开，并记录每个 audience 的能力和 SLA。无法主动验证时，以无 refresh、到期和完整资源日志组成较低置信关闭条件。
+            en: >-
+              Prefer provider-supported introspection, synthetic or canary tokens, or resource audit and avoid replaying a real stolen token broadly. Separate newly issued tokens from the old family and record each audience's capability and SLA. When active validation is impossible, use absence of refresh, expiry, and complete resource logs as a lower-confidence closure condition.
+      evidence_keys: [REF-000070, REF-000178, TMP-TA0006-009-T1528-REF-RFC9700]
+      confidence: medium
+  mitigations:
+    - temporary_key: TMP-TA0006-009-T1528-MIT-EXPOSURE-CONTROL
+      name:
+        zh: 应用 Token 暴露面与取得路径控制
+        en: Application Token Exposure-Surface and Acquisition-Path Control
+      summary:
+        zh: 限制 token 返回接收者、持久副本和运行态暴露，以最小 scope、短寿命和 sender constraint 降低被取材料的后继价值。
+        en: Constrain token-return recipients, persisted copies, and runtime exposure while reducing downstream value through least scope, short lifetime, and sender constraint.
+      description:
+        paragraphs:
+          - zh: >-
+              本缓解把 issuer return、持久 object 与 runtime consumer 作为三个控制面。组织应限制谁能请求和接收 token，取消不必要的自动挂载与长期副本，隔离会接触 secrets 的 job/process，并使 token 具有最小 audience/scope、短寿命、刷新旋转和可行的 sender constraint。检测只保留 token reference/family 或受控 HMAC fingerprint，原始值保持在授权组件和受限事件证据中。
+            en: >-
+              This mitigation treats issuer return, persisted object, and runtime consumer as three control planes. Organizations should constrain who can request and receive tokens, remove unnecessary automount and long-lived copies, isolate jobs and processes that receive secrets, and use least audience and scope, short lifetime, refresh rotation, and sender constraint where feasible. Detection retains token reference or family or a controlled HMAC fingerprint, while raw values remain within authorized components and restricted incident evidence.
+      measures:
+        - key: approved-token-recipient
+          name:
+            zh: Token 请求与接收者绑定
+            en: Token request and recipient binding
+          control_type: preventive
+          description:
+            paragraphs:
+              - zh: >-
+                  将 workload identity、client、redirect、grant/consent、audience/scope 与 owner/用途绑定；限制 metadata endpoint 可达进程和容器，OAuth 使用 exact redirect、PKCE 与高风险管理员 consent，并记录 request—response 接收者。
+                en: >-
+                  Bind workload identity, client, redirect, grant or consent, audience or scope to owner and purpose. Restrict processes and containers able to reach metadata endpoints, use exact redirects, PKCE, and administrator consent for high-risk OAuth, and record the request-to-response recipient.
+        - key: minimal-persisted-token-material
+          name:
+            zh: 持久 Token 最小化与 Reader 隔离
+            en: Persisted-token minimization and reader isolation
+          control_type: exposure-reduction
+          description:
+            paragraphs:
+              - zh: >-
+                  对不需要 Kubernetes API 的 Pod 设置 automountServiceAccountToken false，优先短期投影 token，避免 token 写入仓库、工作区和长期 cache；Secret/文件 reader 按 workload、namespace、job 与 owner 最小授权并记录读取。
+                en: >-
+                  Set automountServiceAccountToken to false for Pods not needing the Kubernetes API, prefer short-lived projected tokens, and avoid writing tokens into repositories, workspaces, or long-lived caches. Minimize and audit Secret or file readers by workload, namespace, job, and owner.
+        - key: isolated-runtime-secret-boundary
+          name:
+            zh: 运行态 Secret 隔离与可信代码约束
+            en: Runtime secret isolation and trusted-code constraint
+          control_type: preventive
+          description:
+            paragraphs:
+              - zh: >-
+                  不让未受信 PR、依赖或 action 与高权 secrets 共处同一 runner/job；使用隔离 runner、immutable digest、最小 GITHUB_TOKEN/job permission、受保护进程和 ptrace/debug 限制，并避免把 token 放入 command line 或广域 environment。
+                en: >-
+                  Do not co-locate untrusted pull requests, dependencies, or actions with privileged secrets in one runner or job. Use isolated runners, immutable digests, least GITHUB_TOKEN and job permissions, protected processes, and ptrace or debug restrictions, and avoid command-line or broad environment exposure.
+        - key: bounded-and-sender-constrained-token
+          name:
+            zh: 最小权限、短寿命与发送者约束
+            en: Least privilege, short lifetime, and sender constraint
+          control_type: cost-increasing
+          description:
+            paragraphs:
+              - zh: >-
+                  将 access token 限制到具体 audience/resource/action 和最小 scope，缩短 TTL；公共 client 的 refresh token 采用旋转或 sender constraint，并在可行处使用 DPoP/mTLS 或 workload/device binding。绑定不能防止 token 值被复制，也必须保护对应私钥。
+                en: >-
+                  Restrict access tokens to specific audiences, resources, actions, and least scope with shorter TTLs. Use refresh-token rotation or sender constraint for public clients and DPoP, mutual TLS, or workload or device binding where feasible. Binding does not prevent copying the token value and must include protection of the corresponding private key.
+        - key: privacy-preserving-token-lineage
+          name:
+            zh: 隐私保护 Token 谱系
+            en: Privacy-preserving token lineage
+          control_type: detective-support
+          description:
+            paragraphs:
+              - zh: >-
+                  在 issuer、workload、object 和 resource 侧保留 request ID、token family/reference、jti 或受控 HMAC fingerprint、client/workload、audience/scope、reader/recipient、有效期和结果；禁止把 raw token 写入 SIEM、命令行或调试日志。
+                en: >-
+                  Retain request ID, token family or reference, jti or controlled HMAC fingerprint, client or workload, audience or scope, reader or recipient, validity, and outcome across issuer, workload, object, and resource planes. Prohibit raw tokens in SIEM, command lines, and debug logs.
+      applications:
+        - target_ref: TMP-TA0006-009-T1528-PARENT
+          use:
+            paragraphs:
+              - zh: >-
+                  为每类应用 token 建立从 issuer 到 recipient、material location、consumer 与 resource 的清单，逐层减少接收者和副本，并以 token family/reference 支持取得调查；完整撤销与传播验证由 MIT-000052 的扩展应用承担。
+                en: >-
+                  Inventory each application-token class from issuer through recipient, material location, consumer, and resource, reducing recipients and copies at every layer and supporting acquisition investigations with token family or reference. Complete revocation and propagation verification are handled by the proposed MIT-000052 extension.
+          expected_effect:
+            paragraphs:
+              - zh: >-
+                  缩小 token 可见位置和可读主体，使取得行为更常触发 request/reader/runtime 差异；若仍被复制，最小 scope、短寿和 binding 降低后继风险并提供关联键。
+                en: >-
+                  Shrink token-visible locations and readers so acquisition more often creates request, reader, or runtime differences. If copying still occurs, least scope, short lifetime, and binding reduce successor risk and provide correlation keys.
+          limitations:
+            paragraphs:
+              - zh: >-
+                  合法应用、自动化和第三方集成必须获得 token；同一受信 workload 或供应商被控时身份外观仍正常，旧平台可能不支持 sender constraint 或稳定 token reference。
+                en: >-
+                  Legitimate applications, automation, and third-party integrations must receive tokens. Compromise of the trusted workload or vendor preserves normal identity appearance, and legacy platforms may lack sender constraint or stable token references.
+        - target_ref: TMP-TA0006-009-T1528-CHILD-RETURN
+          use:
+            paragraphs:
+              - zh: >-
+                  固定可请求 IMDS/token endpoint 的 workload/process、允许 audience/scope、client/redirect 和 grant owner；高权返回要求 code provenance、JIT 或管理员批准，并拒绝不明 recipient。
+                en: >-
+                  Pin workloads and processes permitted to request IMDS or token endpoints, allowed audience and scope, client and redirect, and grant owner. High-privilege returns require code provenance, JIT or administrator approval, and rejection of unknown recipients.
+          expected_effect:
+            paragraphs:
+              - zh: >-
+                  恶意代码不能仅凭进入任意 workload 或诱导宽 consent 就静默取得高权 token，异常 request/recipient 也形成审计差。
+                en: >-
+                  Malicious code cannot silently obtain privileged tokens merely by entering any workload or inducing broad consent, and anomalous requests or recipients create audit differences.
+          limitations:
+            paragraphs:
+              - zh: >-
+                  同 process 恶意依赖可能继承所有正常前提；metadata 服务调用归因不足、业务 redirect 迁移和自动扩缩容会增加策略复杂度。
+                en: >-
+                  A malicious dependency in the same process can inherit all legitimate prerequisites, while weak metadata-call attribution, business redirect migration, and autoscaling complicate policy.
+        - target_ref: TMP-TA0006-009-T1528-CHILD-ARTIFACT
+          use:
+            paragraphs:
+              - zh: >-
+                  清点并删除不必要 token 文件/Secret/cache，关闭无需求 Pod 的自动挂载，使用短期投影和最小 reader；CI 工作区和仓库扫描同时检查意外 token 副本并立即轮换。
+                en: >-
+                  Inventory and remove unnecessary token files, Secrets, and caches, disable automatic mounts for Pods without need, and use short-lived projection with least readers. Scan CI workspaces and repositories for accidental token copies and rotate them immediately.
+          expected_effect:
+            paragraphs:
+              - zh: >-
+                  token 的持久副本和共享挂载减少，恶意 reader 更难找到材料且更易偏离 exact reader 清单；短期 token 限制工件泄露窗口。
+                en: >-
+                  Persisted token copies and shared mounts decline, making material harder to find and malicious readers more likely to deviate from exact-reader inventories, while short-lived tokens limit artifact exposure windows.
+          limitations:
+            paragraphs:
+              - zh: >-
+                  应用可能要求本地 cache 或离线运行；文件 0600 仍允许同 UID 恶意代码读取，Secret manager 本身被控时访问控制失效。
+                en: >-
+                  Applications may require local cache or offline operation. Mode 0600 still permits malicious code under the same UID, and compromise of the secret manager defeats its access controls.
+        - target_ref: TMP-TA0006-009-T1528-CHILD-RUNTIME
+          use:
+            paragraphs:
+              - zh: >-
+                  用隔离 runner 和 immutable action/package digest 分离未受信代码与 token consumer，收窄 process memory/debug 权限和 environment 范围；高权 token 仅在批准 step 内按需注入并随 job 终止。
+                en: >-
+                  Separate untrusted code from token consumers with isolated runners and immutable action or package digests, constrain process-memory and debug authority and environment scope, and inject privileged tokens only into approved steps for the job lifetime.
+          expected_effect:
+            paragraphs:
+              - zh: >-
+                  攻击者必须破坏更强 runner/job 隔离或生成明显的 runtime/第二输出差异，token 在内存中的暴露时间与主体集合缩小。
+                en: >-
+                  The adversary must defeat stronger runner or job isolation or create conspicuous runtime and second-output differences, while token exposure time and readers in memory shrink.
+          limitations:
+            paragraphs:
+              - zh: >-
+                  同一批准 step 的恶意依赖仍可读取注入 token，内核控制可绕过 process 隔离；过度拆分 runner 会增加成本和构建延迟。
+                en: >-
+                  A malicious dependency in the approved step can still read an injected token, kernel control can bypass process isolation, and excessive runner separation increases cost and build latency.
+      evidence_keys:
+        - TMP-TA0006-009-T1528-REF-ATTACK
+        - TMP-TA0006-009-T1528-REF-UNIT42-TEAMPCP
+        - TMP-TA0006-009-T1528-REF-AZURE-IMDS
+        - TMP-TA0006-009-T1528-REF-K8S-SA
+        - TMP-TA0006-009-T1528-REF-GITHUB-RUNNER
+        - TMP-TA0006-009-T1528-REF-RFC9700
+      confidence: medium
+  existing_mitigation_extensions:
+    - mitigation_ref: MIT-000052
+      resolution: extend
+      reason: Its authenticated-session containment measure already defines access/refresh token revocation, continuous evaluation, and denial verification at every relying party; T1528 needs target-specific applications rather than a duplicate control.
+      proposed_applications:
+        - target_ref: TMP-TA0006-009-T1528-PARENT
+          use:
+            zh: 确认 token 材料取得后，保全 token reference/family、subject、client/workload、grant、audience、有效期和取得路径，撤销 access/refresh token、grant/consent、client credentials、workload identity 与关联应用会话，并逐 audience 验证旧材料被拒绝。
+            en: After confirmed token-material acquisition, preserve token reference or family, subject, client or workload, grant, audiences, lifetime, and acquisition path; revoke access and refresh tokens, grant or consent, client credentials, workload identity, and linked application sessions, then verify old material is rejected at every audience.
+          expected_effect:
+            zh: 把“revoke API 成功”推进为可审计的跨资源拒绝结果，缩短被取材料和 refresh family 的可用期并发现撤销传播缺口。
+            en: Turn successful revoke API into auditable cross-resource denial, shorten usability of acquired material and its refresh family, and expose revocation-propagation gaps.
+          limitations:
+            zh: 第三方 SaaS、离线客户端和不支持连续评估的资源可能延迟到 token 到期；攻击者若仍控制 grant、client secret、workload 或绑定私钥，可取得新材料。
+            en: Third-party SaaS, offline clients, and resources without continuous evaluation may delay denial until expiry. An adversary retaining the grant, client secret, workload, or bound private key can obtain new material.
+        - target_ref: TMP-TA0006-009-T1528-CHILD-RETURN
+          use:
+            zh: 除撤销返回 token family 外，同时移除恶意 consent/grant、禁用或重建受侵 managed identity/workload、修复 redirect/client 并验证 token endpoint 不再向旧 recipient 返回材料。
+            en: In addition to revoking the returned token family, remove malicious consent or grant, disable or rebuild the compromised managed identity or workload, repair redirect and client state, and verify the token endpoint no longer returns material to the old recipient.
+          expected_effect:
+            zh: 阻断同一 request 前提再次产生新 token，并用失败返回和资源拒绝双向验证控制恢复。
+            en: Prevent the same request prerequisites from producing fresh tokens and validate restored control through both failed return and resource denial.
+          limitations:
+            zh: 业务 workload 重建可能中断服务，供应商 app 或跨租户 grant 的撤销需对方协作并可能存在缓存。
+            en: Rebuilding a business workload may interrupt service, and revocation of vendor applications or cross-tenant grants requires counterpart cooperation and may face caching.
+        - target_ref: TMP-TA0006-009-T1528-CHILD-ARTIFACT
+          use:
+            zh: 撤销读取工件内的 token family，删除或重新投影所有副本，轮换 Secret/cache，并扫描同 mount、workspace、repository 与备份；随后验证旧 token 在每个 audience 失败。
+            en: Revoke the token family found in the artifact, remove or reproject every copy, rotate Secrets and caches, and scan the same mount, workspace, repository, and backups, then verify the old token fails at every audience.
+          expected_effect:
+            zh: 同一 token 不再因残留副本重新出现，工件清理与 resource denial 共同关闭材料传播路径。
+            en: Prevent the token from reappearing through residual copies and close material propagation through both artifact cleanup and resource denial.
+          limitations:
+            zh: 不可控备份、fork、下游 cache 和已外传副本无法保证删除；只能依靠撤销、到期和绑定限制后继价值。
+            en: Uncontrolled backups, forks, downstream caches, and exfiltrated copies cannot be guaranteed deleted and require revocation, expiry, and binding to limit downstream value.
+        - target_ref: TMP-TA0006-009-T1528-CHILD-RUNTIME
+          use:
+            zh: 终止并重建受侵 job/runner/process，撤销其 token family 和 secret injection，轮换可能同存的绑定密钥，并在干净环境重新签发；验证旧状态在资源端被拒绝且原 process 不再存活。
+            en: Terminate and rebuild the compromised job, runner, or process, revoke its token family and secret injection, rotate any co-resident binding key, and reissue only in a clean environment; verify resource denial of old state and termination of the original process.
+          expected_effect:
+            zh: 同时清除运行态读取能力和已复制材料的授权价值，避免只杀恶意子进程却让 token 或 consumer 继续有效。
+            en: Remove both runtime read capability and authorization value of copied material, avoiding a response that kills only a malicious child while token or consumer remains valid.
+          limitations:
+            zh: 无状态 serverless/短 job 可能在发现前结束，runner 重建不影响已经外传的 token；仍需全 audience 撤销验证。
+            en: Stateless serverless or short jobs may end before discovery, and runner rebuild does not affect already exfiltrated tokens; full-audience revocation verification remains necessary.
+    - mitigation_ref: MIT-000066
+      resolution: extend
+      reason: Its controlled registration, consent, integration identity inventory, and complete integration revocation are the same control for the malicious-connected-application subset of issuance-return acquisition.
+      proposed_applications:
+        - target_ref: TMP-TA0006-009-T1528-CHILD-RETURN
+          use:
+            zh: 对由 connected app/consent 形成的签发返回分支，限制自助高风险 consent，按 client ID、publisher、owner、redirect、scope 和用途审批，并在事件中同时撤销 grant、app credentials、token 和关联自动化；IMDS/workload 分支仍由专用 MIT 覆盖。
+            en: For issuance returns through connected applications or consent, restrict self-service high-risk consent, approve by client ID, publisher, owner, redirect, scope, and purpose, and revoke grant, application credentials, tokens, and linked automation together during response. The IMDS or workload branch remains covered by the dedicated mitigation.
+          expected_effect:
+            zh: 减少攻击者让正规 issuer 向恶意 app 返回 token 的机会，并让合法第三方委派具有可核验 owner 和完整撤销路径。
+            en: Reduce opportunities for an adversary to make a legitimate issuer return tokens to a malicious application and give legitimate third-party delegation a verifiable owner and complete revocation path.
+          limitations:
+            zh: 管理员或批准供应商本身被控时 app 身份仍可完全匹配；该控制不处理 process memory、普通 token 文件或 IMDS 读取。
+            en: Application identity can match perfectly when an administrator or approved vendor is compromised. This control does not address process memory, ordinary token files, or IMDS retrieval.
+existing_library_reuse:
+  reference_refs:
+    - REF-000070
+    - REF-000178
+  claim_refs: []
+  case_refs:
+    - CASE-000064
+  strategy_refs: []
+  analytic_refs: []
+  mitigation_refs:
+    - MIT-000052
+    - MIT-000066
+  relationship_refs: []
+  case_extensions:
+    - case_ref: CASE-000064
+      resolution: extend
+      subject_target: TMP-TA0006-009-T1528-PARENT
+      reason: >-
+        The case meaning remains unchanged: GTIG confirmed compromised Drift OAuth tokens under UNC6395 control and successful activity, plus access/refresh-token revocation. It supports parent material control and containment, but the source does not identify return, artifact, or runtime as the acquisition path and must not support a child.
+  reviewed_nonreuse:
+    - object_ref: DET-000067
+      resolution: split
+      reason: Detects durable application integration registration, grant, delayed use, or vendor co-option and requires resource activity. T1528 must prove material return/read before use and also covers IMDS, persisted artifacts, and process runtime without an integration object.
+    - object_ref: NJA-000046
+      resolution: split
+      reason: Its app-consent-token-resource graph can corroborate the connected-app subset but its logic, data requirements, and long window do not implement object-read or runtime acquisition and cannot substitute downstream use for token receipt.
+    - object_ref: REF-000102
+      resolution: defer
+      reason: Heartbleed reporting concerns active VPN session-token theft and replay and is already governed as remote session state. Without proof that the material is an application API token rather than a web or gateway session token, it should not anchor T1528.
+    - object_ref: DET-000094
+      resolution: split
+      reason: Detects replay and risk-context use of an already acquired session or token. It is successor-use evidence, not acquisition telemetry.
+library_candidates:
+  references:
+    - temporary_key: TMP-TA0006-009-T1528-REF-ATTACK
+      resolution: create
+      identity: attack_id:T1528;other:ATT&CK Enterprise 19.1 parent
+      title:
+        zh: 窃取应用访问令牌，技术 T1528，ATT&CK Enterprise 19.1
+        en: Steal Application Access Token, Technique T1528, ATT&CK Enterprise 19.1
+      source_type: official-documentation
+      publisher: MITRE ATT&CK
+      url: https://attack.mitre.org/versions/v19/techniques/T1528/
+      locator: Parent definition; zero sub-techniques; Kubernetes service-account token, CI/CD token, Azure IMDS, malicious OAuth app, access-token lifetime, and refresh-token scope; Credential Access mapping; version 1.5
+      evidence_stage: fixed parent behavior and implementation-breadth anchor
+      limitations: Does not automatically prove a Niji child, a token value reaching adversary control in any cited case, analytic fields, or mitigation effect.
+    - temporary_key: TMP-TA0006-009-T1528-REF-UNIT42-TEAMPCP
+      resolution: create
+      identity: url:https://unit42.paloaltonetworks.com/teampcp-supply-chain-attacks/
+      title:
+        zh: 将保护者武器化：TeamPCP 针对安全基础设施的多阶段供应链攻击
+        en: "Weaponizing the Protectors: TeamPCP’s Multi-Stage Supply Chain Attack on Security Infrastructure"
+      source_type: incident-report
+      publisher: Palo Alto Networks Unit 42
+      published: "2026-03-31"
+      url: https://unit42.paloaltonetworks.com/teampcp-supply-chain-attacks/
+      locator: Lines describing Trivy wave; cloud credential harvesting via compromised endpoint IMDS; direct `/proc/<pid>/mem` read of runner.worker for plaintext tokens; normal scan continuation; encrypted exfiltration; harvested npm and GitHub token use; Kubernetes token/file detections and process/network fields
+      evidence_stage: direct acquisition behavior and successor use, with some campaign-scale estimates attributed to third parties
+      limitations: Does not publish every token value, exact issuer response, object path, or validity. Do not use third-party estimates of total credentials as direct Unit 42 observation or splice all waves into one per-host chain.
+    - temporary_key: TMP-TA0006-009-T1528-REF-AZURE-IMDS
+      resolution: create
+      identity: url:https://learn.microsoft.com/en-us/entra/identity/managed-identities-azure-resources/how-to-use-vm-token
+      title:
+        zh: 在虚拟机上使用托管身份取得访问令牌
+        en: Use Managed Identities on a Virtual Machine to Acquire an Access Token
+      source_type: official-documentation
+      publisher: Microsoft
+      url: https://learn.microsoft.com/en-us/entra/identity/managed-identities-azure-resources/how-to-use-vm-token
+      locator: IMDS token endpoint, Metadata header, resource and API version, successful response `access_token`, use against Azure Resource Manager, subsystem caching, and error status
+      evidence_stage: implementable authority-return fields and material response
+      limitations: Normal product behavior, not attack evidence; does not state which process called IMDS or prove adversary control.
+    - temporary_key: TMP-TA0006-009-T1528-REF-K8S-SA
+      resolution: create
+      identity: url:https://kubernetes.io/docs/reference/access-authn-authz/service-accounts-admin/
+      title:
+        zh: Kubernetes ServiceAccount 管理与 TokenRequest
+        en: Kubernetes ServiceAccount Administration and TokenRequest
+      source_type: official-documentation
+      publisher: Kubernetes
+      url: https://kubernetes.io/docs/reference/access-authn-authz/service-accounts-admin/
+      locator: ServiceAccount admission volume mount; `/var/run/secrets/kubernetes.io/serviceaccount`; TokenRequest; one-hour default time-bound token; Pod and audience binding; any mounting container can access; long-lived Secret warning; invalidation semantics
+      evidence_stage: persisted token location, reader scope, lifetime, and mitigation capability
+      limitations: Product behavior rather than attack evidence; a mounted token does not prove unauthorized read or adversary control.
+    - temporary_key: TMP-TA0006-009-T1528-REF-GITHUB-RUNNER
+      resolution: create
+      identity: url:https://docs.github.com/en/actions/concepts/security/compromised-runners
+      title:
+        zh: GitHub Actions 受侵 Runner 风险
+        en: Compromised GitHub Actions Runners
+      source_type: official-documentation
+      publisher: GitHub
+      url: https://docs.github.com/en/actions/concepts/security/compromised-runners
+      locator: Environment and generated-script secret exposure; `GITHUB_TOKEN` and referenced secrets harvestability; log redaction not a security boundary; token exfiltration; job-token lifetime and API use
+      evidence_stage: runtime and artifact exposure capability plus limitations
+      limitations: Capability guidance, not a particular incident or universal memory-access telemetry contract.
+    - temporary_key: TMP-TA0006-009-T1528-REF-RFC6749
+      resolution: create
+      identity: rfc:6749
+      title:
+        zh: OAuth 2.0 授权框架
+        en: The OAuth 2.0 Authorization Framework
+      source_type: standard
+      publisher: RFC Editor / IETF
+      published: "2012-10"
+      url: https://www.rfc-editor.org/rfc/rfc6749.html
+      locator: Access-token and refresh-token definitions; client, authorization server, resource server, authorization grant, token endpoint, token response, scope, and refresh semantics
+      evidence_stage: material semantics and stage boundary
+      limitations: Protocol standard, not incident evidence; OAuth terminology does not cover every application token implementation.
+    - temporary_key: TMP-TA0006-009-T1528-REF-RFC9700
+      resolution: create
+      identity: rfc:9700
+      title:
+        zh: OAuth 2.0 安全最佳当前实践
+        en: Best Current Practice for OAuth 2.0 Security
+      source_type: standard
+      publisher: RFC Editor / IETF
+      published: "2025-01"
+      url: https://www.rfc-editor.org/rfc/rfc9700.html
+      locator: Exact redirect and PKCE; implicit response leakage; sender-constrained access tokens with mTLS or DPoP; refresh-token rotation or constraint; audience/scope restriction; refresh family compromise response
+      evidence_stage: preventive control and post-acquisition usability limitation
+      limitations: Standards guidance does not prove deployment, successful acquisition, or provider revocation propagation.
+  claims:
+    - temporary_key: TMP-TA0006-009-T1528-CLM-ADMISSION
+      resolution: create
+      proposition:
+        zh: T1528 在完整应用 access/refresh material 实际返回、读取或复制到攻击者控制接收者时完成；注册、同意、签发线索、路径发现、失败读取和后继资源活动均不能单独替代这一结果。
+        en: T1528 completes when complete application access or refresh material is actually returned, read, or copied into an adversary-controlled recipient; registration, consent, issuance clues, path discovery, failed reads, and downstream resource activity cannot individually substitute for that result.
+      evidence_keys: [TMP-TA0006-009-T1528-REF-ATTACK, TMP-TA0006-009-T1528-REF-UNIT42-TEAMPCP, REF-000178]
+      evidence_mode: parent anchor plus direct incidents and calibrated inference
+    - temporary_key: TMP-TA0006-009-T1528-CLM-STAGES
+      resolution: create
+      proposition:
+        zh: Token 位置暴露、read/return 成功、材料取得、取得时可用性、呈现、依赖方接受和资源访问是七个证据阶段，后继成功可证明 possession 但不能说明具体取得路径。
+        en: Token-location exposure, successful read or return, material acquisition, usability at acquisition, presentation, relying-party acceptance, and resource access are seven evidence stages; successor success can establish possession but not the specific acquisition path.
+      evidence_keys: [REF-000070, REF-000178, TMP-TA0006-009-T1528-REF-RFC6749]
+      evidence_mode: direct source facts plus evidence-model inference
+    - temporary_key: TMP-TA0006-009-T1528-CLM-BOUNDARY
+      resolution: create
+      proposition:
+        zh: 正规 issuer 返回的原 token 被攻击者取得归 T1528，离权威新构造归 NJT-0166，token 呈现归 T1550.001，依赖方接受入口归 NJT-0061，Cookie 会话材料归 T1539，输入前秘密截获归 NJT-0169。
+        en: Acquisition of an original token returned by a legitimate issuer belongs to T1528, off-authority construction to NJT-0166, token presentation to T1550.001, relying-party entry acceptance to NJT-0061, cookie session material to T1539, and pre-token input interception to NJT-0169.
+      evidence_keys: [TMP-TA0006-009-T1528-REF-ATTACK, TMP-TA0006-009-T1528-REF-RFC6749]
+      evidence_mode: taxonomy boundary inference reviewed against canonical adjacent objects
+    - temporary_key: TMP-TA0006-009-T1528-CLM-RETURN
+      resolution: create
+      proposition:
+        zh: Token 在正规 authority 当前事务中新返回到攻击者控制 workload/client/redirect 时，取得痕迹由 request、issuance、response 和 recipient 组成，区别于旧 token 文件或 memory read。
+        en: When a legitimate authority returns a fresh token in the current transaction to an adversary-controlled workload, client, or redirect, acquisition residue consists of request, issuance, response, and recipient rather than an existing token file or memory read.
+      evidence_keys: [TMP-TA0006-009-T1528-REF-AZURE-IMDS, TMP-TA0006-009-T1528-REF-UNIT42-TEAMPCP, TMP-TA0006-009-T1528-REF-RFC6749]
+      evidence_mode: incident plus official implementation and standard
+    - temporary_key: TMP-TA0006-009-T1528-CLM-ARTIFACT
+      resolution: create
+      proposition:
+        zh: Token 在攻击动作前已作为文件、Secret、投影卷、仓库或持久 cache 存在时，完整值向非批准 reader 的成功 object read 构成独立取得路径，并需要对象级读取与复制产物检测。
+        en: When a token exists before adversary action as a file, Secret, projected volume, repository object, or durable cache, successful object read of the complete value by an unapproved reader forms an independent acquisition path requiring object-read and copied-artifact detection.
+      evidence_keys: [TMP-TA0006-009-T1528-REF-K8S-SA, TMP-TA0006-009-T1528-REF-UNIT42-TEAMPCP, TMP-TA0006-009-T1528-REF-GITHUB-RUNNER]
+      evidence_mode: official platform behavior plus direct incident
+    - temporary_key: TMP-TA0006-009-T1528-CLM-RUNTIME
+      resolution: create
+      proposition:
+        zh: 只在 process/job 易失状态中存在的 token 可被同 job 恶意代码或跨进程 memory/env/IPC 读取提取，且需要 runtime provenance 与第二输出检测，不能由持久对象清单覆盖。
+        en: A token existing only in volatile process or job state can be extracted by malicious code in the same job or cross-process memory, environment, or IPC reads and requires runtime provenance plus second-output detection rather than persisted-object inventory.
+      evidence_keys: [TMP-TA0006-009-T1528-REF-UNIT42-TEAMPCP, TMP-TA0006-009-T1528-REF-GITHUB-RUNNER]
+      evidence_mode: direct incident and official platform warning
+    - temporary_key: TMP-TA0006-009-T1528-CLM-DELEGATION
+      resolution: create
+      proposition:
+        zh: 正常委派与 T1528 的差异不在 token 是否由正规平台签发，而在 recipient/client/workload 是否由批准 owner 控制并符合 redirect、scope、用途和代码 Provenance；供应商集成被控时还需分别记录关系控制转移和 token 材料取得。
+        en: Legitimate delegation differs from T1528 through whether an approved owner controls the recipient, client, or workload and whether redirect, scope, purpose, and code provenance match, not through whether a legitimate platform issued the token. Compromise of a vendor integration additionally requires separate records for relationship-control transfer and token-material acquisition.
+      evidence_keys: [REF-000178, TMP-TA0006-009-T1528-REF-RFC6749]
+      evidence_mode: direct integration incident plus boundary inference
+    - temporary_key: TMP-TA0006-009-T1528-CLM-REVOCATION
+      resolution: create
+      proposition:
+        zh: 完整处置需同时撤销 access/refresh family、grant/consent、client/workload credential 和关联 session，并在每个 audience 验证旧状态实际被拒绝；控制面 revoke 成功或密码重置不是传播完成证据。
+        en: Complete containment revokes access and refresh families, grant or consent, client or workload credentials, and linked sessions and verifies actual denial of old state at every audience; control-plane revoke success or password reset is not proof of propagation completion.
+      evidence_keys: [REF-000070, REF-000178, TMP-TA0006-009-T1528-REF-RFC9700]
+      evidence_mode: direct response guidance and standards applied to T1528
+  cases:
+    - temporary_key: TMP-TA0006-009-T1528-CASE-TEAMPCP
+      resolution: create
+      name:
+        zh: TeamPCP 在受信 CI/CD 流程中多路径收获 Token
+        en: TeamPCP Multi-Path Token Harvesting in Trusted CI/CD Workflows
+      actor_or_campaign: TeamPCP
+      time_range: late February through March 2026
+      target: Trivy, Checkmarx KICS, LiteLLM, Telnyx, and downstream CI/CD consumers
+      central_observed_facts:
+        zh: Unit 42 记录 TeamPCP 恶意代码在受侵端点经 IMDS 收集云凭据，直接读取 runner.worker 的 `/proc/<pid>/mem` 提取明文 token，在合法扫描继续并返回正常结果时把材料加密外传，并使用收获的 npm/GitHub token 扩展供应链攻击。
+        en: Unit 42 records TeamPCP malicious code harvesting cloud credentials through IMDS on compromised endpoints, reading runner.worker through `/proc/<pid>/mem` to extract plaintext tokens, encrypting and exfiltrating material while legitimate scans continued and returned normal results, and using harvested npm and GitHub tokens to extend the supply-chain attack.
+      not_established:
+        zh: 报告未逐个公开 token 值、所有 object path、每次 issuer response、取得时有效期或全部受害者；不同波次不能拼成每台主机都经历的统一链，第三方的总规模估计也不能当作 Unit 42 直接观察。
+        en: The report does not publish each token value, every object path, every issuer response, acquisition-time validity, or every victim. Separate waves cannot be combined into a universal per-host chain, and third-party scale estimates are not direct Unit 42 observation.
+      evidence_keys: [TMP-TA0006-009-T1528-REF-UNIT42-TEAMPCP]
+      confidence: high
+  detection_strategies:
+    - TMP-TA0006-009-T1528-DET-ACQUISITION-LINEAGE
+  detection_analytics:
+    - TMP-TA0006-009-T1528-NJA-RETURN
+    - TMP-TA0006-009-T1528-NJA-ARTIFACT
+    - TMP-TA0006-009-T1528-NJA-RUNTIME
+    - TMP-TA0006-009-T1528-NJA-REVOCATION
+  mitigations:
+    - TMP-TA0006-009-T1528-MIT-EXPOSURE-CONTROL
+    - MIT-000052
+    - MIT-000066
+  relationships: []
+research:
+  taxonomy_breadth_review:
+    attack_subtechnique_count: 0
+    attack_subtechnique_ids: []
+    represented_dimensions:
+      - container service-account token
+      - CI/CD and repository tokens
+      - cloud managed identity and IMDS return
+      - malicious OAuth application and consent
+      - access and refresh token lifetime
+    breadth_trigger: ordinary
+    coverage_resolutions:
+      - source_cluster: managed identity, metadata service, token endpoint, malicious application, and redirect return
+        resolution: niji-variable-candidate
+        result: TMP-TA0006-009-T1528-CHILD-RETURN
+        reason: Fresh authority return has issuer/request/recipient traces without an existing token-object read.
+      - source_cluster: service-account volume, Secret, repository, workspace, file, and persistent cache
+        resolution: niji-variable-candidate
+        result: TMP-TA0006-009-T1528-CHILD-ARTIFACT
+        reason: Existing object read has stable reader, object version, mount, bytes, and copy-artifact telemetry.
+      - source_cluster: process memory, environment, generated script, token broker, and job state
+        resolution: niji-variable-candidate
+        result: TMP-TA0006-009-T1528-CHILD-RUNTIME
+        reason: Volatile state requires process or job provenance, memory or IPC access, and second-output detection.
+      - source_cluster: OAuth, cloud provider, container platform, device, application, API, product, and token format
+        resolution: not-stealth-distinct
+        reason: Implementations span the three stable material positions and do not independently determine trace topology.
+      - source_cluster: token presentation, relying-party acceptance, and resource activity
+        resolution: adjacent-technique
+        reason: T1550.001 and NJT-0061 own use and accepted entry; they corroborate possession but do not define acquisition path.
+      - source_cluster: browser cookie session state
+        resolution: adjacent-technique
+        reason: T1539 owns cookie-semantic session material unless an independently evidenced API access-token role exists.
+    candidate_stealth_axes_examined:
+      - axis: authority return versus preexisting material
+        result: formal
+        children: [TMP-TA0006-009-T1528-CHILD-RETURN, TMP-TA0006-009-T1528-CHILD-ARTIFACT, TMP-TA0006-009-T1528-CHILD-RUNTIME]
+      - axis: persisted object versus volatile runtime
+        result: formal
+        children: [TMP-TA0006-009-T1528-CHILD-ARTIFACT, TMP-TA0006-009-T1528-CHILD-RUNTIME]
+      - axis: material validity, refreshability, audience/scope, and sender constraint
+        result: parent-outcome-grade
+        reason: These change risk and response but can occur in every acquisition position and do not produce exclusive siblings.
+      - axis: delayed or context-aligned token use
+        result: adjacent
+        reason: Changes successor-use observation and belongs to T1550/NJT-0061 rather than acquisition.
+      - axis: vendor, product, protocol, token syntax, and platform
+        result: rejected
+        reason: No stable independent stealth boundary.
+    second_pass_required: false
+    second_pass_completed: true
+    proposed_niji_child_count: 3
+    breadth_gap_explained: true
+    reviewer_notes:
+      zh: >-
+        ATT&CK 零子项不设配额。本轮从 authority return、持久对象、易失 runtime、材料有效性、后继 use 和合法 delegation 开放搜索；前三项通过稳定位置、痕迹和防守差门槛，validity 作为跨子项结果等级，use/acceptance 让给相邻对象。三个子项均不得用后继 API 成功替代取得路径证据。
+      en: >-
+        ATT&CK's zero-child inventory sets no quota. Open search covered authority return, persisted object, volatile runtime, material usability, successor use, and legitimate delegation. The first three pass stable-location, trace, and defense-difference gates. Validity remains a cross-child outcome grade, while use and acceptance belong to adjacent objects. No child may use later API success as a substitute for acquisition-path evidence.
+  evidence_coverage:
+    parent_behavior_keys: [TMP-TA0006-009-T1528-REF-ATTACK, TMP-TA0006-009-T1528-REF-UNIT42-TEAMPCP, REF-000178]
+    boundary_keys: [TMP-TA0006-009-T1528-REF-RFC6749, REF-000070, REF-000178]
+    mechanism_support:
+      - mechanism_ref: NM-BT
+        evidence_keys: [TMP-TA0006-009-T1528-REF-UNIT42-TEAMPCP, TMP-TA0006-009-T1528-REF-GITHUB-RUNNER]
+        confidence: medium
+      - mechanism_ref: NM-FD
+        evidence_keys: [TMP-TA0006-009-T1528-REF-UNIT42-TEAMPCP, REF-000178]
+        confidence: medium
+    child_existence_support:
+      - child_key: TMP-TA0006-009-T1528-CHILD-RETURN
+        evidence_keys: [TMP-TA0006-009-T1528-REF-UNIT42-TEAMPCP, TMP-TA0006-009-T1528-REF-AZURE-IMDS, TMP-TA0006-009-T1528-REF-RFC6749]
+      - child_key: TMP-TA0006-009-T1528-CHILD-ARTIFACT
+        evidence_keys: [TMP-TA0006-009-T1528-REF-UNIT42-TEAMPCP, TMP-TA0006-009-T1528-REF-K8S-SA, TMP-TA0006-009-T1528-REF-GITHUB-RUNNER]
+      - child_key: TMP-TA0006-009-T1528-CHILD-RUNTIME
+        evidence_keys: [TMP-TA0006-009-T1528-REF-UNIT42-TEAMPCP, TMP-TA0006-009-T1528-REF-GITHUB-RUNNER]
+    unsupported_or_deferred:
+      - exact_initial_acquisition_path_for_CASE-000064
+      - every_token_value_or_victim_in_TeamPCP_reporting
+      - generic_cross-platform_process_memory_audit_fields
+      - token_use_as_substitute_for_acquisition
+      - automatic_assumption_that_a_valid_issuer_means_legitimate_recipient
+      - guarantee_of_immediate_revocation_at_every_third_party_audience
+  evidence_stage_review:
+    - source_key: TMP-TA0006-009-T1528-REF-ATTACK
+      direct: fixed parent behavior, no sub-techniques, implementation breadth, Credential Access mapping
+      inference_limit: no automatic Niji taxonomy or event completion
+    - source_key: TMP-TA0006-009-T1528-REF-UNIT42-TEAMPCP
+      direct: IMDS credential harvesting, runner.worker plaintext token extraction, normal workflow continuation, exfiltration, and some successor token use
+      inference_limit: not every token instance, path, issuer response, validity, or victim is public
+    - source_key: REF-000178
+      direct: compromised Drift OAuth tokens under attacker control, resource activity, access/refresh revocation and integration disablement
+      inference_limit: initial acquisition path and token storage/runtime location are undisclosed
+    - source_key: REF-000070
+      direct: observed token theft/replay patterns and revocation propagation limitations in Microsoft environments
+      inference_limit: cookie examples and later use cannot by themselves prove application-token acquisition path
+    - source_key: TMP-TA0006-009-T1528-REF-RFC9700
+      direct: standards controls for leakage, sender constraint, scope, refresh rotation, and family compromise
+      inference_limit: no deployment or incident proof
+  content_depth_review:
+    compared_with_njt_0001: true
+    field_responsibilities_complete: true
+    candidate_specific_prose: true
+    repeated_prose_reviewed: true
+    notes:
+      zh: >-
+        父级研究稿分别回答 token 材料和完成点、取得与可用/使用分层、正规 token 外观和观察面分离、相邻材料对象、合法委派、场景、攻击者前提、防守字段与隐私。三个子项均按取得前材料位置和 path 建立，并提供独立检测字段、误报、盲区、缓解应用和证据限制；未按 OAuth、厂商、容器、设备、API 或产品拆分。
+      en: >-
+        The parent research separately addresses token material and completion, acquisition versus usability and use, legitimate token appearance and separated observation planes, adjacent material objects, legitimate delegation, scenarios, attacker prerequisites, defender fields, and privacy. Each child is based on material location immediately before acquisition and acquisition path, with distinct detection fields, false positives, blind spots, mitigation applications, and evidence limits. None is divided by OAuth, vendor, container, device, API, or product.
+  automation_review:
+    canonical_prose_bulk_generated: false
+    mechanical_uses:
+      - YAML parsing
+      - duplicate-key inspection
+      - bilingual paragraph inspection
+      - temporary-key referential audit
+      - DET/NJA reciprocity and mitigation-target audit
+  limitations:
+    paragraphs:
+      - zh: >-
+          公开来源最强的是 TeamPCP 的 CI/CD 多路径取得和 UNC6395 的 token 已受损/被使用结果，两者证据问题不同。前者公开 IMDS、memory、部分 file/secret 行为但没有逐 token 完整清单；后者确认 token control 和撤销，却不披露最初取得位置。不能把后者资源查询反推为特定 cache 或 memory theft，也不能把前者不同波次和目标拼成每台受害主机的一条完整链。
+        en: >-
+          Public evidence is strongest for TeamPCP's multi-path CI/CD acquisition and UNC6395's compromised-and-used token result, but they answer different questions. The former exposes IMDS, memory, and some file or secret behavior without a complete per-token inventory. The latter confirms token control and revocation without disclosing initial material location. Its resource queries cannot be reverse-inferred as a specific cache or memory theft, and TeamPCP's waves and targets cannot be spliced into one chain for every victim host.
+      - zh: >-
+          许多 issuer、SaaS 和 runtime 不记录可安全关联的 token ID；opaque token 不能解码，JWT jti 也不一定存在或唯一。通用日志禁止保存 raw token，HMAC fingerprint 又要求在受限本地边界生成。字段缺失时，防守方可能分别证明未授权 read、异常 issuance 或后继 use，却无法证明它们属于同一 token 实例；结论应显式降级。
+        en: >-
+          Many issuers, SaaS providers, and runtimes do not expose a safely joinable token ID. Opaque tokens cannot be decoded, and JWT jti may be missing or nonunique. General logs must not retain raw tokens, while HMAC fingerprints must be generated within a restricted local boundary. With missing fields, defenders may separately establish an unauthorized read, anomalous issuance, or successor use without proving they refer to one token instance, and conclusions must explicitly downgrade.
+      - zh: >-
+          撤销语义随 access/refresh token、Cookie、workload credential、Kubernetes TokenRequest 和第三方集成而异。Microsoft 说明 refresh revoke 后 access token 可持续到期，Kubernetes bound token 依 Pod 删除失效，供应商集成还需跨客户和各 connected system 处理。固定窗口只能是实施起点；正式 Analytic 必须按 provider SLA、最大 TTL、cache 和 audience 能力校准，并避免用真实被盗 token 做破坏性测试。
+        en: >-
+          Revocation semantics differ across access and refresh tokens, cookies, workload credentials, Kubernetes TokenRequest, and third-party integrations. Microsoft notes that access tokens may remain valid until expiry after refresh revocation. Kubernetes bound tokens expire with Pod deletion, and vendor integrations require action across customers and connected systems. Fixed windows are implementation starting points only. Formal analytics must calibrate provider SLA, maximum TTL, cache, and audience capability and avoid destructive testing with real stolen tokens.
+  rejected_mechanisms:
+    - mechanism_ref: NM-DO
+      reason:
+        zh: Token 可能是 opaque、JWT 或被归档加密，但材料格式或后续封装不构成取得行为本身的稳定匿迹因果；本批只记录观察面分离与正规实体外观。
+        en: A token may be opaque, a JWT, or placed in an encrypted archive, but material format or follow-on packaging is not stable stealth causality of acquisition itself; this batch records observation-plane separation and legitimate-entity appearance.
+    - mechanism_ref: NM-ST
+      reason:
+        zh: 延迟使用、分批外传和短寿 token 会影响窗口，却属于后继使用/传输或材料属性；现有来源没有证明取得动作通过时间或空间稀释形成独立变量。
+        en: Delayed use, batched exfiltration, and short-lived tokens affect windows but belong to successor use or transfer or material properties. Available sources do not establish temporal or spatial dilution of acquisition as an independent variable.
+  open_questions:
+    - 能否获得 CASE-000064 对应供应商事件的结论级材料，明确 Drift token 最初从持久 store、运行态还是签发/refresh 返回面离开控制？
+    - 目标 IdP、SaaS、IMDS 与 CI/CD 是否提供可安全连接 request、token family/reference 和 recipient process 的字段，而无需保存 raw token？
+    - 哪些 relying party 支持 provider introspection、continuous access evaluation 或 sender-constrained token，撤销预期生效时间如何按 audience 记录？
+    - 主 Agent 是否接受 MIT-000066 只扩展到 CHILD-RETURN 的 connected-app 子集，或因应用对整个子项覆盖不完整而仅保留 planning 建议？
+integration:
+  status: review
+  resolutions:
+  - three-path acquisition taxonomy integrated with parent-only CASE-000064 scope
+  - shared session and integration mitigations extended without duplication
+  - canonical IDs synchronized and quality, bundle, and Web gates passed

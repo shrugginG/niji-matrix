@@ -1,0 +1,96 @@
+schema_version: 2.0.0
+type: mitigation
+id: MIT-000061
+name: {zh: CI/CD 输入信任、Runner 隔离与构建来源治理, en: CI/CD Input Trust Runner Isolation and Build Provenance Governance}
+summary: {zh: 通过受保护定义、不可变输入、外部贡献隔离、最小权限短驻 runner 与可验证来源证明降低流水线投毒执行, en: Reduce poisoned-pipeline execution through protected definitions immutable inputs isolated external contributions least-privilege ephemeral runners and verifiable provenance}
+description:
+  paragraphs:
+    - zh: 本缓解把流水线视为跨源代码管理、CI 控制面、runner 和制品发布的信任系统。控制目标是让未经审查的定义和输入无法进入具权执行，让每个 job 只取得必要且短期的秘密与网络访问，并让实际构建材料和输出可由 digest 与来源证明验证。它不依赖“CI 服务可信”或“制品已签名”这类单点信誉，因为被投毒 runner 本身可能产生看似合法的执行和签名产物。
+      en: This mitigation treats the pipeline as a trust system spanning source control CI control plane runners and artifact publication. It prevents unreviewed definitions and inputs from entering privileged execution limits every job to necessary short-lived secrets and network access and makes actual build material and output verifiable through digests and provenance. It does not rely on point reputation such as a trusted CI service or signed artifact because a poisoned runner may itself produce legitimate-looking execution and signed output.
+    - zh: 实施需要同时保留检测证据，包括完整 workflow 历史、实际 checkout 和 action digest、job 权限、runner 身份、artifact lineage 与来源验证结果。阻断策略应按仓库和环境分级，避免为了兼容公共贡献或旧构建而把 fork、可变 tag、自托管 runner 和长期凭据永久豁免。
+      en: Implementation also preserves detection evidence including complete workflow history actual checkout and action digests job permissions runner identities artifact lineage and provenance-verification results. Enforcement should be tiered by repository and environment and must not permanently exempt forks mutable tags self-hosted runners or long-lived credentials for compatibility with public contribution or legacy builds.
+domains: [enterprise]
+measures:
+  - key: protected-reviewed-definitions
+    name: {zh: 受保护且双人审阅的流水线定义, en: Protected and Independently Reviewed Pipeline Definitions}
+    description:
+      paragraphs:
+        - zh: 对 workflow、复用 workflow、runner 配置和权限文件实施分支保护、CODEOWNERS、强签名、至少一名独立审批者和禁止管理员静默绕过；把高权限 release 定义从普通应用代码权限中分离，并对新增触发器、权限扩大和自托管 runner 标签设置策略门禁。
+          en: Apply branch protection CODEOWNERS required signatures at least one independent reviewer and prevention of silent administrator bypass to workflows reusable workflows runner configuration and permission files. Separate privileged release definitions from ordinary application-code authority and gate new triggers permission expansion and self-hosted runner labels through policy.
+    control_type: preventive
+  - key: immutable-reviewed-inputs
+    name: {zh: 不可变且可追溯的构建输入, en: Immutable and Traceable Build Inputs}
+    description:
+      paragraphs:
+        - zh: 将第三方 action、依赖、工具链、tarball 和容器固定到完整 digest，验证发布材料与源仓库差异，隔离并标识 cache writer，记录所有 resolved dependencies 与跨 workflow 制品生产者；对无法提供来源或完整性的输入使用受控镜像、冷却期或拒绝策略。
+          en: Pin third-party actions dependencies toolchains tarballs and containers to full digests verify release material against repository source isolate and identify cache writers and record all resolved dependencies and cross-workflow artifact producers. Use controlled mirrors cooling periods or rejection for inputs without provenance or integrity.
+    control_type: exposure-reduction
+  - key: untrusted-contribution-separation
+    name: {zh: 外部贡献与具权工作流分离, en: Separation of External Contributions from Privileged Workflows}
+    description:
+      paragraphs:
+        - zh: 让 fork/PR 内容只在无秘密、只读 token、无生产网络的隔离 runner 中执行；避免危险 pull_request_target checkout 和事件值直接插入 shell。需要后续具权处理时，以经过验证的最小制品和显式审批在独立 workflow 中传递，不复用低权环境或可写缓存。
+          en: Execute fork and pull-request content only on isolated runners with no secrets read-only tokens and no production network. Avoid dangerous pull_request_target checkout and direct interpolation of event values into shells. When privileged follow-up is required pass only verified minimal artifacts under explicit approval to a separate workflow without reusing the low-trust environment or writable caches.
+    control_type: containment
+  - key: ephemeral-least-privilege-provenance
+    name: {zh: 短驻最小权限 Runner 与平台来源证明, en: Ephemeral Least-Privilege Runners and Platform Provenance}
+    description:
+      paragraphs:
+        - zh: 每个 job 使用干净、短驻、相互隔离的 runner，按 job 发放短期最小范围凭据并限制出站网络；签名密钥与构建代码隔离，由受信控制面自动生成包含 builder、source、external parameters、resolved dependencies 和 artifact digest 的来源证明，并在发布前按策略验证。
+          en: Use clean ephemeral mutually isolated runners per job issue narrowly scoped short-lived credentials and restrict egress. Isolate signing keys from build code and have the trusted control plane automatically generate provenance containing builder source external parameters resolved dependencies and artifact digests for policy verification before release.
+    control_type: preventive
+applications:
+  - target_ref: NJT-0074
+    use:
+      paragraphs:
+        - zh: 对整个流水线投毒执行面，建立从受保护定义、输入准入、外部贡献隔离、job 权限到来源验证的分层策略。高权限 workflow 必须使用批准模板和不可变输入，runner 只能在单次 job 生命周期取得秘密，所有制品发布必须绑定实际 source、workflow、builder 与 digest；不满足任一强保证时转入隔离构建并禁止自动发布。
+          en: Across Poisoned Pipeline Execution establish layered policy from protected definitions and input admission through external-contribution isolation job permissions and provenance verification. Privileged workflows must use approved templates and immutable inputs runners receive secrets only for one job lifetime and every release binds actual source workflow builder and digest. Failure of a strong guarantee routes the run to isolation and prevents automatic publication.
+    expected_effect:
+      paragraphs:
+        - zh: 该应用同时缩小三个入口，阻止未经审查的定义或输入直接继承发布权限，并使攻击者即使获得 runner 执行也难以读取长期秘密、访问内网或产生可验证发布。保留的 digest 与来源结果还把仓库、run 和制品连接起来，提高事后归因和快速撤回能力。
+          en: The application narrows all three entry paths prevents unreviewed definitions or inputs from inheriting release authority and makes it difficult for runner execution to read long-lived secrets reach internal networks or produce a verifiable release. Retained digests and provenance results also join repository runs and artifacts improving attribution and rapid revocation.
+    limitations:
+      paragraphs:
+        - zh: 该控制不能消除已获授权维护者的恶意修改，也不能在构建平台和来源签名根同时失陷时保证产物正确。完整隔离、可复现构建和 provenance 会增加成本与延迟；旧工具链可能无法固定全部输入，因此必须记录例外、期限和补偿性运行时监控。
+          en: The control cannot eliminate malicious changes by an authorized maintainer or guarantee correct output when both build platform and provenance trust root are compromised. Full isolation reproducible builds and provenance add cost and delay and legacy toolchains may not pin every input so exceptions require scope expiry and compensating runtime monitoring.
+  - target_ref: NJS-0074-001
+    use:
+      paragraphs:
+        - zh: 对受信流水线定义注入，将 workflow 路径、复用 workflow、权限文件和 runner 注册配置设为高敏感对象，要求独立审批、签名提交、受保护分支和策略化 diff。禁止新 workflow 默认取得写 token 或秘密；discussion、schedule、workflow_dispatch 等新增触发器与自托管 runner 标签必须由安全所有者批准。
+          en: For Trusted Pipeline-Definition Injection treat workflow paths reusable workflows permission files and runner-registration configuration as high-sensitivity objects requiring independent approval signed commits protected branches and policy-aware diffs. New workflows receive no write token or secrets by default and added discussion schedule workflow_dispatch triggers or self-hosted runner labels require security-owner approval.
+    expected_effect:
+      paragraphs:
+        - zh: 攻击者无法仅凭普通代码写权限把命令登记成具权 job，恶意定义更可能在合并前暴露，且即使落盘也只能在低权环境执行。签名、审批和完整版本历史为 Shai-Hulud 式隐藏 workflow 与 runner 注册提供稳定阻断和调查证据。
+          en: Ordinary code-write access alone can no longer register commands as privileged jobs malicious definitions are more likely to surface before merge and any landed definition executes only in a low-privilege environment. Signatures approvals and complete version history provide stable prevention and investigative evidence for Shai-Hulud-style hidden workflows and runner registration.
+    limitations:
+      paragraphs:
+        - zh: 被盗的高权限审批者或平台 App 仍可能满足门禁，复杂 workflow diff 也可能超过人工审查能力。紧急发布绕过和管理员例外必须双人授权、短期有效并触发增强监控；只保护主 workflow 而忽略复用定义和 runner 配置会留下同类入口。
+          en: A compromised privileged reviewer or platform App may still satisfy gates and complex workflow diffs can exceed human review capacity. Emergency-release bypass and administrator exceptions require two-person authorization short expiry and enhanced monitoring. Protecting only primary workflows while ignoring reusable definitions and runner configuration leaves equivalent entry paths.
+  - target_ref: NJS-0074-002
+    use:
+      paragraphs:
+        - zh: 对间接构建输入激活，固定 action、工具链、依赖和容器 digest，对 release tarball 与 Git source 做结构化差分，隔离 cache writer，并在 run 开始时生成真实输入清单。关键制品应通过独立干净构建复核，发布门禁比较 source、resolved inputs、builder 和 output digest，而不是只检查 workflow 未变化。
+          en: For Indirect Build-Input Activation pin action toolchain dependency and container digests compare release tarballs structurally with Git source isolate cache writers and generate an actual-input manifest at run start. Verify critical artifacts through an independent clean build and gate release on source resolved inputs builder and output digest rather than an unchanged workflow alone.
+    expected_effect:
+      paragraphs:
+        - zh: 可变 tag、伪装测试文件、短暂源替换或跨 run 污染更难在主定义之外悄然生效；同一声明输入解析出不同 digest、源与发布包不一致或制品无法由批准 builder 解释时会被阻断。攻击者维持 SUNSPOT 式低差异需要同时突破更多独立完整性根。
+          en: Mutable tags disguised test files temporary source substitution and cross-run poisoning become harder to activate outside the main definition. Resolution of one declared input to a different digest source-to-release mismatch or an artifact unexplained by the approved builder is blocked. Maintaining SUNSPOT-like low difference requires compromise of more independent integrity roots.
+    limitations:
+      paragraphs:
+        - zh: 不可变固定会增加升级维护，reproducible build 对时间、网络和非确定性输入敏感，合法发布 tarball 也可能包含生成文件。策略必须对预期生成差异建立明确规则；如果批准源本身已恶意或 builder 能伪造 provenance，完整性验证不会揭示语义恶意。
+          en: Immutable pinning adds upgrade work and reproducible builds are sensitive to time network and nondeterministic inputs while legitimate release tarballs may contain generated files. Policy must define expected generated differences. Integrity verification cannot expose semantic malice when approved source is itself malicious or the builder can forge provenance.
+  - target_ref: NJS-0074-003
+    use:
+      paragraphs:
+        - zh: 对外部贡献情境门控执行，公共 fork 默认使用 `pull_request` 的只读 token、无秘密隔离 runner，并要求首次贡献审批。不得在 pull_request_target 中 checkout 未受信 head 或把事件字段直接拼接到 shell；跨 workflow 只传递按 digest 验证的非可执行最小制品，具权阶段重新解析并校验来源。
+          en: For External-Contribution Context-Gated Execution run public forks by default under pull_request with read-only tokens secretless isolated runners and first-contribution approval. Never check out an untrusted head in pull_request_target or interpolate event fields directly into a shell. Across workflows pass only digest-verified minimal non-executable artifacts and reparse and verify provenance in the privileged stage.
+    expected_effect:
+      paragraphs:
+        - zh: 外部贡献即使包含命令也只能在低权、无秘密环境执行，无法借目标仓库自动化身份访问发布 token 或内网。显式 artifact producer/consumer 与审批记录消除低权输入到具权 run 的隐式因果边，并提高检测对 PR、SHA 和派生 job 的可见性。
+          en: External contributions containing commands execute only in low-privilege secretless environments and cannot borrow target automation identity to reach release tokens or internal networks. Explicit artifact producer and consumer identity plus approval removes the implicit causal edge from low-trust input to privileged run and improves detection visibility across pull requests SHAs and derived jobs.
+    limitations:
+      paragraphs:
+        - zh: 某些项目确需对外部贡献运行集成测试或使用秘密服务，完全隔离可能降低协作效率。审批者仍可能误判恶意测试，非可执行制品也可能触发解析漏洞；例外必须限制到特定仓库、workflow、秘密和时间，并保留 runner 运行时与出站审计。
+          en: Some projects require integration tests or secret-backed services for external contributions and full isolation may reduce collaboration efficiency. Reviewers may still misjudge malicious tests and non-executable artifacts may exploit parsers. Exceptions must bind repository workflow secret and time and preserve runner runtime and egress audit.
+evidence_refs: [REF-000254, REF-000256, REF-000257, REF-000258]
+lifecycle: {status: review, version: 2.0.0, created: '2026-09-10', modified: '2026-09-12', contributors: [Niji Matrix Research], reviewers: []}

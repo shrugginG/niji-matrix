@@ -1,0 +1,100 @@
+schema_version: 2.0.0
+type: technique
+id: NJT-0076
+name: {zh: 痕迹分离型无服务器执行, en: Trace-Separated Serverless Execution}
+summary: {zh: 攻击者让云函数或 SaaS 自动化服务在短驻托管实例或正常业务事件下执行代码与动作，使主机、身份和触发因果分散到不同数据面, en: Adversaries make cloud functions or SaaS automation services execute code and actions in ephemeral managed instances or under normal business events dispersing host identity and trigger causality across data planes}
+aliases: []
+classification:
+  tactic_refs: [TA0002]
+  origin: {kind: attack-adapted, source_attack_id: T1648, source_attack_version: '19.1'}
+  decision_ref: DEC-TA0002-T1648
+definition_and_concept:
+  paragraphs:
+    - zh: 痕迹分离型无服务器执行是攻击者使云函数、应用集成服务、办公套件流程或脚本在提供商托管执行面中运行攻击者控制代码或动作的行为。执行可以来自显式 Invoke，也可以由存储、队列、邮件、文件、用户或其他业务事件触发。直接目标是使用函数 execution role、SaaS 连接器和提供商网络位置访问数据、调用 API、执行矿工或建立后续能力，而无需在客户控制的稳定服务器上启动进程。
+      en: Trace-Separated Serverless Execution causes cloud functions application-integration services office-suite flows or scripts to run adversary-controlled code or actions in provider-managed execution planes. Execution may follow explicit Invoke or storage queue mail file user or other business events. Its direct objective is to use function execution roles SaaS connectors and provider network position to access data call APIs run miners or establish follow-on capability without starting a process on a stable customer-controlled server.
+    - zh: “无服务器”描述客户不管理具体执行主机的责任边界，不意味着没有运行时，也不以 Lambda、Cloud Functions、Azure Functions、Power Automate 或 Apps Script 等产品划分对象。技术在实际 invocation 或 flow action 发生时成立；创建定义、配置角色或建立 trigger 但从未执行只属于准备或权限变更。其核心研究对象是控制面定义、服务身份、事件与短驻运行结果之间的断点。
+      en: Serverless describes the responsibility boundary in which customers do not manage a concrete execution host and does not mean no runtime exists or partition the object by Lambda Cloud Functions Azure Functions Power Automate or Apps Script. The technique is established when an invocation or flow action actually occurs. Creating a definition configuring a role or adding a trigger that never executes is preparation or privilege change. The research object is the break among control-plane definition service identity event and ephemeral runtime outcome.
+stealth_characteristics:
+  paragraphs:
+    - zh: 痕迹分离型无服务器执行不提供客户可持续取证的主机，短驻实例在调用后被回收，函数内部进程、内存和临时文件通常不进入传统 EDR。事件耦合自动化又可由普通邮件、文件、用户或存储活动触发，并以已有 flow、connector 或 function role 访问资源。防守方在身份日志中看到服务主体，在业务日志中看到正常事件，在函数日志中看到一次 invocation，任何单面都可能缺少攻击者创建者和恶意目的。
+      en: Trace-Separated Serverless Execution provides no customer host for continuous forensics and short-lived instances are reclaimed after invocation while internal processes memory and temporary files commonly remain outside traditional EDR. Event-coupled automation may be triggered by ordinary mail file user or storage activity and access resources through existing flows connectors or function roles. Defenders see a service principal in identity logs a normal event in business logs and one invocation in function logs and any single plane may omit the adversary creator and malicious purpose.
+    - zh: 控制面 Create/Update、代码或 flow 版本、事件源映射、execution role/connector、Invoke 数据事件、request/invocation ID、函数应用日志、API/数据访问、网络目的地、duration、concurrency 和成本仍然形成可观察链。AWS 明确指出 Invoke 数据事件需要配置，CreateFunction 又省略 Environment/ZipFile；因此“CloudTrail 已开”不等于完整。异常新角色、首次目的地、非业务 API 序列和定义—结果差分会削弱匿迹。
+      en: Control-plane create or update code or flow versions event-source mappings execution roles or connectors Invoke data events request or invocation IDs application logs API or data access network destinations duration concurrency and cost still form an observable chain. AWS explicitly makes Invoke data events configurable and omits Environment and ZipFile from CreateFunction so CloudTrail enabled does not mean complete coverage. New roles first-seen destinations off-business API sequences and definition-to-outcome differences weaken stealth.
+scope_boundary_definition:
+  paragraphs:
+    - zh: 本技术纳入云提供商或 SaaS 自动化服务执行攻击者控制代码、查询、连接器动作或 API 序列的情况，并要求可识别 invocation/flow run 与后继结果。IaaS VM 或 guest agent 命令归云管理命令，容器 exec/部署归容器对象，CI runner 归流水线投毒，终端 RPA 或脚本归相应执行技术。仅托管一个恶意网页、代理流量或提供 C2 URL 而没有服务端攻击代码执行，也不属于本对象。
+      en: This technique includes provider or SaaS automation services executing adversary-controlled code queries connector actions or API sequences and requires an identifiable invocation or flow run and successor outcome. IaaS VM or guest-agent commands belong to Cloud Administration Command container exec or deployment to container objects CI runners to Poisoned Pipeline Execution and endpoint RPA or scripts to corresponding execution techniques. Hosting a malicious page proxying traffic or providing a C2 URL without server-side adversary code execution is also outside scope.
+    - zh: 合法函数扩缩、自动修复、事件驱动集成和业务流程天然短驻或频繁，不能从 serverless 形式推断匿迹。短驻实例子项要求无稳定主机和运行态回收确实改变观察；事件耦合子项要求正常业务事件与恶意动作的组合造成语义混同。execution role 的权限扩大可以同时属于权限技术，但只有在函数实际执行时纳入本父级。
+      en: Legitimate function scaling automated remediation event-driven integration and business flows are naturally ephemeral or frequent and serverless form alone does not imply stealth. The ephemeral-instance child requires absence of a stable host and runtime reclamation to materially change observation. The event-coupled child requires normal business events and malicious actions to create semantic conflation. Execution-role expansion may also belong to privilege techniques and enters this parent only when the function actually executes.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+      - zh: 攻击者在获得云凭据、函数或 flow 编辑权限、PassRole/actAs、连接器授权或现有自动化所有权后使用本技术。场景包括部署 Lambda 定向矿工、让新用户/文件/邮件事件触发凭据或数据操作、使用 Power Automate 批量转移搜索结果，以及利用 provider 出站网络或服务身份访问其他云资源。
+        en: Adversaries use the technique after obtaining cloud credentials function or flow edit authority PassRole or actAs connector authorization or ownership of existing automation. Scenarios include deploying Lambda-targeted miners triggering credential or data actions on new user file or mail events using Power Automate to transfer search results and using provider egress or service identities to access other cloud resources.
+      - zh: 高价值目标是允许开发者自助创建函数、业务用户可建立低代码流程、execution role 权限宽泛、Invoke 数据事件未启用或下游 SaaS 审计分散的租户。攻击者可以选择已有事件源来减少人工 Invoke 痕迹，或使用大量短调用使单次异常淹没在正常规模中；但运行配额、成本、超时和 connector 审批限制行动。
+        en: High-value targets include tenants where developers create functions self-service business users build low-code flows execution roles are broad Invoke data events are disabled or downstream SaaS audit is fragmented. Adversaries may choose existing event sources to reduce manual Invoke traces or use many short calls so one anomaly blends with normal scale while quotas cost timeouts and connector approval constrain activity.
+  threat_model:
+    attacker_model:
+      paragraphs:
+        - zh: 攻击者至少需要创建、更新或调用函数/流程之一的权限，并理解代码包、runtime、handler、触发条件、连接器、execution role 与网络边界。要利用事件耦合还需控制或预测输入事件；要借短驻性降低取证则需把关键状态放入外部服务或 /tmp/内存并在超时前完成。Denonia 的未知部署路径提醒不能反向假定凭据来源。
+          en: The adversary needs at least one of create update or invoke authority and knowledge of code packages runtime handlers trigger conditions connectors execution roles and network boundaries. Event coupling also requires control or prediction of input events while use of ephemerality requires critical state in external services or temporary memory and completion before timeout. Denonia's unknown deployment path warns against inferring credential origin backward from the sample.
+        - zh: 操作受 IAM 条件、代码签名、版本/alias、VPC egress、connector DLP、并发、duration 和成本告警限制。攻击者若修改现有生产函数会承担业务故障风险，新建函数则产生明显控制面事件；使用已有 flow 可以减少新对象但需要更高权限和业务语义知识。
+          en: Operation is constrained by IAM conditions code signing versions or aliases VPC egress connector DLP concurrency duration and cost alerts. Modifying a production function risks business failure while creating one produces conspicuous control-plane events. Reusing an existing flow reduces new objects but requires more authority and business-semantic knowledge.
+    defender_model:
+      paragraphs:
+        - zh: 防守方假定可取得 IAM/身份、函数或 flow 定义版本、代码 digest、trigger/event-source mapping、执行角色与 connector 权限、invocation/flow-run、函数日志、下游 API/数据访问、网络与成本指标。关联维度包括 tenant/account、function/flow、version、role、trigger、event、invocation、resource 与 principal；数据来自云与办公套件多个管理域。
+          en: Defenders are assumed to have IAM or identity function or flow definition versions code digests triggers or event-source mappings execution-role and connector permissions invocation or flow runs function logs downstream API or data access network and cost metrics. Dimensions include tenant or account function or flow version role trigger event invocation resource and principal across cloud and office-suite management domains.
+        - zh: 提供商不公开宿主进程、Invoke 数据事件默认关闭、CreateFunction 省略敏感参数、第三方 connector 缺少 request ID，以及 SaaS 日志保留较短时会形成盲区。防守方必须在创建/更新时捕获完整定义，并通过 service identity 与资源结果关联补偿缺少主机 EDR；无法取得代码版本时只能给出行为风险而非确认子项。
+          en: Provider-hidden host processes disabled-by-default Invoke data events omitted CreateFunction parameters connectors without request IDs and short SaaS retention create blind spots. Defenders must capture complete definitions at create or update and compensate for missing host EDR by joining service identity to resource outcomes. Without code versions only behavioral risk rather than confirmed child classification is possible.
+stealth_mechanisms:
+  - mechanism_ref: NM-ST
+    role: primary
+    summary: {zh: 短驻实例与调用结果分散且运行态快速回收, en: Ephemeral instances and invocation outcomes disperse while runtime state is rapidly reclaimed}
+    analysis:
+      paragraphs:
+        - zh: 攻击者让恶意代码在按需创建并回收的托管实例中短时运行，客户无法对固定主机连续采集，调用、日志、API 和网络结果又可能位于不同服务与区域，形成时空释痕。Denonia 报告明确指出短 duration、大量执行和动态实例增加检测与调查困难。function version、invocation ID、role 与结果仍可跨实例聚合，因此完整数据事件和应用日志能削弱该机理。
+          en: The adversary runs malicious code briefly in provider-managed instances created and reclaimed on demand so customers cannot collect continuously from a fixed host while invocation logs API and network outcomes may reside in different services and regions creating Spatiotemporal Trace Dilution. The Denonia report explicitly identifies short duration execution volume and dynamic instances as detection and investigation challenges. Function version invocation ID role and outcomes remain aggregatable across instances so complete data events and application logs weaken the mechanism.
+    evidence_refs: [REF-000267, REF-000269, REF-000272]
+    confidence: medium
+  - mechanism_ref: NM-FD
+    role: secondary
+    summary: {zh: 恶意自动化借用正常业务事件与服务身份, en: Malicious automation borrows normal business events and service identities}
+    analysis:
+      paragraphs:
+        - zh: 攻击者把恶意动作挂接到邮件、文件、搜索、用户或存储等正常事件，并让 flow/function 使用已有 connector 或 role 执行。局部记录与合法自动化共享 trigger、service principal 和 API 外观，形成特征伪装。DART 的 Microsoft Flow 自动窃取说明业务系统可被用于恶意自动化，但未公开精确 trigger，因此置信度维持 medium；定义版本与结果基线仍可揭示语义差异。
+          en: The adversary attaches malicious actions to normal mail file search user or storage events and has a flow or function execute through existing connectors or roles. Local records share triggers service principals and API appearance with benign automation creating Feature Disguise. DART's Microsoft Flow theft shows malicious use of business automation but does not publish the exact trigger so confidence remains medium. Definition versions and outcome baselines can still expose semantic differences.
+    evidence_refs: [REF-000268, REF-000271]
+    confidence: medium
+  - mechanism_ref: NM-BT
+    role: secondary
+    summary: {zh: 提供商执行角色替代创建者成为资源调用主体, en: Provider execution roles replace creators as resource-calling principals}
+    analysis:
+      paragraphs:
+        - zh: 函数运行后，下游 API 通常记录 execution role、service account 或 connector，而不是最初创建/修改代码的用户，行为因果跨控制面身份翻译。若检测把已知服务身份视为可信，恶意资源访问会表现为自动化正常行为。角色分配、function version、trigger 和 invocation ID 可以恢复 creator→service identity→outcome 链；角色提升本身仍属于相邻权限对象。
+          en: After function execution downstream APIs commonly record an execution role service account or connector rather than the user who created or modified code translating causality across control-plane identities. If analytics trust known service identities malicious resource access appears as normal automation. Role assignment function version trigger and invocation ID recover the creator-to-service-identity-to-outcome chain while privilege expansion itself remains an adjacent object.
+    evidence_refs: [REF-000269, REF-000270, REF-000271]
+    confidence: high
+subtechnique_taxonomy:
+  narrative:
+    paragraphs:
+      - zh: 两个子技术按防守观察断点划分。短驻函数实例执行固定“无稳定客户主机且调用后运行态回收”的取证变量；良性事件流耦合执行固定“正常业务事件和服务身份激活恶意自动化”的语义变量。事件触发的短驻函数可以同时具备二者，但每条映射需要独立证据，避免把所有 Lambda 调用自动归入两个子项。
+        en: Two children partition defender-observation breaks. Ephemeral Function-Instance Execution fixes the forensic variable of no stable customer host and reclaimed post-invocation state. Benign Event-Stream-Coupled Execution fixes the semantic variable of normal business events and service identities activating malicious automation. An event-triggered ephemeral function may exhibit both but each mapping requires independent evidence to avoid assigning every Lambda invocation automatically.
+      - zh: execution role 委托是父级共同身份链，并在无调用时属于权限边界；包、镜像或 inline code 只改变检查方式；提供商、语言和服务类型是实现维度。当前证据不足以建立更多稳定子项，因此 taxonomy 保持两个 medium 子项，并在未来出现可证明的跨调用状态复用或 provider 身份伪造时重新开放检索。
+        en: Execution-role delegation is common parent identity lineage and belongs to privilege boundaries without invocation. Package image or inline code changes inspection mechanics and provider language and service type are implementation dimensions. Evidence does not support further stable children so the taxonomy retains two medium children and reopens if future cases prove cross-invocation state reuse or provider-identity forgery.
+  coverage: established
+  subtechnique_refs: [NJS-0076-001, NJS-0076-002]
+defense:
+  detections: {coverage: available, strategy_refs: [DET-000088]}
+  mitigations: {coverage: available, mitigation_refs: [MIT-000089]}
+evidence:
+  claim_refs: [CLM-000287, CLM-000288, CLM-000289, CLM-000471, CLM-000472, CLM-000473, CLM-000474, CLM-000475, CLM-000476, CLM-000477, CLM-000478]
+  case_refs: [CASE-000094, CASE-000095]
+  reference_refs: [REF-000128, REF-000267, REF-000268, REF-000269, REF-000270, REF-000271, REF-000272]
+research:
+  limitations:
+    paragraphs:
+      - zh: Denonia 证明样本为 Lambda 定向设计，但 Cado 未发现其部署路径，也没有证明攻击者在真实 Lambda 租户完成挖矿；因此短驻子项不能把样本来源强化为完整入侵。DART 案例确认 Microsoft Flow 被用于自动窃取，但公开材料没有 flow 定义与 trigger 字段，事件耦合机制只到 medium。两案平台差异也限制跨服务泛化。
+        en: Denonia proves Lambda-targeted sample design but Cado did not identify deployment or prove completed mining in a real Lambda tenant so the ephemeral child cannot upgrade sample origin into a complete intrusion. DART confirms Microsoft Flow automated theft but publishes neither the flow definition nor trigger fields leaving the event-coupled mechanism at medium. Platform differences between the cases also limit generalization.
+      - zh: 云函数短驻和业务事件触发都是正常架构属性，只有攻击者有意利用它们改变观察且实际产生恶意执行时才属于子项。提供商日志、字段默认值和保留会变化，正式 Analytic 的规范字段必须按租户验证。未来若直接运行时遥测变得可用，短驻性的防御差异可能缩小，taxonomy 应复审而不是永久固化。
+        en: Ephemeral cloud functions and business-event triggers are normal architecture properties and qualify only when an adversary deliberately uses them to change observation and malicious execution actually occurs. Provider logs field defaults and retention change and canonical analytic fields require tenant validation. If direct runtime telemetry becomes available the defense difference from ephemerality may shrink and taxonomy should be reviewed rather than frozen.
+lifecycle: {status: review, version: 2.0.0, created: '2026-09-10', modified: '2026-09-12', contributors: [Niji Matrix Research], reviewers: []}

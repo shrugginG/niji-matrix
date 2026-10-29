@@ -1,0 +1,112 @@
+schema_version: 2.0.0
+type: evasion-subtechnique
+id: NJS-0135-001
+parent_ref: NJT-0135
+name:
+  zh: 变化检查点约束的增量收集
+  en: Change-Checkpoint-Constrained Incremental Collection
+summary:
+  zh: 攻击者在自动收集的首轮后保存变化边界，后续只获取此后修改的目标，以缩小每轮读取集合。
+  en: After the first automated collection pass, the adversary saves a change boundary and acquires only targets modified
+    since it, narrowing each later read set.
+aliases: []
+lineage:
+  attck_subtechnique_inherited: false
+definition_and_concept:
+  paragraphs:
+  - zh: 变化检查点约束的增量收集是一种状态化自动获取方式。它先识别目标集合并记录时间或版本边界，再在下一轮把源对象的变化属性与边界比较，只读取满足条件者。该项定义的是进入收集轮次的判定规则，不定义读取后的归档格式或暂存位置。
+    en: Change-checkpoint-constrained incremental collection is a stateful mode of automated acquisition. It first identifies
+      a target set and records a time or version boundary, then compares source-object change attributes with that boundary
+      on later runs and reads only qualifying objects. The child defines admission to an acquisition pass, not the archive
+      format or staging location after a read.
+stealth_characteristics:
+  paragraphs:
+  - zh: 变化检查点约束的增量收集（Change-Checkpoint-Constrained Incremental Collection）将后续读取分摊到较小的变化集合，减少重复触及静态对象，使短窗批量访问告警可能缺少完整图像。它仍留下首轮扫描、列举、源文件读取和检查点更新；若被监控目录本身快速变化或审计能跨轮次关联，匿迹效果会减弱。
+    en: Change-Checkpoint-Constrained Incremental Collection limits later reads to smaller changed sets, avoiding repeated
+      access to static objects and potentially fragmenting the view of short-window bulk-read alerts. It still leaves the
+      first scan, enumeration, source reads, and checkpoint updates. Its stealth effect weakens when monitored directories
+      change rapidly or auditing correlates runs over time.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 纳入由攻击者控制的持久变化边界及其对后续读取集合的约束；首轮全量扫描是建立该状态的前提，不是独立子项。仅按扩展名、路径或每日时间读取不构成此子项，正常备份和同步使用相似状态机制时须以授权、执行谱系与数据去向区分。文件复制后的本地汇聚和归档交给
+      T1074 与 T1560。
+    en: Include an attacker-controlled persistent change boundary that constrains later read sets; the initial full pass establishes
+      this state and is not a separate child. Filtering only by extension, path, or daily time does not qualify. Legitimate
+      backup and synchronization use similar state, so authorization, execution lineage, and data destination must distinguish
+      them. Local aggregation and archive creation after copying belong to T1074 and T1560.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: 在长期文档窃取中，攻击者先完成一次可承受的基线获取，随后让组件在每轮只提取新近修改文件。Bitdefender 观察到 FilePakMonitor 每 12 小时列举，首轮受 20 天修改条件限制，后续依 ft.data
+        中的 SYSTEMTIME 选择上轮之后变化文件；报告直接支持行为模式，但未量化告警规避效果。
+      en: In long-term document theft, an adversary may tolerate one baseline acquisition and then extract only newly modified
+        files on each run. Bitdefender observed FilePakMonitor enumerate every 12 hours, limit the first pass by a 20-day
+        modification condition, and use SYSTEMTIME in ft.data to select files changed since the previous pass. The report
+        directly supports the behavior, not a measured reduction in alerts.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者必须维持可读取目标文件的权限、保存并恢复检查点，并接受初始扫描可能更显著以及时间戳变动造成漏收的代价。若仅有一次性命令执行或每次运行身份不稳定，此分类的状态边界较难持续。
+        en: The adversary must retain permission to read target files, store and recover a checkpoint, and accept a more visible
+          first scan and possible misses caused by timestamp changes. A one-shot execution context or unstable identity makes
+          this state boundary difficult to maintain.
+    defender_model:
+      paragraphs:
+      - zh: 防守方需对敏感源目录启用读取审计，并保存文件修改、读取和进程身份记录，才能比较某一进程是否反复只读取上轮之后变化的对象。单独的计划任务事件、文件创建事件或单轮低计数不能确认该项；授权备份作业也可能呈现同样的增量图案。
+        en: Defenders need read auditing on sensitive source directories and retained file-modification, read, and process-identity
+          records to compare whether a process repeatedly reads only objects changed since its prior pass. A task event, a
+          file-creation event, or one low-count pass alone cannot establish this child; authorized backup jobs can show the
+          same incremental pattern.
+stealth_mechanisms:
+- mechanism_ref: NM-ST
+  role: primary
+  summary:
+    zh: 以变化状态压缩每轮读取扇出
+    en: Change state compresses the read fan-out of each pass
+  analysis:
+    paragraphs:
+    - zh: 检查点把连续获取拆为初始扫描与多次较小的后续读取。每轮访问的源对象集合因排除未变化文件而缩小，短窗批量检测可能只看到零散访问；跨轮的检查点更新、目录列举和读取身份又构成可重建的残留链。该推断只适用于源对象变化率足够低、阈值窗口较短的条件。
+      en: The checkpoint divides continuing acquisition into a first scan and multiple smaller later read sets. Excluding
+        unchanged files narrows each per-pass source set, so short-window bulk detection may see scattered accesses; checkpoint
+        updates, enumeration, and read identity across runs remain a reconstructible chain. This inference applies only when
+        source-change rates are low enough and detector windows are short enough.
+  confidence: medium
+  evidence_refs:
+  - REF-000512
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000148
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000137
+evidence:
+  claim_refs:
+  - CLM-000712
+  - CLM-000713
+  - CLM-000714
+  case_refs:
+  - CASE-000184
+  reference_refs:
+  - REF-000511
+  - REF-000512
+  - REF-000379
+  - REF-000475
+research:
+  limitations:
+    paragraphs:
+    - zh: 公开逆向结果证明了 FilePakMonitor 的状态与筛选实现，却没有对照试验量化检测概率。文件修改时间可以被篡改，某些文件访问不经过所配置的 Windows 审计面；跨平台或云端增量收集需另找案例证明，不得从本机案例直接泛化。
+      en: Published reverse engineering establishes FilePakMonitor's state and selection behavior but provides no controlled
+        measurement of detection probability. File modification times can be manipulated, and some accesses fall outside a
+        configured Windows audit surface. Cross-platform or cloud incremental collection needs separate case evidence rather
+        than extrapolation from this host example.
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-09-22'
+  modified: '2026-09-22'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

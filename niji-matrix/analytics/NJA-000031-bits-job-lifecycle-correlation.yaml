@@ -1,0 +1,90 @@
+schema_version: "2.0.0"
+type: detection-analytic
+id: NJA-000031
+strategy_ref: DET-000057
+name:
+  zh: BITS 作业创建—状态—通知程序因果分析
+  en: BITS Job Creation-State-Notification Causality Analytic
+summary:
+  zh: 规范 BITS 调用、事件、QMGR、网络和进程数据，按作业 GUID 恢复创建者、传输状态与通知执行关系并对正常作业基线评分。
+  en: Normalize BITS invocation, event, QMGR, network, and process data to recover creator, transfer state, and notification execution by job GUID and score the chain against legitimate-job baselines.
+domains: [enterprise]
+platforms: [Windows]
+logic:
+  paragraphs:
+    - zh: 分析首先把命令行、PowerShell BITS cmdlet、COM 客户端遥测和 BITS-Client Operational 事件规范为统一作业记录，至少保存设备、用户 SID、作业 GUID、显示名称、创建与修改时间、创建进程或客户端、作业类型、优先级、状态、远端 URL、本地路径、代理或成本策略、重试参数、通知标志、通知程序和参数。若端点事件未提供全部字段，则从当前作业枚举和 QMGR 活动或已删除记录补足；只出现 bitsadmin 进程但没有作业身份时，保持低置信度。
+      en: The analytic first normalizes command-line, PowerShell BITS cmdlet, COM-client telemetry, and BITS-Client Operational events into a common job record containing at least device, user SID, job GUID, display name, creation and modification time, creating process or client, job type, priority, state, remote URL, local path, proxy or cost policy, retry parameters, notification flags, notification program, and arguments. When endpoint events do not expose every field, live job enumeration and active or deleted QMGR records fill the gaps. A bitsadmin process without job identity remains low confidence.
+    - zh: 随后按 GUID 与用户建立有向序列：创建或修改作业，添加文件与通知属性，Resume 后发生 HTTP、HTTPS 或 SMB 传输，状态进入 transient error、error 或 transferred，最后由 BITS 服务宿主启动通知程序或出现明确耦合的后继执行。网络连接无法携带 GUID 时，以设备、用户、URL、目标路径、时间和 BITS 服务进程作为次级连接键；进程侧则要求通知程序、命令参数、文件哈希或重复启动时间与作业定义一致。任何缺层都降低置信度，不用单个系统服务父进程替代完整因果。
+      en: It then builds a directed sequence by GUID and user, beginning with creation or modification of the job and addition of files and notification properties, followed by an HTTP, HTTPS, or SMB transfer after Resume, a transition into transient error, error, or transferred state, and finally a BITS service-host launch of the notification program or an explicitly coupled successor execution. When network connections cannot carry a GUID, device, user, URL, destination path, time, and BITS service process act as secondary join keys. On the process side, notification program, arguments, file hash, or repeated launch timing must agree with the job definition. Any missing layer lowers confidence; one system-service parent never substitutes for complete causality.
+    - zh: 评分分为三类信号。来源异常包括非常见创建进程、远程会话、无批准用户或短时间反复修改；作业异常包括业务外 URL、用户缓存或系统目录目标、可执行通知程序、异常重试、未完成寿命和与应用基线不符的优先级或名称；结果异常包括新程序、脚本解释器、外联、持久化恢复或错误状态重复启动。活动感知型分支要求后台属性与执行耦合并比较同类作业，长驻分支要求状态通知与跨窗口结果；至少两个类别共同异常时提高风险，已知恶意结果可以提升单一链的严重度。
+      en: Scoring uses three signal classes. Provenance anomalies include an uncommon creator, remote session, unapproved user, or repeated modification in a short period. Job anomalies include an off-business URL, destination in user cache or a system directory, executable notification program, unusual retry, unfinalized lifetime, and priority or name inconsistent with the application baseline. Outcome anomalies include a new program, script interpreter, egress, persistence restoration, or repeated launch from error state. The activity-aware branch requires background properties coupled to execution and comparison with peer jobs; the long-lived branch requires state notification and cross-window outcome. Risk rises when at least two classes are anomalous, while a known-malicious outcome can raise severity for one complete chain.
+data_requirements:
+  - source_type: bits-management-invocation
+    name:
+      zh: BITS 命令、PowerShell 与 COM 管理调用
+      en: BITS command, PowerShell, and COM management invocation
+    channel: null
+    required_fields: [timestamp, device_id, user_sid, session_id, process_id, parent_process_id, interface, operation, job_id, command_line]
+  - source_type: bits-client-operational-event
+    name:
+      zh: Microsoft-Windows-Bits-Client Operational 事件
+      en: Microsoft-Windows-Bits-Client Operational events
+    channel: Microsoft-Windows-Bits-Client/Operational
+    required_fields: [timestamp, device_id, event_id, user_sid, job_id, job_name, job_state, remote_url, local_path, notify_program, error_code]
+  - source_type: bits-qmgr-record
+    name:
+      zh: BITS QMGR 活动与已删除作业记录
+      en: Active and deleted BITS QMGR job records
+    channel: null
+    required_fields: [device_id, record_state, job_id, job_name, owner_sid, job_type, priority, job_state, command, arguments, source_url, destination_path, created_time, modified_time]
+  - source_type: endpoint-process-network-file
+    name:
+      zh: 端点进程、网络连接与文件结果
+      en: Endpoint process, network connection, and file outcomes
+    channel: null
+    required_fields: [timestamp, device_id, user_sid, process_id, parent_process_id, image, command_line, destination, protocol, file_path, file_hash]
+observables:
+  - zh: 非常见进程、远程会话或 COM 客户端创建或修改包含可执行通知程序的 BITS 作业
+    en: An uncommon process, remote session, or COM client creates or modifies a BITS job containing an executable notification program
+  - zh: normal 或 low 优先级作业访问业务外 URL、写入用户缓存或系统目录，并在 transferred 后启动新程序
+    en: A normal- or low-priority job reaches an off-business URL, writes to user cache or a system directory, and launches a new program after transferred state
+  - zh: 作业使用无效或不可达 URL 进入 error，并由 BITS 服务按重试节奏重复尝试同一通知命令
+    en: A job uses an invalid or unreachable URL, enters error, and causes the BITS service to retry the same notification command on its retry cadence
+  - zh: 创建工具退出或主机重启后，BITS 服务启动与早期作业定义一致的迟到进程
+    en: After the creating tool exits or the host reboots, the BITS service launches a delayed process matching an earlier job definition
+  - zh: 显示名称、所有者或优先级看似正常，但通知程序、目标文件、来源 URL 或后继网络行为偏离同类作业
+    en: Display name, owner, or priority appears normal while notification program, destination file, source URL, or follow-on network behavior deviates from peer jobs
+correlation:
+  window:
+    zh: 对 transferred 或 error 后的直接通知使用前后十五分钟窗口；对未完成、可重试或跨重启作业，从首次创建延伸到 Complete、Cancel、策略清理或组织允许的最长作业寿命，默认至少覆盖九十日，并按实际 JobInactivityTimeout 与 MaxDownloadTime 调整。
+    en: Use a fifteen-minute window around direct notification after transferred or error state. For unfinalized, retryable, or post-reboot jobs, extend from first creation through Complete, Cancel, policy cleanup, or the longest job lifetime permitted by the organization, covering at least ninety days by default and adjusting to actual JobInactivityTimeout and MaxDownloadTime.
+  dimensions: [device, user_sid, session, bits_job_guid, job_name, creator, priority, remote_url, destination_path, notification_program, job_state, process, boot, time]
+false_positives:
+  - zh: Windows Update、Microsoft 或第三方软件分发会创建后台优先级作业，并由受信组件在完成后执行安装或更新。
+    en: Windows Update and Microsoft or third-party software distribution create background-priority jobs and may execute installation or update components after completion.
+  - zh: 消息、浏览器、同步和备份应用会使用 BITS 访问外部或云 URL，并在网络与登录条件变化后恢复传输。
+    en: Messaging, browser, synchronization, and backup applications use BITS for external or cloud URLs and resume transfer after network or logon changes.
+  - zh: 管理员为恢复失败下载而修改重试参数、保留错误作业或手动运行通知相关程序，可能形成与攻击链相似的序列。
+    en: Administrators recovering failed downloads may change retry properties, retain errored jobs, or manually run notification-related programs, producing a sequence similar to the adversary chain.
+blind_spots:
+  - zh: 只记录 bitsadmin.exe 会遗漏 PowerShell、远程 PowerShell 和直接 COM API 创建的作业，也无法取得持久作业完整字段。
+    en: Collection limited to bitsadmin.exe misses PowerShell, remote PowerShell, and direct COM API job creation and cannot recover complete persistent-job fields.
+  - zh: BITS-Client Operational 日志未启用或已轮转、QMGR 已删除记录被覆盖、服务运行时数据库无法读取时，长周期状态与创建来源可能丢失。
+    en: Long-horizon state and creator provenance may be lost when BITS-Client Operational logging is disabled or rolled over, deleted QMGR records are overwritten, or the live service database cannot be read.
+  - zh: 网络遥测只显示服务宿主而不能映射作业 GUID，或通知程序在端点传感器离线期间执行时，传输与结果关联会降低置信度。
+    en: Transfer-to-outcome correlation loses confidence when network telemetry shows only the service host without a job GUID or when the notification program runs while the endpoint sensor is offline.
+tuning_guidance:
+  paragraphs:
+    - zh: 先按资产角色、用户 SID、创建应用、签名发布者、作业类型、优先级、域名、目标目录、维护窗口和正常通知程序建立 BITS 同类基线。允许列表必须绑定具体创建者、URL 范围、目标路径、通知程序、作业用途和有效期；不得永久放行 BITS 服务、normal 优先级、System update 等名称或所有微软签名进程。对业务外 URL、可执行通知、用户缓存或系统目录写入、无效本地 URL 和跨重启未完成作业分别评分。
+      en: Build BITS peer baselines by asset role, user SID, creating application, signed publisher, job type, priority, domain, destination directory, maintenance window, and normal notification program. Allowlists must bind a concrete creator, URL range, destination path, notification program, job purpose, and validity period. Never permanently allow the BITS service, normal priority, names such as System update, or all Microsoft-signed processes. Score off-business URLs, executable notifications, writes to user cache or system directories, invalid local URLs, and unfinalized post-reboot jobs separately.
+    - zh: 将“确认后台传输”和“确认匿迹化执行”设为不同输出。缺少通知或后继执行时只报告 BITS 传输异常；缺少攻击者对优先级或属性的控制证据时，不标记 NJS-0063-001；存在通知、非最终状态和跨窗口进程但缺少创建者时，可以标记 NJS-0063-002 的中等置信度线索。数据库和事件字段随 Windows 版本变化，部署前必须用本地良性作业和受控测试验证字段、事件 ID 与保留能力。
+      en: Produce separate outcomes for confirmed background transfer and confirmed stealth-conforming execution. Without notification or follow-on execution, report only anomalous BITS transfer. Without evidence that the adversary controlled priority or properties, do not label NJS-0063-001. Notification, non-final state, and a cross-window process without creator provenance may support a medium-confidence NJS-0063-002 lead. Database and event fields vary by Windows version, so deployment must validate fields, event IDs, and retention using local benign jobs and controlled tests.
+evidence_refs: [REF-000115, REF-000135, REF-000136, REF-000137, REF-000138, REF-000140, REF-000141, REF-000142]
+lifecycle:
+  status: review
+  version: "1.1.0"
+  created: "2026-09-10"
+  modified: "2026-09-10"
+  contributors:
+    - Niji Matrix Research
+  reviewers: []

@@ -1,0 +1,159 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000207
+strategy_ref: DET-000187
+name:
+  zh: 服务方法调用与机器账户外发认证联查
+  en: Service Method Invocation and Machine-Account Outbound Authentication Join
+summary:
+  zh: 服务方法调用与机器账户外发认证联查输出分层异常结果。
+  en: Service Method Invocation and Machine-Account Outbound Authentication Join emits a graded anomaly result.
+domains:
+- enterprise
+platforms:
+- Windows
+logic:
+  paragraphs:
+  - zh: 对域控、证书服务、文件服务器和其他高价值主机记录入站 RPC 或管理会话，规范化调用者、接口 UUID、方法或 opnum、传入网络资源、调用结果和目标服务；在两分钟内查同一主机的服务进程网络连接、8004 或等效 NTLM 线索，以及监听或目标侧机器或服务账户认证。调用指向未批准资源且随后出现匹配外发认证时输出
+      coercion_attempt；只有接收端确认挑战响应才输出 material_observed。若另一个服务从监听或中继来源记录成功登录，则交给 NJS-0136-002 的目标受众差分析，不能合并为本 Analytic 的触发成功。
+    en: For domain controllers, certificate services, file servers, and other high-value hosts, record inbound RPC or management sessions and
+      normalize caller, interface UUID, method or opnum, supplied network resource, call result, and target service. Within two minutes, seek
+      service-process network connections from the same host, event 8004 or equivalent NTLM clues, and listener or target authentication by a
+      machine or service account. Emit coercion_attempt when the call names an unapproved resource and matching outbound authentication follows.
+      Emit material_observed only when the receiver confirms a challenge response. If another service records successful authentication from a
+      listener or relay source, pass it to NJS-0136-002 audience-differential analysis rather than folding relay success into this analytic.
+data_requirements:
+- source_type: remote-service-invocation
+  channel: RPC firewall, ETW, service operational log, or network protocol sensor
+  required_fields:
+  - event.timestamp
+  - target.asset_id
+  - caller.account
+  - caller.ip
+  - transport
+  - interface.uuid
+  - method.name
+  - method.opnum
+  - supplied.resource_name
+  - service.name
+  - call.result
+  name:
+    zh: remote-service-invocation
+    en: Remote Service Invocation
+- source_type: target-endpoint-network
+  channel: configured Sysmon Event 3, EDR, or host firewall
+  required_fields:
+  - event.timestamp
+  - asset.id
+  - process.guid
+  - process.image
+  - service.name
+  - user.id
+  - destination.name
+  - destination.ip
+  - destination.port
+  - protocol
+  - connection.result
+  name:
+    zh: target-endpoint-network
+    en: Target Endpoint Network
+- source_type: windows-ntlm-audit
+  channel: Microsoft-Windows-NTLM/Operational event 8004 or equivalent
+  required_fields:
+  - event.timestamp
+  - client.name
+  - principal.id
+  - accessed_server.name
+  - authentication.result
+  name:
+    zh: windows-ntlm-audit
+    en: Windows Ntlm Audit
+- source_type: receiver-or-target-authentication
+  channel: listener evidence or Windows Security 4624/4625 and service authentication logs
+  required_fields:
+  - event.timestamp
+  - receiver.id
+  - source.ip
+  - principal.id
+  - principal.type
+  - logon.type
+  - authentication.package
+  - challenge.id
+  - response.observed
+  - authentication.result
+  name:
+    zh: receiver-or-target-authentication
+    en: Receiver Or Target Authentication
+- source_type: approved-service-relationships
+  channel: CMDB, firewall policy, service inventory, and change management
+  required_fields:
+  - service.name
+  - interface.uuid
+  - caller.account
+  - caller.network
+  - allowed.destination
+  - principal.id
+  - approval.id
+  - valid.from
+  - valid.to
+  name:
+    zh: approved-service-relationships
+    en: Approved Service Relationships
+observables:
+- zh: 远程服务方法接收攻击者指定的网络资源
+  en: A remote service method receives an attacker-selected network resource
+- zh: 受害服务进程向该资源回连
+  en: The victim service process calls back to that resource
+- zh: 机器或服务主体发出 NTLM 认证
+  en: A machine or service principal emits NTLM authentication
+- zh: 调用者与目的地组合不在批准关系中
+  en: The caller and destination tuple is outside approved relationships
+- zh: 接收端获得挑战响应
+  en: The receiver obtains a challenge response
+correlation:
+  window:
+    zh: 2m-from-service-call-to-outbound-authentication
+    en: 2m-from-service-call-to-outbound-authentication
+  dimensions:
+  - target.asset_id
+  - caller.ip
+  - caller.account
+  - interface.uuid
+  - method.opnum
+  - supplied.resource_name
+  - service.name
+  - principal.id
+  - destination.ip
+  - challenge.id
+false_positives:
+- zh: 备份和恢复、远程文件管理、打印通知、监控、证书注册、集群操作和故障排查会产生服务回连；需按接口、调用者、目的地、账户和变更窗口的完整组合确认，而不能仅对白名单网段或机器账户放行。
+  en: Backup and restore, remote file management, print notification, monitoring, certificate enrollment, clustering, and troubleshooting can
+    cause service callbacks. Validate the full interface, caller, destination, account, and change-window tuple instead of allowlisting a network
+    or machine account alone.
+blind_spots:
+- zh: 通用 Windows 日志未必记录 RPC 方法和传入参数；加密 RPC、服务宿主复用、同机监听、共享 NAT、缺少 8004 和攻击者端不可见会阻止事务级确认。4624 的网络字段随认证上下文和协议而缺失，不能假设每条成功登录均有源 IP。
+  en: Generic Windows logs may not record RPC method and supplied parameters. Encrypted RPC, shared service hosts, a local listener, shared NAT,
+    missing 8004, and invisible adversary infrastructure can prevent transaction-level confirmation. Event 4624 network fields vary by authentication
+    context and protocol, so a source IP cannot be assumed for every successful logon.
+tuning_guidance:
+  paragraphs:
+  - zh: 优先采集高价值服务器和已知可回连方法，为每项合法工作流登记调用者、接口、方法、目的地及机器账户；对新目的地、高权限机器主体、来自用户网段的调用和方法失败后紧随外连提高权重。分别保存调用失败、外连、材料到达和目标成功，按接口与系统版本做实验验证。
+    en: Prioritize high-value servers and methods known to callback, registering caller, interface, method, destination, and machine principal
+      for each legitimate workflow. Raise weight for first-seen destinations, privileged machine principals, callers from user networks, and egress
+      immediately after a method error. Preserve call failure, egress, material arrival, and target success separately, and validate each interface
+      and OS version experimentally.
+evidence_refs:
+- REF-000706
+- REF-000707
+- REF-000708
+- REF-000230
+- REF-000377
+- REF-000494
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-09-23'
+  modified: '2026-09-23'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

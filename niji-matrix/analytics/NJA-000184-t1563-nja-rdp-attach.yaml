@@ -1,0 +1,133 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000184
+strategy_ref: DET-000170
+name:
+  zh: RDS 原登录—客户端重附着—操作发起者关联
+  en: RDS Original Logon to Client Reattachment and Initiator Correlation
+summary:
+  zh: 把既有 RDS LogonID 的断开—重连与 tscon 进程、控制端变化及后继动作相连。
+  en: Join disconnect and reconnect of an existing RDS LogonID to tscon execution, controller change, and follow-on actions.
+domains:
+- enterprise
+platforms:
+- Windows
+logic:
+  paragraphs:
+  - zh: 在每台 RDS 会话主机按 host 与 LogonID 将原 4624 Type 10 的用户和来源、4779 断开及后来的 4778 重连连接，比较 ClientName/ClientAddress 和会话名。以 4778
+      前后两分钟的 4688 进程创建寻找 tscon 或经批准的会话管理程序，并把创建者 LogonID、进程谱系及权限与原会话用户区分；同一目标会话随后十分钟的敏感进程或资源动作提供结果门。若重附着来源是不同资产/操作者、发起者非原用户且无有效支持工单或本人设备迁移，输出待调查交接；仅
+      4778 或无新 4624 不能定为劫持。原 4624 不在保留期时只报告来源异常而不作精确原所有者结论。
+    en: On each RDS session host, join the original 4624 type-10 user and origin, a 4779 disconnect, and later 4778 reconnect
+      by host and LogonID, comparing ClientName, ClientAddress, and session name. Search a two-minute window around 4778 for
+      4688 creation of tscon or an approved session manager, and separate its creator LogonID, process lineage, and rights
+      from the original session owner. Sensitive process or resource actions within ten minutes of the same destination session
+      provide the result gate. A different source asset or operator, non-owner initiator, and no valid support ticket or owner
+      device migration produce a reviewable handoff. Neither 4778 alone nor absence of new 4624 establishes hijacking. If
+      the original 4624 aged out, report an origin anomaly without claiming exact original ownership.
+data_requirements:
+- source_type: windows-rds-session-transition
+  name:
+    zh: Windows RDS 会话转换事件
+    en: Windows RDS session transition
+  channel: Security/4778,4779
+  required_fields:
+  - time_created
+  - computer
+  - event_id
+  - account_name
+  - account_domain
+  - logon_id
+  - session_name
+  - client_name
+  - client_address
+- source_type: windows-remote-interactive-logon
+  name:
+    zh: Windows 远程交互登录
+    en: Windows remote interactive logon
+  channel: Security/4624
+  required_fields:
+  - time_created
+  - computer
+  - target_logon_id
+  - target_user_name
+  - logon_type
+  - ip_address
+  - workstation_name
+- source_type: windows-process-creation
+  name:
+    zh: Windows 进程创建与命令行
+    en: Windows process creation and command line
+  channel: Security/4688
+  required_fields:
+  - time_created
+  - computer
+  - subject_logon_id
+  - new_process_id
+  - new_process_name
+  - creator_process_id
+  - process_command_line
+- source_type: rds-approval-and-asset-context
+  name:
+    zh: RDS 支持审批与资产情境
+    en: RDS support approval and asset context
+  channel: null
+  required_fields:
+  - approval_id
+  - session_owner
+  - support_operator
+  - source_device
+  - destination_host
+  - valid_from
+  - valid_to
+observables:
+- zh: 同一 LogonID 的 4779 后出现来自不同客户端的 4778，而会话主机上另一个主体启动了连接操作。
+  en: A 4778 from a different client follows 4779 for the same LogonID while another principal launches a connect operation
+    on the session host.
+- zh: 被重附着的原用户会话随后执行与历史职责不符的命令或访问新的内部资源。
+  en: The reattached original-user session subsequently runs commands or accesses internal resources inconsistent with its
+    role.
+correlation:
+  window:
+    zh: 同一 LogonID 的 4779 到 4778 默认五分钟，tscon 进程前后两分钟；目标结果按具体操作再观察十分钟。
+    en: Default to five minutes from 4779 to 4778 for one LogonID, two minutes around tscon, and ten more minutes for a target
+      action.
+  dimensions:
+  - session_host
+  - logon_id
+  - session_name
+  - session_owner
+  - prior_client
+  - new_client
+  - initiating_process
+  - initiating_principal
+  - approval_id
+false_positives:
+- zh: 帮助台移交、断线重连或管理员按批准流程切换会话可产生同形事件。
+  en: Help-desk handoff, reconnection after network loss, and approved administrator session switching can produce the same
+    event shape.
+blind_spots:
+- zh: 4778/4779 缺失、命令行未记录或会话 ID 在重启后复用时，无法单靠时间邻接确认劫持。
+  en: Missing 4778 or 4779, absent command lines, or session-ID reuse after reboot prevents confirmation from temporal adjacency
+    alone.
+tuning_guidance:
+  paragraphs:
+  - zh: 将已批准接管限定具体工单、操作者、会话所有者、主机和时段；不能仅因 tscon 为签名系统程序或客户端为内网地址而放行。区分 RDP-Tcp 会话与 Console/Hyper-V 增强会话，按来源资产的真实所有者而非 IP 独断；网络断线引起的自动重连和正常班次移交应降级，后继高风险资源结果升高置信度。
+    en: Bind approved takeovers to a ticket, operator, session owner, host, and time window; do not allowlist a signed tscon
+      image or internal client address alone. Separate RDP-Tcp from Console and Hyper-V enhanced sessions, and resolve source
+      asset ownership rather than judging IP alone. Lower confidence for automatic reconnection after network loss and normal
+      shift handoff, while a high-risk downstream resource result raises it.
+evidence_refs:
+- REF-000617
+- REF-000621
+- REF-000622
+- REF-000623
+- REF-000624
+- REF-000618
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-09-22'
+  modified: '2026-09-22'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

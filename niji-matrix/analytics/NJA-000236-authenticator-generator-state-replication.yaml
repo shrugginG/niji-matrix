@@ -1,0 +1,136 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000236
+strategy_ref: DET-000201
+name:
+  zh: 认证器状态访问—跨设备证明使用关联
+  en: Authenticator-State Access to Cross-Device Proof-Use Correlation
+summary:
+  zh: 把软件令牌容器读取、导入绕过、跨设备生成和暴露后 MFA 成功连接为生成状态复制链。
+  en: Join software-token container access, import bypass, cross-device generation, and post-exposure MFA success into a generator-state
+    replication chain.
+domains:
+- enterprise
+platforms:
+- Windows
+- Linux
+- macOS
+- Identity Provider
+- SaaS
+logic:
+  paragraphs:
+  - zh: 对软件认证器建立 user、authenticator ID、app instance、device binding、seed container object、version、migration/export policy 和
+      owner 清单。检测非批准进程读取、复制或导出 token container、调试或补丁导入检查，并关联三十日内无正式 rebind/migration 的同 authenticator MFA 成功、新设备或来源、原设备仍活跃、计数器竞争或暴露后持续成功。文件读取只输出
+      state-exposure；验证过的导入或有效代码生成输出 generator-replicated；后继 IdP 接受另列 accepted。
+    en: Inventory user, authenticator ID, app instance, device binding, seed-container object, version, migration or export
+      policy, and owner for software authenticators. Detect unapproved process reads, copies, or exports of token containers
+      and debugging or patching of import checks, then correlate within thirty days to MFA success by the same authenticator
+      without a formal rebind or migration, a new device or origin, simultaneous activity on the original device, counter
+      competition, or continuing success after exposure. File access alone emits state-exposure, verified import or valid
+      code generation emits generator-replicated, and later IdP acceptance is a separate accepted tier.
+data_requirements:
+- source_type: authenticator-state-inventory-and-access
+  name:
+    zh: 软件认证器状态清单与访问
+    en: Software-authenticator state inventory and access
+  channel: endpoint application inventory, EDR file/process telemetry, or authenticator administration
+  required_fields:
+  - timestamp
+  - host_id
+  - user_id
+  - authenticator_id
+  - app_instance_id
+  - device_binding_id
+  - token_object_id
+  - process_guid
+  - image_path
+  - signer
+  - operation
+  - result
+- source_type: authenticator-lifecycle-audit
+  name:
+    zh: 认证器绑定、迁移、导出与撤销审计
+    en: Authenticator binding, migration, export, and revocation audit
+  channel: identity provider authentication-method audit
+  required_fields:
+  - timestamp
+  - tenant_id
+  - user_id
+  - authenticator_id
+  - event_type
+  - old_device_id
+  - new_device_id
+  - initiator_id
+  - approval_id
+  - result
+- source_type: idp-authentication-method-use
+  name:
+    zh: IdP 认证方法与设备使用
+    en: IdP authentication method and device use
+  channel: identity provider sign-in details
+  required_fields:
+  - timestamp
+  - tenant_id
+  - user_id
+  - request_or_correlation_id
+  - authenticator_id
+  - authentication_method
+  - device_id
+  - source_ip
+  - session_id
+  - result
+observables:
+- zh: 未批准令牌容器读取
+  en: Unapproved token-container read
+- zh: 令牌导入检查被修补
+  en: Token import-check patch
+- zh: 认证器从未登记设备使用
+  en: Authenticator use from an unregistered device
+- zh: 同一认证器跨设备并发使用
+  en: Concurrent cross-device use of one authenticator
+- zh: seed 暴露后无重绑仍出现 MFA 成功
+  en: MFA success after seed exposure without rebind
+correlation:
+  window:
+    zh: 从生成状态暴露或 token 容器读取开始，关联后三十天内的导入、跨设备使用、MFA 成功与撤销结果。
+    en: From generator-state exposure or token-container read, join import, cross-device use, MFA success, and revocation
+      outcomes during the following thirty days.
+  dimensions:
+  - tenant_id
+  - user_id
+  - authenticator_id
+  - app_instance_id
+  - device_binding_id
+  - token_object_id
+  - device_id
+  - process_guid
+  - source_ip
+false_positives:
+- zh: 受管设备迁移、备份恢复、厂商同步认证器、VDI 重建、应用升级和取证采集会读取或复制 token object；须核对迁移事件、旧实例失效、批准设备、签名和 owner。
+  en: Managed device migration, backup recovery, vendor syncable authenticators, VDI rebuild, app upgrade, and forensic collection
+    read or copy token objects. Check migration events, invalidation of old instances, approved devices, signer, and owner.
+blind_spots:
+- zh: 许多 OTP IdP 不暴露 authenticator instance 或生成设备，应用可能把 seed 放在硬件安全区而端点只见外壳文件；攻击者在原设备内生成代码时不会产生跨设备差异，端点日志被控也会掩盖复制。
+  en: Many OTP IdPs do not expose authenticator instance or generating device, and an app may keep the seed in a hardware
+    enclave while the endpoint sees only a wrapper file. Generation on the original device creates no cross-device difference,
+    and compromised endpoint logs can hide copying.
+tuning_guidance:
+  paragraphs:
+  - zh: 仅对明确保存生成状态的对象启用敏感路径审计，避免把所有应用文件视为 seed；合法迁移必须有 lifecycle event、批准新设备和旧实例失效。缺少 authenticator ID 时降低到 exposure，不用新 IP
+      或设备单独宣称复制成功。
+    en: Enable sensitive-path audit only for objects confirmed to contain generator state rather than treating every app file
+      as a seed. Legitimate migration requires a lifecycle event, approved new device, and invalidated old instance. When
+      authenticator ID is absent, remain at exposure and do not claim successful replication from a new IP or device alone.
+evidence_refs:
+- REF-000778
+- REF-000146
+- REF-000307
+- REF-000499
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-09-27'
+  modified: '2026-09-27'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

@@ -1,0 +1,105 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000288
+strategy_ref: DET-000230
+name:
+  zh: 无对应请求的反射响应关联
+  en: Unmatched Reflected-Response Correlation
+summary:
+  zh: 输出多第三方协议响应、无 victim 出站请求和容量损失构成的反射洪泛。
+  en: Emit reflected flooding formed by many third-party protocol replies, absent victim outbound requests, and capacity
+    loss.
+domains:
+- enterprise
+platforms:
+- Network Devices
+logic:
+  paragraphs:
+  - zh: 对 DNS/NTP/其他已建模协议，将入站响应与 victim 出站请求按事务 ID、五元组、时间和协议键在 30 秒匹配；统计 responder IP/AS、响应/请求包字节比、响应 fan-in 和无匹配比例。
+    en: For DNS, NTP, and other modeled protocols, match inbound replies to victim outbound requests by transaction
+      ID, five-tuple, time, and protocol key over 30 seconds; calculate responder IP or AS count, response-to-request
+      packet or byte ratio, response fan-in, and unmatched fraction.
+  - zh: 在 60 秒连接接口容量、丢弃与合法通信失败；只有协议响应语义、无请求和影响共同成立才输出。来源 validation 告警或 reflector reputation 仅作支持。
+    en: Within 60 seconds join interface capacity, discard, and legitimate-communication failure; emit only when protocol-response
+      semantics, unmatched requests, and impact all hold. Source-validation alerts or reflector reputation are supporting
+      evidence only.
+data_requirements:
+- source_type: bidirectional-protocol-flow
+  name:
+    zh: 双向协议流与事务
+    en: Bidirectional protocol flows and transactions
+  channel: IPFIX plus protocol telemetry
+  required_fields:
+  - event.time
+  - direction
+  - source.ip
+  - destination.ip
+  - source.port
+  - destination.port
+  - protocol
+  - transaction.id
+  - message.type
+  - packet.length
+  - octet.count
+- source_type: interface-capacity
+  name:
+    zh: 接口容量与丢弃
+    en: Interface capacity and discard
+  channel: SNMP IF-MIB
+  required_fields:
+  - event.time
+  - interface.id
+  - in.octets
+  - in.discards
+  - high.speed
+- source_type: network-service-health
+  name:
+    zh: 网络健康结果
+    en: Network health outcomes
+  channel: null
+  required_fields:
+  - event.time
+  - destination.id
+  - probe.success
+  - latency
+  - packet.loss
+observables:
+- zh: 来自许多第三方的响应没有对应 victim 请求
+  en: Responses from many third parties have no matching victim requests
+- zh: 响应 fan-in 与容量/丢弃和合法通信失败同步
+  en: Response fan-in coincides with capacity or discard and failed legitimate communication
+correlation:
+  window:
+    zh: 请求响应匹配 30 秒，容量/影响 60 秒；按协议往返时间调优。
+    en: Use 30 seconds for request-response matching and 60 seconds for capacity and impact, tuned to protocol RTT.
+  dimensions:
+  - destination.ip
+  - protocol
+  - transaction.id
+  - source.as
+  - interface.id
+  - event.time
+false_positives:
+- zh: 异步通知、DNS 递归/cache、Anycast、监测探针和合法大响应
+  en: Asynchronous notifications, DNS recursion or cache, Anycast, monitoring probes, and legitimate large responses
+blind_spots:
+- zh: 无 victim 出站日志、加密协议、NAT、采样或 transaction ID 缺失
+  en: Missing victim outbound logs, encrypted protocols, NAT, sampling, or absent transaction IDs
+tuning_guidance:
+  paragraphs:
+  - zh: 为每个反射协议定义 request/response 键和正常放大范围，不用通用包长比覆盖所有协议；无请求判断降级时标记概率置信。
+    en: Define request and response keys and normal amplification range per protocol rather than one packet-size ratio;
+      mark probabilistic confidence when unmatched-request evidence degrades.
+evidence_refs:
+- REF-000958
+- REF-000960
+- REF-000664
+- REF-000961
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-10-04'
+  modified: '2026-10-04'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

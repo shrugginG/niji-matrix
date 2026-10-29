@@ -1,0 +1,256 @@
+schema_version: 2.0.0
+type: technique
+id: NJT-0214
+name:
+  zh: 匿迹型剪贴板内容获取
+  en: Stealth-Oriented Clipboard Content Acquisition
+summary:
+  zh: 攻击者取得交互会话中的剪贴板内容，并把读取绑定到内容变化或正常粘贴路径，以减少独立轮询痕迹或使获取活动呈现为既有应用行为。
+  en: An adversary acquires clipboard content from an interactive session and binds reads to content changes or normal paste
+    paths, reducing independent polling traces or making acquisition appear as existing application behavior.
+aliases: []
+classification:
+  tactic_refs:
+  - TA0009
+  origin:
+    kind: attack-adapted
+    source_attack_id: T1115
+    source_attack_version: '19.1'
+  decision_ref: DEC-TA0009-T1115
+definition_and_concept:
+  paragraphs:
+  - zh: 匿迹型剪贴板内容获取是攻击者从操作系统剪贴板、macOS pasteboard、X11 selection 或等效会话交换面读取已经被用户或应用复制的数据，并把至少一项实际内容保留在其控制的内存、日志、文件或传输缓冲中。其直接目的可能是取得凭据、令牌、账户信息、地址、命令、文档片段或其他短驻内容，以服务后续分析、认证滥用、欺诈或外传。完成点是内容副本已被攻击者取得；监听注册、剪贴板变化、格式枚举、读取能力或空结果只是前提与线索。
+    en: Stealth-Oriented Clipboard Content Acquisition is the adversary's reading of data already copied by a user or application
+      from an operating-system clipboard, macOS pasteboard, X11 selection, or equivalent session exchange surface, with at
+      least one actual item retained in adversary-controlled memory, a log, a file, or a transfer buffer. Its direct purpose
+      may be to obtain credentials, tokens, account information, addresses, commands, document fragments, or other short-lived
+      content for later analysis, authentication abuse, fraud, or exfiltration. Completion occurs when the adversary acquires
+      a content copy; listener registration, a clipboard change, format enumeration, read capability, or an empty result is
+      only a prerequisite or lead.
+  - zh: 剪贴板是按会话和平台实现的交换机制，而不是一种文件类型或单一 API。Windows 可通过变化通知、sequence number、viewer chain 或直接读取接口提供内容；macOS NSPasteboard 以所有权和
+      changeCount 表达变化；X11 由 selection owner 在请求时传输数据，Wayland 由 data offer 与文件描述符完成协商。平台、文本或图像格式、PowerShell、pbpaste、xclip
+      与具体恶意软件名称只说明实现路径，不能独立定义 Niji 子项。正式分类关注攻击者怎样控制读取触发与执行上下文，以及这些选择怎样改变痕迹和防守观察。
+    en: A clipboard is a session- and platform-specific exchange mechanism rather than one file type or API. Windows can expose
+      content through change notifications, a sequence number, a viewer chain, or direct read interfaces. macOS NSPasteboard
+      represents changes through ownership and changeCount. X11 has a selection owner transfer data on request, while Wayland
+      negotiates through data offers and file descriptors. Platform, text or image format, PowerShell, pbpaste, xclip, and
+      a malware family name describe implementation paths and do not independently define Niji children. Formal classification
+      asks how the adversary controls the read trigger and execution context and how those choices change traces and defensive
+      observation.
+stealth_characteristics:
+  paragraphs:
+  - zh: 剪贴板内容通常短驻、按用户交互变化，并与大量合法复制粘贴共处。攻击者若只在变化通知到达后读取，空闲时段不再产生固定间隔的 OpenClipboard/GetClipboardData 序列；若在粘贴消费者进程内截获读取结果，则没有一个独立收集进程重复取得同一内容，调用和窗口上下文会首先指向正在粘贴的合法应用。这些设计分别削弱依赖轮询密度或独立读取主体的检测假设，并要求防守方将变化、调用者完整性、成功返回和后继结果连成一条链。
+    en: Clipboard content is often short-lived, changes with user interaction, and coexists with high volumes of legitimate
+      copy and paste activity. When an adversary reads only after a change notification, fixed-interval OpenClipboard and
+      GetClipboardData sequences disappear during idle periods. When the adversary intercepts a result inside a paste-consuming
+      process, no stand-alone collector repeatedly retrieves the same content and the call and window context initially points
+      to the legitimate application performing the paste. These designs respectively weaken detections based on polling density
+      or an independent reader and require defenders to join change, caller integrity, successful return, and downstream outcome
+      into one chain.
+  - zh: 这种获取仍留下可观察残余。事件耦合路径需要长期存在的窗口、listener 或 viewer 注册、消息循环及变化后的读取；消费者上下文截获需要进程写入、模块或私有可执行内存、函数 detour 或异常调用栈。NightshadeC2
+      还写隐藏日志并在命令 150 下上传，QBot 把带进程和窗口上下文的内容加密写入本地文件再由传输线程处理。若终端传感器不记录剪贴板 API、监听注册或内存完整性，只靠进程创建日志难以确认内容取得；若具备经验证的 API、模块、文件和网络关联，匿迹效果会明显下降。
+    en: Acquisition still leaves observable residue. An event-coupled path needs a long-lived window, listener or viewer registration,
+      a message loop, and a read after each change. Consumer-context interception needs process writes, a module or private
+      executable memory, a function detour, or an abnormal call stack. NightshadeC2 also writes a hidden log and uploads it
+      under command 150, while QBot encrypts content annotated with process and window context into a local file for a transmission
+      thread. If endpoint sensors do not record clipboard APIs, listener registration, or memory integrity, process-creation
+      logs alone struggle to prove acquisition. Stealth falls sharply where validated API, module, file, and network correlation
+      exists.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 纳入从当前剪贴板、pasteboard 或 selection 实际取得内容，并以事件触发或粘贴调用上下文改变读取痕迹的行为。只观察 Ctrl+C、Ctrl+V 或键盘输入但不取得剪贴板返回内容归 T1056 或行为线索；只发现剪贴板格式、sequence
+      number 或所有者而没有成功内容结果不达到完成点。通过剪贴板服务读取历史项仍可属于本技术；绕过服务直接解析本地历史数据库、应用缓存或浏览器存储，则以 T1005 等来源技术判断。
+    en: Include actual acquisition from the current clipboard, pasteboard, or selection when event triggering or paste-call
+      context changes read traces. Observing Ctrl+C, Ctrl+V, or keyboard input without acquiring the returned clipboard content
+      remains T1056 or a behavioral lead. Discovering only formats, a sequence number, or the owner without a successful content
+      result does not reach completion. Reading historical items through the clipboard service can remain here; bypassing
+      the service to parse a local history database, application cache, or browser store directly should be assessed under
+      T1005 or the applicable source technique.
+  - zh: T1119 可与本技术并列标记跨轮次自动收集，但不能用通用循环替代剪贴板内容取得证据；NJS-0135-001 还要求持久变化检查点约束后继收集轮次，而一次瞬时 clipboard change 通知触发当前内容读取并不满足该状态边界。T1185
+      只有在浏览器会话控制点读取页面、请求或响应时成立，浏览器把文本写入剪贴板或从剪贴板粘贴并不会改变 T1115 的直接对象。内容被取得后的隐藏日志、集中目录、压缩包和外传分别由 T1074、T1560 与外传技术补充。仅修改剪贴板以替换地址或植入命令属于另一目的；只有当原内容也被实际读取并保留或传送时，才可另记本
+      Collection 技术。密码管理器自动清理、剪贴板管理器、DLP 检查、RDP 或远程支持同步以及虚拟化 guest tools 会产生相同 API 与时序，必须用授权主体、版本、会话和结果去向区分。
+    en: T1119 may be co-labeled for automated rounds, but a generic loop cannot replace proof of acquired clipboard content.
+      NJS-0135-001 additionally requires a persistent change checkpoint that constrains later collection passes; one transient
+      clipboard-change notification triggering a read of current content does not satisfy that state boundary. T1185 applies
+      only when a browser-session control point reads pages, requests, or responses; a browser writing text to or pasting
+      from the clipboard does not change T1115's direct object. Hidden logs, centralized directories, archives, and exfiltration
+      after acquisition are separately covered by T1074, T1560, and exfiltration techniques. Clipboard modification that substitutes
+      an address or plants a command serves another purpose. This Collection technique can be added only when the original
+      content was also read and retained or transmitted. Password-manager clearing, clipboard managers, DLP inspection, RDP
+      or remote-support synchronization, and virtualization guest tools can produce the same APIs and timing and require differentiation
+      by authorized actor, version, session, and outcome destination.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: 在已登录的办公终端上，信息窃取程序可创建不出现在任务栏和 Alt+Tab 的窗口，注册剪贴板变化通知，并在用户复制凭据、内部 URL、命令或文档片段时把新内容追加到隐藏日志，之后由独立 C2 命令取回。NightshadeC2
+        是这一场景的结论级实例。另一场景中，银行木马把注入模块放入用户实际粘贴内容的应用，hook GetClipboardData 与消息处理路径，在正常粘贴返回前复制内容并附加进程路径和窗口标题；QBot 的 Notepad 实验与加密日志证明了实际取得和后继处理。
+      en: On a logged-in workstation, an information stealer can create a window absent from the taskbar and Alt+Tab, register
+        for clipboard changes, append newly copied credentials, internal URLs, commands, or document fragments to a hidden
+        log, and later retrieve the log through a separate C2 command. NightshadeC2 is a conclusion-level instance of this
+        scenario. In another scenario, a banking trojan places an injected module inside an application where the user actually
+        pastes content, hooks GetClipboardData and message handling, and copies the result with process path and window title
+        before the normal paste returns. QBot's Notepad experiment and encrypted log establish actual acquisition and downstream
+        handling.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者至少需要在目标用户的交互会话内执行代码或控制能够访问该会话剪贴板的进程，并能把成功读取的内容保留到其控制的缓冲或结果链。事件耦合需要消息窗口、viewer/listener 注册或平台等效通知以及持续驻留；消费者上下文截获还需要向目标进程加载代码、修改函数路径或控制插件，并承担进程完整性和注入痕迹。会话隔离、Wayland
+          compositor 权限、应用沙箱和平台隐私控制可能限制读取。攻击者还必须接受内容可能在读取前被覆盖、清空或从未出现的风险。
+        en: The adversary needs code execution in the target user's interactive session or control of a process able to access
+          that session's clipboard, plus a means to retain a successful read in an adversary-controlled buffer or outcome
+          chain. Event coupling requires a message window, viewer or listener registration, or a platform-equivalent notification
+          and continued residence. Consumer-context interception additionally requires loading code into a target process,
+          altering a function path, or controlling a plug-in and incurs process-integrity and injection traces. Session isolation,
+          Wayland compositor permissions, application sandboxes, and platform privacy controls can limit reading. The adversary
+          also accepts that content may be overwritten, cleared, or never appear before acquisition.
+    defender_model:
+      paragraphs:
+      - zh: 防守方可能拥有进程与模块谱系、跨进程写入和内存完整性、经试点验证的剪贴板 API 调用、窗口或 listener 注册、文件写入、网络连接以及 DLP copy/paste 事件。Windows 文档定义变化通知和读取原语，但没有为本交接保证一个默认集中式逐次读取审计通道；macOS、X11
+          与 Wayland 的对象和转移语义也不相同。因此分析必须先验证传感器确能报告调用者、会话、API 结果和时间，再决定结论强度。若只有命令行进程日志，可发现 Get-Clipboard、pbpaste、xclip 等显式工具，却看不到编译进程内的每次读取或
+          hook 返回值。
+        en: Defenders may have process and module lineage, cross-process writes and memory integrity, pilot-validated clipboard
+          API calls, window or listener registration, file writes, network connections, and DLP copy or paste events. Windows
+          documentation defines change-notification and read primitives but does not guarantee a default centrally exportable
+          audit event for every read in this handoff. macOS, X11, and Wayland also use different objects and transfer semantics.
+          An analytic must therefore first verify that its sensor reports caller, session, API result, and time before assigning
+          conclusion strength. Command-line process logs can expose explicit utilities such as Get-Clipboard, pbpaste, or
+          xclip but miss many in-process reads and hooked return values in compiled applications.
+stealth_mechanisms:
+- mechanism_ref: NM-ST
+  role: primary
+  summary:
+    zh: 只在剪贴板内容变化后形成读取与结果痕迹
+    en: Produce read and result traces only after clipboard changes
+  analysis:
+    paragraphs:
+    - zh: 攻击者注册变化通知并让消息到达后才读取内容，使空闲期不再出现固定间隔打开和查询剪贴板的调用。Windows 文档说明 listener 会在内容变化时收到 WM_CLIPBOARDUPDATE，Volatility 的分析说明高频轮询会反复打开剪贴板并可能阻塞合法应用，而事件通知避免这种连续访问。NightshadeC2
+        把该设计用于真实内容收集。痕迹因此集中到用户复制后的短窗并在其余时段稀释，使只看轮询密度或任意短时采样的防守方更难重建完整驻留链；listener 注册、隐藏窗口、变化后读取和日志仍可被长期关联，所以该机理不表示不可见。
+      en: The adversary registers for change notifications and reads only after a message arrives, eliminating fixed-interval
+        clipboard opens and queries during idle periods. Windows documentation states that a listener receives WM_CLIPBOARDUPDATE
+        when content changes. Volatility's analysis explains that frequent polling repeatedly opens the clipboard and can
+        block legitimate applications, whereas event notification avoids that continuous access. NightshadeC2 applies the
+        design to actual content collection. Traces therefore concentrate in a short interval after user copies and dilute
+        elsewhere, complicating reconstruction by defenders that look only for polling density or sample arbitrary short windows.
+        Listener registration, a hidden window, the post-change read, and the log remain available for long-horizon correlation,
+        so the mechanism does not imply invisibility.
+  confidence: medium
+  evidence_refs:
+  - REF-001095
+  - REF-001096
+  - REF-001097
+- mechanism_ref: NM-FD
+  role: secondary
+  summary:
+    zh: 借正常粘贴消费者的进程与调用路径呈现内容读取
+    en: Present content reads through a normal paste consumer process and call path
+  analysis:
+    paragraphs:
+    - zh: 攻击者把 hook 放进会正常调用 GetClipboardData 的目标进程，并在返回值到达应用前复制内容。QBot 的注入模块在 Notepad 粘贴实验中记录到内容、进程路径和窗口标题，表面调用主体与正常粘贴消费者一致，而独立收集进程的重复读取可缺席。恶意实体借用了合法应用的进程身份和用户触发时机，降低只按进程名称或独立
+        API 调用者区分的能力；跨进程写入、异常模块、函数 detour、调用栈和加密日志仍能暴露寄生关系，具备代码来源关联时伪装会失效。
+      en: The adversary places a hook in a target process that normally calls GetClipboardData and copies the content before
+        the return reaches the application. QBot's injected module records content, process path, and window title during
+        a Notepad paste experiment. The apparent caller is the normal paste consumer, while repeated reads from an independent
+        collector can be absent. The malicious entity borrows the legitimate application's process identity and user-triggered
+        timing, reducing discrimination based only on process name or a stand-alone API caller. Cross-process writes, anomalous
+        modules, function detours, call stacks, and the encrypted log still expose the parasitic relationship, and the disguise
+        fails where code provenance is correlated.
+  confidence: medium
+  evidence_refs:
+  - REF-001098
+  - REF-000362
+subtechnique_taxonomy:
+  narrative:
+    paragraphs:
+    - zh: 建议两个 Niji 原生子项，分类变量分别是“实际读取是否由剪贴板变化事件触发”和“内容副本是否在正常粘贴消费者的调用返回路径内产生”。变化事件耦合把空闲轮询痕迹换成 listener 注册与变化后读取，需要变化序列和结果关联；消费者上下文截获把独立读取主体换成受控进程内
+        hook，需要代码来源、函数路径和内容结果关联。两项都要求实际内容取得，且对防御数据与正常反例的处理不同，因此具有稳定兄弟边界。
+      en: Recommend two Niji-native children using the variables of whether an actual read is triggered by a clipboard-change
+        event and whether the content copy is produced inside a normal paste consumer's return path. Change-event coupling
+        replaces idle polling traces with listener registration and post-change reads and requires correlation of the change
+        sequence and outcome. Consumer-context interception replaces an independent reader with an in-process hook and requires
+        correlation of code provenance, function path, and content outcome. Both require actual content acquisition and need
+        distinct defensive data and benign-comparator handling, giving them stable sibling boundaries.
+    - zh: 文本、图像、凭据或地址等内容类型，Windows、macOS、X11 或 Wayland，PowerShell、pbpaste、xclip 或某个恶意软件家族均不作为子项边界。按内容谓词只保留目标值、低频轮询、剪贴板历史读取以及复用同步或远程支持主体都经过检视；前两项缺少
+        Collection 结果与独立检出差的结论级证据，历史读取需先裁决是服务访问还是 T1005 文件读取，主体复用则没有合格现场证据，故本轮暂缓。
+      en: Content type such as text, images, credentials, or addresses; Windows, macOS, X11, or Wayland; PowerShell, pbpaste,
+        xclip; and a malware family do not define children. Content-predicate retention, low-rate polling, clipboard-history
+        reads, and reuse of synchronization or remote-support actors were examined. The first two lack conclusion-level evidence
+        jointly showing a Collection outcome and independent detection difference. History access first needs a boundary decision
+        between service access and T1005 file reading, while trusted-actor reuse lacks a qualified incident case. They remain
+        deferred in this batch.
+  coverage: established
+  subtechnique_refs:
+  - NJS-0214-001
+  - NJS-0214-002
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000251
+    - DET-000252
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000222
+    - MIT-000102
+evidence:
+  claim_refs:
+  - CLM-001073
+  - CLM-001074
+  - CLM-001075
+  - CLM-001076
+  - CLM-001077
+  case_refs:
+  - CASE-000326
+  - CASE-000327
+  reference_refs:
+  - REF-001094
+  - REF-001095
+  - REF-001096
+  - REF-001097
+  - REF-001098
+  - REF-001099
+  - REF-001100
+  - REF-001101
+  - REF-001102
+  - REF-001103
+  - REF-001104
+  - REF-001105
+  - REF-001106
+  - REF-000362
+research:
+  limitations:
+    paragraphs:
+    - zh: 结论级恶意样本主要来自 Windows。NightshadeC2 证明变化事件驱动的实际内容、日志和上传，QBot 证明消费者进程内 hook、内容和传输，但两份来源都没有量化检测率、阈值或与替代实现的告警对照。NM-ST
+        与 NM-FD 的防守影响因此采用 medium 置信度，不能把“使用原生 API”“隐藏窗口”或“运行在合法进程”单独描述成匿迹成功。其他家族只证明一般能力时不应扩展到子项案例。
+      en: Conclusion-level malicious samples are primarily Windows-based. NightshadeC2 establishes change-event-driven content,
+        logging, and upload, while QBot establishes an in-consumer hook, content, and transfer. Neither source measures detection
+        rates, thresholds, or alert differences against an alternative implementation. Defensive effects for NM-ST and NM-FD
+        therefore carry medium confidence. Use of a native API, a hidden window, or execution in a legitimate process cannot
+        alone be described as successful stealth. Other families that prove only general capability should not be expanded
+        into child cases.
+    - zh: 平台文档说明 Windows listener/viewer、macOS changeCount、X11 selection 与 Wayland data offer 的数据前提，却不保证统一、默认且可集中导出的逐次读取审计。Cortex
+        XDR 只证明某一产品可以观察异常 GetClipboardData 调用。正式分析必须在部署环境验证 API、窗口、调用栈、返回状态和对象键；否则输出降级为 listener、hook 或后继文件线索。明文剪贴板遥测具有显著隐私与凭据风险，应优先使用端点生成的短期不可逆
+        token、sequence、大小和目的地元数据。
+      en: Platform documentation establishes Windows listener and viewer, macOS changeCount, X11 selection, and Wayland data-offer
+        prerequisites but does not guarantee a uniform, default, centrally exportable event for each read. Cortex XDR only
+        establishes that one product can observe unusual GetClipboardData calls. Formal analytics must validate API, window,
+        call-stack, return-status, and object-key fields in the deployment environment or downgrade output to listener, hook,
+        or downstream-file leads. Plaintext clipboard telemetry creates substantial privacy and credential risk and should
+        be replaced where possible by endpoint-generated short-lived irreversible tokens, sequence, size, and destination
+        metadata.
+    - zh: autofill、DLP、短清理、history/cloud 排除与 RDP 重定向限制降低暴露或传播，却不能阻止清理前同会话的实时读取，也可能影响可用性和无障碍。合法剪贴板历史、密码管理器、DLP、远程支持、虚拟化和自动化与恶意行为共享接口，必须按精确版本、owner、会话、目的地和变更窗口调优。消费者介入还需最小化跨进程写入和调试权，并约束动态代码、模块来源与回调完整性；单靠减少剪贴板暴露不能覆盖进程内
+        hook。
+      en: Autofill, DLP, short clearing, history or cloud exclusion, and RDP-redirection restrictions reduce exposure or propagation
+        but do not stop real-time reads in the same session before clearing and may affect usability and accessibility. Legitimate
+        clipboard history, password managers, DLP, remote support, virtualization, and automation share interfaces with malicious
+        behavior and require tuning by exact version, owner, session, destination, and change window. Consumer interposition
+        also requires least cross-process write and debug rights plus dynamic-code, module-provenance, and callback integrity
+        controls; reducing clipboard exposure alone does not cover in-process hooks.
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-10-05'
+  modified: '2026-10-05'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

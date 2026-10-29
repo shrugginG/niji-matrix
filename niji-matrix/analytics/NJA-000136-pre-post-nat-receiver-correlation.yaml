@@ -1,0 +1,46 @@
+schema_version: "2.0.0"
+type: detection-analytic
+id: NJA-000136
+strategy_ref: DET-000133
+name: {zh: NAT 前后目的地—接收进程关联, en: Pre/Post-NAT Destination–Receiving Process Correlation}
+summary: {zh: 证明攻击者来源流量从表面常用端口被策略重写到隐藏监听及其后门进程。, en: Prove that traffic from an adversary source is rewritten from an apparent common port to a concealed listener and backdoor process.}
+domains: [enterprise]
+platforms: [Linux, Network Devices, ESXi]
+logic:
+  paragraphs:
+    - zh: 保存 NAT/REDIRECT 表的版本、优先级、source selector、原始目的地、转换目的地及规则写入者，并为每个入站会话保留 pre_nat 与 post_nat 五元组和连接跟踪 ID。将 post_nat 本地端口映射到 socket、PID、可执行文件 hash、启动时间及服务 owner；先过滤有批准服务映射、变更工单和已知代理行为的流量。规则名、常用端口或进程名不能单独证明真实接收者。
+      en: Retain version, precedence, source selector, original destination, translated destination, and writer for NAT or REDIRECT tables. Preserve pre_nat and post_nat five-tuples plus a conntrack ID for each incoming session. Map the post_nat local port to socket, PID, executable hash, start time, and service owner, then filter flows with approved service mapping, change ticket, and known proxy behavior. Rule name, common port, or process name alone does not prove the real receiver.
+    - zh: 当来源受限的规则在攻击者控制窗口内被添加或激活，边界流量显示常用入口但 conntrack 指向非批准监听，并由该进程完成握手或产生后继命令会话时，输出 covert_redirect_confirmed。只有规则存在、没有命中流量时输出 redirect_exposure；只有监听异常、没有规则与转换记录时交给隐藏监听或 C2 对象。短驻激活和删除都要保留历史版本及首次命中，避免事后正常表覆盖中间路径。
+      en: Emit covert_redirect_confirmed when a source-limited rule is added or activated during an adversary-controlled interval, boundary traffic shows an ordinary entry while conntrack points to an unapproved listener, and that process completes a handshake or follow-on command session. A rule without matching traffic is redirect_exposure. An anomalous listener without a rule or translation record belongs to hidden-listener or C2 analysis. Retain historical versions and the first hit across brief activation and deletion so a later normal table does not erase the intermediate path.
+data_requirements:
+  - source_type: nat-policy-audit
+    name: {zh: NAT 与重定向策略审计, en: NAT and redirection policy audit}
+    channel: null
+    required_fields: [timestamp, enforcement_point_id, rule_id, policy_version, writer_id, action, source_selector, original_destination, translated_destination, priority]
+  - source_type: pre-post-nat-flow
+    name: {zh: NAT 前后会话与连接跟踪, en: Pre/post-NAT flow and connection tracking}
+    channel: null
+    required_fields: [timestamp, enforcement_point_id, conntrack_id, source_ip, pre_nat_destination_ip, pre_nat_destination_port, post_nat_destination_ip, post_nat_destination_port, protocol, session_result, rule_id]
+  - source_type: socket-process-lineage
+    name: {zh: 本地监听 socket 与进程谱系, en: Local listening socket and process lineage}
+    channel: null
+    required_fields: [timestamp, asset_id, local_ip, local_port, process_id, process_start_time, executable_hash, service_id, parent_process_id]
+observables:
+  - {zh: 同一来源的常用入口流量转换到未批准的高位监听, en: Traffic from one origin entering on a common port translates to an unapproved high-port listener}
+  - {zh: NAT 规则写入、首个命中会话与后门进程活动在时间上闭合, en: "NAT rule write, first matched session, and backdoor process activity close in time"}
+  - {zh: 其他来源继续到达原服务，暴露出来源选择器差异, en: Other origins continue reaching the original service and expose the source-selector difference}
+correlation:
+  window: {zh: 从规则写入前十五分钟到删除后两小时；保留至少三十天 NAT 版本和连接跟踪摘要，以覆盖低频激活。, en: Correlate from fifteen minutes before rule write through two hours after deletion and retain at least thirty days of NAT versions and conntrack summaries for low-frequency activation.}
+  dimensions: [enforcement_point_id, rule_id, policy_version, conntrack_id, source_ip, pre_nat_destination_ip, pre_nat_destination_port, post_nat_destination_ip, post_nat_destination_port, process_id, time]
+false_positives:
+  - {zh: 合法负载均衡、反向代理、服务网格与透明安全网关, en: "Legitimate load balancing, reverse proxying, service mesh, and transparent security gateways"}
+  - {zh: 容器或虚拟化平台按来源/服务自动生成 NAT 规则, en: Container or virtualization platforms automatically generate NAT rules by source or service}
+blind_spots:
+  - {zh: 网络设备不导出 NAT 命中或 conntrack，无法把表面流量连接到实际 socket, en: "A network device exports neither NAT hits nor conntrack, preventing a join from apparent flow to actual socket"}
+  - {zh: rootkit 隐藏本地进程或攻击者控制策略与流量两侧证据, en: A rootkit hides the local process or the adversary controls both policy and flow evidence}
+tuning_guidance:
+  paragraphs:
+    - zh: 维护批准的 listener、代理和服务映射，并把 rule_id、conntrack_id 和进程启动键作为强关联；不要按 22、443 或任何常用端口永久放行。对来源限定且只在激活后短时存在的规则提高权重，但仅有特殊包或 port knock 不构成本策略结论。缺失 post_nat 或 process 映射时输出路径未解析而不是确认后门接收者。
+      en: Maintain approved listener, proxy, and service mappings and use rule_id, conntrack_id, and process start key as strong joins. Do not permanently allow port 22, 443, or any common port. Weight source-limited rules present only briefly after activation, but a special packet or port knock alone is not a verdict for this strategy. When post_nat or process mapping is missing, report unresolved path rather than confirming a backdoor receiver.
+evidence_refs: [REF-000453, REF-000155]
+lifecycle: {status: review, version: "1.0.0", created: "2026-09-22", modified: "2026-09-22", contributors: [Niji Matrix Research], reviewers: []}

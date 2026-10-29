@@ -1,0 +1,59 @@
+schema_version: 2.0.0
+type: evasion-subtechnique
+id: NJS-0074-003
+parent_ref: NJT-0074
+name: {zh: 外部贡献情境门控执行, en: External-Contribution Context-Gated Execution}
+summary: {zh: 攻击者使 fork、PR 或事件元数据只在目标 workflow 的具权触发和危险数据流中抵达执行 sink, en: Adversaries cause fork pull-request or event metadata to reach an execution sink only through a target workflow's privileged trigger and dangerous data flow}
+aliases: []
+lineage: {attck_subtechnique_inherited: false}
+definition_and_concept:
+  paragraphs:
+    - zh: 外部贡献情境门控执行是攻击者无需直接修改目标仓库默认分支，而是控制 fork 中的代码、PR 标题或分支名、issue/discussion 内容或低权 workflow 制品，并依赖目标 workflow 的触发器、checkout、字符串插值或跨 workflow 处理把该输入转换为具权 runner 代码的行为。直接目的在于跨越贡献者与目标自动化之间的权限边界；稳定变量是“外部来源只在目标情境满足时激活”，不是 PR 这一协作介质本身。
+      en: External-Contribution Context-Gated Execution does not require direct modification of the target default branch. The adversary controls code in a fork pull-request titles or branch names issue or discussion content or artifacts from a low-privilege workflow and relies on target trigger checkout interpolation or cross-workflow processing to turn that input into code on a privileged runner. Its objective is to cross the authority boundary between contributor and target automation. The stable variable is activation of external-origin input only under a target context rather than pull requests as a collaboration medium.
+stealth_characteristics:
+  paragraphs:
+    - zh: 外部贡献情境门控执行把可疑内容留在低权 fork、元数据或前序 workflow，而具权执行记录在目标仓库的 pull_request_target、workflow_run 或其他合法事件下。源和执行使用不同 principal、commit/ref 与 run，局部审计因此容易把它们解释为普通贡献和普通自动化。若危险值只在特定标题、分支名或制品内容出现时到达 shell，重放非匹配贡献也不会复现结果。
+      en: External-Contribution Context-Gated Execution leaves suspicious content in a low-privilege fork metadata or earlier workflow while privileged execution is recorded under pull_request_target workflow_run or another legitimate target event. Source and execution use different principals commits or refs and runs so local audit may interpret them as an ordinary contribution and ordinary automation. If a dangerous value reaches the shell only for selected titles branch names or artifact content replay of a nonmatching contribution will not reproduce the outcome.
+    - zh: PR 编号、head/base SHA、event payload、checkout ref、artifact digest、触发 run、派生 job、token 权限和网络结果仍然残留。默认低权 pull_request、外部贡献审批、不向 fork 暴露秘密以及不执行不可信 checkout 会阻断关键条件。因为当前公开证据主要是平台研究与漏洞发现而非完整攻击者活动，本轴保持 medium。
+      en: Pull-request identifiers head and base SHAs event payload checkout refs artifact digests triggering runs derived jobs token permissions and network outcomes remain. Default low-privilege pull_request behavior external-contribution approval withholding secrets from forks and avoiding execution of untrusted checkouts break the necessary conditions. Because public support is mainly platform research and vulnerability discovery rather than a complete adversary operation this axis remains medium.
+scope_boundary_definition:
+  paragraphs:
+    - zh: 本轴纳入外部贡献或低权 workflow 输入在目标仓库具权上下文中变成代码的路径，包括危险 pull_request_target checkout、事件字段直接插入 shell、低权制品被 workflow_run 解压并执行。攻击者已取得目标 workflow 写权限并直接增加 job 时归 NJS-0074-001；外部来源不构成权限或情境差异、只是普通被引用脚本时归 NJS-0074-002；正常 fork CI 在隔离且无秘密环境执行不属于匿迹实现。
+      en: This axis includes external-contribution or low-privilege workflow input becoming code in a privileged target-repository context including dangerous pull_request_target checkout direct event-field interpolation into a shell and low-trust artifacts extracted and executed by workflow_run. Direct job addition after gaining target workflow write access belongs to NJS-0074-001. An ordinary referenced script without an external authority or context difference belongs to NJS-0074-002. Normal fork CI in an isolated secretless environment is not a stealth implementation.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+      - zh: 攻击者面向允许公共贡献的项目、自动标记或评审 PR 的 workflow、把测试制品交给后续具权 job 的流水线，以及使用自托管 runner 的公开仓库选择此轴。目标通常是获得 GITHUB_TOKEN、云凭据或发布权限，或者把代码带入组织内网；攻击输入可以隐藏在看似正常的测试、标题、分支或 artifact 中。
+        en: Adversaries select this axis against projects accepting public contributions workflows that automatically label or review pull requests pipelines passing test artifacts to later privileged jobs and public repositories using self-hosted runners. Objectives commonly include obtaining GITHUB_TOKEN cloud or release credentials or reaching internal networks and input may hide in ordinary-looking tests titles branches or artifacts.
+  threat_model:
+    attacker_model:
+      paragraphs:
+        - zh: 攻击者需要构造能触发目标事件的外部对象并理解 workflow 从 event context 到 checkout、action、环境变量和 shell 的数据流。它不一定需要目标仓库写权限，但受首次贡献审批、token 降权、秘密隔离、事件分支过滤与 runner 网络边界限制；错误判断会只在低权沙箱中执行而无法达到目标。
+          en: The adversary must craft an external object that triggers the target event and understand data flow from event context through checkout actions environment variables and shell. Target repository write access is not required but first-time-contributor approval token downgrading secret isolation branch filters and runner network boundaries constrain the operation. A mistaken assumption may execute only in a low-privilege sandbox and fail to reach the objective.
+    defender_model:
+      paragraphs:
+        - zh: 防守方需要同时看到贡献来源和目标 workflow 的实际执行 ref，而不是只相信 run 所属仓库。关联应保留 event payload、head/base repository、SHA、artifact producer/consumer、token scope、runner 类型和后继访问；平台若规范化掉原始元数据或无法追踪跨 workflow 制品，低权到高权的因果边会消失。
+          en: Defenders need both contribution origin and the actual execution ref of the target workflow rather than trusting the repository that owns the run. Correlation should retain event payload head and base repositories SHAs artifact producer and consumer token scope runner type and subsequent access. The low-to-high authority edge disappears when platforms normalize away original metadata or cannot trace artifacts across workflows.
+stealth_mechanisms:
+  - mechanism_ref: NM-ST
+    role: primary
+    summary: {zh: 外部低权输入与目标具权执行跨事件分离, en: External low-trust input and target privileged execution separate across events}
+    analysis:
+      paragraphs:
+        - zh: 攻击者先在自身 fork 或公开元数据写入载荷，目标平台随后以自己的 workflow 和自动化身份消费该值。输入与执行在主体、仓库视角和时间上被拆开，使短期或单域检测无法直接看到攻击者进程谱系，形成时空释痕。GitHub 对 pull_request_target、workflow_run、事件字段和制品污染的分析证明了这条可控路径；PR/SHA、artifact digest、触发与派生 run 仍能重建链，但缺少现场意图案例限制置信度。
+          en: The adversary first writes payload material in a personal fork or public metadata and the target platform later consumes it through its own workflow and automation identity. Input and execution separate across principal repository view and time so short-window or single-plane detection lacks a direct adversary process lineage and produces Spatiotemporal Trace Dilution. GitHub analysis of pull_request_target workflow_run event fields and artifact poisoning establishes the controllable path while pull-request SHAs artifact digests and triggering or derived runs can reconstruct it. Lack of a field-intent case limits confidence.
+    evidence_refs: [REF-000254, REF-000256, REF-000257]
+    confidence: medium
+defense:
+  detections: {coverage: available, strategy_refs: [DET-000062]}
+  mitigations: {coverage: available, mitigation_refs: [MIT-000061]}
+evidence:
+  claim_refs: [CLM-000283, CLM-000453, CLM-000457, CLM-000458]
+  case_refs: []
+  reference_refs: [REF-000126, REF-000254, REF-000256, REF-000257, REF-000258]
+research:
+  limitations:
+    paragraphs:
+      - zh: GitHub 的官方研究证明危险配置和数据流可造成任意 runner 执行，但公开材料多是漏洞发现、修复建议和实验路径，未充分证明攻击者在现场有意利用跨事件分离来规避检测。因此本子技术不能因技术可行性自动提升为 high；若后续案例只证明外部代码被构建而无权限或观察差异，也应合并回间接输入轴。
+        en: GitHub research proves that dangerous configuration and data flow can cause arbitrary runner execution but public material consists largely of vulnerability discoveries remediation guidance and demonstration paths and does not sufficiently establish field adversary intent to use cross-event separation for evasion. Technical feasibility therefore cannot raise the child automatically to high. A future case showing only external code being built without an authority or observation difference should collapse into the indirect-input axis.
+lifecycle: {status: review, version: 2.0.0, created: '2026-09-10', modified: '2026-09-12', contributors: [Niji Matrix Research], reviewers: []}

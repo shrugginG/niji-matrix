@@ -1,0 +1,172 @@
+schema_version: 2.0.0
+type: evasion-subtechnique
+id: NJS-0103-004
+parent_ref: NJT-0103
+name:
+  zh: 角色贴合目标上下文选择
+  en: Role-Conforming Target Context Selection
+summary:
+  zh: 攻击者按 payload 的后继资源行为选择本来就执行相似动作的 target process，使局部 behavior baseline 看到预期主体—动作组合而丢失注入来源。
+  en: Adversaries select a target process that normally performs behavior similar to the payload's downstream resource action,
+    causing point behavior baselines to see an expected subject-action pair and lose injection provenance.
+aliases: []
+lineage:
+  attck_subtechnique_inherited: false
+definition_and_concept:
+  paragraphs:
+  - zh: 角色贴合目标上下文选择固定“攻击者为何选这个 target”的业务/系统角色变量。攻击者在多个 reachable compatible processes 中，选择本来就会访问 payload 目标资源、协议或服务的 process，例如用
+      browser 承载 C2 网络模块，或用经常接触 LSASS 的 service host 承载 credential payload。payload execution 继承 target name、token、network
+      stack、service role 与既有 baseline，使后继 action 在 target 局部看起来合理。
+    en: Role-Conforming Target Context Selection fixes the business or system-role variable explaining why the adversary chooses
+      this target. Among reachable compatible processes, the adversary selects one that normally accesses the resource, protocol,
+      or service needed by the payload, such as a browser for a C2 networking module or a service host that commonly touches
+      LSASS for a credential payload. Payload execution inherits target name, token, network stack, service role, and established
+      baseline, making downstream action locally plausible for the target.
+  - zh: 选择浏览器、服务宿主、SYSTEM 进程或签名进程本身并不充分；嵌入载荷的预期动作必须与目标进程的正常角色相符，并且存在实际的源到目标注入链。仅因目标长期运行或权限较高而选择它，不构成角色贴合。
+    en: Selecting a browser, service host, SYSTEM process, or signed process is not sufficient. The intended action of the
+      embedded payload must conform to the target process's normal role, and an actual source-to-target injection chain must
+      exist. Selecting a target merely because it is long-lived or privileged does not establish role conformity.
+stealth_characteristics:
+  paragraphs:
+  - zh: 角色贴合目标上下文选择保持 process-level feature pair：browser 发起网络连接、service host 访问其服务资源、security agent 操作 process 或 backup agent
+      读文件，动作本身和主体都在允许/常见集合。防守方若按 process name→allowed behavior 或 reputation 单点评分，会降低风险并把 action 归给 target。真正矛盾在 approved code/module
+      与 actual executing region、source mutation、request destination/content 和 owner context 之间。
+    en: 'Role-Conforming Target Context Selection preserves a process-level feature pair: a browser makes network connections,
+      a service host reaches its service resources, a security agent manipulates processes, or a backup agent reads files,
+      leaving both action and subject inside an allowed or common set. Defenders scoring a point process-name-to-allowed-behavior
+      mapping or reputation lower risk and attribute the action to the target. The contradiction lies among approved code
+      or modules, actual executing region, source mutation, request destination or content, and owner context.'
+  - zh: 该轴不同于普通 host identity borrowing：所有注入都改变 visible process，但只有攻击者按 intended outcome 选择与 action 合形的 role 才成立。可恢复残余包括 target
+      selection/enumeration、source payload function/config、target role and approved modules、injection time、first injected
+      action、destination/resource、named pipe/IPC 与 reinjection behavior。VEILEDSIGNAL 的 browser enumeration、C2 module 和 pipe
+      可形成这些键。
+    en: This axis differs from ordinary host-identity borrowing. Every injection changes the visible process, but only adversary
+      selection of a role conforming to the intended outcome qualifies. Recoverable residuals include target enumeration and
+      selection, source payload function or configuration, target role and approved modules, injection time, first injected
+      action, destination or resource, named pipe or IPC, and reinjection behavior. VEILEDSIGNAL browser enumeration, C2 module,
+      and pipe provide these keys.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 必须同时证明至少两个合理候选或明确 target selection logic、target normal role、payload intended/observed first action 与二者贴合，以及 actual
+      injection。若 malware 只是选择第一个可打开进程而没有 role relationship，留在 parent；若 target behavior 异常（如 calc 发起外联）反而不属于本子项。合法 plugin/extension/automation
+      由 approved code provenance、owner 与 product relationship 排除。
+    en: Proof jointly requires at least two plausible candidates or explicit target-selection logic, target normal role, payload
+      intended or observed first action, conformity between them, and actual injection. Malware selecting the first openable
+      process without a role relationship stays parent core. A clearly anomalous target behavior, such as calculator networking,
+      does not qualify. Legitimate plugins, extensions, and automation are excluded through approved-code provenance, owner,
+      and product relationship.
+  - zh: 伪装技术复制名称或路径并创建新的进程，而本项把代码放入真实存在或受控的目标进程。受信 Broker 通过合法接口执行请求而无需内存改变，也属于相邻对象。若浏览器仅因寿命长而被选择，但载荷不执行与浏览器角色相符的动作，就不属于本项。
+    en: Masquerading copies a name or path while creating a new process, whereas this child places code in a real existing
+      or controlled target. A trusted broker that executes a request through a legitimate interface without memory modification
+      belongs to an adjacent object. If a browser is selected only for longevity and the payload performs no browser-conforming
+      action, this child does not apply.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: VEILEDSIGNAL 的注入模块枚举常见浏览器，选择现存浏览器承载独立命令通信模块，并通过命名管道与主后门协作。网络活动因此出现在本来就会访问互联网的浏览器下，而源进程与模块关系只在注入和进程间通信痕迹中可见；公开材料支持角色贴合，但没有证明该案例产生权限提升。
+      en: The VEILEDSIGNAL injection module enumerates common browsers, selects an existing browser to host a dedicated command-and-control
+        module, and coordinates with the main backdoor through a named pipe. Network activity therefore appears under a browser
+        expected to reach the internet, while the source-process and module relationship is visible only in injection and
+        interprocess-communication traces. Public material supports role conformity but does not establish privilege escalation
+        in that case.
+    - zh: 在授权测试中，操作人员可能把访问凭据进程的载荷嵌入本来就会执行类似访问的服务宿主，使行为模型看到熟悉主体和动作。只有目标进程确实具有源进程没有的资源权限并被载荷使用时，才产生额外权限；把相同载荷放入任意无关进程则不属于角色贴合。
+      en: In authorized testing, an operator can embed a payload that accesses a credential process into a service host that
+        normally performs similar access, causing a behavior model to see a familiar subject and action. Added privilege occurs
+        only when the target process possesses resource authority absent from the source and the payload actually uses it.
+        Placing the same payload in an arbitrary unrelated process does not establish role conformity.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者需了解 endpoint process inventory、role baseline、token/resources、network egress 与稳定性，选择 architecture/session compatible
+          target 并避免破坏业务。选择范围受到 available instances、PPL/sandbox、module compatibility、handle rights 和目标重启影响；browser/service
+          update 可能使 payload 失效。
+        en: The adversary needs knowledge of endpoint process inventory, role baseline, tokens and resources, network egress,
+          and stability, selects an architecture- and session-compatible target, and avoids breaking business activity. Available
+          instances, PPL or sandbox, module compatibility, handle rights, and target restart constrain selection. Browser
+          or service updates can invalidate the payload.
+      - zh: 攻击者可以监视目标进程终止并重新注入，或在多个同角色进程之间迁移，但这些动作会增加源目标关系和进程间通信痕迹。低频或长寿命选择可以改变关联窗口，却不能替代载荷动作与目标角色之间的实际一致性。
+        en: The adversary can monitor target termination and reinject or migrate among processes with the same role, but those
+          actions add source-target and interprocess-communication traces. Low-frequency or long-lived selection can change
+          the correlation window but cannot substitute for actual conformity between payload action and target role.
+    defender_model:
+      paragraphs:
+      - zh: 防守方为高价值 process role 保存 approved executable/module hashes、service identity、正常 source relationships、资源/action classes、destinations、protocols
+          与 owner；behavior allow 必须要求 action 由 approved code path 产生。将 injection edge、executing region/module provenance 和
+          first action 连接到 role baseline，才能识别“主体/动作都常见但代码来源异常”。
+        en: Defenders preserve approved executable and module hashes, service identity, normal source relationships, resource
+          and action classes, destinations, protocols, and owner for high-value process roles. Behavior allowance must require
+          the action to originate from an approved code path. Joining injection edge, executing-region or module provenance,
+          and first action to role baseline identifies an ordinary subject and action with abnormal code origin.
+      - zh: 不应永久信任 browser、svchost、backup、security 或 signed process；基线按具体 service group/profile、version、module set、destination/resource
+          和窗口。合法 browser extension、security scanner、credential provider 和 assistive tool 可能产生非常规行为，需要独立 package/owner approval，而不能按
+          publisher 全局豁免。
+        en: Browsers, svchost, backup, security, and signed processes are never permanently trusted. Baselines bind a concrete
+          service group or profile, version, module set, destination or resource, and window. Legitimate browser extensions,
+          security scanners, credential providers, and assistive tools can produce unusual behavior and need independent package
+          and owner approval rather than publisher-wide exemption.
+stealth_mechanisms:
+- mechanism_ref: NM-FD
+  role: primary
+  summary:
+    zh: 目标角色与恶意后继动作保持合形，使行为规则看到预期主体—动作组合
+    en: Target role conforms to malicious downstream action causing behavior rules to see an expected subject-action pair
+  analysis:
+    paragraphs:
+    - zh: 攻击者先按 payload 目的选择正常会执行同类 action 的 target，再将代码注入其上下文。痕迹从异常 source 访问 LSASS/网络/资源变成 svchost、browser 或业务 service 执行其常见动作，process
+        name、token、role 与行为分类特征都保持熟悉。依赖主体—动作基线的防守方降低风险并把来源归给 target，削弱区分与归因，形成 Feature Disguise。Mandiant 受控 svchost/LSASS
+        机制与 VEILEDSIGNAL field browser/C2 chain 联合支持 high；target enumeration、payload purpose、injection edge、approved code
+        与 first action 可揭示。
+      en: The adversary first selects a target that normally performs the action class required by the payload, then injects
+        code into its context. Traces shift from an anomalous source reaching LSASS, network, or a resource into svchost,
+        a browser, or a business service performing its familiar action, preserving process name, token, role, and behavioral
+        classification features. Defenders dependent on subject-action baselines lower risk and attribute provenance to the
+        target, weakening discrimination and attribution as Feature Disguise. Mandiant's controlled svchost and LSASS mechanism
+        plus the field VEILEDSIGNAL browser and C2 chain jointly support high confidence; target enumeration, payload purpose,
+        injection edge, approved code, and first action expose it.
+  evidence_refs:
+  - REF-000108
+  - REF-000364
+  - REF-000367
+  confidence: high
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000100
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000102
+evidence:
+  claim_refs:
+  - CLM-000569
+  - CLM-000570
+  - CLM-000571
+  case_refs:
+  - CASE-000133
+  - CASE-000134
+  reference_refs:
+  - REF-000108
+  - REF-000364
+  - REF-000367
+research:
+  limitations:
+    paragraphs:
+    - zh: Mandiant 红队来源明确证明 detection rationale 和可控性，但不是未授权 prevalence；VEILEDSIGNAL 证明 browser/C2 field selection，却没有声明 role
+        conformity 是唯一动机。高置信来自机制与字段案例联合，不能推广为所有 browser 或 svchost 注入。
+      en: Mandiant red-team reporting explicitly establishes detection rationale and controllability but not unauthorized
+        prevalence. VEILEDSIGNAL proves field browser and C2 selection without stating role conformity as the sole motive.
+        High confidence comes from combining mechanism and field case and cannot generalize to every browser or svchost injection.
+    - zh: 如果组织没有按角色、版本和配置保存批准模块与目的地基线，常见进程执行常见动作时就很难验证角色贴合。目标选择逻辑通常只存在于恶意代码内存中并可能丢失；只有单一目标而缺少载荷目的与角色的独立证据时，不能确认攻击者有意选择了贴合角色的上下文。
+      en: If an organization does not retain approved modules and destinations by role, version, and profile, it becomes difficult
+        to validate role conformity when a common process performs a common action. Target-selection logic often exists only
+        in malware memory and can be lost. A single observed target without independent evidence of payload purpose and role
+        does not establish deliberate selection of a role-conforming context.
+lifecycle:
+  status: review
+  version: 0.2.0
+  created: '2026-09-13'
+  modified: '2026-09-19'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

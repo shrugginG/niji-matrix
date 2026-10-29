@@ -1,0 +1,122 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000272
+strategy_ref: DET-000221
+name:
+  zh: 资产角色约束的直接协议出口差分
+  en: Asset-Role-Constrained Direct Protocol Egress Differential
+summary:
+  zh: 识别工作负载绕过批准中介而直接使用角色外协议路径外送数据。
+  en: Identify a workload sending data through a role-deviant direct protocol path that bypasses approved intermediaries.
+domains:
+- enterprise
+platforms: []
+logic:
+  paragraphs:
+  - zh: 建立 asset_id、process_role、network_zone、approved_protocol、approved_intermediary、approved_destination 和 exception_id
+      的版本化清单。将 Zeek conn、端点网络事件和可用 DNS/代理/邮件记录规范为 direct_or_mediated；识别终端直连外部 DNS/DoT、非邮件服务器直连 SMTP、非批准进程使用 FTP/SFTP/外部
+      SMB，或服务/端口与解析结果不一致。随后按 device_id、process_start_key、user、destination、protocol 在三十分钟至二十四小时内关联敏感文件读取、归档/暂存和方向字节，并与同一入侵已知
+      C2 的 protocol/destination 分开记录。只有策略偏离、外传谱系和不同于 C2 三者同时存在时输出 role_deviant_alternative_exfiltration；否则保留 policy_deviation
+      或 data_egress_candidate。
+    en: Build a versioned inventory of asset_id, process_role, network_zone, approved_protocol, approved_intermediary,
+      approved_destination, and exception_id. Normalize Zeek conn, endpoint network, and available DNS, proxy, or
+      mail records into direct_or_mediated. Identify endpoints contacting external DNS or DoT directly, non-mail
+      servers contacting SMTP directly, unapproved processes using FTP, SFTP, or external SMB, or service and port
+      inconsistent with protocol parsing. Join sensitive-file reads, archive or staging activity, and directional
+      bytes over thirty minutes to twenty-four hours by device_id, process_start_key, user, destination, and protocol,
+      preserving the intrusion's known C2 protocol and destination separately. Emit role_deviant_alternative_exfiltration
+      only when policy deviation, data lineage, and distinction from C2 all exist; otherwise retain policy_deviation
+      or data_egress_candidate.
+data_requirements:
+- source_type: asset-egress-policy
+  name:
+    zh: 资产与进程出口角色清单
+    en: Asset and process egress role inventory
+  channel: CMDB or network policy repository
+  required_fields:
+  - asset-id
+  - process-role
+  - network-zone
+  - approved-protocol
+  - approved-intermediary
+  - approved-destination
+  - policy-version
+  - exception-id
+- source_type: network-flow
+  name:
+    zh: 方向连接与协议识别
+    en: Directional connection and protocol identification
+  channel: Zeek conn.log or equivalent flow sensor
+  required_fields:
+  - ts
+  - uid
+  - id.orig-h
+  - id.resp-h
+  - id.resp-p
+  - proto
+  - service
+  - duration
+  - orig-bytes
+  - resp-bytes
+- source_type: endpoint-process-network
+  name:
+    zh: 端点进程网络归属
+    en: Endpoint process network attribution
+  channel: Microsoft DeviceNetworkEvents or equivalent EDR
+  required_fields:
+  - timestamp
+  - deviceid
+  - remoteip
+  - remoteport
+  - protocol
+  - initiatingprocessuniqueid
+  - initiatingprocessfilename
+  - initiatingprocesscommandline
+observables:
+- zh: 非批准进程直接连接外部 FTP、DNS、SMTP、SFTP 或同类接收端
+  en: An unapproved process connects directly to an external FTP, DNS, SMTP, SFTP, or similar receiver
+- zh: 敏感读取后出现未经过批准代理、解析器或中继的方向字节
+  en: Directional bytes bypass an approved proxy, resolver, or relay after sensitive access
+correlation:
+  window:
+    zh: 以二十四小时连接角色偏离、敏感读取和外送结果；对交互式 FTP 使用三十分钟高置信分支。
+    en: Use twenty-four hours to join role deviation, sensitive access, and egress outcome, with a thirty-minute
+      high-confidence branch for interactive FTP.
+  dimensions:
+  - device-id
+  - process-start-key
+  - user
+  - source-ip
+  - destination-ip-or-service
+  - protocol
+  - c2-relationship-id
+  - policy-version
+false_positives:
+- zh: 批准的管理 SFTP、备份代理、邮件服务器、解析器和迁移作业
+  en: Approved administrative SFTP, backup agents, mail servers, resolvers, and migration jobs
+blind_spots:
+- zh: 资产角色或中介清单不完整，NAT 压缩发起身份
+  en: Incomplete role/intermediary inventory or NAT collapses initiating identity
+- zh: 密文内容与缺失进程键限制数据归因
+  en: Opaque content and missing process keys limit data attribution
+tuning_guidance:
+  paragraphs:
+  - zh: 先按资产/进程角色定义允许路径，而不是全局封禁协议。对 DNS、邮件、备份和开发工具建立带所有者、目的地和到期时间的例外；新目的地、敏感读取和不匹配进程提高风险，但任何单项均不直接确认外传。保留 direct_or_mediated
+      及政策版本，避免网络改造后沿用旧基线。
+    en: Define allowed paths by asset and process role instead of globally banning protocols. Give DNS, mail, backup,
+      and development-tool exceptions an owner, destination, and expiry. New destinations, sensitive reads, and
+      process mismatch raise risk, but no single feature confirms exfiltration. Retain direct_or_mediated and policy
+      version so network redesign does not leave a stale baseline.
+evidence_refs:
+- REF-000916
+- REF-000922
+- REF-000634
+- REF-000604
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-10-04'
+  modified: '2026-10-04'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

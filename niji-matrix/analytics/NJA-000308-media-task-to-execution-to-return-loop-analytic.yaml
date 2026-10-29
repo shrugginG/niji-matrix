@@ -1,0 +1,179 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000308
+strategy_ref: DET-000239
+name:
+  zh: 介质任务—执行—返回闭环分析
+  en: Media Task-to-Execution-to-Return Loop Analytic
+summary:
+  zh: 验证同一介质上的任务—执行—结果—消费闭环。
+  en: Verify a task-execution-result-consumption loop on the same medium.
+domains:
+- enterprise
+platforms:
+- Windows
+logic:
+  paragraphs:
+  - zh: 先把每次接入和卸载规范化为 media_asset_id、observed_serial、media_instance_id、volume_id、drive_or_mount_path、endpoint_id、endpoint_zone、mount_time
+      和 unmount_time，并以台账生成 trip_id。对联网或控制侧挂载会话，关联由非批准进程写入的可执行文件、脚本、加密包或新型小文件，保存文件名、大小、可得散列、写入进程和远程连接上下文；随后在最长合法轮转周期内寻找同一介质于不同受限端接入，连接同摘要文件的读取、复制或执行，以及接入后新生成的主机信息、状态或结果对象。
+    en: Normalize every attach and unmount into media_asset_id, observed_serial, media_instance_id, volume_id, drive_or_mount_path,
+      endpoint_id, endpoint_zone, mount_time, and unmount_time, deriving trip_id from the custody ledger. During a mount
+      on the connected or control side, join executables, scripts, encrypted packages, or novel small files written by
+      an unapproved process, retaining filename, size, available digest, writer process, and remote-connection context.
+      Within the longest legitimate rotation, find the same media attached to a different restricted endpoint and join
+      reads, copies, or execution of the same-digest object and new host-information, status, or result objects created
+      after attachment.
+  - zh: 再要求介质返回控制侧，结果对象被读取、复制或消费，并在二十四小时内由相同进程谱系或配套组件产生对外连接、上传或新的目标任务写入。只有任务写入—受限端动作—结果写回—控制侧消费四门齐全，或同一源目标角色完成两次以上方向一致的任务周期，才输出高置信
+      C2；只有控制侧写入与受限端执行时降级为传播/工具到达线索，只有受限端写入与控制侧读取时降级为外传线索。加密内容不妨碍顺序判断，但不能在缺少执行与返回时推断消息语义。
+    en: Then require the medium to return to the control side, the result object to be read, copied, or consumed, and
+      an outbound connection, upload, or new target task write by the same process lineage or companion component within
+      twenty-four hours. Emit high-confidence C2 only when task write, restricted-side action, result write, and control-side
+      consumption all pass, or when the same source and destination roles complete at least two directionally consistent
+      task cycles. A control-side write plus restricted execution alone is a propagation or tool-arrival lead; a restricted-side
+      write plus control-side read alone is an exfiltration lead. Encrypted content does not prevent ordering analysis,
+      but message semantics must not be inferred without execution and return.
+data_requirements:
+- source_type: removable-media-device-events
+  name:
+    zh: 介质接入、卸载与策略事件
+    en: Media Attach, Unmount, and Policy Events
+  channel: Microsoft Defender XDR DeviceEvents and Device Control report or equivalent
+  required_fields:
+  - timestamp
+  - endpoint_service_device_id
+  - endpoint_name
+  - action_type
+  - additional_fields.device_id
+  - additional_fields.device_instance_id
+  - additional_fields.serial_number
+  - additional_fields.bus_type
+  - additional_fields.media_name
+  - folder_path_or_drive_letter
+- source_type: media-file-events
+  name:
+    zh: 介质路径文件活动
+    en: Media-Path File Activity
+  channel: Microsoft Defender XDR DeviceFileEvents or equivalent
+  required_fields:
+  - timestamp
+  - endpoint_service_device_id
+  - action_type
+  - folder_path
+  - file_name
+  - file_size
+  - sha1_when_available
+  - initiating_process_file_name
+  - initiating_process_command_line
+  - initiating_process_creation_time
+- source_type: endpoint-process-events
+  name:
+    zh: 受限端执行与控制侧消费进程
+    en: Restricted-Side Execution and Control-Side Consumer Processes
+  channel: Microsoft Defender XDR DeviceProcessEvents or equivalent
+  required_fields:
+  - timestamp
+  - endpoint_service_device_id
+  - process_file_name
+  - process_folder_path
+  - process_command_line
+  - process_unique_key_or_creation_time
+  - parent_process_file_name
+  - parent_process_command_line
+  - sha1_when_available
+- source_type: connected-side-network-events
+  name:
+    zh: 联网中继端后继外联
+    en: Connected Relay Successor Network Activity
+  channel: Microsoft Defender XDR DeviceNetworkEvents plus proxy or upload audit where available
+  required_fields:
+  - timestamp
+  - endpoint_service_device_id
+  - initiating_process_unique_key_or_creation_time
+  - remote_ip_or_url
+  - remote_port
+  - protocol
+  - action_type
+  - bytes_or_upload_result_when_available
+- source_type: media-transfer-ledger
+  name:
+    zh: 介质行程、区域与批准内容台账
+    en: Media Trip, Zone, and Approved-Content Ledger
+  channel: managed checkpoint or governance system
+  required_fields:
+  - media_asset_id
+  - observed_serial
+  - trip_id
+  - custodian
+  - source_endpoint_or_zone
+  - destination_endpoint_or_zone
+  - checkout_time
+  - checkin_time
+  - direction
+  - approver
+  - signed_content_manifest
+observables:
+- zh: 同一介质从联网端取得新任务对象，在受限端触发关联执行并产生新结果对象，随后返回联网端被消费
+  en: The same medium receives a new task object on a connected host, triggers related execution and a new result object
+    on a restricted host, and returns for connected-side consumption
+- zh: 任务和结果文件名、摘要或大小虽可变化，但其写读方向、目标身份和行程顺序在两个以上周期重复
+  en: Task and result names, digests, or sizes may change while their write-read direction, target identity, and trip
+    order repeat for at least two cycles
+correlation:
+  window:
+    zh: 父窗口覆盖组织最长合法介质轮转，建议默认四十五日；单次挂载内严格使用 mount_time 至 unmount_time，返回后外联窗口默认二十四小时。
+    en: Cover the organization's longest legitimate media rotation, forty-five days by default; use strict mount_time-to-unmount_time
+      bounds for local activity and a twenty-four-hour post-return egress window.
+  dimensions:
+  - media_asset_id
+  - observed_serial
+  - media_instance_id
+  - volume_id
+  - trip_id
+  - endpoint_id
+  - endpoint_zone
+  - content_digest_or_stable_object_features
+  - writer_reader_execution_process_keys
+  - connected_side_remote_destination
+false_positives:
+- zh: 获批准的离线补丁发布会向内送入可执行文件并向外带回安装日志
+  en: Approved offline patch release sends executables inward and returns installation logs
+- zh: 取证采集、诊断维护、许可证挑战响应和离线批处理会产生任务—结果文件对
+  en: Forensics, diagnostic maintenance, license challenge-response, and offline batch processing produce task-result
+    file pairs
+- zh: 备份、恢复及生产配方交换可能在相同介质和主机角色间反复轮转
+  en: Backup, restoration, and production-recipe exchange can repeatedly rotate through the same media and host roles
+blind_spots:
+- zh: 隔离端无代理或只记录成功接入，无法观察任务执行和结果写入
+  en: An agentless restricted endpoint or attach-only logging hides task execution and result writes
+- zh: 序列号复用/伪造、盘符重映射或先复制到本地再执行会破坏直接连接
+  en: Reused or spoofed serials, drive-letter remapping, or local copying before execution breaks direct joins
+- zh: 文件摘要缺失、端到端加密、轮转长于保留期或联网端通过未记录组件上传会降低消息语义置信度
+  en: Missing digests, end-to-end encryption, rotation beyond retention, or upload by an unlogged companion component
+    lowers message-semantic confidence
+- zh: Defender Device Control 高级狩猎事件有每设备每日上限，报告还可能延迟，不能当作完整实时审计
+  en: Defender Device Control advanced-hunting events have a per-device daily cap and reporting can be delayed, so they
+    are not complete real-time audit
+tuning_guidance:
+  paragraphs:
+  - zh: 以批准的介质资产、源目标区、任务系统、签名包格式、行程周期和结果目录建立精确基线，把例外限定到工单、版本、签名、收件主机和有效期。不要因介质序列号获准、文件被加密或维护主机常用就永久忽略新内容；也不要仅凭同一介质跨区就告警为
+      C2。先保留四门证据及缺失门，再由资产负责人确认正常任务语义。
+    en: Baseline approved media asset, source and destination zones, task system, signed-package format, trip cadence,
+      and result directory, scoping exceptions to ticket, version, signature, recipient host, and expiry. Do not permanently
+      suppress novel content because the serial is approved, the file is encrypted, or the maintenance host is common;
+      do not call C2 from zone crossing alone. Preserve the four gates and any missing gate before the asset owner confirms
+      normal task semantics.
+evidence_refs:
+- REF-000596
+- REF-001032
+- REF-000597
+- REF-000475
+- REF-000598
+- REF-000604
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-10-04'
+  modified: '2026-10-04'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

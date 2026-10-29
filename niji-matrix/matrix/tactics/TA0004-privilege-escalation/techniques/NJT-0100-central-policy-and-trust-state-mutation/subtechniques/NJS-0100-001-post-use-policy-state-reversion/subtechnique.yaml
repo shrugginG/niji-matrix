@@ -1,0 +1,218 @@
+schema_version: 2.0.0
+type: evasion-subtechnique
+id: NJS-0100-001
+parent_ref: NJT-0100
+name:
+  zh: 用后策略状态回退
+  en: Post-Use Policy-State Reversion
+summary:
+  zh: 攻击者让恶意 policy/trust version 只在目标消费与权限使用区间存在，随后恢复同一对象的先前状态，使回退后的盘点显示正常而已签发会话、令牌或权限结果留在别处。
+  en: An adversary keeps a malicious policy or trust version present only for target consumption and privileged use, then
+    restores the prior state of the same object so post-reversion inventory appears normal while issued sessions, tokens,
+    or authority outcomes remain elsewhere.
+aliases: []
+definition_and_concept:
+  paragraphs:
+  - zh: 用后策略状态回退以同一权威 policy/trust object 的版本寿命为攻击者可控变量。攻击者从可比较 pre-state 建立恶意版本，等待至少一个目标 consumer、认证请求或授权评估使用该版本并产生预期结果，再把对象恢复为先前语义或等价可信状态。成立需要完整的
+      mutation → malicious-version-valid interval → consumer use → privileged outcome → reversion 顺序；只发生自动到期、正常 rollback、复制冲突、失败写入或两次相似修改都不够。
+    en: Post-Use Policy-State Reversion uses the lifetime of a version on one authoritative policy or trust object as an adversary-controlled
+      variable. The adversary establishes a malicious version from a comparable pre-state, waits for at least one target consumer,
+      authentication request, or authorization evaluation to use it and produce the intended result, and then restores the
+      object's previous semantics or an equivalent trusted state. The child requires a complete mutation-to-malicious-version-valid-interval-to-consumer-use-to-privileged-outcome-to-reversion
+      order. Automatic expiry, normal rollback, replication conflict, failed write, or two similar changes alone is insufficient.
+  - zh: “回退”描述权威对象的 current state，而不是攻击结果必然被消除。恶意版本期间签发的 token/session、被加入的本地权限、创建的任务、修改的数据或获得的后继能力可能在策略恢复后继续有效。因此直接目的既是缩短恶意配置可被
+      snapshot 观察的时间，也是把原因与残留结果放到不同日志和生命周期。GPO、domain trust、federation setting 或云 tenant policy 只是承载该变量的实现，不形成不同 Niji 子项。
+    en: Reversion describes the authoritative object's current state, not guaranteed removal of the attack outcome. A token
+      or session issued during the malicious version, local authority added by a consumer, task created, data changed, or
+      follow-on capability obtained can remain effective after policy restoration. The direct purpose is both to shorten the
+      period in which a snapshot can observe malicious configuration and to place cause and residual outcome in different
+      logs and lifecycles. GPO, domain trust, federation setting, and cloud tenant policy merely implement the variable and
+      do not form different Niji children.
+stealth_characteristics:
+  paragraphs:
+  - zh: 用后策略状态回退把一个原本持续可见的异常改造成有起止边界的版本区间。攻击者完成使用后恢复 familiar current state，定时 inventory、事后导出或只比较“现在是否符合基线”的检查会得到正常答案；若变更日志保留短于策略消费或
+      token/session 寿命，恶意原因已经消失而资源结果仍存。防守方因而难以区分从未变更、批准后回滚与恶意使用后复原，也难以把残留高权限会话或操作归因到已经不存在的版本。
+    en: Post-Use Policy-State Reversion turns a continuously visible anomaly into a version interval with start and end boundaries.
+      After use, the adversary restores familiar current state, so scheduled inventory, post-incident export, or checks that
+      compare only current state with baseline return a normal answer. When change-log retention is shorter than policy-consumption
+      or token or session lifetime, the malicious cause has disappeared while resource outcomes remain. Defenders consequently
+      struggle to distinguish never changed, approved rollback, and malicious use followed by restoration and to attribute
+      a residual privileged session or operation to a version that no longer exists.
+  - zh: 残余痕迹包括成对 old/new 事件、连续 version numbers、GPO container/template 与复制状态、writer/approval、consumer observed version、request/session/token
+      和资源结果。回退越精确，终态差分越弱，但对历史连续性、consumer 与残留结果的要求越高；不一致的 restore、未覆盖副本、未撤销 token 或遗漏的 endpoint 结果会暴露区间。若审计不可变且保留覆盖最长策略效果和会话寿命，或者
+      consumer 把使用版本写入资源审计，本项只能压缩调查窗口而不能消除归因。
+    en: Residual traces include paired old and new events, sequential version numbers, GPO container and template plus replication
+      state, writer and approval, consumer-observed version, request, session, or token, and resource outcomes. More exact
+      restoration weakens end-state difference but increases dependence on historical continuity, consumers, and residual
+      outcomes. An inconsistent restore, uncovered replica, unrevoked token, or missed endpoint result exposes the interval.
+      When immutable audit retention covers the longest policy-effect and session lifetime or consumers record the version
+      used in resource audit, this child can compress the investigation window but cannot eliminate attribution.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 纳入要求攻击者有意恢复同一策略或信任对象的可信终态，并且恶意中间版本至少被一个目标实际消费。稳定键是对象标识和恶意版本的有效区间，而不是“变更时间很短”。正常证书轮换回退、失败变更撤销、配置管理纠偏、蓝绿发布、事故恢复和误配修复都是反例；如果无法区分恶意版本与恢复版本，或没有消费证据，就不能确认本子技术。
+    en: Inclusion requires deliberate restoration of a trusted final state for the same policy or trust object and actual
+      consumption of the adversarial intermediate version by at least one target. The stable key is object identity plus the
+      malicious version interval, not merely a short change duration. Normal certificate rollback, failed-change reversion,
+      configuration correction, blue-green release, incident recovery, and misconfiguration repair are counterexamples. The
+      child cannot be confirmed when the adversarial and restored versions cannot be distinguished or consumption is unproven.
+  - zh: 恶意状态未回退或回退前未被消费时只属于 NJT-0100 父级的 mutation/anomaly；自动到期的临时角色、sudo cache 或短期 impersonation token 归 NJS-0098-002，因为它们的直接对象是
+      privilege activation 而非恢复 policy state。删除一次性任务或服务归相应执行生命周期，清理日志归 Defense Impairment。范围化认证例外即使稍后删除，若主要稳定变量是“总体策略仍启用但只排除特定情境”，仍由
+      NJS-0093-002 拥有；只有回退区间本身被分析时本项可与其并列发生。
+    en: A malicious state left in place or reverted before consumption remains a parent NJT-0100 mutation or anomaly. An automatically
+      expiring temporary role, sudo cache, or short-lived impersonation token belongs to NJS-0098-002 because its direct object
+      is privilege activation rather than restoration of policy state. Deletion of a one-shot task or service belongs to its
+      execution lifecycle, while log cleanup belongs to Defense Impairment. A scoped authentication exception later removed
+      remains owned by NJS-0093-002 when its primary stable variable is an otherwise enabled policy excluding only selected
+      contexts. This child can co-occur only when the reversion interval itself is being analyzed.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: 域内攻击者可保存一个 GPO 的原始 container/template 和 link state，短暂加入授予目标账户本地管理权限、执行高权限任务或改变用户权限的设置，等待指定 client 刷新并完成首个新获准动作，再恢复原文件与目录属性。身份攻击者可短暂加入
+        federation signer、issuer 或 claim rule，签发并使用 token 后恢复 trust。两者都发生在攻击者已经取得某种 policy write、但希望避免在后续审计时留下持续异常配置的阶段。
+      en: A domain adversary can preserve a GPO's original container, template, and link state, briefly add settings that
+        grant a target account local administration, execute a privileged task, or change a user right, wait for a selected
+        client to refresh and complete the first newly authorized operation, and then restore the original file and directory
+        attributes. An identity adversary can briefly add a federation signer, issuer, or claim rule, issue and use a token,
+        and restore trust afterward. Both occur after the adversary obtains some form of policy write but wants to avoid leaving
+        durable anomalous configuration for later audit.
+    - zh: 操作触发取决于可观察反馈：GPO 侧可能是 refresh、reboot、任务创建或 endpoint acknowledgment；trust 侧可能是 authentication success、token issue
+        或资源 allow。回退过早会使目标未消费，回退过晚则扩大历史暴露；恢复不完整会导致版本不一致或业务故障。攻击者通常把敏感资源动作置于确认消费之后，并期望防守方在事后只查询 current policy，而不是回溯恶意版本期间的全部
+        consumer 和结果。
+      en: 'Operational trigger depends on observable feedback: refresh, reboot, task creation, or endpoint acknowledgment
+        for GPO, and authentication success, token issue, or resource allow for trust. Reverting too early prevents target
+        consumption, while reverting too late expands historical exposure, and incomplete restoration can cause version inconsistency
+        or business failure. The adversary normally places the sensitive resource operation after confirmed consumption and
+        expects defenders to query only current policy after the event instead of enumerating all consumers and outcomes during
+        the malicious version.'
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者需要能读出可信 pre-state、写入完整恶意版本、识别目标消费反馈并再次写回等价状态。GPO 场景要求理解 container/template 版本、replication 和 client refresh，且可能需要同时处理
+          AD 与 SYSVOL；federation 场景要求能改变并验证 issuer/certificate/claim，同时保留用于签发 token 的私钥或等价能力。为避免终态差异，攻击者必须保留属性、scope、ACL、link
+          与 metadata，而不只是删掉新增文件；在权限窗口内还必须完成目标动作。
+        en: The adversary needs to read trusted pre-state, write a complete malicious version, identify target-consumption
+          feedback, and write back equivalent state. A GPO scenario requires understanding container and template versions,
+          replication, and client refresh and may require handling AD and SYSVOL together. A federation scenario requires
+          changing and validating issuer, certificate, or claim while retaining a private key or equivalent ability to issue
+          a token. To avoid end-state differences, the adversary must preserve attributes, scope, ACL, link, and metadata
+          rather than merely delete a new file and must complete the objective inside the authority window.
+      - zh: 攻击者假定不可变历史不完整、审计保留较短或 policy writer 与日志管理员权限重叠，并依赖 consumer 结果不会记录精确 policy version。它要承受 replication lag、token
+          cache、并发合法变更与恢复冲突；合法管理员在中间更新同一对象时，简单写回旧快照可能破坏业务并留下强信号。双人批准、append-only export、独立 consumer attest 和自动 residual-session
+          revocation 会显著增加同步成本。
+        en: The adversary assumes immutable history is incomplete, audit retention is short, or policy-writer and log-administrator
+          authority overlaps, and relies on consumer outcomes not recording the exact policy version. It must tolerate replication
+          lag, token caches, concurrent legitimate changes, and restoration conflicts. If a legitimate administrator updates
+          the same object in the interval, blindly writing an old snapshot can disrupt business and create a strong signal.
+          Two-person approval, append-only export, independent consumer attestation, and automatic residual-session revocation
+          materially increase coordination cost.
+    defender_model:
+      paragraphs:
+      - zh: 防守方能够为每个 object ID 构造按提交时间与逻辑版本排序的 immutable history，区分 attempted、committed、replicated、consumed 和 reverted，并保留完整
+          old/new 与 writer/approval。GPO 还需要 container/template hash/version、DC replica、link/scope 与 client observed version；trust
+          还需要 issuer、signer fingerprint、claim/authentication mode、request/token/session。资源侧保存 principal、operation、authorization
+          decision 和结果，以便把恶意区间内首个新获准动作与后来正常 current state 同时呈现。
+        en: The defender can construct an immutable history ordered by commit time and logical version for each object ID,
+          separating attempted, committed, replicated, consumed, and reverted and retaining complete old and new state plus
+          writer and approval. GPO additionally needs container and template hash or version, domain-controller replica, link
+          or scope, and client-observed version. Trust additionally needs issuer, signer fingerprint, claim or authentication
+          mode, and request, token, or session. The resource side retains principal, operation, authorization decision, and
+          outcome so the first newly authorized operation in the malicious interval and the later normal current state can
+          be presented together.
+      - zh: 观察模型必须覆盖 policy effect 的最长尾部，而不是只覆盖回退时点。已有 token/session、endpoint 创建的本地对象和已授予的持久能力需要在 restored version 后继续枚举；若平台不提供
+          consumer version，只能用 commit/refresh/request 时间和 scope 做较弱关联。SACL、cloud retention 或 SYSVOL telemetry 缺失时应标记 coverage
+          gap，不能把未见恶意版本当作不存在，也不能因两次反向变更就断言攻击者回退。
+        en: The observation model must cover the longest tail of policy effect rather than stop at reversion time. Existing
+          tokens or sessions, local objects created by endpoints, and durable capabilities granted by consumers require continued
+          enumeration after the restored version. If a platform does not expose consumer version, only weaker correlation
+          through commit, refresh or request time and scope is possible. Missing SACL, cloud retention, or SYSVOL telemetry
+          must be marked as a coverage gap; absence of an observed malicious version is not evidence that it never existed,
+          and two inverse changes do not by themselves prove adversary reversion.
+stealth_mechanisms:
+- mechanism_ref: NM-ST
+  role: primary
+  summary:
+    zh: 恶意策略只在确认消费与权限使用的有界区间内保持
+    en: Malicious policy persists only for a bounded interval of confirmed consumption and privileged use
+  analysis:
+    paragraphs:
+    - zh: 攻击者先保存可信状态，再提交恶意 version；确认 client、认证请求或 trust evaluator 已消费并产生新权限后，立即恢复同一对象。痕迹从持续异常变成 pre-state、恶意 commit、consumer/use
+        和反向 commit 的短序列，回退后的 current snapshot 与正常基线一致。仅依赖周期盘点或把检测窗口限制在策略当前寿命的防守方会遗漏中间版本，并无法把仍有效的 token/session 或资源变化连接回原因；有限版本区间由此产生
+        Short-lived Trace 匿迹。以 object/version 建立不可变 interval 并继续追踪所有 consumer 和残留结果，可重新显现该因果。
+      en: The adversary first preserves trusted state and then commits a malicious version. After confirming that a client,
+        authentication request, or trust evaluator consumed it and produced new authority, the adversary immediately restores
+        the same object. The trace changes from a durable anomaly into a short sequence of pre-state, malicious commit, consumer
+        or use, and inverse commit, while the current snapshot after reversion matches normal baseline. A defender relying
+        on periodic inventory or limiting detection to the policy's current lifetime misses the intermediate version and cannot
+        connect a still-valid token, session, or resource change back to its cause. The bounded version interval therefore
+        creates Short-lived Trace stealth. An immutable object-and-version interval followed through every consumer and residual
+        outcome restores the causality.
+  evidence_refs:
+  - REF-000338
+  - REF-000342
+  - REF-000343
+  confidence: medium
+- mechanism_ref: NM-BT
+  role: secondary
+  summary:
+    zh: 回退后的正常控制面状态与仍存消费结果落在不同生命周期边界
+    en: Normal post-reversion control state and residual consumer outcomes occupy different lifecycle boundaries
+  analysis:
+    paragraphs:
+    - zh: 攻击者让控制面返回可信状态，但不必同步撤销恶意版本已产生的 token、session、endpoint 权限或资源操作。痕迹因此分裂为已经闭合的 policy history 和仍在身份/资源面活动的结果；事后调查若以 current
+        control state 为入口，会把正常终态错误地传递给旧 consumer outcome，跨生命周期边界的来源连接被切断并形成 Boundary Traversal。保存 issue/created-under-version
+        键、在回退时枚举 residual effects 并验证撤销，才能避免控制面“已恢复”掩盖消费面仍受影响。
+      en: The adversary returns the control plane to trusted state without necessarily revoking tokens, sessions, endpoint
+        authority, or resource operations already produced by the malicious version. The trace splits into a closed policy
+        history and outcomes still active in identity or resource planes. An investigation beginning with current control
+        state can incorrectly transfer a normal end state to an old consumer outcome, severing provenance across lifecycle
+        boundaries and creating Boundary Traversal. Preserving issued-or-created-under-version keys, enumerating residual
+        effects at reversion, and verifying revocation prevents control-plane restoration from concealing continued impact
+        on the consumption plane.
+  evidence_refs:
+  - REF-000340
+  - REF-000343
+  confidence: medium
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000097
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000098
+evidence:
+  claim_refs:
+  - CLM-000550
+  - CLM-000551
+  case_refs: []
+  reference_refs:
+  - REF-000338
+  - REF-000340
+  - REF-000342
+  - REF-000343
+research:
+  limitations:
+    paragraphs:
+    - zh: ATT&CK 说明攻击者可能临时修改策略、执行恶意动作后再恢复，平台文档也证明旧值、新值、发起者和信任消费字段可能可用。但公开来源尚未提供一条同时包含完整恶意中间版本、已确认消费者、权限增加、资源使用和恢复的独立活动案例，因此攻击者的匿迹目的、跨实现普遍性和事件级成功仍包含较强推断，置信度保持中等。
+      en: ATT&CK states that an adversary can temporarily change policy, perform malicious actions, and restore the prior
+        state, while platform documentation shows that prior and new values, actor, and trust-consumption fields can be available.
+        Public sources have not yet provided one independent activity case containing a complete malicious intermediate version,
+        confirmed consumer, authority increase, resource use, and restoration together. Adversary stealth intent, cross-implementation
+        generality, and event-level success therefore still require substantial inference and remain medium confidence.
+    - zh: 正常回滚、自动修复、证书轮换、复制冲突和失败部署可以产生相同时间形状，两个方向相反且时间接近的变更并不能证明“用后”。目录与策略文件的双重状态、云审计保留期和消费者遥测还可能使中间版本不完整；缺少版本历史或消费记录时，只能确认当前状态，不能推断先前的恶意使用。
+      en: Normal rollback, automated repair, certificate rotation, replication conflict, and failed deployment can produce
+        the same timing pattern. Two nearby changes in opposite directions do not prove post-use reversion. Dual directory
+        and policy-file state, cloud-audit retention, and consumer telemetry can also leave an incomplete intermediate version.
+        Without version history or consumption records, only current state can be established and prior malicious use cannot
+        be inferred.
+lifecycle:
+  status: review
+  version: 0.2.0
+  created: '2026-09-13'
+  modified: '2026-09-19'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []
+lineage:
+  attck_subtechnique_inherited: false

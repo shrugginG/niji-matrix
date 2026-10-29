@@ -1,0 +1,97 @@
+review_schema_version: 1.0.0
+type: taxonomy-breadth-review
+batch_ref: BATCH-TA0004-007
+work_item_ref: WORK-TA0004-T1484
+attack_baseline: {domain: enterprise-attack, version: '19.1'}
+attack_subtechnique_count: 2
+attack_subtechnique_ids: [T1484.001, T1484.002]
+represented_dimensions:
+- {attack_ref: T1484.001, implementation_or_behavior: Active Directory Group Policy container and SYSVOL template modification whose settings are centrally scoped and consumed by domain clients}
+- {attack_ref: T1484.002, implementation_or_behavior: domain or tenant trust and federation configuration modification whose issuer certificate claims or trust edge changes cross-boundary authentication and authorization}
+breadth_trigger: two-child-open-evasion-variable-search
+coverage_resolutions:
+- attack_refs: [T1484.001]
+  resolution: niji-variable-candidate
+  final_resolution: parent-core-and-formal-when-reverted
+  child_refs: [B4-007-T1484-NJS-01]
+  rationale_zh: GPO 是集中策略实现，而不是 Niji 子项。其对象 GUID、AD container、SYSVOL template、版本、scope 与 client application 属于父级；只有攻击者在恶意动作后恢复同一对象的先前当前状态，使恶意版本只存在于有限区间时，才进入“用后策略状态回退”轴。修改策略只削弱防御而没有正向权限差时不满足本 TA0004 结果门。
+  rationale_en: A GPO is a centralized-policy implementation rather than a Niji child. Its object GUID, AD container, SYSVOL template, version, scope, and client application remain parent scope. Only when an adversary restores the prior current state of the same object after malicious use, leaving the malicious version present for a bounded interval, does the Post-Use Policy-State Reversion axis apply. A policy change that only impairs defenses without a positive authority difference does not satisfy this TA0004 outcome gate.
+- attack_refs: [T1484.002]
+  resolution: niji-variable-candidate
+  final_resolution: parent-core-formal-when-reverted-and-adjacent-for-authentication-exception
+  child_refs: [B4-007-T1484-NJS-01]
+  adjacent_refs: [NJT-0093, NJS-0093-001, NJS-0093-002, NJT-0083, NJS-0083-002]
+  rationale_zh: 信任关系、issuer、签名证书和 federation 设置是父级实现参数；恶意信任版本使用后被恢复时与 GPO 共享同一时间轴并进入正式回退子项。额外接受攻击者证明由 NJS-0093-001 拥有，总体认证控制仍启用时的窄排除由 NJS-0093-002 拥有，长期授权图边由 NJT-0083/NJS-0083-002 拥有，不能在 T1484 下复制。
+  rationale_en: Trust relationships, issuers, signing certificates, and federation settings are parent implementation parameters. A malicious trust version restored after use shares the same temporal axis as a GPO and enters the formal reversion child. NJS-0093-001 owns added acceptance of an adversary proof, NJS-0093-002 owns a narrow exclusion under an otherwise enabled authentication control, and NJT-0083 or NJS-0083-002 owns a durable authorization-graph edge; T1484 must not duplicate them.
+candidate_stealth_axes_examined:
+- axis: post-use-policy-state-reversion
+  discovery_source: ATT&CK-T1484-explicit-temporary-modify-act-revert-behavior-and-directory-audit-semantics
+  final_resolution: formal
+  child_ref: B4-007-T1484-NJS-01
+  reason_zh: 攻击者能控制同一 policy/trust object 的 mutation—use—revert 区间并恢复先前 current state。痕迹由持久异常快照变为 bounded old/new version 序列；回退后的定期盘点会显示正常状态，必须使用不可变变更历史、version interval、consumer evaluation 与 session/token/resource outcome 连接。检测、保留期、恢复和撤销均区别于持续恶意状态。
+  reason_en: The adversary can control a mutation-to-use-to-revert interval for one policy or trust object and restore its prior current state. The trace changes from a durable anomalous snapshot into a bounded old-and-new version sequence. Periodic inventory after reversion shows normal state, requiring immutable change history, a version interval, consumer evaluation, and session, token, or resource outcome joins. Detection, retention, recovery, and revocation differ from a continuously malicious state.
+- axis: existing-object-in-place-semantic-mutation
+  discovery_source: ATT&CK-T1484.001-T1484.002-and-authoritative-object-models
+  final_resolution: parent-core
+  reason_zh: 修改既有 GPO 或 trust object 会保留对象 ID 并改变语义，是 T1484 的核心 modify 行为；无论新建或原地修改都使用相同 version-diff、writer、scope、consumer 与权限结果防御链。仅“既有对象”不足以形成独立 sibling；若随后回退则由正式时间轴覆盖。
+  reason_en: Modifying an existing GPO or trust object preserves object ID while changing semantics and is core T1484 modify behavior. New and in-place objects use the same version-difference, writer, scope, consumer, and authority-outcome defense chain. Existing object alone does not create an independent sibling; later reversion is covered by the formal temporal axis.
+- axis: narrow-target-scope-or-conditional-applicability
+  discovery_source: cross-category-authentication-policy-and-GPO-scope
+  final_resolution: adjacent-for-authentication-and-deferred-for-general-policy
+  adjacent_refs: [NJS-0093-002]
+  reason_zh: 认证层 include/exclude、受信位置和条件命中的窄例外已有 NJS-0093-002 的稳定键、案例与防御 owner。GPO security/WMI filtering 或 OU link 也可缩小消费范围，但现有结论级材料只证明合法 scope 功能和恶意 GPO 使用，未证明攻击者以选择性匿迹为目的稳定选择 scope；该非认证变体保持 deferred。
+  reason_en: Authentication include or exclude sets, trusted locations, and condition-matched narrow exceptions already have stable keys, cases, and a defense owner in NJS-0093-002. GPO security or WMI filtering and OU links can also narrow consumer scope, but current conclusion-level material proves legitimate scoping and malicious GPO use rather than stable adversary selection of scope for concealment. The non-authentication variant remains deferred.
+- axis: staged-propagation-replication-or-delayed-realization
+  discovery_source: GPO-AD-SYSVOL-replication-and-federation-token-lifecycle
+  final_resolution: parent-core
+  reason_zh: GPO container/template 复制、client refresh、联合设置传播和 token/session 缓存会分离 write 与 effect，形成父级 NM-BT/NM-ST 观察问题。延迟受平台调度、拓扑和既有 session 影响，不总由攻击者稳定控制；只有明确回退造成 bounded malicious version 时进入正式子项。
+  reason_en: GPO container or template replication, client refresh, federation propagation, and token or session caching separate write from effect and create parent-level NM-BT and NM-ST observation problems. Delay depends on platform scheduling, topology, and existing sessions and is not always under stable adversary control. Only explicit reversion producing a bounded malicious version enters the formal child.
+- axis: direct-versus-transitive-trust-or-authorization-path
+  discovery_source: cross-category-authorization-graph
+  final_resolution: adjacent
+  adjacent_refs: [NJS-0083-002, NJT-0093]
+  reason_zh: 直接/传递授权边、嵌套主体与有效权限计算由 NJS-0083-002 的授权图拥有；验证器或 federation proof 是否被接受由 NJT-0093 拥有。T1484 保留被修改的权威 policy/trust version 与传播作为直接对象，不复制图拓扑或认证分支子项。
+  reason_en: NJS-0083-002 owns direct or transitive authorization edges, nested principals, and effective-authority calculation, while NJT-0093 owns whether a validator or federation proof is accepted. T1484 retains the mutated authoritative policy or trust version and propagation as its direct object and does not duplicate graph-topology or authentication-branch children.
+- axis: approved-workflow-or-trusted-policy-engine-provenance-borrowing
+  discovery_source: Microsoft-GPO-incident-and-central-administration-semantics
+  final_resolution: parent-core
+  reason_zh: 恶意变更经正常 GPO editor、directory API、federation API、复制器和 policy consumer 传播，会让执行侧显示受信管理机制并稀释 writer—result 因果，构成父级 NM-BT。其稳定对象仍是 policy version；若没有另一个独立可控键与防御动作，不按工具或管理接口建立子项。
+  reason_en: Malicious changes propagated through a normal GPO editor, directory API, federation API, replicator, and policy consumer can make the outcome side show trusted administration and dilute writer-to-result causality, forming parent-level NM-BT. The stable object remains the policy version, and no child is created by tool or management interface without another independent controlled key and defense action.
+- axis: deny-allow-conflict-precedence-or-inheritance
+  discovery_source: policy-evaluation-semantics
+  final_resolution: parent-core-and-deferred
+  reason_zh: precedence、link order、inheritance、deny/allow conflict 与 claim-rule ordering 是计算 effective policy 的父级语义，事件级检测必须解析它们。公开案例和官方资料尚不足以定义一个跨 GPO、域信任和租户策略均稳定、由攻击者以匿迹为目的控制且具有独立防御 owner 的 sibling，因此不正式化。
+  reason_en: Precedence, link order, inheritance, deny or allow conflicts, and claim-rule ordering are parent semantics used to compute effective policy and must be resolved by event-level detection. Public cases and official documentation do not yet define a sibling stable across GPO, domain trust, and tenant policy that adversaries control for concealment and that has an independent defense owner, so it is not formalized.
+- axis: central-one-to-many-policy-fanout
+  discovery_source: ATT&CK-T1484.001-and-Microsoft-GPO-ransomware-case
+  final_resolution: parent-core
+  reason_zh: 一次集中变更由多个 client 或资源消费，能减少逐端写入并把执行显示为设备自身拉取；这是 T1484 集中治理对象的核心工作方式。扇出数量、OU、设备和资源只是作用域，不能按规模建立子项；检测应把同一 version 的 consumer 结果聚合回 writer。
+  reason_en: One central mutation consumed by many clients or resources can reduce per-endpoint writes and make execution appear as device-side pull. This is the core operating model of T1484's centralized governance object. Fan-out count, OU, device, and resource are scope rather than child boundaries; detection should aggregate consumer outcomes back to the same version and writer.
+- axis: policy-object-name-metadata-or-benign-looking-values
+  discovery_source: cross-category-feature-disguise
+  final_resolution: adjacent
+  reason_zh: 使用默认 GPO 名称、熟悉 issuer/域名、相似描述或 metadata 外观可能降低人工关注，但它改变的是可见特征而非权威策略消费语义；名称/元数据伪装归 Masquerading 或通用特征伪装，不建立 T1484 子项。
+  reason_en: Default GPO names, familiar issuers or domains, similar descriptions, and benign-looking metadata can reduce human attention, but they change visible features rather than authoritative-policy consumption semantics. Name or metadata masquerading belongs to Masquerading or general feature disguise and does not create a T1484 child.
+- axis: platform-provider-medium-field-target-partition
+  discovery_source: ATT&CK-internal
+  final_resolution: rejected
+  reason_zh: 按 Windows/IdP、on-prem/cloud、GPO/trust、AD/SYSVOL、issuer/certificate、provider、policy field、主体/设备/资源或日志事件拆分只是导入实现和数据字段，不满足稳定匿迹变量、sibling 边界与独立检测/缓解门禁。
+  reason_en: Splitting by Windows or IdP, on-premises or cloud, GPO or trust, AD or SYSVOL, issuer or certificate, provider, policy field, principal, device, resource, or log event only imports implementation and data fields and fails stable-evasion-variable, sibling-boundary, and independent-detection or mitigation gates.
+second_pass_required: false
+second_pass_completed: true
+second_pass_dimensions: [authoritative object identity and semantic version, scope and conditional match, propagation and consumer timing, direct and transitive authorization, trusted workflow provenance, precedence and inheritance, one-to-many fanout, post-use reversion, name metadata platform and field partitions]
+final_formal_niji_child_count: 1
+new_formal_niji_child_count: 1
+breadth_gap_explained: true
+why_not_more:
+  zh: 两项 ATT&CK 实现和九类开放轴均已覆盖。既有对象修改、传播、受信管理链、继承/优先级与集中扇出收敛为 parent-core；认证窄例外、认证证明与授权图归既有 adjacent；非认证 scope 与跨实现 precedence 匿迹证据 deferred；名称伪装 adjacent；平台、介质、目标与字段 rejected。没有第二个同时具备跨实现可控稳定键、独立痕迹/观察效果、结论级证据和不同防御 owner 的新轴。
+  en: Both ATT&CK implementations and nine open-search dimensions are covered. Existing-object modification, propagation, trusted administration lineage, inheritance or precedence, and central fan-out converge to parent scope. Narrow authentication exceptions, authentication proofs, and authorization graphs belong to existing adjacent objects. Non-authentication scope and cross-implementation precedence concealment remain deferred; name disguise is adjacent; and platform, medium, target, and field partitions are rejected. No second new axis combines a cross-implementation controllable stable key, independent trace and observation effects, conclusion-level evidence, and a different defense owner.
+why_not_fewer:
+  zh: “用后策略状态回退”的 stable key 是同一 policy/trust object 上 pre-state—malicious version—restored version 的有界区间。它在 current-state 快照正常时仍可成立，独立改变证据保留、检测窗口、consumer/session 连接与恢复后 token/结果撤销；ATT&CK 父页明确记录攻击者可临时修改、行动并回退。因此把它留在父级会丢失一个可控且防御不同的匿迹变量，不能减少为零。
+  en: Post-Use Policy-State Reversion uses the bounded pre-state-to-malicious-version-to-restored-version interval on one policy or trust object as its stable key. It can exist while current-state inventory is normal and independently changes evidence retention, detection windows, consumer or session joins, and post-restoration token or outcome revocation. The ATT&CK parent explicitly records adversaries temporarily modifying policy, acting, and reverting. Leaving it only at parent level would lose a controllable and defense-distinct evasion variable, so the count cannot be reduced to zero.
+residual_hypotheses:
+- narrow non-authentication GPO scope selected for concealment rather than ordinary targeting
+- attacker-controlled precedence or inheritance manipulation as a cross-implementation sibling distinct from policy semantics
+original_attack_subtechniques_imported: false
+canonical_prose_bulk_generated: false
+

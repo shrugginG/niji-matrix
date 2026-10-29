@@ -1,0 +1,118 @@
+schema_version: 2.0.0
+type: evasion-subtechnique
+id: NJS-0222-002
+parent_ref: NJT-0222
+name:
+  zh: 外层会话多流汇聚
+  en: Outer-Session Multi-Stream Convergence
+summary:
+  zh: 多条并发内层控制或访问流复用一个外层会话，使连接数和服务数在边界观察中收缩。
+  en: Concurrent inner control or access streams share one outer session, reducing visible connection and service counts at
+    the boundary.
+aliases: []
+lineage:
+  attck_subtechnique_inherited: false
+definition_and_concept:
+  paragraphs:
+  - zh: 外层会话多流汇聚是攻击者在一个持续外层连接中给多条独立内层流分配 stream ID、状态与流控，并在另一端拆分后分别交付服务或控制任务。直接目的在于保留多会话能力，同时让边界的连接计数、目的地和寿命只反映一个外层 socket。Yamux、smux
+      或 WebSocket 是实现，内层流与外层连接的多对一关系才是变量。
+    en: Outer-Session Multi-Stream Convergence assigns stream IDs, state, and flow control to several independent inner flows
+      in one continuing outer connection and demultiplexes them at the far end into separate services or control tasks. It
+      preserves concurrent capability while boundary connection count, destination, and lifetime reflect one outer socket.
+      Yamux, smux, and WebSocket are implementations; the many-to-one relationship between inner flows and outer connection
+      is the variable.
+  - zh: NVISO 对 BRICKSTORM 样本恢复 WebSocket、嵌套 TLS 与 Yamux/smux 结构，说明网络隧道和多个文件管理用户可在同一外层会话并发运行。样本逆向能证明流拓扑与命令能力；真实部署的每条用户操作和终止点位置仍需事件日志补证。
+    en: NVISO recovered BRICKSTORM's WebSocket, nested TLS, and Yamux or smux structure and showed network tunneling and multiple
+      file-manager users running concurrently within one outer session. Sample reverse engineering establishes stream topology
+      and command capability; incident logs are still needed for each deployed user action and termination location.
+stealth_characteristics:
+  paragraphs:
+  - zh: 外层会话多流汇聚让传统“一条连接对应一条服务”的图谱失效：多个内层用户、目标与命令被压入一个长连接，外层 flow 只能显示总字节和总时长。短窗口可能把不同任务误读为一个高流量服务，目的地基数和横向服务数被低估。
+    en: Outer-Session Multi-Stream Convergence breaks graphs that assume one connection represents one service. Several inner
+      users, targets, and commands collapse into a long connection whose flow record contains only aggregate bytes and duration.
+      Short windows can mistake separate tasks for one busy service and undercount destinations and lateral services.
+  - zh: 流 ID、open/close/control frame、并发峰值、外层重连与本地 socket fan-in 仍是残迹。取得解封装器或端点内存时可重建每条内层流；只保留聚合 NetFlow、外层和内层均加密，或服务端在第三方环境时则只能形成多流候选。
+    en: Stream IDs, open and close control frames, concurrency peaks, outer reconnections, and local-socket fan-in remain
+      residual traces. A decapsulator or endpoint memory can restore each inner flow. Aggregate NetFlow alone, encryption
+      of both layers, or termination in a third-party service leaves only a multiplexing candidate.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 纳入要求至少两条可区分的内层流在时间上并发或重叠，具有独立 stream state，并由一个外层 session 承载，且至少一条流形成 C2 或访问结果。单个内层服务经单个外层连接是父级核心；合法 HTTP/2、SSH ControlMaster、服务网格和
+      VPN 多路复用须按批准 owner、peer 和内层用途排除。
+    en: Inclusion requires at least two distinguishable inner flows that overlap in time, have independent stream state, share
+      one outer session, and produce a C2 or access outcome in at least one stream. One inner service through one outer connection
+      remains parent core. Approved HTTP/2, SSH ControlMaster, service-mesh, and VPN multiplexing must be excluded by owner,
+      peer, and inner purpose.
+  - zh: 本项控制内层流到外层连接的基数；内层服务 socket 与外层出口分离可同时归端点解耦，但不是多流成立的必要条件。事务化重组是一个内层流跨多个外层请求/响应的逆向基数变化，不能把普通外层心跳或重传当作本项的第二条内层流。
+    en: This child owns inner-flow to outer-connection cardinality. Separation of service and egress sockets can co-apply
+      as endpoint decoupling but is not necessary for multiplexing. Transactionized reassembly reverses the cardinality by
+      spreading one inner flow across several outer requests and responses; outer heartbeats or retransmissions do not become
+      a second inner flow.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: 攻击者在已控服务器上维持一条可穿过代理的 WebSocket/TLS 会话，同时运行文件管理与内部网络隧道。BRICKSTORM 的多流协议使操作者可增加用户或目标而不必为每项活动新建显眼的边界连接。
+      en: An actor can keep one proxy-traversable WebSocket or TLS session from a compromised server while running file management
+        and internal network tunnels. BRICKSTORM's multi-stream protocol lets operators add users or targets without opening
+        a conspicuous new boundary connection for each activity.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者需要控制两端 stream allocator、流控、重连和错误恢复，并处理并发任务造成的拥塞与顺序。共享外层连接降低连接基数，却使一次断开影响多条流并留下长连接和复用 frame 指纹。
+        en: The actor must control stream allocation, flow control, reconnection, and error recovery at both ends and handle
+          congestion and ordering across concurrent tasks. A shared outer connection reduces connection cardinality but a
+          single failure disrupts many streams and leaves long-session and multiplex-frame fingerprints.
+    defender_model:
+      paragraphs:
+      - zh: 防守方需取得 outer session ID、stream ID 或端点 socket 映射、流 open/close 时刻、内层服务结果，并在整个外层寿命内比较并发流数与边界连接数。只有长连接或异常字节比不能证明多流；批准的反向代理和开发工具必须进入基线。
+        en: Defenders need the outer session ID, stream IDs or endpoint socket mapping, stream open and close times, and inner
+          service outcomes across the full outer lifetime to compare inner concurrency with boundary connection count. A long
+          connection or unusual byte ratio alone does not prove multiple flows, and approved reverse proxies and development
+          tools belong in the baseline.
+stealth_mechanisms:
+- mechanism_ref: NM-ST
+  role: primary
+  summary:
+    zh: 多条内层活动压缩到一条外层连接并稀释逐服务痕迹
+    en: Several inner activities collapse into one outer connection and dilute per-service traces
+  analysis:
+    paragraphs:
+    - zh: 攻击者把各内层流标记并复用外层会话，使独立服务和用户动作只在外层表现为一个持续连接和聚合吞吐。按连接或目的地计数的检测无法把这些活动分开，须跨 stream、socket 和服务结果重建；这使痕迹分散在外层与端点观察面，形成时空释痕。
+      en: The actor labels inner flows and reuses one outer session, causing separate services and user actions to appear
+        externally as one continuing connection and aggregate throughput. Connection- or destination-count analytics cannot
+        separate them without reconstructing stream, socket, and service outcomes. The trace is distributed across outer and
+        endpoint vantages, producing Spatiotemporal Trace Dilution.
+  evidence_refs:
+  - REF-001141
+  confidence: high
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000258
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000172
+evidence:
+  claim_refs:
+  - CLM-001104
+  case_refs:
+  - CASE-000337
+  reference_refs:
+  - REF-001141
+research:
+  limitations:
+    paragraphs:
+    - zh: BRICKSTORM 逆向证据直接支持协议多流与并发能力，但公开材料不能量化受害者实际漏报，也未完全说明所有基础设施终止点。把任意长 WebSocket 视为多流会混入合法业务，必须有 stream 或内层结果证据。
+      en: BRICKSTORM reverse engineering directly supports multiplexing and concurrent capability, but public reporting cannot
+        quantify victim alert misses or locate every infrastructure termination point. Treating any long WebSocket as multiplexing
+        would mix in legitimate business traffic; stream or inner-outcome evidence is required.
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-10-05'
+  modified: '2026-10-05'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

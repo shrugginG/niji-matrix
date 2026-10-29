@@ -1,0 +1,88 @@
+schema_version: 2.0.0
+type: evasion-subtechnique
+id: NJS-0116-002
+name:
+  zh: 查询背衬状态脱钩
+  en: Query-Backing State Detachment
+summary:
+  zh: 攻击者修改仅供枚举或报告的对象链、缓存或元数据，使正确查询代码得到与真实执行资源脱钩的状态。
+  en: Adversaries modify object lists, caches, or metadata used for enumeration or reporting so correct query code receives state detached from real executing resources.
+aliases: []
+parent_ref: NJT-0116
+lineage:
+  attck_subtechnique_inherited: false
+definition_and_concept:
+  paragraphs:
+  - zh: 查询背衬状态脱钩是攻击者不必改写查询函数，而直接修改查询所依据的动态对象链、报告缓存、Registry 值长度或类型以及等价元数据，使资源继续承担执行或存储功能，却不再出现在查询数据结构中或以误导属性出现。直接目的在于让正确、未被 hook 的工具也返回错误系统视图。
+    en: Query-Backing State Detachment is an evasion sub-technique in which an adversary need not rewrite the query function but directly changes a dynamic object list, reporting cache, Registry value length or type, or equivalent metadata on which the query relies, so a resource continues performing execution or storage functions while disappearing from the query structure or appearing with misleading attributes. Its immediate purpose is to make correct, unhooked tools also return a false system view.
+  - zh: 稳定变量是“真实功能对象与面向枚举/报告的背衬表示分离”。具体内核链、缓存和元数据字段是实现；若对象仍在正确背衬状态中而返回路径主动删除条目，则属于 NJS-0116-001。
+    en: The stable variable is separation of the real functional object from its enumeration or reporting representation. Particular kernel lists, caches, and metadata fields are implementations. If the object remains in correct backing state while the return path actively deletes the entry, the behavior belongs to NJS-0116-001.
+stealth_characteristics:
+  paragraphs:
+  - zh: 查询背衬状态脱钩使多个正确工具从同一已篡改结构读取一致谎言。进程可从活动进程链脱离却仍由线程调度，Registry 数据可保持原始二进制内容却向 API 报告错误长度或类型；代码完整性扫描可能完全正常，因此只检查 hook 与函数哈希会遗漏这种行为。
+    en: Query-Backing State Detachment causes multiple correct tools to read the same consistent lie from an altered structure. A process can be detached from an active-process list while its threads remain scheduled, and Registry data can retain raw binary content while APIs report a false length or type. Code-integrity scans may be entirely normal, so checking only hooks and function hashes misses the behavior.
+  - zh: 调度线程、句柄、内存映射、原始 hive 或文件系统结构、socket、引用计数与后继资源使用仍证明对象存在；动态结构的不变量、双向链完整性和原始/逻辑值差分可恢复脱钩。若最低可信内存视图也被攻击者控制，必须转向 hypervisor、旁路或离线观察。
+    en: Scheduled threads, handles, memory mappings, raw hive or file-system structures, sockets, reference counts, and successor resource use still establish object existence. Dynamic-structure invariants, bidirectional-list integrity, and raw-to-logical value differentials can recover detachment. If the adversary also controls the lowest trusted memory view, defenders must move to hypervisor, side-channel, or offline observation.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 纳入攻击者修改面向查询的背衬结构或元数据、真实资源仍保持功能、且未修改查询得到缺失或错误属性的行为。判定要求证明结构变化不会等同于资源终止或删除，并由独立事实源确认资源继续存在。
+    en: Scope includes adversary modification of query-facing backing structures or metadata where the real resource retains function and an unmodified query returns omission or false attributes. Classification requires proof that the structure change is not equivalent to resource termination or deletion and independent confirmation that the resource continues to exist.
+  - zh: 合法内核对象生命周期、缓存延迟、Registry 事务、文件系统恢复、调试器和安全产品维护的影子结构是反例。返回路径过滤归兄弟项；直接篡改业务数据而非其观察表示归数据操纵或完整性技术；对象仅驻留在替代地址空间归 NJT-0111。
+    en: Legitimate kernel-object lifecycle, cache delay, Registry transactions, file-system recovery, debuggers, and shadow structures maintained by security products are counterexamples. Return-path filtering belongs to the sibling. Direct modification of business data rather than its observation representation belongs to data manipulation or integrity techniques. Objects residing only in an alternate address space belong to NJT-0111.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: 内核根套件可将恶意进程从供进程管理 API 使用的活动链摘除，同时保留线程与地址空间继续运行；Registry 根套件可让 Windows API 报告与原始 hive 不一致的值长度或类型，以阻止普通工具读取后续恶意内容。防守方需要内存对象遍历或原始存储解析，而不只是调用另一个同层查询工具。
+      en: A kernel rootkit may unlink a malicious process from the active list used by process-management APIs while retaining its threads and address space for continued execution. A Registry rootkit may cause Windows APIs to report a value length or type that differs from the raw hive and prevent ordinary tools from reading successor malicious content. Defenders need memory-object traversal or raw-storage parsing rather than another same-layer query tool.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者需要内核或等价高权限写入能力，理解版本特定对象布局、锁、引用计数与列表不变量，并确保脱钩不影响调度、I/O 或资源回收。错误偏移、竞争更新和引用泄漏可能造成崩溃、孤儿对象或可见一致性错误；内核数据保护和外部完整性监控会限制效果。
+        en: The adversary needs kernel or equivalent high-authority write capability and knowledge of version-specific object layouts, locks, reference counts, and list invariants while ensuring detachment does not disrupt scheduling, I/O, or resource reclamation. Incorrect offsets, racing updates, and reference leaks can cause crashes, orphaned objects, or visible consistency errors. Kernel-data protection and external integrity monitoring constrain the technique.
+    defender_model:
+      paragraphs:
+      - zh: 防守方可从独立内存取证、hypervisor、原始文件系统或 hive、线程与句柄扫描、网络流和对象引用关系获得事实源，并验证结构不变量。所有采集器若复用被篡改的枚举链就会共同失明；动态结构随版本和负载变化，需使用符号、类型信息与稳定快照减少误报。
+        en: Defenders can obtain sources of truth from independent memory forensics, hypervisors, raw file-system or hive data, thread and handle scans, network flow, and object-reference relationships and validate structural invariants. Every collector goes blind when it reuses the altered enumeration list. Dynamic structures vary by version and load, requiring symbols, type information, and stable snapshots to reduce false positives.
+stealth_mechanisms:
+- mechanism_ref: NM-BT
+  role: primary
+  summary:
+    zh: 查询背衬表示与仍在工作的真实对象被主动分离
+    en: Query-backing representation is deliberately separated from a still-functional real object
+  analysis:
+    paragraphs:
+    - zh: 攻击者修改面向观察的对象链或元数据而不停止真实功能，痕迹分裂为继续调度、通信或存储的资源和声称其不存在或属性无害的查询背衬状态。正确工具继承同一错误事实源，防守方难以把后继行为关联到对象，形成行为透明；独立内存和原始存储视图可恢复关联。
+      en: The adversary changes observation-facing object lists or metadata without stopping real function, splitting traces into a resource that continues scheduling, communicating, or storing and query-backing state claiming it is absent or benign. Correct tools inherit the same false source of truth, making successor behavior difficult to associate with the object and producing Behavioral Transparency. Independent memory and raw-storage views can restore the relationship.
+  evidence_refs:
+  - REF-000309
+  - REF-000401
+  confidence: high
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000113
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000114
+evidence:
+  claim_refs:
+  - CLM-000644
+  case_refs: []
+  reference_refs:
+  - REF-000309
+  - REF-000401
+research:
+  limitations:
+    paragraphs:
+    - zh: RootkitRevealer 直接展示 API 与原始 hive 的缺失、长度和类型差分，并记录进程可从活动链隐藏；公开材料并不对所有操作系统提供稳定对象结构或现场归因案例。该边界为高置信，但具体不变量与内存字段必须按平台版本验证，不能把一次链表异常自动定性为恶意。
+      en: RootkitRevealer directly demonstrates missing-entry, length, and type differentials between APIs and raw hives and documents processes being hidden from active lists. Public material does not provide stable object structures or attributed field cases for every operating system. The boundary is high confidence, but concrete invariants and memory fields require platform-version validation, and one list anomaly cannot be classified as malicious automatically.
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-09-21'
+  modified: '2026-09-21'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

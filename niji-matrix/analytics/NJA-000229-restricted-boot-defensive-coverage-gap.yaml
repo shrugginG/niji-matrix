@@ -1,0 +1,49 @@
+schema_version: "2.0.0"
+type: detection-analytic
+id: NJA-000229
+strategy_ref: DET-000199
+name: {zh: 受限启动防御覆盖缺口分析, en: Restricted-Boot Defensive-Coverage Gap Analytic}
+summary: {zh: 识别未批准启动意图实际生成受限 boot session、预期防御组件缺席且窗口内出现恶意结果的闭环。, en: "Identify closure where unapproved boot intent produces an actual restricted boot session, expected defensive components are absent, and a malicious outcome occurs in the window."}
+domains: [enterprise]
+platforms: [Windows]
+logic:
+  paragraphs:
+    - zh: 建立 host_boot_baseline，按 host role、OS build、security stack/version、normal/safe mode 和 networking variant 记录 expected drivers/services/processes、heartbeat cadence、可用 console/network 和批准维护类型。版本化 BCD store/entry/options，保留 object identifier、safeboot value、old/new、actor token、process/command/API、source host/session、approval 和 mutation time，生成 boot_intent_id。将其连接到 shutdown/restart initiator、reason、time 与下一 boot_id。
+      en: Build a host_boot_baseline by host role, OS build, security stack or version, normal or safe mode, and networking variant, recording expected drivers, services, and processes, heartbeat cadence, available console or network, and approved maintenance type. Version the BCD store, entry, and options while retaining object identifier, safeboot value, old and new, actor token, process, command, or API, source host or session, approval, and mutation time, and create boot_intent_id. Join it to shutdown or restart initiator, reason, time, and the next boot ID.
+    - zh: 在新 boot_id 中用内核/管理面/启动日志确认实际 mode、boot option、uptime、loaded/unloaded drivers/services、Ntbtlog、Winlogon/session 与 EDR/AV/firewall/tamper heartbeat。按 baseline 计算 expected-versus-loaded component_gap，并要求至少一个正常模式应在场的防御组件缺席。再连接该 session 内的进程树、service/Registry/file 变化、网络流、shadow deletion、security-directory rename、encryption 或其他结果。
+      en: In the new boot ID, use kernel, management-plane, or boot logs to confirm actual mode, boot options, uptime, loaded and unloaded drivers or services, Ntbtlog, Winlogon or session, and EDR, AV, firewall, or tamper heartbeats. Compute the expected-versus-loaded component gap from the baseline and require absence of at least one defensive component expected in normal mode. Then join process trees, service, Registry, or file changes, network flows, shadow deletion, security-directory renaming, encryption, or other outcomes within that session.
+    - zh: 只有未批准 boot intent、实际 Safe Mode、具体 defense gap 与恶意结果均成立时输出 confirmed_restricted_boot_abuse。BCD 变化未重启输出 boot_intent_exposure；受限启动无后继结果输出 restricted_boot_gap；启动失败、自动恢复、DSRM、批准排障/驱动回滚和有 owner/console 的维护输出 benign_or_approved。agent 离线但没有 boot/mode 独立证据时只输出 telemetry_loss。
+      en: Emit confirmed_restricted_boot_abuse only when unapproved boot intent, actual Safe Mode, a specific defense gap, and a malicious outcome all hold. BCD change without reboot produces boot_intent_exposure. Restricted boot without a follow-on result produces restricted_boot_gap. Failed boot, automatic recovery, DSRM, approved troubleshooting or driver rollback, and maintenance with owner and console produce benign_or_approved. An offline agent without independent boot or mode evidence produces only telemetry_loss.
+data_requirements:
+  - source_type: boot-configuration-audit
+    name: {zh: BCD 启动项与修改主体版本, en: BCD Boot Entry and Mutation-Actor Versions}
+    channel: BCD inventory process or command telemetry configuration management
+    required_fields: [timestamp, host_id, bcd_store_id, boot_entry_id, option_name, old_value, new_value, actor_id, actor_token, process_id, process_path, command_or_api, source_host, session_id, approval_id, boot_intent_id]
+  - source_type: boot-session-component-inventory
+    name: {zh: 实际 Boot Mode、Driver/Service 与防御心跳, en: Actual Boot Mode Driver and Service Inventory Plus Defense Heartbeats}
+    channel: Kernel System boot log Ntbtlog service control manager EDR management plane
+    required_fields: [timestamp, host_id, boot_id, boot_mode, boot_options, boot_start_time, uptime, component_type, component_name, component_version, expected_state, loaded_state, start_status, heartbeat_source, heartbeat_time, session_id]
+  - source_type: external-follow-on-outcome
+    name: {zh: 受限启动窗口的外部与主机结果, en: External and Host Outcomes in the Restricted-Boot Window}
+    channel: Network virtualization management file service Registry or backup telemetry
+    required_fields: [timestamp, host_id, boot_id, session_id, actor_id, process_id, parent_process_id, operation, target_type, target_id, old_value_hash, new_value_hash, network_peer, bytes, outcome, severity]
+observables:
+  - {zh: 高权主体改变 safeboot 后立即强制重启，下一 boot_id 确认为 Safe Mode, en: A privileged principal changes safeboot and immediately forces a reboot whose next boot ID confirms Safe Mode}
+  - {zh: 正常模式应加载的 EDR/AV driver/service 在受限 session 缺席，外部管理面同时出现 heartbeat gap, en: An EDR or AV driver or service expected in normal mode is absent in the restricted session while the external management plane shows a matching heartbeat gap}
+  - {zh: 覆盖缺口窗口内出现安全目录重命名、恢复删除、payload 执行或加密结果, en: Security-directory renaming recovery deletion payload execution or encryption occurs during the coverage-gap window}
+correlation:
+  window: {zh: 从 BCD 变化前一小时到主机恢复正常模式或受限 boot 后七日，并跨 boot_id 保留连续 transaction。, en: "Correlate one hour before BCD change through return to normal mode or seven days after restricted boot while retaining a continuous transaction across boot IDs."}
+  dimensions: [host_id, boot_intent_id, boot_entry_id, boot_id, actor_id, actor_token, source_host, session_id, boot_mode, component_name, heartbeat_source, process_id, parent_process_id, target_id, approval_id, time]
+false_positives:
+  - {zh: 批准的故障排查、驱动/更新回滚、灾备、DSRM 或安全产品修复, en: Approved troubleshooting driver or update rollback disaster recovery DSRM or security-product repair}
+  - {zh: 启动失败或自动恢复导致 Safe Mode，且没有攻击者 BCD intent 与恶意结果, en: Boot failure or automatic recovery produces Safe Mode without adversary BCD intent or a malicious outcome}
+  - {zh: 安全产品在 Safe Mode 使用不同组件名/heartbeat 路径，基线误判为缺席, en: A security product uses a different component name or heartbeat path in Safe Mode and the baseline misclassifies it as absent}
+blind_spots:
+  - {zh: Endpoint agent 在重启前后都不可用且没有 BCD、boot 或外部管理面保留, en: The endpoint agent is unavailable before and after reboot and no BCD boot or external management-plane evidence is retained}
+  - {zh: 早期启动未写 Ntbtlog、离线 BCD 被改写或攻击者控制虚拟化/远程管理面, en: Early boot writes no Ntbtlog BCD is modified offline or the adversary controls virtualization or remote management}
+tuning_guidance:
+  paragraphs:
+    - zh: 为每种 host role 和安全产品版本实际测试 normal、Minimal、Network 与 DSRM 的 component set/heartbeat，不假定所有 EDR 在 Safe Mode 缺席。高置信必须跨 boot 连接 intent、mode、具体组件差和结果；bcdedit、事件缺口或加密任一单点只用于筛选。维护例外绑定 boot entry、host、actor、console、时间和预期恢复动作。
+      en: Test normal, Minimal, Network, and DSRM component sets and heartbeats for each host role and security-product version rather than assuming every EDR is absent in Safe Mode. High confidence requires cross-boot linkage of intent, mode, a specific component difference, and outcome. bcdedit, an event gap, or encryption alone is only a filter. Maintenance exceptions bind boot entry, host, actor, console, time, and expected recovery action.
+evidence_refs: [REF-000359, REF-000754, REF-000756, REF-000757, REF-000758, REF-000760]
+lifecycle: {status: review, version: "1.0.0", created: "2026-09-23", modified: "2026-09-23", contributors: [Niji Matrix Research], reviewers: []}

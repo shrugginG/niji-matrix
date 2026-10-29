@@ -1,0 +1,119 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000310
+strategy_ref: DET-000240
+name:
+  zh: ICMP Echo 任务—结果序列重建
+  en: ICMP Echo Task–Result Sequence Reconstruction
+summary:
+  zh: 从 ICMP Echo 分组恢复轮询、任务和结果序列。
+  en: Recover poll, task, and result sequences from ICMP Echo packets.
+domains:
+- enterprise
+platforms:
+- Windows
+- Linux
+- Network Devices
+logic:
+  paragraphs:
+  - zh: '>- 以 source/destination、ICMP type/code、id、sequence 与时间将 Echo Request/Reply 配对；在最初 30 分钟窗口内查找周期性空/小请求后出现带负载回复、随后请求方向出现分片结果的交替。对
+      PCAP 或启用 packet capture 的告警提取 dsize、payload 前缀/哈希和重复标识，检验是否存在跨包递增序列、总长/当前长度或客户端标识，并用主机 socket 系统调用/进程事件确认非批准进程创建
+      AF_INET/SOCK_RAW 或 CAP_NET_RAW 后发生后继命令执行。PingPull 的 `R[sequence].PROJECT...total/current` 只作家族验证，不作全局正则。'
+    en: '>- Pair Echo Requests and Replies by source and destination, ICMP type and code, ID, sequence, and time. In
+      an initial 30-minute window, seek alternation in which periodic empty or small requests receive payload-bearing
+      replies and subsequent request-direction packets return fragmented results. From PCAP or packet-enabled alerts,
+      extract dsize, payload prefix or hash, and repeated identifiers to test for incrementing cross-packet sequence,
+      total or current lengths, or a client identifier. Join host socket-syscall and process events to confirm an unapproved
+      process created AF_INET and SOCK_RAW or used CAP_NET_RAW before successor execution. PingPull''s `R[sequence].PROJECT...total/current`
+      is a family confirmation, not a universal regex.'
+data_requirements:
+- source_type: packet-sensor
+  name:
+    zh: ('packet_sensor', 'packet_sensor')
+    en: ('packet_sensor', 'packet_sensor')
+  channel: Suricata EVE plus PCAP or equivalent
+  required_fields:
+  - timestamp
+  - flow_id
+  - src_ip
+  - dest_ip
+  - proto
+  - icmp_type
+  - icmp_code
+  - icmp_id
+  - icmp_seq
+  - direction
+  - dsize
+  - payload_or_packet_ref
+- source_type: endpoint-syscall
+  name:
+    zh: ('endpoint_syscall', 'endpoint_syscall')
+    en: ('endpoint_syscall', 'endpoint_syscall')
+  channel: Linux Audit/eBPF or equivalent enriched socket telemetry
+  required_fields:
+  - timestamp
+  - host_id
+  - pid
+  - ppid
+  - exe
+  - auid
+  - syscall
+  - address_family
+  - socket_type
+  - protocol
+  - success
+- source_type: endpoint-process
+  name:
+    zh: ('endpoint_process', 'endpoint_process')
+    en: ('endpoint_process', 'endpoint_process')
+  channel: null
+  required_fields:
+  - timestamp
+  - host_id
+  - process_entity_id
+  - parent_entity_id
+  - executable
+  - command_line
+observables:
+- zh: Echo 请求/回复角色交替并复用自定义标识
+  en: Echo request and reply roles alternate with a repeated custom identifier
+- zh: 跨分组序号/长度关系与未批准 raw socket 和后继执行闭合
+  en: Cross-packet sequence or length relations close with an unapproved raw socket and successor action
+correlation:
+  window:
+    zh: 初始三十分钟并覆盖至少两个完整轮询—任务—结果周期。
+    en: An initial thirty minutes and at least two complete poll-task-result cycles.
+  dimensions:
+  - host_id
+  - src_ip
+  - dest_ip
+  - icmp_id
+  - custom_identifier
+  - process_entity_id
+  - time
+false_positives:
+- zh: 带负载的可用性监控、路径测量和授权 ICMP overlay
+  en: Payload-bearing availability monitoring, path measurement, and authorized ICMP overlays
+blind_spots:
+- zh: 采样/截断、内核植入或超长时延任务
+  en: Sampling or truncation, kernel implants, or very long-latency tasking
+tuning_guidance:
+  paragraphs:
+  - zh: '>- 先按监控工具、目标、payload 模式和设备角色建立 ICMP 基线，再要求角色交替、结构关系与进程/结果至少两类信号；不得将所有大 ICMP、固定周期或高熵负载直接告警。保留获批诊断的精确主体例外，不对白名单网段整体排除。'
+    en: '>- Baseline ICMP by monitoring tool, destination, payload pattern, and device role, then require at least two
+      signal classes among role alternation, structural relationship, and process or outcome. Do not alert on all large
+      ICMP packets, fixed periodicity, or high entropy. Use precise principal exceptions for approved diagnostics rather
+      than excluding whole network ranges.'
+evidence_refs:
+- REF-001034
+- REF-001040
+- REF-001041
+- REF-001042
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-10-04'
+  modified: '2026-10-04'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

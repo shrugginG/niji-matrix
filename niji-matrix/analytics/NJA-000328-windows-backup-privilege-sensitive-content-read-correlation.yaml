@@ -1,0 +1,123 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000328
+strategy_ref: DET-000249
+name:
+  zh: Windows 备份权限敏感内容读取关联
+  en: Windows Backup-Privilege Sensitive-Content Read Correlation
+summary:
+  zh: 按对象、主体、会话与结果字段实现“Windows 备份权限敏感内容读取关联”。
+  en: Implement Windows Backup-Privilege Sensitive-Content Read Correlation with object, principal, session, and outcome fields.
+domains:
+- enterprise
+platforms:
+- Windows
+logic:
+  paragraphs:
+  - zh: 在严格限定的高价值系统试点 Audit Sensitive Privilege Use 与“Audit the use of Backup and Restore privilege”，采集 4673/4674 中包含 SeBackupPrivilege
+      的主体、LogonId、进程和对象上下文，并与同会话 4688 及敏感路径 4663 ReadData 连接。只有权限实际使用、目标内容读取和未批准输出三段同时成立时才输出 backup-semantic-collection-supported；权限分配或
+      whoami 结果只表示能力。合法备份必须匹配专用服务身份、签名、已登记作业、源范围、目的存储和窗口。由于 Microsoft 明确提示逐文件备份审计事件量很高，此分析不得全域无界启用。
+    en: On a narrowly scoped set of high-value systems, pilot Audit Sensitive Privilege Use together with Audit the use of
+      Backup and Restore privilege. Collect subject, LogonId, process, and object context from 4673 or 4674 records containing
+      SeBackupPrivilege, then join to 4688 in the same session and 4663 ReadData on a sensitive path. Emit backup-semantic-collection-supported
+      only when privilege exercise, target-content read, and unapproved output all exist; privilege assignment or whoami output
+      establishes capability only. A legitimate backup must match a dedicated service identity, signer, registered job, source
+      scope, destination store, and window. Because Microsoft states that per-file backup auditing has high event volume,
+      this analytic must not be enabled globally without bounds.
+data_requirements:
+- source_type: windows-sensitive-privilege-audit
+  name:
+    zh: 经验证的Windows Sensitive Privilege Audit数据
+    en: Windows Sensitive Privilege Audit
+  channel: Security/4673 and 4674 with backup/restore auditing enabled
+  required_fields:
+  - timestamp
+  - device_id
+  - subject_user_sid
+  - subject_logon_id
+  - process_id
+  - process_name
+  - privilege_list
+  - object_server_or_name
+- source_type: windows-sensitive-file-read
+  name:
+    zh: 经验证的Windows Sensitive File Read数据
+    en: Windows Sensitive File Read
+  channel: Security/4663 with SACL
+  required_fields:
+  - timestamp
+  - device_id
+  - subject_logon_id
+  - object_name
+  - access_mask
+  - process_id
+- source_type: authorized-backup-job
+  name:
+    zh: 经验证的Authorized Backup Job数据
+    en: Authorized Backup Job
+  channel: null
+  required_fields:
+  - service_sid
+  - signer
+  - job_id
+  - source_paths
+  - destination_store
+  - approved_window
+  - owner
+- source_type: endpoint-output
+  name:
+    zh: 经验证的Endpoint Output数据
+    en: Endpoint Output
+  channel: DeviceFileEvents or verified equivalent
+  required_fields:
+  - timestamp
+  - device_id
+  - initiating_process_id
+  - destination_path
+  - action_type
+  - file_name
+observables:
+- zh: 非备份作业进程使用 SeBackupPrivilege 后读取受保护敏感内容
+  en: A process outside an approved backup job uses SeBackupPrivilege and then reads protected sensitive content
+- zh: 同一会话把读取结果物化到未批准路径或后继传输
+  en: The same session materializes the read result in an unapproved path or successor transfer
+correlation:
+  window:
+    zh: 从特权实际使用到敏感读取和结果默认零至三十分钟，限定同一设备、SubjectLogonId 与进程谱系；批准作业历史保留三十天。
+    en: Use zero to thirty minutes from privilege exercise to sensitive read and output on one device, SubjectLogonId, and
+      process lineage; retain thirty days of approved-job history.
+  dimensions:
+  - timestamp
+  - device_id
+  - subject_logon_id
+  - process_id
+  - object_name
+  - job_id
+false_positives:
+- zh: 企业备份、系统状态恢复、批准迁移、事件响应采集及存储或安全产品会合法调用备份 API。
+  en: Enterprise backup, system-state recovery, authorized migration, incident-response acquisition, and storage or security
+    products legitimately invoke backup APIs.
+blind_spots:
+- zh: 备份/恢复特权审计常因事件量关闭，API 和事件版本可能没有直接内容结果；原始卷读取属于 NJT-0108 并需其他遥测。
+  en: Backup or restore privilege-use auditing is often disabled for volume, APIs and event versions may lack a content result,
+    and raw-volume reads belong to NJT-0108 with different telemetry.
+tuning_guidance:
+  paragraphs:
+  - zh: 仅在选定系统和路径部署，按服务 SID、签名、作业 ID、来源与目的范围比较；不得只按进程名放行，并分开记录特权分配、使用、ReadData 和物化结果。
+    en: Deploy only on selected systems and paths; compare service SID, signer, job ID, and source or destination scope; never
+      suppress by process name alone; separate privilege assignment, exercise, ReadData, and materialized output.
+evidence_refs:
+- REF-001080
+- REF-001081
+- REF-001082
+- REF-000379
+- REF-000475
+- REF-000868
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-10-05'
+  modified: '2026-10-05'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

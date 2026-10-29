@@ -1,0 +1,117 @@
+schema_version: 2.0.0
+type: evasion-subtechnique
+id: NJS-0142-002
+parent_ref: NJT-0142
+name:
+  zh: 受信终止与原样内容转发
+  en: Trusted Termination with Content-Preserving Relay
+summary:
+  zh: 以客户端接受的证书在中间节点解密内容，并将交易继续转发至真实服务，以保留正常页面和服务结果。
+  en: Decrypt content at an intermediary under a client-accepted certificate, then forward the transaction to the real service
+    to preserve expected page and service results.
+aliases: []
+lineage:
+  attck_subtechnique_inherited: false
+definition_and_concept:
+  paragraphs:
+  - zh: 受信终止与原样内容转发是攻击者把一个端到端的加密会话拆成客户端至中间节点、中间节点至真实服务两段，并使客户端接受前段证书，同时让请求或响应内容继续流向原服务。稳定变量是“客户端信任的终止者”和“真实服务的终止者”分离，而应用交易看似连续；自定义根证书、误签证书和被接受的代理是不同实现。仅存在受信根或代理而没有内容承载会话时，本子项不成立。
+    en: Trusted Termination with Content-Preserving Relay splits an end-to-end encrypted session into client-to-intermediary
+      and intermediary-to-origin legs. The client accepts the first leg's certificate while requests or responses continue
+      to the real service. The stable variable is separation of the termination point trusted by the client from the real
+      service while the application transaction appears continuous. A custom root, misissued certificate, or accepted proxy
+      are implementations. A trusted root or proxy without a content-bearing session does not establish this child.
+stealth_characteristics:
+  paragraphs:
+  - zh: 受信终止与原样内容转发让中间节点以复制的 Subject 和 SAN、看似未改变的页面维持正常外观，使 URL、内容及服务成功日志单独看都符合预期；真正差异转移到公钥、签发链、根证书来源、TLS 指纹和真实服务所见上游客户端。现场测量观察到名称字段被复制而密钥与扩展不同，且中间节点先向真实服务器握手；测试响应未见头部或正文变化，这不证明所有真实用户交易都未改动。
+    en: Trusted Termination with Content-Preserving Relay lets an intermediary copy certificate Subject and SAN and return
+      an apparently unchanged page, so URL, content, and service success logs can each look expected. The real difference
+      moves to public key, issuing chain, trust-root provenance, TLS fingerprint, and the upstream client seen by the origin.
+      Field measurements found copied names with changed keys and extensions and an intermediary handshake to the real server;
+      test headers and bodies showed no change, which does not prove every real-user transaction was unmodified.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 本项要求可被客户端接受的中间终止点、真实服务转发和一般内容可读性。未被终端信任而只造成警告或失败的伪证书，不足以说明内容已读；仅由企业批准的 TLS 检查实施相同技术流程也不是恶意活动。改变返回正文或注入脚本还应单独评价传输数据操纵；只为了截取口令的身份代理落入凭据对象。
+    en: This child requires a client-accepted intermediate termination point, forwarding to the real service, and readability
+      of ordinary content. A forged certificate rejected by the endpoint and causing only a warning or failure does not establish
+      content access. The same flow under approved enterprise TLS inspection is not malicious activity. Changed response bodies
+      or injected scripts also require an assessment of transmitted-data manipulation, while an identity proxy used only for
+      passwords belongs under credential objects.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: 攻击者已影响终端的信任根或控制可被接受的证书时，可针对通信或协作站点建立两段 TLS，并让用户继续浏览、交换消息或下载页面。2019 年哈萨克斯坦案例提供了被接受根证书、按域注入证书与真实服务上游握手的现场证据；它是大规模部署样例，不能直接代表普通企业局域网权限条件。
+      en: When an actor has influenced endpoint trust roots or controls a certificate the client accepts, it can create two
+        TLS legs for communications or collaboration sites while the user continues browsing, exchanging messages, or downloading
+        pages. The 2019 Kazakhstan case supplies field evidence of an accepted root, domain-based certificate injection, and
+        upstream handshakes to real services. Its carrier-scale deployment does not directly represent the permissions available
+        in a typical enterprise LAN.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者既需位于目标路径，又需取得客户端对替代证书的信任，并维持上游 TLS 与应用语义。浏览器内置阻断、证书固定、端到端加密的应用层内容或客户端证书认证可使该路径失效；有根证书权限也不自动意味着所有应用信任该根。
+        en: The actor needs both a position on the target path and client trust in a substitute certificate, then must maintain
+          upstream TLS and application semantics. Browser-specific distrust, certificate pinning, application-layer end-to-end
+          encryption, or client-certificate authentication can break the path. Authority over one trust store does not imply
+          every application trusts it.
+    defender_model:
+      paragraphs:
+      - zh: 防守方应保存终端实际接受的证书链及信任根变更，并从不受同一中间路径影响的观察点取得真实服务证书；若能得到服务端 TLS 来源，可验证“客户端看到的终止者”与“服务端看到的发起者”不是同一端到端会话。仅凭浏览器显示锁形图标或源站
+          HTTP 200 不足以排除。合法安全网关、调试代理和 CDN 证书轮换是主要正常反例。
+        en: Defenders should retain the certificate chain actually accepted by the endpoint and trust-root changes, then obtain
+          the real service certificate from a vantage outside the same intermediary path. Origin-side TLS source, if available,
+          can show that the client's termination point and the origin's initiating client are not one end-to-end session.
+          A browser padlock or HTTP 200 at the origin is insufficient to exclude interception. Approved security gateways,
+          debugging proxies, and CDN certificate rotation are major benign lookalikes.
+stealth_mechanisms:
+- mechanism_ref: NM-FD
+  role: primary
+  summary:
+    zh: 复制可信站点名称并延续真实内容返回
+    en: Copy trusted site names and continue real content responses
+  analysis:
+    paragraphs:
+    - zh: 伪证书保留原服务的名称字段，中间节点读取后仍转发真实请求与响应，使用户与服务端应用日志看似连续。证书公钥、签发链及上游握手却发生可核验变化；研究测量直接记录了这些变化和测试内容未变。观察者必须把 TLS 信任资料与两段连接合并，才不会把正常页面当成端到端保密的证据。
+      en: A substitute certificate keeps the origin's name fields and the intermediary forwards real requests and responses
+        after gaining readability, preserving apparent continuity in user and origin application logs. Public key, issuing
+        chain, and upstream handshake nevertheless change in verifiable ways; original measurements recorded those changes
+        and unchanged test content. An observer must join TLS trust evidence to both connection legs rather than treating
+        a normal page as proof of end-to-end confidentiality.
+  confidence: medium
+  evidence_refs:
+  - REF-000556
+  - REF-000557
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000155
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000144
+evidence:
+  claim_refs:
+  - CLM-000730
+  - CLM-000731
+  case_refs:
+  - CASE-000191
+  reference_refs:
+  - REF-000488
+  - REF-000556
+  - REF-000557
+research:
+  limitations:
+    paragraphs:
+    - zh: 原始测量能证明所测连接出现替代证书和上游握手，但无法看到运营方是否记录、筛选或导出了用户明文；本子项的“可读”应保持中等置信度，具体内容被复制的说法需另有流记录或后继利用。客户端应用若另行端到端加密正文，即使 TLS 被终止也可能仍读不到该正文。
+      en: Original measurements establish substitute certificates and upstream handshakes for tested connections, but cannot
+        reveal whether the operator recorded, selected, or exported user plaintext. Readability remains a medium-confidence
+        conclusion, and claims that particular content was copied need flow records or downstream use. An application that
+        adds end-to-end encryption to its body may keep that body unreadable even when TLS is terminated.
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-09-22'
+  modified: '2026-09-22'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

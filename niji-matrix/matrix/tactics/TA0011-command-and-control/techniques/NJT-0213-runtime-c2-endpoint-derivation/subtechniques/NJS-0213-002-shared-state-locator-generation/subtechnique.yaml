@@ -1,0 +1,128 @@
+schema_version: 2.0.0
+type: evasion-subtechnique
+id: NJS-0213-002
+parent_ref: NJT-0213
+name:
+  zh: 共享状态定位符生成
+  en: Shared-State Locator Generation
+summary:
+  zh: 攻击者让植入与基础设施共享时间、种子或词表规则，在运行时独立生成候选 locator 并消费其中已启用者。
+  en: Adversaries have implants and infrastructure share a time, seed, or word-list rule so candidates are generated
+    independently at runtime and an enabled locator is consumed.
+aliases: []
+lineage:
+  attck_subtechnique_inherited: false
+definition_and_concept:
+  paragraphs:
+  - zh: 共享状态定位符生成是攻击者在植入和基础设施侧预置相同算法及状态输入，使植入在运行时从日期、种子、受害者属性、词表或组合规则独立生成域名/URL 候选，再请求操作者已注册或启用的候选以建立 C2。稳定变量是双方共享状态同步候选空间，而不是字符串随机度、DGA
+      名称或某种哈希。
+    en: Shared-State Locator Generation means an actor preconfigures the same algorithm and state inputs in implant and
+      infrastructure so the implant independently derives domain or URL candidates from date, seed, victim property,
+      word list, or composition rules at runtime and requests a candidate registered or enabled by the operator to establish
+      C2. The stable variable is shared state synchronizing a candidate space, not string randomness, the DGA label,
+      or a particular hash.
+  - zh: Mandiant 在事件响应中识别 POSHSPY，并对样本确认其从 domain/subdomain/TLD/URI/文件名/扩展词表派生 C2 URL；报告样本可组合 550 个 URL，并描述这些 URL 指向地理邻近、真实被攻陷网站的
+      C2。该证据支持生成器和实际 C2 使用，但不证明所有 550 个候选都被查询。
+    en: Mandiant identified POSHSPY during incident response and confirmed in samples that it derives C2 URLs from domain,
+      subdomain, TLD, URI, filename, and extension word lists. The analyzed sample could combine 550 URLs and used geographically
+      local, legitimately compromised sites for C2. This establishes a generator and actual C2 use but does not prove
+      that every one of the 550 candidates was queried.
+stealth_characteristics:
+  paragraphs:
+  - zh: 共享状态定位符生成使共享生成使未来 locator 不必存储或从服务器下发，静态提取只得到规则/词表而非一个长期 endpoint。日志可能出现普通词构成的域、少量 NXDOMAIN、不同日期的 URL 或直接成功请求；高熵检测会漏掉词表生成，且一个被封域不代表候选空间失效。残余为同进程的候选序列、时间/种子关系、rcode、注册/证书时间和最终连接结果。
+    en: Shared-State Locator Generation means shared generation avoids storing or delivering future locators, so static
+      extraction yields a rule or word lists rather than one durable endpoint. Logs can show ordinary-word domains, a
+      few NXDOMAINs, date-varying URLs, or a direct successful request. Entropy detection misses word-list generation,
+      and blocking one domain does not disable the candidate space. Residuals include the same process's candidate sequence,
+      time or seed relationship, rcode, registration or certificate time, and final connection result.
+  - zh: 正常软件也生成 shard、tenant、cache-bust、tracking 和 per-device hostnames；浏览器预取、安全扫描和服务发现会产生 NXDOMAIN 群。只有算法/家族证据、相同进程生成/查询、其中一项成功并出现
+      C2 后果时成立；随机外观或 NXDOMAIN 数量单独不成立。
+    en: Legitimate software also generates shard, tenant, cache-bust, tracking, and per-device hostnames, while browser
+      prefetch, security scanning, and service discovery create NXDOMAIN groups. Classification requires algorithm or
+      family evidence, generation or querying by the same process, a successful candidate, and a C2 outcome. Random appearance
+      or NXDOMAIN count alone is insufficient.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 纳入要求共享规则/状态、候选 locator 的运行时生成及至少一个候选被同一植入消费为 C2。硬编码域列表、远端服务直接返回地址、域名仅含随机 victim ID、合法客户端 URL 模板和未知算法能力但无成功联系均排除或降低为候选。
+    en: Inclusion requires a shared rule or state, runtime generation of candidate locators, and at least one candidate
+      consumed as C2 by the same implant. Hardcoded domain lists, an address directly returned by a remote service, a
+      domain carrying only a random victim ID, legitimate client URL templates, and algorithm capability without successful
+      contact are excluded or remain candidates.
+  - zh: 失败后才启动生成器时 NJT-0153 拥有 failure trigger；社交/Web 服务对象存词表或种子时 NJT-0209 拥有资源；第一服务返回 locator 后另连操作通道且角色分离时 NJT-0210
+      拥有 handoff。本项只拥有双方共享规则生成 endpoint。
+    en: If a generator starts only after failure, NJT-0153 owns the failure trigger. If a social or Web-service object
+      stores a word list or seed, NJT-0209 owns the resource. If one service returns a locator and a role-distinct operational
+      channel follows, NJT-0210 owns the handoff. This child owns only endpoint generation from a rule shared by both
+      sides.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: 文件无落地的 PowerShell 后门可由 WMI 定期启动，按日期和词表组合域、子域、URI 与文件名，向当期启用的少数候选发送加密 C2。阻断已知 URL 后，操作者可在下一周期注册/接管另一个候选而无需更新植入。
+      en: A fileless PowerShell backdoor can be launched periodically by WMI, combine date and word lists into domains,
+        subdomains, URIs, and filenames, and send encrypted C2 to a small set of currently enabled candidates. After
+        a known URL is blocked, the operator can register or activate another candidate in a later period without updating
+        the implant.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者必须保持算法、词表、时间和注册/基础设施同步，并承担域注册、证书和抢注成本。复杂/高熵候选易被分类器发现，普通词候选需要更大词表；时钟偏差、TLD 政策、sinkhole 和 defender 预注册会破坏同步。
+        en: The actor must keep algorithm, word list, time, and registration or infrastructure synchronized and bears
+          registration, certificate, and pre-registration costs. Complex or high-entropy candidates are easier for classifiers
+          to find, while ordinary-word candidates require larger word lists. Clock skew, TLD policy, sinkholing, and
+          defensive pre-registration disrupt synchronization.
+    defender_model:
+      paragraphs:
+      - zh: 防守方需要 endpoint resolver/process 事件与递归 DNS history，并使用 process identity、query time、rcode、candidate family、RDAP
+          registration/NS、CT certificate 和成功连接关联。若只看 resolver 聚合且没有主机映射，或应用用 DoH/代理，生成器难以归属。
+        en: The defender needs endpoint resolver and process events plus recursive DNS history and correlates process
+          identity, query time, rcode, candidate family, RDAP registration and nameservers, CT certificates, and successful
+          connection. With resolver aggregates lacking host mapping, or applications using DoH or a proxy, generator
+          attribution is difficult.
+stealth_mechanisms:
+- mechanism_ref: NM-ST
+  role: primary
+  summary:
+    zh: 共享生成器把控制可达性分散到候选命名空间和时间周期
+    en: A shared generator distributes control reachability across candidate namespace and time periods
+  analysis:
+    paragraphs:
+    - zh: 攻击者在多个候选与周期中只启用少量 endpoint，使单个域/短窗只见完整生成空间的一部分。POSHSPY 的 550 URL 组合直接支持这一分散；按算法、进程和时间汇总候选并确认成功消费可恢复控制关系。
+      en: The actor enables only a small number of endpoints across candidates and periods, so one domain or short window
+        shows only part of the generation space. POSHSPY's 550 URL combinations directly support this dispersion. Aggregating
+        candidates by algorithm, process, and time and confirming successful consumption restores the control relationship.
+  evidence_refs:
+  - REF-001072
+  confidence: high
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000248
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000220
+evidence:
+  claim_refs:
+  - CLM-001059
+  case_refs:
+  - CASE-000323
+  reference_refs:
+  - REF-001072
+  - REF-000037
+research:
+  limitations:
+    paragraphs:
+    - zh: POSHSPY 来源直接证明样本生成逻辑和事件中的 C2 使用，但没有列出所有 550 URL 的 DNS/HTTP 尝试，也不提供通用 NXDOMAIN 或词法阈值。其被分析样本使用合法被攻陷网站，域信誉和 DGA
+        外观都不能单独检测。
+      en: The POSHSPY source directly establishes sample generation logic and C2 use in incidents but does not enumerate
+        DNS or HTTP attempts for all 550 URLs or provide universal NXDOMAIN or lexical thresholds. The analyzed sample
+        used legitimate compromised sites, so domain reputation and DGA appearance alone cannot detect it.
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-10-05'
+  modified: '2026-10-05'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

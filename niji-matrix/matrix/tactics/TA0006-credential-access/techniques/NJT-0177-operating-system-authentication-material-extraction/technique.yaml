@@ -1,0 +1,269 @@
+schema_version: 2.0.0
+type: technique
+id: NJT-0177
+name:
+  zh: 操作系统认证材料提取
+  en: Operating-System Authentication-Material Extraction
+summary:
+  zh: 攻击者从操作系统的认证运行态、受保护账户存储或目录复制服务实际提取认证材料，并可通过可信读取主体、替代存储视图或合法复制控制面改变防守方看到的取用痕迹。
+  en: An adversary extracts authentication material from operating-system runtime state, protected account stores, or directory
+    replication services and can change defender-visible retrieval traces through a trusted reader, alternative storage view,
+    or legitimate replication control plane.
+aliases:
+- OS Credential Dumping
+- T1003
+classification:
+  tactic_refs:
+  - TA0006
+  origin:
+    kind: attack-adapted
+    source_attack_id: T1003
+    source_attack_version: '19.1'
+  decision_ref: DEC-TA0006-T1003
+definition_and_concept:
+  paragraphs:
+  - zh: 操作系统认证材料提取是攻击者针对操作系统或目录服务用于验证本地、域或服务身份的口令派生值、散列、票据密钥、缓存证明、受保护秘密或短时明文，跨越其访问保护并取得攻击者可保存的材料。材料可以位于认证进程内存、内核暴露的进程视图、注册表配置单元、账户数据库、目录数据库、Unix
+      账户文件或复制响应；位置决定实现和传感器，不决定父技术身份。直接结果是可识别的认证材料已经离开原保护边界并进入攻击者可用输出，而不是仅有工具、权限或读取尝试。
+    en: Operating-System Authentication-Material Extraction targets password-derived values, hashes, ticket keys, cached proofs,
+      protected secrets, or transient plaintext used by an operating system or directory service to validate local, domain,
+      or service identities. The adversary crosses the relevant access protection and obtains material that can be preserved.
+      Material can reside in authentication-process memory, a kernel-exposed process view, registry hives, account databases,
+      directory databases, Unix account files, or replication responses. Location changes implementation and sensors rather
+      than parent identity. The direct result is identifiable authentication material leaving its protection boundary into
+      an adversary-usable output, not merely a tool, privilege, or read attempt.
+  - zh: 证据链必须至少区分具备权限或加载能力、打开目标对象、读取字节或属性、识别并复制认证材料、对加密或格式化材料完成解锁或解析、将输出保存在文件或网络响应，以及后继破解、票据构造或登录。Sysmon ProcessAccess 只证明句柄与访问权，Windows
+      4663 只在 SACL 配置后证明某些对象访问，DRSGetNCChanges 证明复制请求与响应语义；它们均不能单独证明秘密已被恢复。CISA 的 Volt Typhoon 事件把影子副本、NTDS.dit 与 SYSTEM 复制、外传及离线破解目的连接起来，但离线候选计算仍归
+      NJS-0137-003。
+    en: Evidence must distinguish at least possession of authority or load capability, target-object open, byte or attribute
+      read, identification and copy of authentication material, unlock or parsing of encrypted or formatted material, preservation
+      in a file or network response, and later cracking, ticket construction, or sign-in. Sysmon ProcessAccess proves a handle
+      and access rights only, Windows 4663 proves selected object access only when SACLs are configured, and DRSGetNCChanges
+      establishes replication request and response semantics. None alone proves secret recovery. The CISA Volt Typhoon event
+      connects a shadow copy, copying NTDS.dit and SYSTEM, exfiltration, and offline-cracking intent, but offline candidate
+      computation still belongs to NJS-0137-003.
+stealth_characteristics:
+  paragraphs:
+  - zh: 操作系统认证材料通常被合法安全、备份、复制、诊断和身份服务接触。攻击者若把读取置于 svchost 等角色贴合进程、使用备份或快照视图，或以具有复制权限的账户调用 DRS，局部传感器会看到熟悉主体、标准协议或正常管理对象，而真正差异转移到代码来源、调用者与目标关系、读取视图、输出和用途。Mandiant
+      DueDLLigence 研究直接演示将 Mimikatz shellcode 移入经常访问 LSASS 的 svchost，使 EDR 看到预期 subject/action；该受控研究证明观察效应，不代表在野普遍性。
+    en: Legitimate security, backup, replication, diagnostics, and identity services routinely approach operating-system authentication
+      material. If an adversary places reading in a role-conforming process such as svchost, uses a backup or snapshot view,
+      or invokes DRS with an account holding replication rights, a local sensor can see a familiar subject, standard protocol,
+      or ordinary management object. The distinguishing evidence shifts to code provenance, caller-to-target relationship,
+      read view, output, and purpose. Mandiant's DueDLLigence research directly demonstrates moving Mimikatz shellcode into
+      svchost, which commonly accesses LSASS, so an EDR sees an expected subject and action. The controlled study proves the
+      observation effect rather than field prevalence.
+  - zh: 三种观察迁移留下不同残余。可信 reader 转用仍有注入、无背衬内存、异常父链、访问权与 dump 输出；非活动视图仍有卷或快照控制面、备份权限、敏感对象映射、暂存和外传；目录复制仍有来源主机、调用账户、复制权限、naming
+      context、GetNCChanges 请求和响应量。直接读取 /etc/shadow、SAM 或活动配置单元不自动获得这些匿迹收益，只能作为父行为。防守方必须把能力、读取和结果连接，不能从“没有登录失败”或“没有活动文件打开”反推提取成功。
+    en: The three observation shifts leave different residuals. Trusted-reader repurposing retains injection, unbacked memory,
+      anomalous ancestry, access rights, and dump output. An inactive view retains volume or snapshot control-plane activity,
+      backup authority, sensitive-object mapping, staging, and exfiltration. Directory replication retains source host, caller
+      account, replication rights, naming context, GetNCChanges requests, and response volume. Direct reads of /etc/shadow,
+      SAM, or a live hive do not automatically gain these stealth properties and remain parent behavior. Defenders must join
+      capability, read, and outcome rather than infer extraction success from absent sign-in failures or absent live-file
+      opens.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 纳入要求对象是操作系统或目录认证权威维护的认证材料，攻击者驱动了越权或非预期取用，并有材料内容、可识别输出或权威响应证据。仅加载 Mimikatz、获得 SeDebugPrivilege、打开 LSASS、复制加密数据库、列出目录对象、取得
+      DRS 权限或读取 /proc/maps 都是能力或前置阶段；没有材料结果时不能完成父技术。合法 EDR、反恶意软件、崩溃诊断、备份、域复制、密码轮换、灾备和取证可产生同类事件，必须核对 owner、工单、签名、来源、对象范围、输出和时间。
+    en: Inclusion requires authentication material maintained by an operating-system or directory authentication authority,
+      adversary-driven unauthorized or unintended retrieval, and evidence of material content, identifiable output, or an
+      authoritative response. Loading Mimikatz, obtaining SeDebugPrivilege, opening LSASS, copying an encrypted database,
+      listing directory objects, obtaining DRS rights, or reading /proc/maps is capability or preparation only. The parent
+      is incomplete without a material result. Legitimate EDR, antimalware, crash diagnostics, backup, domain replication,
+      password rotation, disaster recovery, and forensics can produce similar events and require comparison of owner, case,
+      signature, origin, object scope, output, and time.
+  - zh: NJT-0147/T1555 处理操作系统、浏览器、密码管理器或云服务所维护的普通凭据保管条目及已解锁消费路径；本技术处理操作系统认证权威本身的登录材料、账户数据库和域验证材料。T1552 处理散落在普通文件、历史、配置或消息中的未受保护秘密，/etc/shadow
+      因其系统账户验证角色和受限读取属于本技术。NJT-0169/T1056 在用户提交前或提交时复制输入；NJT-0093/T1556 改变认证过程或增加秘密旁路；本技术只读取既有状态。NJS-0137-003 在材料取得后测试未知候选；NJT-0108
+      拥有原始卷或副本视图绕过，二者在同一事件分别证明介质与认证材料结果时并列。一般内存采集若未证明认证材料内容，不进入本技术。
+    en: NJT-0147/T1555 covers ordinary credential-vault items and unlocked consumer paths maintained by operating systems,
+      browsers, password managers, or cloud services. This technique covers login material, account databases, and domain
+      verification material belonging to the operating-system authentication authority itself. T1552 covers unprotected secrets
+      scattered in ordinary files, history, configuration, or messages; /etc/shadow belongs here because of its system-account
+      verification role and restricted read. NJT-0169/T1056 copies input before or during submission. NJT-0093/T1556 changes
+      the authentication process or adds a secret side output; this technique reads existing state. NJS-0137-003 tests unknown
+      candidates after material acquisition. NJT-0108 owns raw-volume or copy-view bypass; both apply to one event only when
+      medium and authentication-material outcomes are each proven. Generic memory acquisition without authentication-material
+      content does not enter this technique.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: 在端点上，具备调试、SYSTEM、root、ptrace 或等价权限的攻击者可读取认证进程运行态、SAM/SECURITY 配置单元、缓存域材料、/proc 进程视图或 /etc/shadow，并解析出散列、密钥或短时明文。在域环境，攻击者可从活动或副本
+        NTDS 及 SYSTEM 组合中恢复材料，也可让域控制器通过复制协议返回指定账户秘密。输出可用于离线破解、Pass-the-Hash、票据构造或后继登录，但这些用途需分别记录。
+      en: On an endpoint, an adversary with debugging, SYSTEM, root, ptrace, or equivalent authority can read authentication-process
+        runtime state, SAM or SECURITY hives, cached domain material, /proc process views, or /etc/shadow and parse hashes,
+        keys, or transient plaintext. In a domain, the adversary can recover material from live or copied NTDS and SYSTEM
+        combinations or make a domain controller return selected account secrets through the replication protocol. Output
+        can support offline cracking, Pass-the-Hash, ticket construction, or later sign-in, but each use needs separate recording.
+    - zh: 匿迹变量决定同一目标的观察路径。攻击者可以把 LSASS 读取代码注入预期 reader；从卷影副本或备份读取锁定数据库而避开活动路径；或从非域控主机使用获授权账户发起目录复制。直接用未受信进程读取活动 hive、cat /etc/shadow
+        或 ptrace 目标进程仍属于父级，但没有自动获得正式子项的观察变化。
+      en: The stealth variable determines the observation path for the same target. An adversary can inject LSASS-reading
+        code into an expected reader, read a locked database from a volume shadow copy or backup rather than the live path,
+        or initiate directory replication from a non-domain-controller host using an authorized account. Directly reading
+        a live hive with an untrusted process, reading /etc/shadow, or attaching to a target process remains parent behavior
+        without automatically gaining the formal children’s observation shifts.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 本地提取通常要求管理员、SYSTEM、root、CAP_SYS_PTRACE、备份/恢复、原始卷或目标对象 ACL 权限，并要求理解材料格式、加密依赖和正确输出窗口。LSA protection、Credential Guard、VBS、受保护进程、Linux
+          ptrace 与 hidepid、磁盘加密、SACL 以及独立备份身份会缩小可用路径。目录复制要求 DRS 可达、复制扩展权限和足以定位 naming context 或目标账户的知识；获得权限本身不保证 secret response
+          成功。
+        en: Local extraction commonly requires administrator, SYSTEM, root, CAP_SYS_PTRACE, backup or restore, raw-volume,
+          or target-object ACL authority and knowledge of material format, cryptographic dependencies, and the correct output
+          window. LSA protection, Credential Guard, VBS, protected processes, Linux ptrace and hidepid, disk encryption, SACLs,
+          and separate backup identities reduce available paths. Directory replication requires DRS reachability, replication
+          extended rights, and knowledge sufficient to identify a naming context or target account. Possession of rights does
+          not guarantee a successful secret response.
+      - zh: 可信 reader 转用还要求代码注入、模块加载或控制受信工具的导出行为；非活动视图要求创建或读取快照/备份并取得解密依赖；复制式导出要求调用方通过访问检查。攻击者可能只得到损坏文件、无法解析的内存或不可离线恢复的材料。后继认证还会受口令轮换、MFA、设备条件、签名和
+          ticket 生命周期限制。
+        en: Trusted-reader repurposing additionally requires injection, module loading, or control of a trusted tool’s export
+          behavior. An inactive view requires creation or access to a snapshot or backup and acquisition of decryption dependencies.
+          Replication export requires the caller to pass access checks. The adversary can receive a damaged file, unparsable
+          memory, or material that cannot be recovered offline. Later authentication remains constrained by credential rotation,
+          MFA, device conditions, signing, and ticket lifetime.
+    defender_model:
+      paragraphs:
+      - zh: 防守方假定可集中一部分进程访问与注入、对象/注册表读取、Linux syscall 或 audit、卷与备份控制面、目录复制网络/身份活动、输出文件、外传和身份使用数据。关键连接键包括 host、user/logon ID、source/target
+          process GUID、access mask、object path 或 hive、PID、copy/volume ID、caller account、source IP、naming context、request/correlation
+          ID、output hash 和账户映射。只有进程创建或最终登录而缺少中间读取时，只能形成弱推断。
+        en: The defender is assumed to centralize some process access and injection, object or registry read, Linux syscall
+          or audit, volume and backup control-plane, directory-replication network or identity activity, output file, exfiltration,
+          and identity-use data. Key joins include host, user or logon ID, source and target process GUID, access mask, object
+          path or hive, PID, copy or volume ID, caller account, source IP, naming context, request or correlation ID, output
+          hash, and account mapping. Process creation or final sign-in without the intermediate read supports only weak inference.
+      - zh: Windows Event 4663 依赖目标 SACL，Sysmon Event 10 噪声高且只证明 ProcessAccess；Linux procfs 和 shadow 读取需要预先配置 audit 才可能得到目标路径与
+          syscall；加密 DRS 流量或缺少目录传感器时可能只见 RPC 连接。内核级攻击者、受信 reader 内执行、已批准域控失陷、离线副本外流和短暂明文均形成盲区。响应必须按材料类型和范围分级，不能从一个 dump 文件名推断全域秘密均已恢复。
+        en: Windows Event 4663 depends on a target SACL, and Sysmon Event 10 is noisy and proves only ProcessAccess. Linux
+          procfs and shadow reads need preconfigured audit to expose path and syscall. Encrypted DRS traffic or absent directory
+          sensors can leave only an RPC connection. Kernel-level adversaries, execution inside a trusted reader, compromise
+          of an approved domain controller, off-host copies, and transient plaintext all create blind spots. Response must
+          be graded by material type and scope rather than infer that a dump filename means every domain secret was recovered.
+stealth_mechanisms:
+- mechanism_ref: NM-BT
+  role: primary
+  summary:
+    zh: 取用跨越活动认证与对象审计面后才出现材料结果
+    en: Retrieval crosses live authentication and object-audit planes before material appears
+  analysis:
+    paragraphs:
+    - zh: 攻击者可从运行态内存、替代存储视图或复制响应取得材料，而目标认证服务不处理一次新的用户登录，活动文件或逐对象审计也可能没有相同语义。防守方分别看到进程访问、块/副本操作或 DRS 请求，材料在输出文件或网络响应中才显现；缺少跨平面连接时，关键提取落在既有认证监控之外。CISA
+        的副本链、Microsoft proc/LSA/DRS 语义和 Mandiant reader 研究共同支持观察边界，具体传感器覆盖仍随部署变化。
+      en: An adversary can obtain material from runtime memory, an alternative storage view, or a replication response without
+        the target authentication service processing a new user sign-in, and the live-file or per-object audit can lack equivalent
+        semantics. Defenders separately see process access, block or copy operations, or a DRS request, while material becomes
+        apparent only in an output file or network response. Without cross-plane joins, critical extraction remains outside
+        established authentication monitoring. The CISA copy chain, Microsoft proc, LSA, and DRS semantics, and Mandiant reader
+        research jointly support the observation boundary, while sensor coverage remains deployment-specific.
+  confidence: high
+  evidence_refs:
+  - REF-000025
+  - REF-000367
+  - REF-000807
+  - REF-000805
+- mechanism_ref: NM-FD
+  role: secondary
+  summary:
+    zh: 可信 reader 与复制协议为恶意材料读取借用正常身份
+    en: Trusted readers and replication protocol lend normal identity to malicious material reads
+  analysis:
+    paragraphs:
+    - zh: 角色贴合进程、备份服务或获授权复制账户可以使用与正常安全、恢复或域复制相同的主体和接口，恶意与合法活动在 image、account 或 protocol 字段上相似。真正差异位于代码来源、批准关系、源主机、对象范围、输出和后继用途。DueDLLigence
+        直接证明 reader role 选择改变 EDR 所见特征；DCSync 实验和 Microsoft DRS 访问检查说明合法协议可返回秘密。签名、账户或协议单字段因此不能等同合法目的。
+      en: A role-conforming process, backup service, or authorized replication account can use the same subject and interface
+        as legitimate security, recovery, or domain replication, making malicious and legitimate activity similar in image,
+        account, or protocol fields. The distinguishing evidence lies in code provenance, approved relationship, source host,
+        object scope, output, and successor use. DueDLLigence directly establishes that reader-role selection changes EDR-visible
+        features. DCSync experimentation and Microsoft DRS access checks show a legitimate protocol can return secrets. A
+        signature, account, or protocol field cannot therefore be equated with legitimate purpose.
+  confidence: high
+  evidence_refs:
+  - REF-000367
+  - REF-000749
+  - REF-000808
+  - REF-000750
+subtechnique_taxonomy:
+  narrative:
+    paragraphs:
+    - zh: 本分类按读取主体、存储视图和权威导出控制面划分。可信凭据读取上下文转用把代码移入正常会接近认证材料的 reader；非活动认证存储视图提取从快照、备份或原始派生视图取出存储；目录复制式认证材料导出让权威目录服务通过复制协议返回秘密。三项分别要求
+        reader provenance、copy-to-object mapping 和 caller/rights/response 关联。
+      en: The taxonomy divides by reader, storage view, and authoritative export control plane. Trusted Credential-Reader
+        Context Repurposing places code inside a reader normally expected near authentication material. Inactive Authentication-Store
+        View Extraction removes a store through snapshot, backup, or raw-derived view. Directory-Replication Authentication-Material
+        Export makes the authoritative directory service return secrets through replication. They require reader provenance,
+        copy-to-object mapping, and caller, rights, and response correlation respectively.
+    - zh: LSASS、SAM、NTDS、LSA、cache、DCSync、proc、passwd/shadow、Windows 和 Linux 是材料或实现，不构成子项。普通高权进程直接读活动存储留在父级；低量账户范围、dump 加密和离线猜测因证据或相邻所有权不建项。
+      en: LSASS, SAM, NTDS, LSA, cache, DCSync, proc, passwd or shadow, Windows, and Linux are materials or implementations
+        rather than children. Direct reading of a live store by an ordinary privileged process remains parent core. Low-volume
+        account scope, dump encryption, and offline guessing do not form children because of evidence limits or adjacent ownership.
+  coverage: established
+  subtechnique_refs:
+  - NJS-0177-001
+  - NJS-0177-002
+  - NJS-0177-003
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000204
+    - DET-000205
+    - DET-000105
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000187
+    - MIT-000107
+    - MIT-000134
+evidence:
+  claim_refs:
+  - CLM-000878
+  - CLM-000879
+  - CLM-000880
+  - CLM-000881
+  - CLM-000882
+  - CLM-000883
+  - CLM-000588
+  - CLM-000704
+  case_refs:
+  - CASE-000257
+  - CASE-000134
+  - CASE-000141
+  reference_refs:
+  - REF-000802
+  - REF-000803
+  - REF-000804
+  - REF-000805
+  - REF-000806
+  - REF-000807
+  - REF-000808
+  - REF-000809
+  - REF-000025
+  - REF-000366
+  - REF-000367
+  - REF-000379
+  - REF-000749
+  - REF-000750
+research:
+  limitations:
+    paragraphs:
+    - zh: 证据层级不均。Volt Typhoon 公告提供在野副本—对象—外传—离线目的链；DueDLLigence 提供受控 reader 观察实验；DCSync 由协议规范、直接实验和官方检测语义支持，但缺少公开现场完整链；Linux
+        proc 与 shadow 主要为接口和格式文档。不能把跨来源阶段拼成一个事件，也不能从工具能力推断实际材料范围。父行为置信度高，DCSync 现场案例置信度低于能力置信度。
+      en: Evidence levels differ. The Volt Typhoon advisory provides a field copy-to-object-to-exfiltration-to-offline-purpose
+        chain. DueDLLigence provides a controlled reader-observation study. DCSync has protocol, direct experimental, and
+        official detection support but lacks a complete public field chain. Linux proc and shadow evidence primarily documents
+        interface and format. Stages from different sources cannot be spliced into one event, and tool capability cannot establish
+        actual material scope. Parent behavior confidence is high, while DCSync field-case confidence remains below capability
+        confidence.
+    - zh: 端点、Linux audit、块/副本、DRS 和内容解析字段不会在多数环境同时存在。原始凭据材料本身不应进入集中日志，内容确认需要隔离取证和安全摘要。合法安全、备份、域复制与恢复活动同形，准确性依赖版本化 reader、copy、replicator
+        与审批清单。材料外流后不可召回，恢复必须验证轮换传播、旧 session/ticket 拒绝及攻击者写权已清除。
+      en: Endpoint, Linux audit, block or copy, DRS, and content-parsing fields rarely coexist by default. Raw credential
+        material should never enter centralized logs; content confirmation needs isolated forensics and safe digests. Legitimate
+        security, backup, domain replication, and recovery look similar, making versioned reader, copy, replicator, and approval
+        inventories essential. Exfiltrated material cannot be recalled, and recovery must verify rotation propagation, rejection
+        of old sessions or tickets, and removal of adversary write authority.
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-09-27'
+  modified: '2026-09-27'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

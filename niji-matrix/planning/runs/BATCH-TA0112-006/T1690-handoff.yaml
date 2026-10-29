@@ -1,0 +1,69 @@
+handoff_schema_version: "2.0.0"
+type: technique-research-handoff
+batch_ref: BATCH-TA0112-006
+work_item_ref: WORK-TA0112-T1690
+temporary_key_prefix: DI06-T1690
+candidate: {source_type: attack, source_attack_id: T1690, name: {zh: 阻止命令历史记录, en: Prevent Command History Logging}}
+recommendation:
+  decision: adapt
+  confidence: high
+  rationale:
+    paragraphs:
+      - zh: 固定 T1690 同时混合记录前历史抑制、选择性忽略、事后删除以及更广泛日志服务关闭。Niji 将直接对象收窄为交互式命令在持久历史生成前的结果差，并按“整段 session 不落盘/写往无效 sink”和“历史继续但命中 predicate 的条目被省略”建立两个变量。PSReadLine SaveNothing、HISTFILE=/dev/null 与 APT38 ignorespace 分别提供直接语义/案例；事后 Remove-Item 归证据擦除，ScriptBlock/syslog 关闭归其他记录对象。
+        en: Fixed T1690 mixes pre-recording history suppression, selective omission, post-hoc deletion, and broader logging-service shutdown. Niji narrows the direct object to the outcome of an interactive command before durable history generation and creates two variables: an entire session not persisted or written to an ineffective sink, and history continuing while entries matching a predicate are omitted. PSReadLine SaveNothing, HISTFILE=/dev/null, and APT38 ignorespace provide direct semantics or cases respectively. Post-hoc Remove-Item belongs to evidence erasure, while ScriptBlock or syslog shutdown belongs to other recording objects.
+proposed_content:
+  summary: {zh: 攻击者在命令执行时关闭历史持久化或选择性排除条目，使交互操作不进入预期历史文件。, en: Adversaries disable history persistence or selectively exclude entries at execution time so interactive operations never enter the expected history file.}
+  definition_and_concept: {paragraphs: [{zh: 直接对象是 shell/session command 到 durable history entry 的生成差，不是通用日志、文件删除或非交互命令。, en: The direct object is the generation difference from a shell or session command to a durable history entry rather than generic logging, file deletion, or a noninteractive command.}]}
+  stealth_characteristics: {paragraphs: [{zh: shell 和命令正常运行，历史文件却整体不增长或只漏掉命中 predicate 的条目；进程、TTY、audit 和环境仍可留下残余。, en: The shell and commands execute normally while the history file either does not grow at all or omits only entries matching a predicate; process, TTY, audit, and environment remain as residue.}]}
+  scope_boundary_definition: {paragraphs: [{zh: 必须证明交互命令本应记录、攻击者控制 history 设置/输入特征且条目在持久化前缺失；已有记录删除、默认无历史和合法隐私策略排除。, en: Proof requires an interactive command that should be recorded, adversary control of history settings or input features, and absence before persistence; deletion of existing records, default no-history behavior, and legitimate privacy policy are excluded.}]}
+  application_scenarios_and_threat_model:
+    application_scenarios: {paragraphs: [{zh: 攻击者在 root shell、MySQL、PowerShell 或设备 CLI 会话前设置无效历史 sink/SaveNothing，或用 ignorespace 只隐藏敏感命令，再继续交互操作。, en: Before a root shell, MySQL, PowerShell, or device CLI session, an adversary sets an ineffective history sink or SaveNothing or uses ignorespace to hide only sensitive commands and then continues interactive operation.}]}
+    threat_model:
+      attacker_model: {paragraphs: [{zh: 需要控制当前 session 环境/选项或历史策略并了解保存时机；受限环境、只读配置、远程 TTY/audit 和外部录制会限制。, en: The adversary needs control of current-session environment or options or history policy and knowledge of save timing; restricted environments, read-only configuration, remote TTY or audit, and external recording constrain it.}]}
+      defender_model: {paragraphs: [{zh: 需同时观察 shell session、实际命令来源、history 设置、文件写入/退出和独立 process/audit 证据，不能从历史空白直接推断恶意。, en: Defenders observe shell session, actual command source, history settings, file write or exit, and independent process or audit evidence together and cannot infer maliciousness from an empty history alone.}]}
+  stealth_mechanisms:
+    - {mechanism_ref: NM-BT, role: primary, summary: {zh: 命令正常执行却不进入预期交互历史观察面, en: Commands execute normally but never enter the expected interactive-history observation plane}, analysis: {paragraphs: [{zh: 攻击者让 shell 保持可用并只改变 history generation/sink；行为发生但默认调查历史缺少记录，独立 session/process/audit 差分可恢复。, en: The adversary keeps the shell usable and changes only history generation or sink. Behavior occurs without a record in the default investigative history, while independent session, process, or audit differentials can recover it.}]}, evidence_keys: [DI06-T1690-REF-01, DI06-T1690-REF-02, DI06-T1690-REF-03, DI06-T1690-REF-04, REF-000453], confidence: high}
+proposed_subtechniques:
+  - {temporary_key: DI06-T1690-SUB-01, name: {zh: 会话历史持久化整体抑制, en: Whole-Session History Persistence Suppression}, stable_variable: all or nearly all commands in a session are not persisted through null or unset sink zero size or SaveNothing, trace_change: active interactive session has independent command evidence but no expected history writes across the interval, defender_effect: requires session lifecycle settings sink health and history-file differential, evidence_keys: [DI06-T1690-REF-01, DI06-T1690-REF-02, DI06-T1690-REF-03, REF-000453], confidence: high}
+  - {temporary_key: DI06-T1690-SUB-02, name: {zh: 命令条目选择性历史遗漏, en: Selective Command-Entry History Omission}, stable_variable: input feature or predicate chooses which commands are omitted while other history persists, trace_change: history has surrounding entries but misses commands independently observed with matching ignorespace ignore pattern or handler, defender_effect: requires command-to-history sequence comparison and predicate state, evidence_keys: [DI06-T1690-REF-01, DI06-T1690-REF-02, DI06-T1690-REF-04], confidence: high}
+defense_candidates:
+  detection_strategies: [{temporary_key: DI06-T1690-DET-01, objective: interactive session command to history settings sink write and durable entry differential}]
+  detection_analytics: [{temporary_key: DI06-T1690-NJA-01, implementation: whole-session history sink and persistence gap}, {temporary_key: DI06-T1690-NJA-02, implementation: command sequence to selective predicate omission}]
+  mitigations: [{temporary_key: DI06-T1690-MIT-01, purpose: enforce history policy protect sink and retain independent session/process audit}]
+existing_library_reuse: {reference_refs: [REF-000453], claim_refs: [], case_refs: [], strategy_refs: [], analytic_refs: [], mitigation_refs: [], relationship_refs: []}
+library_candidates:
+  references:
+    - {temporary_key: DI06-T1690-REF-01, identity: attack:v19:T1690, disposition: create}
+    - {temporary_key: DI06-T1690-REF-02, identity: gnu:bash-history-facilities, disposition: create}
+    - {temporary_key: DI06-T1690-REF-03, identity: microsoft:psreadline-history-options, disposition: create}
+    - {temporary_key: DI06-T1690-REF-04, identity: cisa:AA20-239A-fastcash2-history, disposition: create}
+  claims: []
+  cases: []
+  detection_strategies: []
+  detection_analytics: []
+  mitigations: []
+  relationships: []
+research:
+  taxonomy_breadth_review:
+    attack_subtechnique_count: 0
+    attack_subtechnique_ids: []
+    represented_dimensions: [bash and zsh environment, PSReadLine options, network-device CLI logging, history-file deletion, script and syslog logging]
+    breadth_trigger: ordinary-open-search
+    coverage_resolutions: []
+    candidate_stealth_axes_examined: [whole-session sink suppression, selective entry predicate, post-hoc deletion, noninteractive no-history, broad logging-service shutdown]
+    second_pass_required: false
+    second_pass_completed: false
+    proposed_niji_child_count: 2
+    breadth_gap_explained: true
+    reviewer_notes: {zh: 两项按 history generation 范围与残余序列划分；事后删除和广义日志关闭有相邻 owner，默认无历史是反例。, en: The two children are separated by history-generation scope and residual sequence; post-hoc deletion and generic logging shutdown have adjacent owners, while default no-history behavior is a counterexample.}
+  evidence_coverage: {parent_behavior_keys: [DI06-T1690-REF-01, DI06-T1690-REF-02, DI06-T1690-REF-03], boundary_keys: [DI06-T1690-REF-01, DI06-T1690-REF-02], mechanism_support: [REF-000453, DI06-T1690-REF-04], child_existence_support: [REF-000453, DI06-T1690-REF-02, DI06-T1690-REF-03, DI06-T1690-REF-04], unsupported_or_deferred: [network device no logging as interactive history rather than syslog, unmanaged PowerShell ScriptBlock bypass]}
+  content_depth_review: {compared_with_njt_0001: true, field_responsibilities_complete: true, candidate_specific_prose: true, repeated_prose_reviewed: true, notes: {zh: 整体 sink 与选择性 predicate 使用不同数据、基线和恢复，不把平台当分类。, en: Whole sink and selective predicate use different data baselines and recovery without making platform the taxonomy.}}
+  automation_review: {canonical_prose_bulk_generated: false, mechanical_uses: [validation, allocation, bundle]}
+  limitations: {paragraphs: [{zh: BPFDoor 与 APT38 直接支持两个变量，GNU/Microsoft 支持消费语义；实际环境中 shell、版本、histappend、并发 session 与非交互行为会影响预期记录，需本地 canary。, en: BPFDoor and APT38 directly support the two variables and GNU or Microsoft supports consumption semantics. Shell, version, histappend, concurrent sessions, and noninteractive behavior affect expected recording and need a local canary.}]}
+  rejected_mechanisms: [{mechanism_ref: NM-DO, reason: command content is absent before storage rather than made less inspectable}, {mechanism_ref: NM-ST, reason: timing is part of the gate but not deliberate trace dilution}]
+  open_questions: []
+integration:
+  status: complete
+  resolutions:
+    - {disposition: extend, objects: [REF-000453]}
+    - {disposition: create, objects: [NJT-0170, NJS-0170-001, NJS-0170-002, REF-000737, REF-000738, REF-000739, REF-000740, CLM-000836, CLM-000837, CLM-000838, CLM-000839, CLM-000840, CASE-000240, CASE-000241, DET-000195, NJA-000220, NJA-000221, MIT-000176]}

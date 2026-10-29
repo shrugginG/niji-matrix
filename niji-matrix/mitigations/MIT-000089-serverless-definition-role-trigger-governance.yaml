@@ -1,0 +1,74 @@
+schema_version: 2.0.0
+type: mitigation
+id: MIT-000089
+name: {zh: 无服务器定义、角色、触发与调用治理, en: Serverless Definition Role Trigger and Invocation Governance}
+summary: {zh: 通过最小创建/调用权限、不可变版本、受限执行角色、事件源审查和完整调用日志降低恶意无服务器执行, en: Reduce malicious serverless execution through least create and invoke authority immutable versions constrained execution roles reviewed event sources and complete invocation logging}
+description:
+  paragraphs:
+    - zh: 本缓解把 serverless 控制面和运行结果视为一个策略对象。创建者不能自行把未经审查代码、宽泛 execution role 或高风险 connector 发布到生产，trigger 必须绑定批准事件源和过滤条件，每个 invocation/flow run 必须留下可关联记录。目标是在没有客户主机 EDR 的条件下，用定义、身份、网络和结果约束替代隐含信任。
+      en: This mitigation treats serverless control planes and runtime outcomes as one policy object. Creators cannot publish unreviewed code broad execution roles or high-risk connectors to production by themselves triggers bind approved event sources and filters and every invocation or flow run leaves correlatable records. The objective is to replace implicit trust with definition identity network and outcome controls where customer host EDR does not exist.
+domains: [enterprise]
+measures:
+  - key: separated-serverless-authority
+    name: {zh: 分离的函数与流程管理权限, en: Separated Function and Flow Management Authority}
+    description:
+      paragraphs:
+        - zh: 分离 author、deployer、role/connector approver 和 invoker，限制 Create/Update/Invoke、PassRole/actAs 与 connector consent，生产变更使用 JIT、条件策略和双人审批；定期清理 dormant flow、未使用 role 和公开 function URL。
+          en: Separate author deployer role or connector approver and invoker restrict create update invoke PassRole actAs and connector consent use JIT conditional policy and two-person approval for production changes and remove dormant flows unused roles and public function URLs periodically.
+    control_type: preventive
+  - key: immutable-code-definition-trigger
+    name: {zh: 不可变代码、定义与 Trigger 准入, en: Immutable Code Definition and Trigger Admission}
+    description:
+      paragraphs:
+        - zh: 对函数代码、layer、容器和 flow 定义保存 digest 与来源，生产仅引用批准版本/alias；审查 handler/actions、环境、网络、event source、filter 和目标 API，阻止未批准动态下载、跨租户连接器和宽泛事件触发。
+          en: Preserve digests and provenance for function code layers containers and flow definitions and reference approved versions or aliases in production. Review handlers or actions environment network event sources filters and target APIs and block unapproved dynamic downloads cross-tenant connectors and broad event triggers.
+    control_type: preventive
+  - key: least-role-egress-complete-invocation
+    name: {zh: 最小执行角色、网络与完整调用审计, en: Least Execution Roles Egress and Complete Invocation Audit}
+    description:
+      paragraphs:
+        - zh: 为每个 function/flow 绑定最小资源和动作权限，隔离签名/高价值秘密，限制出站网络与 connector 目的地，启用 Invoke/data events、结构化应用日志、资源 API 和成本指标，并把 run/invocation ID 传到下游。
+          en: Bind every function or flow to least resource and action permissions isolate signing or high-value secrets restrict egress and connector destinations enable Invoke or data events structured application logs resource APIs and cost metrics and propagate run or invocation IDs downstream.
+    control_type: containment
+applications:
+  - target_ref: NJT-0076
+    use:
+      paragraphs:
+        - zh: 对痕迹分离型无服务器执行，在生产发布门禁同时验证 actor、代码/flow digest、execution role/connector、trigger 和网络，并要求每个调用能回连批准版本和下游结果。未知来源函数、owner 变化、宽泛角色或没有 data-event 覆盖的高价值 automation 转入隔离环境，禁止访问生产秘密。
+          en: For Trace-Separated Serverless Execution verify actor code or flow digest execution role or connector trigger and network together at production admission and require every invocation to link back to an approved version and downstream outcome. Unknown-source functions owner changes broad roles or high-value automation without data-event coverage move to isolation without production secrets.
+    expected_effect:
+      paragraphs:
+        - zh: 攻击者必须同时突破发布、身份、触发和运行时结果控制，不能仅凭一个云凭据部署短驻载荷或把 dormant flow 变成无日志自动化。版本化记录和 invocation ID 在实例回收后仍保存因果，最小角色/网络限制即使代码执行也降低影响。
+          en: An adversary must cross release identity trigger and runtime-outcome controls together and cannot deploy an ephemeral payload or turn a dormant flow into unlogged automation with one cloud credential. Versioned records and invocation IDs preserve causality after instance reclamation while least roles and network reduce impact despite code execution.
+    limitations:
+      paragraphs:
+        - zh: 提供商仍控制底层主机可见性，应用日志可以被恶意代码关闭或伪造；复杂业务集成需要广权限与跨租户 connector。若 deployment、role approver 和日志根由同一被攻陷身份控制，策略可被绕过；严格 egress 和审批也会增加延迟与运维成本。
+          en: Providers still control host visibility and malicious code may disable or falsify application logs while complex integrations need broad permissions and cross-tenant connectors. Compromise of deployment role approval and logging roots under one identity can bypass policy and strict egress and approval increase latency and operational cost.
+  - target_ref: NJS-0076-001
+    use:
+      paragraphs:
+        - zh: 对短驻函数实例执行，强制不可变 code version、签名来源、Invoke/data event、结构化 invocation ID 和函数级网络/成本指标；敏感函数在更新后先以无生产秘密 canary 调用验证行为，并将 role 与允许 API/资源固定到版本。保留定义和运行日志超过实例寿命。
+          en: For Ephemeral Function-Instance Execution require immutable code versions signed provenance Invoke or data events structured invocation IDs and function-level network and cost metrics. Canary-call sensitive functions after update without production secrets and bind roles and allowed APIs or resources to versions while retaining definitions and runtime logs beyond instance lifetime.
+    expected_effect:
+      paragraphs:
+        - zh: 没有主机磁盘仍可从版本—调用—结果恢复执行，Denonia 式矿工的异常 duration、concurrency、DoH/矿池网络和成本会跨实例聚合。未批准代码不能直接继承宽角色，攻击者外部化状态和 C2 时也受到网络约束。
+          en: Execution remains reconstructable from version invocation and outcome without host disks and Denonia-like mining duration concurrency DoH or pool network and cost aggregate across instances. Unapproved code cannot inherit broad roles directly and network controls constrain externalized state and C2.
+    limitations:
+      paragraphs:
+        - zh: 数据事件与网络日志会增加费用，大量短调用可能产生高容量；provider 未公开的宿主行为仍不可见。恶意代码若只使用允许 API、低资源并与正常目的地通信，行为基线可能无法区分，且 Denonia 部署未知不能转化为固定阻断签名。
+          en: Data events and network logs add cost and high-volume short calls create large telemetry while provider-hidden host behavior remains invisible. Malicious code using only allowed APIs low resources and normal destinations may evade behavioral baselines and Denonia's unknown deployment cannot become a fixed blocking signature.
+  - target_ref: NJS-0076-002
+    use:
+      paragraphs:
+        - zh: 对良性事件流耦合执行，建立所有 flow/function 的 owner、版本、trigger、filter、connector 和目标动作清单，禁止未审批 dormant automation 启用和跨租户/匿名共享 connector。高敏感事件只允许调用最小动作，并把 event ID、run ID 和 service identity 传播到搜索、邮件、文件与审计系统。
+          en: For Benign Event-Stream-Coupled Execution inventory owner version trigger filter connector and target actions for every flow or function and block unapproved dormant-automation enablement and cross-tenant or anonymous-sharing connectors. High-sensitivity events may call only minimal actions and propagate event run and service-identity IDs into search mail file and audit systems.
+    expected_effect:
+      paragraphs:
+        - zh: 正常邮件、文件或用户事件不能悄然激活未登记高风险动作，DART 式使用 Flow 自动窃取会在 owner/enablement、connector 权限和结果语义上产生门禁或日志。最小 connector 权限限制持续转发、搜索和匿名共享范围。
+          en: Normal mail file or user events cannot silently activate unregistered high-risk actions and DART-like Flow theft creates gates or logs at owner enablement connector permission and outcome semantics. Least connector permissions limit persistent forwarding search and anonymous sharing scope.
+    limitations:
+      paragraphs:
+        - zh: 业务用户会频繁创建合法低代码流程，完整人工审批可能不可扩展；复杂流程的事件与动作跨多个 SaaS，correlation ID 可能丢失。攻击者控制合法 owner 后仍可提出看似合理变更，因此需要数据访问结果和持续基线，而不能仅依赖定义审批。
+          en: Business users create legitimate low-code flows frequently and complete manual review may not scale while complex flows cross SaaS boundaries and lose correlation IDs. An adversary controlling a legitimate owner may propose plausible changes so data-access outcomes and continuous baselines remain necessary beyond definition approval.
+evidence_refs: [REF-000269, REF-000270, REF-000271, REF-000272]
+lifecycle: {status: review, version: 1.0.0, created: '2026-09-12', modified: '2026-09-12', contributors: [Niji Matrix Research], reviewers: []}

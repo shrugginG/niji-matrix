@@ -1,0 +1,76 @@
+schema_version: "2.0.0"
+type: technique
+id: NJT-0163
+name: {zh: 云计算防御状态位移, en: Cloud-Compute Defensive-State Displacement}
+summary: {zh: 攻击者改变云计算 lineage，使活动进入未完成等效安全注册的新资源，或使既有资源的来宾取证状态在活动后断裂。, en: "Adversaries change cloud-compute lineage so activity enters a new resource without equivalent security enrollment or guest forensic state on an existing resource breaks after activity."}
+aliases: [Modify Cloud Compute Infrastructure, T1578]
+classification:
+  tactic_refs: [TA0112]
+  origin: {kind: attack-adapted, source_attack_id: T1578, source_attack_version: "19.1"}
+  decision_ref: DEC-TA0112-T1578
+definition_and_concept:
+  paragraphs:
+    - zh: 云计算防御状态位移是攻击者通过实例、虚拟机、磁盘、快照、映像或相关生命周期配置改变计算资源 lineage，使当前承载活动的资源相对批准基线缺少等效控制注册，或使已经发生过活动的来宾状态不再可连续取证。直接对象是 resource lineage—control/evidence 的差，而不是创建、删除、回退或配置 API 本身。
+      en: Cloud-Compute Defensive-State Displacement is adversary use of instance, virtual machine, disk, snapshot, image, or related lifecycle configuration to change compute-resource lineage so the resource carrying current activity lacks equivalent control enrollment relative to baseline or guest state containing prior activity is no longer forensically continuous. The direct object is the resource-lineage to control-or-evidence difference, not a create, delete, revert, or configuration API itself.
+    - zh: 新 lineage 可以来自空白实例、既有映像或敏感快照，既有 lineage 则可因删除、快照回退或临时存储重置而终止/倒退。云控制面仍会记录受信 API 请求，但原实例的安全代理、日志和文件/内存证据不会自动迁移到新身份，也不能在删除后自动恢复。普通弹性伸缩、灾备和备份只有缺少预期控制或证据结果时才进入本对象。
+      en: A new lineage may begin from a blank instance, existing image, or sensitive snapshot, while an existing lineage can terminate or rewind through deletion, snapshot reversion, or ephemeral reset. The trusted cloud control plane can still record API requests, but security agents, logs, files, and memory on the original instance do not automatically follow a new identity or return after deletion. Ordinary scaling, recovery, and backup enter this object only when an expected control or evidence outcome is missing.
+stealth_characteristics:
+  paragraphs:
+    - zh: 云计算防御状态位移利用生命周期操作的正常管理外观，把攻击者活动与原实例的控制和历史拆到不同资源或版本。新实例在 inventory 中合法存在，但没有旧资源的来宾基线；被回退/删除的实例在当前视图中可能只显示新状态或不再存在。若防守只查询当前资源清单或以 resource ID 固定绑定代理，就会把缺失看成新建延迟、正常恢复或资源终止。
+      en: Cloud-Compute Defensive-State Displacement uses the ordinary administrative appearance of lifecycle operations to split adversary activity from controls and history on the original instance into another resource or version. A new instance legitimately exists in inventory but lacks the old resource's guest baseline, while a reverted or deleted instance may expose only current state or disappear from the current view. Defenders querying only current inventory or binding agents rigidly to one resource ID can interpret absence as provisioning delay, normal recovery, or termination.
+    - zh: 残余包括 API actor/request、快照/映像/磁盘 ancestry、旧新 resource ID、网络与 IAM、代理 enrollment、首个活动、boot/agent sequence、删除/回退事件及外部日志/备份水位。不同权控制面审计与来宾证据 manifest 可恢复 lineage；若模板在首用前强制等效控制且备份覆盖活动窗口，匿迹与损伤均不成立。
+      en: Residue includes API actor and request, snapshot, image, and disk ancestry, old and new resource IDs, network and IAM, agent enrollment, first activity, boot or agent sequence, deletion or reversion events, and external log or backup watermarks. Separately authorized control-plane audit and a guest-evidence manifest can recover lineage. Stealth and damage do not hold when a template enforces equivalent controls before first use and backup covers the activity interval.
+scope_boundary_definition:
+  paragraphs:
+    - zh: 纳入要求攻击者控制生命周期操作、资源 lineage 可连接、等效控制注册或来宾证据连续性相对批准基线下降，并且新/旧状态覆盖后继或既有恶意活动。只创建快照/实例、删除资源、修改配额、启用区域或返回 API 成功时，只记录 lifecycle mutation；没有 control/evidence outcome 不确认 TA0112。
+      en: Inclusion requires adversary control of a lifecycle operation, connectable resource lineage, reduced equivalent control enrollment or guest-evidence continuity relative to baseline, and new or old state covering follow-on or prior malicious activity. Snapshot or instance creation, resource deletion, quota change, region enablement, or API success alone remains a lifecycle mutation without a TA0112 conclusion.
+    - zh: 资源 ancestor 改变归 NJT-0126，集中策略正文归 NJT-0125，区域选择归 NJT-0121，防火墙规则结果归 NJT-0124，数据窃取/资源劫持/破坏归其直接 owner。批准的备份、灾备、取证克隆、蓝绿发布、自动伸缩和 Spot/preemptible 终止是正常反例，需用工单、模板、lineage、控制 checklist 与备份覆盖排除。
+      en: Resource-ancestor change belongs to NJT-0126, central policy text to NJT-0125, region selection to NJT-0121, firewall-rule outcomes to NJT-0124, and data theft, resource hijacking, or destruction to their direct owners. Approved backup, disaster recovery, forensic cloning, blue-green release, autoscaling, and Spot or preemptible termination are normal counterexamples resolved through ticket, template, lineage, control checklist, and backup coverage.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+      - zh: 攻击者取得云计算或快照权限后，可从敏感卷派生新实例、改变网络/IAM 并在安全代理注册前读取或横向活动；也可在窃取或执行后删除实例/磁盘或回退快照，使当前来宾视图不再包含活动区间。Microsoft 观察 LAPSUS$ 在受害云内创建 VM 并删除资源，CISA/FBI 观察 Scattered Spider 使用攻击者新建 EC2，但两者都需要本地 enrollment 和保留数据才能证明具体失防。
+        en: After gaining compute or snapshot authority, an adversary can derive a new instance from a sensitive volume, change network or IAM, and read or move laterally before security-agent enrollment. After theft or execution, the adversary can delete an instance or disk or restore a snapshot so the current guest view no longer contains the activity interval. Microsoft observed LAPSUS$ creating VMs and deleting resources inside victim clouds, and CISA and FBI observed Scattered Spider using actor-created EC2, while local enrollment and retention data remain necessary to prove specific impairment.
+  threat_model:
+    attacker_model:
+      paragraphs:
+        - zh: 攻击者需具有实例、快照、磁盘或配置生命周期权限，理解模板、网络/IAM、代理注册时序、备份和删除保护。影子分支需要在强制控制生效前完成首用；取证分支需要让恶意活动区间不被不同权日志或可恢复备份覆盖。组织策略、JIT 权限、创建门禁、删除保护与 WORM 保留会限制效果。
+          en: The adversary needs instance, snapshot, disk, or configuration lifecycle authority and knowledge of templates, network and IAM, agent-enrollment timing, backup, and deletion protection. The shadow branch requires first use before mandatory controls become effective; the forensic branch requires the malicious interval to escape separately authorized logs or recoverable backup. Organization policy, JIT authority, creation gates, deletion protection, and WORM retention limit the effect.
+    defender_model:
+      paragraphs:
+        - zh: 防守方能取得云审计 actor/request、资源 ancestry、快照/映像、网络/IAM、模板审批、代理/日志/策略 enrollment、首个来宾活动、boot/sequence、删除/回退和备份 manifest，并在资源删除后继续保留。控制面事件不是有序调用栈，必须按 request、resource 和时间构建图；没有来宾或网络首用遥测时，只能报告未受管风险而非已完成活动。
+          en: Defenders can obtain cloud audit actor and request, resource ancestry, snapshot or image, network and IAM, template approval, agent, log, and policy enrollment, first guest activity, boot and sequence, deletion or reversion, and backup manifest and retain them after resource deletion. Control-plane events are not an ordered call stack and need a graph by request, resource, and time. Without guest or network first-use telemetry, defenders can report unmanaged risk rather than completed activity.
+stealth_mechanisms:
+  - mechanism_ref: NM-BT
+    role: primary
+    summary: {zh: 正常生命周期动作把攻击活动移出原计算身份的控制和证据边界, en: Ordinary lifecycle actions move adversary activity outside the original compute identity's control and evidence boundary}
+    analysis:
+      paragraphs:
+        - zh: 攻击者通过受信云 API 创建新 resource lineage 或终止/回退既有状态，控制面痕迹仍像正常运维；原实例的代理、来宾日志和取证历史却不自动覆盖新身份或回退后的版本。防守若只在当前 resource ID 内分析，会看不到跨 lineage 的活动或把证据缺口当作生命周期自然结果，形成行为透明。
+          en: The adversary uses trusted cloud APIs to create a new resource lineage or terminate or revert existing state, leaving control-plane traces resembling normal administration. Agents, guest logs, and forensic history on the original instance do not automatically cover the new identity or post-reversion version. Analysis confined to the current resource ID misses cross-lineage activity or treats evidence gaps as natural lifecycle results, producing behavioral transparency.
+    evidence_refs: [REF-000103, REF-000696, REF-000697, REF-000698, REF-000699]
+    confidence: medium
+subtechnique_taxonomy:
+  narrative:
+    paragraphs:
+      - zh: NJS-0163-001“影子计算控制范围分叉”以新计算身份在等效控制生效前首用为变量，前态没有同一 resource ID 的来宾历史，检测需连接 snapshot/image lineage、enrollment 和首个活动。NJS-0163-002“计算取证状态连续性断裂”以既有 lineage 在活动后被删除、回退或重置为变量，前态已有来宾序列，检测需证明 target interval 不可由外部日志/备份恢复。两者的前态、窗口和恢复措施不可互换。
+        en: NJS-0163-001 Shadow-Compute Control-Scope Fork varies first use of a new compute identity before equivalent controls become effective. It has no prior guest history for the same resource ID and detection joins snapshot or image lineage, enrollment, and first activity. NJS-0163-002 Compute Forensic-State Continuity Break varies deletion, reversion, or reset of an existing lineage after activity. It has a prior guest sequence and detection proves that the target interval cannot be recovered from external logs or backup. Their prior state, windows, and recovery are not interchangeable.
+      - zh: ATT&CK 快照创建和实例创建只为第一变量提供实现广度，删除和回退只为第二变量提供实现广度；这些名称没有被导入。配额、订阅关联、区域和普通配置只有在造成同一 control/evidence outcome 时进入父级，否则转交资源劫持、区域、策略或层级对象。对象类型和云厂商不构成更多子项。
+        en: ATT&CK snapshot and instance creation provide implementation breadth only for the first variable, while deletion and reversion provide breadth only for the second; their names are not imported. Quota, subscription association, region, and ordinary configuration enter the parent only when causing the same control or evidence outcome and otherwise transfer to resource-hijacking, region, policy, or hierarchy objects. Object type and cloud provider do not define additional children.
+  coverage: established
+  subtechnique_refs: [NJS-0163-001, NJS-0163-002]
+defense:
+  detections: {coverage: available, strategy_refs: [DET-000184]}
+  mitigations: {coverage: available, mitigation_refs: [MIT-000166]}
+evidence:
+  claim_refs: [CLM-000802, CLM-000803, CLM-000804, CLM-000805, CLM-000806]
+  case_refs: [CASE-000225, CASE-000226]
+  reference_refs: [REF-000103, REF-000696, REF-000697, REF-000698, REF-000699]
+research:
+  limitations:
+    paragraphs:
+      - zh: Microsoft 与 CISA/FBI 直接证明攻击者创建并使用受害云内新实例，Microsoft 还直接观察资源删除；来源没有公开每个实例的控制 checklist、来宾 sequence 和备份覆盖。AWS/GCP 文档证明管理事件与删除不可恢复条件，但不是攻击案例。因此父级和子项保持 medium，具体个案必须补齐 control/evidence outcome。
+        en: Microsoft and CISA or FBI directly establish adversary creation and use of new instances inside victim clouds, and Microsoft directly observes resource deletion. The sources do not publish control checklists, guest sequence, or backup coverage for each instance. AWS and GCP documentation establishes management events and conditions of unrecoverable deletion but is not incident evidence. Parent and children therefore remain medium, and a concrete case must supply the control or evidence outcome.
+      - zh: 云平台对 resource ID、快照 lineage、代理注册和删除后元数据的保留不同，自动伸缩和 Spot 生命周期会产生大量相似事件。批量删除常以 Impact 为主，只有恶意活动窗口的证据不可恢复时才并记本项；新实例若在首用前已受等效控制，则不属于影子分叉。人工评审需验证这两个门槛在真实环境中可计算。
+        en: Providers differ in resource IDs, snapshot lineage, agent enrollment, and post-deletion metadata retention, while autoscaling and Spot lifecycles produce many similar events. Mass deletion often has Impact as its primary result and maps here only when evidence for the malicious interval is unrecoverable. A new instance with equivalent controls before first use is not a shadow fork. Human review should validate that both gates are computable in real environments.
+lifecycle: {status: review, version: "0.1.0", created: "2026-09-23", modified: "2026-09-23", contributors: [Niji Matrix Research], reviewers: []}

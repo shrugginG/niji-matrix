@@ -1,0 +1,156 @@
+schema_version: 2.0.0
+type: technique
+id: NJT-0132
+name:
+  zh: 应用窗口发现
+  en: Application Window Discovery
+summary:
+  zh: 读取开放窗口、标题或前台上下文以识别用户活动，并可用窗口条件限制后继恶意行为出现的时机。
+  en: Read open windows, titles, or foreground context to identify user activity and potentially confine the appearance of
+    later malicious behavior to matching contexts.
+aliases: []
+classification:
+  tactic_refs:
+  - TA0007
+  origin:
+    kind: attack-retained
+    source_attack_id: T1010
+    source_attack_version: '19.1'
+  decision_ref: DEC-TA0007-T1010
+definition_and_concept:
+  paragraphs:
+  - zh: 应用窗口发现是攻击者在已经访问的交互会话中检查哪些应用窗口开放、哪个窗口处于前台以及可见标题标识什么工作情境的行为。其直接目的在于识别用户正在进行的活动、可能有价值的应用或合适的后续操作时机。
+    en: Application Window Discovery is the adversary’s inspection of open application windows, foreground focus, and visible
+      titles in an accessed interactive session. Its direct purpose is to learn what the user is doing, identify relevant
+      applications, or choose the timing of a later action.
+  - zh: 这里的直接对象是窗口状态，而不是整个进程清单、安装软件目录、屏幕内容或键盘输入。攻击者可反复读取状态或以状态作为后继动作条件，但截图、输入捕获和 C2 本身仍保持各自技术归属。
+    en: The direct object is window state rather than a process inventory, installed-software catalog, full screen content,
+      or keystrokes. An adversary may reread that state or use it as a condition for later action, while capture, input collection,
+      and C2 retain their own technique ownership.
+stealth_characteristics:
+  paragraphs:
+  - zh: 窗口读取可以表现为进程内普通 GUI 接口调用，标准进程创建和 Sysmon ProcessAccess 事件并不直接说明查询了哪个窗口。若防守只看进程与网络记录，窗口发现这一决策步骤容易落在观察面外；其存在不能由单个 user32
+      载入或一个标题字符串直接推断。
+    en: Window reads can occur as ordinary in-process GUI calls. Standard process creation and Sysmon ProcessAccess events
+      do not directly state which window was queried. Where defenders retain only process and network records, the discovery
+      step can fall outside observation; it cannot be inferred from one user32 load or a title string alone.
+  - zh: Grandoreiro 的前台窗口条件还改变后继网络痕迹出现的时间：银行相关窗口未出现时不启动所述 C2，匹配后则频繁通信。此差异有利于缩短可关联的后继活动时段，但通信一旦开始仍明显可见；Attor 的截图选择提供相近的定向结果，而合法无障碍和自动化流程也会有类似窗口读取。
+    en: 'Grandoreiro’s foreground-window condition also changes when later network traces appear: the described C2 does not
+      start before a bank-related window matches and communicates frequently afterward. This can shorten the period of correlatable
+      follow-on activity, but communication remains visible once started. Attor supplies a related targeted-capture result,
+      while legitimate accessibility and automation can read windows similarly.'
+scope_boundary_definition:
+  paragraphs:
+  - zh: 纳入攻击者以开放窗口、标题或前台状态为直接信息对象的读取；当这些值真正控制后继行为时，还需记录条件命中前后的结果差。父级不要求每次窗口查询都已证明匿迹意图，但正式机理和子项必须有可说明的痕迹与防守观察变化。
+    en: Include adversarial reads whose direct information object is an open window, title, or foreground state. Where those
+      values actually gate later behavior, record the outcome difference before and after matching. The parent does not require
+      proven stealth intent for every query, but each formal mechanism or child requires an explainable trace and defender-observation
+      change.
+  - zh: 只取 PID 或进程名归 T1057，只查安装情况归 T1518；把窗口活动作为虚拟化或沙箱判据并停用载荷时，环境判断归 T1497。屏幕阅读器、桌面流程、测试与远程支持会合法访问相同状态，必须结合调用主体、会话、批准用途及后继动作，不能把接口本身判成恶意。
+    en: A PID or process-name inventory belongs to T1057 and installed-software checks to T1518. If window activity is used
+      as a virtualization or sandbox test to suppress a payload, the environment judgment belongs to T1497. Screen readers,
+      desktop flows, tests, and remote support legitimately access the same state, so caller, session, approved purpose, and
+      later actions are needed; the interface itself is not malicious.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: 在用户登录且使用浏览器或业务应用的受控工作站上，攻击者可以先观察窗口标题与焦点，再决定是否触发银行木马的通信、选择性截图或其他目标化动作。该场景需要真实的交互桌面；无人值守服务器或无图形会话时，窗口上下文可能不存在。
+      en: On a controlled workstation where a user is logged in to a browser or business application, an adversary may observe
+        window title and focus before activating banking-trojan communication, selective capture, or another targeted action.
+        This setting requires an actual interactive desktop; an unattended server or nongraphical session may lack useful
+        window context.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者需要在目标交互会话中执行可读窗口状态的代码或控制一个具有相应权限的进程，并能够保存或判断目标窗口条件。条件门控还要求代码保持驻留、重复检查或接收状态变化，并接受未出现目标窗口时后续行动延迟甚至缺席的成本。
+        en: The adversary needs code in the target interactive session, or a controlled process with sufficient access, to
+          read window state and evaluate a target condition. Gating additionally requires persistence, repeated checks, or
+          event receipt, and accepts the cost of delayed or absent follow-on action when the target window does not appear.
+    defender_model:
+      paragraphs:
+      - zh: 防守方可能看到进程来源、网络连接和文件或截图结果；若要确认发现步骤本身，需另有经试点验证的 GUI 调用及窗口状态遥测，并能按主机、进程、用户和会话关联。标准 Sysmon Event 10 只报告跨进程访问，不是普通
+          EnumWindows 的证据；没有 GUI 传感器时只能从后继时序提出较弱推断。
+        en: The defender may see process provenance, network connections, and file or capture outcomes. Confirming the discovery
+          step itself requires pilot-validated GUI-call and window-state telemetry joined by host, process, user, and session.
+          Standard Sysmon Event 10 reports process access rather than ordinary EnumWindows calls; without a GUI sensor, follow-on
+          timing supports only a weaker inference.
+stealth_mechanisms:
+- mechanism_ref: NM-BT
+  role: primary
+  summary:
+    zh: 窗口查询与条件判断可落在常规进程日志之外并延后后继痕迹
+    en: Window reads and conditions can evade ordinary process logs and defer follow-on traces
+  analysis:
+    paragraphs:
+    - zh: 恶意进程在交互会话中读取窗口状态并在内部判断是否出现目标情境。常规进程事件只能显示宿主存在，不能揭示其读取了哪个窗口；Grandoreiro 更在条件未满足时不产生所述 C2 请求，使只依赖后继网络告警的防守方暂时缺少这条行为链。匹配后频繁通信、进程来源和经验证的
+        GUI 遥测仍可重建活动，因此效果取决于观察覆盖与用户情境，并非持续不可见。
+      en: A malicious process reads window state in an interactive session and decides internally whether a target context
+        exists. Ordinary process events reveal that the host process exists, not which window it read. Grandoreiro also omits
+        the described C2 requests until its condition matches, temporarily withholding that chain from defenders relying on
+        follow-on network alerts. Frequent post-match communication, process provenance, and validated GUI telemetry can still
+        reconstruct the activity, so the effect depends on coverage and user context rather than permanent invisibility.
+  evidence_refs:
+  - REF-000483
+  - REF-000485
+  - REF-000486
+  - REF-000366
+  confidence: medium
+subtechnique_taxonomy:
+  narrative:
+    paragraphs:
+    - zh: 本技术目前按一个稳定变量建立子项：窗口名称或焦点条件是否决定后继恶意行为何时出现。它改变的是后继通信或收集的存在时间与可关联窗口，而不只是窗口类型、标题内容或接口名称；Grandoreiro 提供较纯的窗口门控案例，Attor
+        仅为标题与进程名混合条件的旁证。
+      en: 'The current child taxonomy uses one stable variable: whether a window-name or focus condition decides when later
+        malicious behavior appears. It changes the presence and correlation window of communication or collection, not merely
+        a window type, title value, or API name. Grandoreiro gives the clearer window-gating case; Attor is supporting evidence
+        for a mixed title and process-name condition.'
+    - zh: ATT&CK 19.1 的 T1010 没有子项，但仍审查了仅前台读取、事件式订阅和借合法辅助功能来源等可能轴。现有资料不能把这些接口或数据量差异独立证明为匿迹边界，故不为增加数量正式化。
+      en: ATT&CK 19.1 has no T1010 children, but the review still examined foreground-only reads, event subscription, and
+        borrowed accessibility provenance. Present evidence does not establish those interface or data-volume differences
+        as independent stealth boundaries, so none is formalized to increase the count.
+  coverage: established
+  subtechnique_refs:
+  - NJS-0132-001
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000141
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000130
+evidence:
+  claim_refs:
+  - CLM-000694
+  - CLM-000695
+  case_refs:
+  - CASE-000178
+  reference_refs:
+  - REF-000479
+  - REF-000483
+  - REF-000484
+  - REF-000485
+  - REF-000486
+  - REF-000487
+  - REF-000366
+research:
+  limitations:
+    paragraphs:
+    - zh: Grandoreiro 研究直接证明窗口匹配控制 C2 启动，Attor 研究证明截图选择可使用标题或进程名；两者没有量化检测率，也不证明所有窗口发现都会改变网络或收集痕迹。把条件门控的匿迹收益描述为可关联时段缩短，是基于已观察行为的防守推断。
+      en: Grandoreiro directly establishes window-match control of C2 initiation, and Attor establishes screenshot selection
+        by title or process name. Neither quantifies detection rates or proves that all window discovery changes network or
+        collection traces. The stealth benefit of a shorter correlatable period is a defensive inference from observed behavior.
+    - zh: 默认进程与 Sysmon 记录不保证 GUI API 可见，专门传感器也须验证调用者、窗口值和会话的归属。标题可能快速变化或包含敏感信息；合法辅助功能、RPA 和远程协助在相同观察面上形成强反例，部署检测须保留隐私与业务基线。
+      en: Default process and Sysmon records do not guarantee GUI API visibility, and a dedicated sensor must validate caller,
+        window value, and session attribution. Titles can change quickly or contain sensitive information. Legitimate accessibility,
+        RPA, and remote support are strong counterexamples on the same observation surface, requiring privacy controls and
+        operational baselines.
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-09-22'
+  modified: '2026-09-22'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

@@ -1,0 +1,126 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000274
+strategy_ref: DET-000222
+name:
+  zh: 敏感读取至不透明替代会话谱系
+  en: Sensitive Read to Opaque Alternative Session Lineage
+summary:
+  zh: 把敏感读取、异常替代加密会话和方向字节连接为外传谱系。
+  en: Join sensitive access, an unusual opaque alternative session, and directional bytes into exfiltration lineage.
+domains:
+- enterprise
+platforms: []
+logic:
+  paragraphs:
+  - zh: 先从敏感标签、文件路径、数据库导出、归档创建或大量读取形成 source_set_id；在五分钟至二十四小时内以 device_id、process_start_key 和 socket 关联 Zeek conn/ssl、IPFIX
+      与端点网络事件。记录 server_name、certificate/issuer、version、cipher、next_protocol、established、destination、orig_bytes、duration
+      和 approved_receiver，并与已知 C2 relationship_id 比较。只有源数据谱系、不同于 C2 的受保护会话和实际出站量同时存在时输出 opaque_alternative_exfiltration；只有
+      TLS/SSH、非浏览器进程或新证书分别保持 encrypted_egress_candidate。
+    en: First derive source_set_id from sensitivity labels, file paths, database exports, archive creation, or high-volume
+      reads. Over five minutes to twenty-four hours, join Zeek conn or ssl, IPFIX, and endpoint network events by
+      device_id, process_start_key, and socket. Record server_name, certificate or issuer, version, cipher, next_protocol,
+      established, destination, orig_bytes, duration, and approved_receiver and compare with known C2 relationship_id.
+      Emit opaque_alternative_exfiltration only when source-data lineage, a protected session distinct from C2,
+      and actual outbound volume all exist. TLS or SSH, a non-browser process, or a new certificate alone remains
+      encrypted_egress_candidate.
+data_requirements:
+- source_type: endpoint-file
+  name:
+    zh: 敏感文件访问与产物事件
+    en: Sensitive file access and artifact events
+  channel: DeviceFileEvents, Sysmon or equivalent EDR and DLP
+  required_fields:
+  - event-time
+  - device-id
+  - action-type
+  - folder-path
+  - file-name
+  - file-size
+  - sensitivity-label
+  - initiating-process-unique-id
+  - account
+- source_type: tls-session
+  name:
+    zh: TLS/SSH 会话元数据
+    en: TLS or SSH session metadata
+  channel: Zeek ssl.log plus conn.log or equivalent sensor
+  required_fields:
+  - ts
+  - uid
+  - id.orig-h
+  - id.resp-h
+  - version
+  - cipher
+  - server-name
+  - next-protocol
+  - established
+  - cert-chain-fuids
+  - orig-bytes
+  - duration
+- source_type: endpoint-process-network
+  name:
+    zh: 端点进程网络归属
+    en: Endpoint process network attribution
+  channel: Microsoft DeviceNetworkEvents or equivalent EDR
+  required_fields:
+  - timestamp
+  - deviceid
+  - remoteip
+  - remoteurl
+  - remoteport
+  - protocol
+  - initiatingprocessuniqueid
+  - initiatingprocessfilename
+  - initiatingprocesscommandline
+observables:
+- zh: 敏感文件或归档读取后，同一进程建立到未批准目标的 SFTP/SSH/TLS 会话
+  en: The same process opens SFTP, SSH, or TLS to an unapproved destination after sensitive file or archive access
+- zh: 握手与连接元数据可见而内容不可解释，且出站字节超过角色基线
+  en: Handshake and connection metadata remain visible while content is opaque and outbound bytes exceed the role
+    baseline
+correlation:
+  window:
+    zh: 以二十四小时连接源读取和会话；对同一进程紧邻发送使用三十分钟高置信分支。
+    en: Use twenty-four hours to join source access and session, with a thirty-minute high-confidence branch for
+      adjacent sending by one process.
+  dimensions:
+  - device-id
+  - process-start-key
+  - source-set-id
+  - destination
+  - server-name
+  - certificate-id
+  - c2-relationship-id
+  - time
+false_positives:
+- zh: 批准的系统管理、备份、开发制品和数据迁移传输
+  en: Approved administration, backup, development artifact, and migration transfers
+blind_spots:
+- zh: 端点不记录源文件访问，或共享云目标隐藏最终接收者
+  en: The endpoint does not record source-file access or a shared cloud destination hides the receiver
+- zh: 无法取得 SSH/TLS 元数据且目的信誉不足以区分
+  en: SSH or TLS metadata is unavailable and destination reputation is not discriminating
+tuning_guidance:
+  paragraphs:
+  - zh: 以批准接收端、进程签名、账号、资产角色和工单建立正向基线；不按“非浏览器 TLS”单独告警。对共享云目标提高源数据与身份权重，对自管 SFTP 要求固定主机密钥/证书、批准账号和维护窗口。无法证明不同于 C2
+      时降级为一般加密外联候选。
+    en: Build a positive baseline from approved receivers, process signing, account, asset role, and ticket. Do
+      not alert on non-browser TLS alone. Increase source-data and identity weight for shared cloud destinations.
+      Require fixed host keys or certificates, approved accounts, and maintenance windows for managed SFTP. When
+      distinction from C2 cannot be shown, downgrade to a general encrypted-egress candidate.
+evidence_refs:
+- REF-000918
+- REF-000919
+- REF-000920
+- REF-000634
+- REF-000604
+- REF-000924
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-10-04'
+  modified: '2026-10-04'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

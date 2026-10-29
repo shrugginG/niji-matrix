@@ -1,0 +1,150 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000204
+strategy_ref: DET-000185
+name:
+  zh: 异常服务请求—敏感对象读取—响应结果关联
+  en: Anomalous Service Request to Sensitive-Object Read and Response Correlation
+summary:
+  zh: 将远端请求的原始与规范化形态、事件时脆弱版本、服务敏感读取和响应范围连接为分级凭据泄露结果。
+  en: Join raw and canonical forms of a remote request, event-time vulnerable version, sensitive read by the service, and response scope into
+    a graded credential-disclosure result.
+domains:
+- enterprise
+platforms:
+- Network Devices
+- Linux
+- Windows
+logic:
+  paragraphs:
+  - zh: 先用事件时资产快照确认目标服务的精确产品、版本、运行映像、补丁与外部可达性。按 request_id、源目标和五分钟窗口，把 WAF、NDR 或服务日志中的利用签名、异常编码、目录穿越、规范化前后路径差或罕见资源请求，与服务进程对登记敏感对象的成功读取及响应状态、字节量连接。只见脆弱版本输出
+      exposure；只见请求输出 attempt；请求与敏感读取或可重复对象返回输出 read-capability-confirmed；只有取证、受害方确认或暴露清单证明认证材料时输出 material-recovered。后继登录是独立加权信号，不用来填补缺失的读取结果。
+    en: First use an event-time asset snapshot to confirm exact product, version, running image, patch, and external reachability for the target
+      service. By request identifier, source and destination, and a five-minute window, join an exploit signature, anomalous encoding, traversal,
+      raw-to-canonical path difference, or rare resource request in WAF, NDR, or service telemetry to a successful read of an inventoried sensitive
+      object by the service process and the response status and byte count. A vulnerable version alone emits exposure. A request alone emits attempt.
+      A request with a sensitive read or repeatable object return emits read-capability-confirmed. Material-recovered requires forensics, victim
+      confirmation, or an exposure inventory proving authentication material. Later sign-ins are separate weighted evidence and do not fill a
+      missing read result.
+  - zh: 规则不能采集响应中的秘密正文；只保留对象分类、稳定对象标识、响应大小、受害方验证状态和轮换批次。若设备没有逐文件日志，可用精确利用签名加脆弱版本形成 attempt，并由独立取证升级。对批准扫描、厂商健康检查、支持包和配置备份按来源、工单、目标与到期时间降权，仍保留原始请求以便发现范围漂移。
+    en: The rule must not collect secret response content. Retain only object class, stable object identifier, response size, victim-validation
+      state, and rotation batch. When the appliance lacks per-file telemetry, an exact exploit signature plus vulnerable version can establish
+      attempt and independent forensics can upgrade it. Down-weight approved scanning, vendor health checks, support bundles, and configuration
+      backup by source, work order, target, and expiry, while retaining raw requests to detect scope drift.
+data_requirements:
+- source_type: service-request-response
+  name:
+    zh: 服务请求与响应元数据
+    en: Service Request and Response Metadata
+  channel: null
+  required_fields:
+  - event.timestamp
+  - device.id
+  - src.ip
+  - dst.ip
+  - service.name
+  - request.id
+  - request.method
+  - request.raw_path
+  - request.canonical_path
+  - response.status
+  - response.bytes
+- source_type: service-sensitive-object-access
+  name:
+    zh: 服务进程敏感对象访问
+    en: Service Process Sensitive-Object Access
+  channel: configured EDR file audit or appliance audit
+  required_fields:
+  - event.timestamp
+  - device.id
+  - process.id
+  - process.image
+  - process.user_id
+  - object.id
+  - object.path
+  - object.sensitivity
+  - operation
+  - result
+- source_type: vulnerability-state-history
+  name:
+    zh: 软件版本、补丁与可达性历史
+    en: Software Version Patch and Reachability History
+  channel: CMDB and retained vulnerability snapshots
+  required_fields:
+  - device.id
+  - product.name
+  - product.version
+  - component.hash
+  - cve.id
+  - patch.id
+  - state.valid_from
+  - state.valid_to
+  - interface.reachable_from
+- source_type: credential-exposure-investigation
+  name:
+    zh: 凭据暴露调查与轮换记录
+    en: Credential Exposure Investigation and Rotation Record
+  channel: incident-response case system
+  required_fields:
+  - case.id
+  - device.id
+  - object.id
+  - material.type
+  - material.recovery_status
+  - affected_identity_set_id
+  - validation.timestamp
+  - rotation.batch_id
+observables:
+- zh: 原始与规范化路径显著不同，或请求命中精确脆弱资源访问形态。
+  en: Raw and canonical paths differ materially or the request matches an exact vulnerable resource-access form.
+- zh: 同一请求附近，服务进程读取登记的凭据承载对象并返回异常范围的成功响应。
+  en: Near the same request, the service process reads an inventoried credential-bearing object and returns a successful response of abnormal
+    scope.
+- zh: 取证或受害方暴露清单确认材料类别与受影响身份集合，而不记录秘密值。
+  en: Forensics or a victim exposure inventory confirms material class and affected identity set without recording secret values.
+correlation:
+  window:
+    zh: 请求前后五分钟连接服务读取与响应；暴露确认和身份使用在独立案件窗内关联，不回填请求级结果。
+    en: Join service read and response within five minutes around the request; associate exposure confirmation and identity use in a separate
+      case window without backfilling the request-level result.
+  dimensions:
+  - device.id
+  - service.name
+  - request.id
+  - src.ip
+  - dst.ip
+  - process.id
+  - object.id
+  - cve.id
+  - case.id
+false_positives:
+- zh: 获批漏洞扫描、厂商支持、配置导出、备份和诊断下载可能产生异常路径、较大响应或敏感读取，应核对确切工单、服务身份、对象和目的地。
+  en: Approved vulnerability scanning, vendor support, configuration export, backup, and diagnostic download can produce unusual paths, large
+    responses, or sensitive reads; check exact work order, service identity, object, and destination.
+blind_spots:
+- zh: TLS 直接终止在封闭 appliance、路径在日志前被改写、设备不提供文件访问或响应字节、以及事件时版本历史缺失时，只能形成较低置信度的尝试线索。
+  en: TLS terminating directly on a closed appliance, path rewriting before logging, absent file-access or response-byte telemetry, and missing
+    event-time version history leave only lower-confidence attempt leads.
+- zh: 响应成功和字节量不证明内容为凭据，秘密正文又不应进入 SIEM；material-recovered 依赖受控取证或受害方确认。
+  en: Response success and byte count do not prove credential content, while secret content must not enter the SIEM; material-recovered depends
+    on controlled forensics or victim confirmation.
+tuning_guidance:
+  paragraphs:
+  - zh: 为每项对外服务保存允许资源与响应大小基线、已批准扫描源、支持窗口和敏感对象清单。使用 raw_path 与 canonical_path 的差分而不是只匹配一个编码串，对 exact vulnerable build 提高优先级但不把补丁状态当成功证据。例外必须绑定来源、工单、对象范围和到期时间；不得永久白名单服务进程或整个管理网段。
+    en: Maintain allowed resources and response-size baselines, approved scanner sources, support windows, and sensitive-object inventory for
+      each exposed service. Compare raw and canonical paths rather than match one encoded string. Raise priority for an exact vulnerable build
+      without treating patch state as success evidence. Exceptions bind source, work order, object scope, and expiry; never permanently allowlist
+      the service process or an entire management network.
+evidence_refs:
+- REF-000700
+- REF-000701
+- REF-000702
+- REF-000605
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-09-23'
+  modified: '2026-09-23'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

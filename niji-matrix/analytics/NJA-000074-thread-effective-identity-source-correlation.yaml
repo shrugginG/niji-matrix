@@ -1,0 +1,199 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000074
+strategy_ref: DET-000096
+name:
+  zh: 线程有效身份—来源令牌—资源结果关联分析
+  en: Thread Effective Identity–Source Token–Resource Outcome Correlation Analytic
+summary:
+  zh: 比较敏感操作线程的有效模拟令牌与进程主令牌，回溯令牌复制或登录来源，并验证身份差异是否造成未经批准的高权限资源结果。
+  en: Compare a sensitive-operation thread's effective impersonation token with the process primary token, trace duplication
+    or logon origin, and validate whether the identity difference caused an unapproved privileged resource outcome.
+domains:
+- enterprise
+platforms:
+- Windows
+logic:
+  paragraphs:
+  - zh: 分析先为每个进程建立由 host_id、process_start_key 与 primary_token_id/AuthenticationId 标识的主身份基线，并保留 PID、image/path/hash/signer、parent
+      start key、user/group SID、integrity、session 与启动时间。随后从内核、ETW 或 EDR token telemetry 记录 TID、assignment/removal time、impersonation_token_id、token_type、impersonation_level、effective
+      SID/groups/privileges 和 assigning PID/TID。PID 只作显示字段，所有连接使用 start key 与 token ID，避免 PID 复用。
+    en: The analytic first builds a primary-identity baseline for every process keyed by host ID, process start key, and primary
+      token ID or AuthenticationId, retaining PID, image, path, hash, signer, parent start key, user and group SIDs, integrity,
+      session, and start time. Kernel, ETW, or EDR token telemetry then records TID, assignment and removal time, impersonation
+      token ID, token type, impersonation level, effective SIDs, groups, and privileges, and assigning PID or TID. PID remains
+      display-only and all joins use start key and token ID to avoid PID reuse.
+  - zh: 对每个出现文件/注册表/服务控制/进程访问/网络认证或安全配置结果的 TID，选择操作时生效的 token，并与 process primary token 比较 user SID、AuthenticationId、integrity
+      和 relevant privileges。若不同，分析回溯五分钟前到三十分钟前的 OpenProcess/OpenProcessToken/DuplicateToken、LogonUser/4624、named-pipe/RPC
+      client 或其他 token source；有稳定 token ID 时精确连接，无稳定键时仅按 host、session、identity、handle target 与时间作 degraded inference，并标记 lineage_quality。
+    en: For every TID producing a file, registry, service-control, process-access, network-authentication, or security-configuration
+      outcome, the analytic selects the token effective at operation time and compares user SID, AuthenticationId, integrity,
+      and relevant privileges with the process primary token. On difference, it traces OpenProcess, OpenProcessToken, DuplicateToken,
+      LogonUser or 4624, named-pipe or RPC client, or another token source during the preceding five to thirty minutes. Stable
+      token ID provides an exact join; otherwise host, session, identity, handle target, and time permit only degraded inference
+      labeled with lineage quality.
+  - zh: 评分分为来源、承载、权威与结果四组。来源异常包括从罕见/高权限进程取得 token、未经批准的新登录或跨 session token；承载异常包括该服务/二进制从未代表该身份、TID assignment 无对应 client
+      transaction 或运行于用户可写映像；权威异常要求 effective identity/integrity 高于 primary context；结果异常要求随后成功访问受保护进程、服务、驱动、凭据、系统文件或安全配置。精确来源+未批准
+      carrier+高权限结果输出确认，只有身份差异无结果输出观察项。
+    en: Scoring uses provenance, carrier, authority, and outcome groups. Provenance anomalies include a token from a rare
+      or privileged process, an unapproved new logon, or a cross-session token. Carrier anomalies include a service or binary
+      with no baseline for acting as that identity, a TID assignment without matching client transaction, or a user-writable
+      image. Authority anomaly requires effective identity or integrity higher than primary context, and outcome anomaly requires
+      successful access to a protected process, service, driver, credential, system file, or security configuration. Exact
+      provenance plus unapproved carrier and privileged outcome confirms the result; identity difference without outcome remains
+      an observation.
+data_requirements:
+- source_type: process-primary-token-inventory
+  name:
+    zh: 进程主令牌与启动身份
+    en: Process primary token and start identity
+  channel: null
+  required_fields:
+  - timestamp
+  - host_id
+  - process_start_key
+  - process_id
+  - image_path
+  - image_hash
+  - signer
+  - parent_process_start_key
+  - primary_token_id
+  - primary_authentication_id
+  - primary_user_sid
+  - primary_group_sids
+  - primary_privileges
+  - integrity_level
+  - logon_session_id
+- source_type: thread-impersonation-token-state
+  name:
+    zh: 线程模拟令牌赋值与撤销
+    en: Thread impersonation-token assignment and removal
+  channel: null
+  required_fields:
+  - timestamp
+  - host_id
+  - process_start_key
+  - thread_id
+  - action
+  - impersonation_token_id
+  - token_authentication_id
+  - token_type
+  - impersonation_level
+  - effective_user_sid
+  - effective_group_sids
+  - effective_privileges
+  - assigning_process_start_key
+  - result
+- source_type: token-provenance-and-logon
+  name:
+    zh: Token handle 来源与登录会话
+    en: Token-handle provenance and logon session
+  channel: null
+  required_fields:
+  - timestamp
+  - host_id
+  - source_process_start_key
+  - target_process_start_key
+  - token_id
+  - token_authentication_id
+  - handle_access
+  - api_or_operation
+  - logon_id
+  - logon_type
+  - account_sid
+  - authentication_package
+  - result
+- source_type: thread-resource-outcome
+  name:
+    zh: 带 TID 与有效主体的资源结果
+    en: Resource outcomes with TID and effective subject
+  channel: null
+  required_fields:
+  - timestamp
+  - host_id
+  - process_start_key
+  - thread_id
+  - effective_token_id
+  - effective_user_sid
+  - target_object
+  - action
+  - outcome
+  - required_privilege
+  - sensitivity
+observables:
+- zh: 长驻或签名进程的某个 TID 在没有批准 client transaction 时获得与主令牌不同的 SYSTEM/管理员模拟令牌，随后修改服务、安全配置或受保护文件。
+  en: A TID in a long-running or signed process receives a SYSTEM or administrator impersonation token different from the
+    primary token without an approved client transaction and then changes a service, security configuration, or protected
+    file.
+- zh: 对高权限进程的 token handle access/duplication 后，同一 token ID 出现在另一低权限 carrier 的线程上，并立即访问来源身份才有权读取的对象。
+  en: After token-handle access or duplication against a privileged process, the same token ID appears on a thread in another
+    lower-privilege carrier and immediately accesses an object available only to the source identity.
+- zh: 新 4624/LogonId 没有交互用户或工单，却只作为现有 PID 内的 effective token 出现，且资源侧主体与 process owner 不同。
+  en: A new 4624 or LogonId lacks an interactive user or work record, appears only as an effective token inside an existing
+    PID, and has a resource-side subject different from process owner.
+- zh: 敏感结果存在 thread effective identity 差异，但缺少 assignment 或 source token 记录；输出“线程令牌谱系不完整”而非确认攻击。
+  en: A sensitive outcome has thread effective-identity divergence but lacks assignment or source-token data, producing incomplete
+    thread-token lineage rather than a confirmed attack.
+correlation:
+  window:
+    zh: 精确 token ID/AuthenticationId 从来源取得覆盖到线程 removal/RevertToSelf；无稳定键时回溯资源操作前三十分钟并前向十五分钟，线程池/服务 broker 最长扩展二小时。token 与
+      process start-key 基线至少保留三十日，常见服务身份基线至少九十日。
+    en: Exact token ID or AuthenticationId spans source acquisition through thread removal or RevertToSelf. Without a stable
+      key, look back thirty minutes from resource operation and forward fifteen minutes, extending at most two hours for thread
+      pools or service brokers. Retain token and process-start-key baselines for at least thirty days and common service-identity
+      baselines for at least ninety days.
+  dimensions:
+  - host
+  - process_start_key
+  - thread
+  - primary_token
+  - effective_token
+  - authentication_id
+  - source_process_or_logon
+  - user_sid
+  - integrity
+  - impersonation_level
+  - target_object
+  - outcome
+  - approval
+  - time
+false_positives:
+- zh: IIS/SQL/RPC/SMB 服务、COM broker、备份代理与身份感知中间件按协议代表已认证客户端执行，常产生主令牌与线程有效令牌差异。
+  en: IIS, SQL, RPC, and SMB services, COM brokers, backup agents, and identity-aware middleware act for authenticated clients
+    by design and commonly differ between primary and thread effective token.
+- zh: 帮助台、部署、EDR 与远程运维可临时模拟管理员；只有服务身份、caller/client、目标、二进制、工单、时段与结果全部符合基线才构成反例。
+  en: Help desk, deployment, EDR, and remote administration can temporarily impersonate administrators and qualify as counterexamples
+    only when service identity, caller or client, target, binary, work record, time, and outcome all match baseline.
+blind_spots:
+- zh: 仅在进程创建记录 user 的传感器看不到后续 TID token；内核级 token swap、直接结构修改或被关闭的 ETW provider 也会绕过 assignment telemetry。
+  en: Sensors recording user only at process creation miss later TID tokens, while kernel token swap, direct structure modification,
+    or a disabled ETW provider can bypass assignment telemetry.
+- zh: 异步线程池可能在 client request 与实际 TID 之间缺少稳定事务键，远程资源又可能使用网络凭据而非本地模拟 token，因而不能强行连接。
+  en: Asynchronous thread pools can lack a stable transaction key between client request and actual TID, while remote resources
+    may use network credentials rather than the local impersonation token, preventing forced joins.
+tuning_guidance:
+  paragraphs:
+  - zh: 为每个合法 broker 建立 service identity、允许 client SID/范围、carrier image/hash/signer、impersonation level、目标对象类别和资源结果组合；例外绑定版本与期限。不要把
+      SYSTEM、服务名、签名进程或命名管道永久允许，被攻陷 broker 仍需由异常 source token 与 outcome 揭示。
+    en: For every legitimate broker, baseline service identity, permitted client SID or range, carrier image, hash, and signer,
+      impersonation level, target-object class, and resource-outcome combination, with exceptions bound to version and expiry.
+      Never permanently allow SYSTEM, a service name, signed process, or named pipe, because anomalous source token and outcome
+      must still expose a compromised broker.
+  - zh: 先用受控服务模拟、LogonUser+SetThreadToken、token duplication 与 RevertToSelf 测试 token ID/TID 传播，再模拟日志缺失验证 degraded 输出。将“线程身份差异”“来源已恢复”“高权限结果已消费”作为三个独立布尔状态，只有全部满足且反例失败才升级高置信。
+    en: First test token-ID and TID propagation with controlled service impersonation, LogonUser plus SetThreadToken, token
+      duplication, and RevertToSelf, then simulate log loss to validate degraded outputs. Keep thread-identity difference,
+      recovered provenance, and consumed privileged outcome as three independent states and escalate to high confidence only
+      when all are present and counterexamples fail.
+evidence_refs:
+- REF-000326
+- REF-000327
+- REF-000328
+- REF-000332
+lifecycle:
+  status: review
+  version: 0.2.0
+  created: '2026-09-13'
+  modified: '2026-09-19'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

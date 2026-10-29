@@ -1,0 +1,130 @@
+schema_version: 2.0.0
+type: evasion-subtechnique
+id: NJS-0213-001
+parent_ref: NJT-0213
+name:
+  zh: 解析应答端点轮换
+  en: Resolver-Answer Endpoint Rotation
+summary:
+  zh: 攻击者持续改变一个逻辑名称的可用应答端点，植入每次使用当前解析结果，使单 IP 阻断与短窗基础设施关联快速过期。
+  en: Adversaries continuously change the endpoints returned for one logical name and have implants use the current answer,
+    causing single-IP blocking and short-window infrastructure correlation to expire quickly.
+aliases: []
+lineage:
+  attck_subtechnique_inherited: false
+definition_and_concept:
+  paragraphs:
+  - zh: 解析应答端点轮换是攻击者让同一逻辑名称在不同时刻返回不同可用地址或名称服务器路径，并让植入在建立 C2 前读取当前应答、直接把该地址作为连接目标。稳定变量是 attacker-controlled answer set
+      随时间变化及其被进程消费，而不是某个 A/AAAA/NS 记录、低 TTL 或“fast flux”名称。
+    en: Resolver-Answer Endpoint Rotation means an actor has one logical name return different live addresses or nameserver
+      paths over time and an implant reads the current answer before C2 and uses that address directly as its connection
+      target. The stable variable is an attacker-controlled answer set changing over time and being consumed by a process,
+      rather than an A, AAAA, or NS record, low TTL, or the label fast flux.
+  - zh: ESET 对 Gamaredon 数千样本和基础设施的研究显示 C2 IP 通常每天变化数次，并明确记录部分工具通过 WMI 自行解析硬编码域，再用所得 IP 联系 C2。这把 answer rotation、endpoint
+      consumption 和反阻断目的连接为直接证据。
+    en: ESET's research across thousands of Gamaredon samples and infrastructure shows C2 IPs commonly changing several
+      times per day and explicitly documents tools resolving a hardcoded domain themselves through WMI and then using
+      the resulting IP to contact C2. This directly links answer rotation, endpoint consumption, and the anti-blocking
+      purpose.
+stealth_characteristics:
+  paragraphs:
+  - zh: 解析应答端点轮换使同一域在不同递归器、缓存和时间窗下呈现不同 IP；按当前 IP 查杀只能看到一部分节点，旧连接和新连接可能被分散到多个 ASN、地区或证书。残余为 query、answer、TTL、rcode、解析时间、resolver/client、被动
+      DNS first/last seen 和紧随的同进程 RemoteIP 连接。
+    en: Resolver-Answer Endpoint Rotation makes the same domain present different IPs across recursive resolvers, caches,
+      and time windows. Blocking the current IP sees only part of the pool, while old and new connections can disperse
+      across ASNs, regions, or certificates. Residuals include query, answer, TTL, rcode, resolution time, resolver and
+      client, passive-DNS first and last seen, and the same process's immediate RemoteIP connection.
+  - zh: 轮换不必低 TTL，也不保证所有地址是代理；缓存可能使主机继续使用旧 endpoint。合法 CDN、GSLB、灾备、anycast、DDNS、云弹性和移动服务同样轮换地址，因此只有 answer history 加
+      endpoint consumption、服务归属差和控制结果才可定性。
+    en: Rotation need not use low TTL and does not prove every address is a proxy; caching can keep a host on an older
+      endpoint. Legitimate CDNs, GSLB, disaster recovery, anycast, DDNS, cloud elasticity, and mobile services also rotate
+      addresses, so classification requires answer history plus endpoint consumption, a service-ownership differential,
+      and control outcome.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 纳入要求同一逻辑名称的 attacker-controlled answer set 发生时间变化，并有同设备/进程在对应解析后连接当前结果。多个静态 A 记录、一次 round-robin、仅权威侧变化而无受害消费、域名指向批准
+      CDN 或 DNS 记录更新但连接未发生，都不足。
+    en: Inclusion requires time-varying attacker-controlled answers for one logical name and a corresponding connection
+      by the same device or process to the current result after resolution. Several static A records, one round-robin
+      observation, authoritative-side change without victim consumption, an approved CDN, or a DNS update without a connection
+      is insufficient.
+  - zh: 如果 answer IP 实际是中继/代理，T1090/NJT-0206 另管路径；如果 DNS response 内直接承载命令而不是 locator，归 T1071/NJT-0160；失败后才切换 answer/generator
+      时 NJT-0153 并列。服务对象公布当前 IP 时 NJT-0209 可并列，但服务资源不替代 DNS answer rotation 证据。
+    en: If an answer IP is actually a relay or proxy, T1090 or NJT-0206 separately owns the path. If the DNS response
+      carries commands rather than a locator, T1071 or NJT-0160 applies. NJT-0153 coexists when answer or generator switching
+      occurs only after failure. NJT-0209 can coexist when a service object publishes the current IP, but service-resource
+      evidence cannot replace DNS answer rotation.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: 针对政府机构的脚本植入可保存一个 C2 域，运行时用 WMI/系统 resolver 获取 IP 并直接连接；操作者每天多次更新域的地址集合，使阻断单一 IP 只短暂有效。防守需把每次解析版本与随后连接和脚本结果连接。
+      en: A script implant targeting a government organization can retain one C2 domain, resolve it through WMI or the
+        system resolver at runtime, and connect directly. The operator updates the domain's address set several times
+        per day so blocking one IP is short-lived. Defenders need to join each resolution version to the later connection
+        and script outcome.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者需要持续控制 DNS/动态更新凭据和一组在线 endpoint，并处理传播延迟、缓存、健康状态和证书。地址池扩大提高基础设施成本与被动 DNS/注册关联面；更新太快会因缓存不一致导致植入连接失败。
+        en: The actor needs continuing control of DNS or dynamic-update credentials and a pool of live endpoints and
+          must handle propagation delay, caching, health, and certificates. A larger pool raises infrastructure cost
+          and passive-DNS or registration correlation surface. Updates that are too fast can strand implants on stale
+          cached answers.
+    defender_model:
+      paragraphs:
+      - zh: 防守方可查询递归 DNS 的 client/query/answer/TTL/rcode 与端点 Event 22/3 或等效 resolver/network 进程事件，保留被动 DNS、RDAP、ASN 和
+          TLS 证书。需把 resolver client 映射回主机；若只有企业递归器的源 IP、DoH 绕过或流量采样，则消费链会断裂。
+        en: The defender can query recursive-DNS client, query, answer, TTL, and rcode fields and endpoint Event 22 and
+          3 or equivalent resolver and network process events and retain passive DNS, RDAP, ASN, and TLS certificates.
+          Resolver clients must be mapped back to hosts. Enterprise resolver source only, DoH bypass, or flow sampling
+          breaks the consumption chain.
+stealth_mechanisms:
+- mechanism_ref: NM-ST
+  role: primary
+  summary:
+    zh: 应答池变化把同一控制端分散到时间和网络节点
+    en: Answer-pool changes distribute one controller across time and network nodes
+  analysis:
+    paragraphs:
+    - zh: 攻击者让同一名字在不同时间解析到不同在线节点，单一 IP/短窗只呈现局部控制痕迹，增加跨端点重建成本。Gamaredon 的多次日内变化和解析后 IP 消费直接支持该链；按域和进程长窗合并 answer 与连接可恢复。
+      en: The actor has one name resolve to different live nodes over time, so one IP or short window shows only a local
+        fragment of control and raises cross-endpoint reconstruction cost. Gamaredon's multiple daily changes and post-resolution
+        IP use directly support the chain. Long-window merging of answers and connections by domain and process restores
+        it.
+  evidence_refs:
+  - REF-001071
+  confidence: high
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000247
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000219
+evidence:
+  claim_refs:
+  - CLM-001058
+  case_refs:
+  - CASE-000322
+  reference_refs:
+  - REF-001071
+  - REF-000037
+  - REF-000635
+research:
+  limitations:
+    paragraphs:
+    - zh: ESET 直接支持地址轮换和工具使用解析结果，但未公开每台受害主机的完整 DNS→socket 事件，也未给出统一 TTL。报告还说明 2022–2023 部分工具转向硬编码 IP，因此不能把所有 Gamaredon
+        C2 或每次变化都归入本子项。
+      en: ESET directly supports address rotation and tools consuming resolver results but does not publish complete
+        DNS-to-socket events for every victim or a universal TTL. The report also states some 2022–2023 tools shifted
+        to hardcoded IPs, so not every Gamaredon C2 or change qualifies.
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-10-05'
+  modified: '2026-10-05'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

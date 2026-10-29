@@ -1,0 +1,39 @@
+schema_version: "2.0.0"
+type: evasion-subtechnique
+id: NJS-0073-002
+parent_ref: NJT-0073
+name: {zh: 动态解析原生调用, en: Dynamically Resolved Native Invocation}
+summary: {zh: 攻击者在运行时从模块导出、名称/序号或哈希恢复函数地址，使静态导入与字符串不完整表达真实 API 集合。, en: Adversaries recover function addresses at runtime from module exports names or ordinals or hashes so static imports and strings do not fully express the actual API set.}
+aliases: [API Hashing, Dynamic API Resolution]
+lineage: {attck_subtechnique_inherited: false}
+definition_and_concept:
+  paragraphs:
+  - zh: 动态解析原生调用固定“函数身份只在运行时出现”变量。攻击者不把所需 API 全部记录为稳定导入，而是遍历已加载模块和导出表、调用 GetProcAddress/dlsym 类接口，或把 API 名称转换为哈希后匹配地址，再按恢复的原型执行。直接目标仍是调用原生服务，独立匿迹效果是磁盘静态特征缺少调用身份。
+    en: Dynamically Resolved Native Invocation fixes function identity appearing only at runtime. Instead of recording the required APIs as stable imports, the adversary traverses loaded modules and exports, calls an interface such as GetProcAddress or dlsym, or hashes API names to match addresses and invokes recovered prototypes. The direct objective remains a native service; the independent stealth effect is missing call identity from disk static features.
+  - zh: 运行时解析是正常加载能力，只有攻击者有意利用它减少可检查性并产生执行结果时进入本子项。API 哈希属于一种解析实现；若哈希只混淆字符串而未决定实际地址，不足以成立。解析后是否直接 syscall 与本项独立，可以与 NJS-0073-001 共现。
+    en: Runtime resolution is normal loading capability and qualifies only when deliberately used to reduce inspectability and produce an execution outcome. API hashing is one resolution implementation; hashes that only obscure strings without determining an address are insufficient. Whether the resolved function is followed by a direct syscall is independent and can coexist with NJS-0073-001.
+stealth_characteristics:
+  paragraphs:
+  - zh: 动态解析原生调用使导入表、imphash 和明文字符串只显示解析器而不显示最终敏感 API，静态扫描和执行前审批难以判断能力。SplatDropper 直接以 seed 131313 哈希解析 Windows API，随后解密驱动并创建服务。运行时导出遍历、GetProcAddress、哈希循环、目标地址、调用栈与服务/驱动结果仍可恢复；沙箱或 EDR 记录解析和结果时，匿迹显著下降。
+    en: Dynamically Resolved Native Invocation leaves imports imphash and clear strings showing only a resolver rather than final sensitive APIs, making static scanning and pre-execution approval less able to infer capability. SplatDropper directly hashes Windows APIs with seed 131313 before decrypting a driver and creating a service. Runtime export traversal GetProcAddress hashing loop target address call stack and service or driver outcomes remain recoverable; sandbox or EDR resolution and outcome capture materially reduces stealth.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 必须证明至少一个关键原生函数未稳定导入、在运行时被解析且后续调用产生执行结果，并说明这削弱了实际静态观察。插件、浏览器、JIT、兼容层和普通延迟加载会大量使用 GetProcAddress/dlsym，不能按解析函数本身定性。按名称、序号、哈希或 PEB 遍历不拆分，因防守差异相同。
+    en: Evidence must show at least one material native function absent from stable imports resolved at runtime and invoked for an execution outcome and that this weakened actual static observation. Plug-ins browsers JIT compatibility layers and ordinary delay loading frequently use GetProcAddress or dlsym and cannot be classified from the resolver alone. Name ordinal hash and PEB traversal do not partition the child because the defensive difference is the same.
+application_scenarios_and_threat_model:
+  application_scenarios: {paragraphs: [{zh: 加载器、后门或信息窃取程序希望减小导入表、字符串和 imphash 暴露，同时按需调用内存、线程、服务或反分析 API 时使用；可先定位 kernel32/ntdll 等模块，再解析最小引导函数和后续敏感调用。, en: Loaders backdoors or stealers use this when minimizing imports strings and imphash while invoking memory thread service or anti-analysis APIs on demand. They can locate modules such as kernel32 or ntdll then resolve bootstrap functions and later sensitive calls.}]}
+  threat_model:
+    attacker_model: {paragraphs: [{zh: 需要理解模块布局、导出格式、调用原型、转发导出和哈希碰撞，并保证目标版本可用。解析逻辑增加代码和错误风险；运行时监控、沙箱和控制流保护会暴露地址来源和调用结果。, en: Requires knowledge of module layout export format prototypes forwarded exports and hash collisions and availability on target versions. Resolver logic adds code and failure risk; runtime monitoring sandboxes and control-flow protections expose address origin and outcomes.}]}
+    defender_model: {paragraphs: [{zh: 防守方需同时比较磁盘导入/字符串与运行时模块、导出解析、间接调用目标和结果，保存进程/线程调用栈与内存映射。只有静态扫描会漏掉真实集合；只有动态结果则难证明“静态可检查性被有意降低”。, en: Defenders compare disk imports or strings with runtime modules export resolution indirect targets and outcomes and retain process or thread stacks and memory maps. Static scanning alone misses the actual set while outcomes alone cannot establish deliberate reduction of static inspectability.}]}
+stealth_mechanisms:
+- mechanism_ref: NM-DO
+  role: primary
+  summary: {zh: 原生函数身份在运行前不完整存在于稳定制品, en: Native function identity is incomplete in stable artifacts before execution}
+  analysis: {paragraphs: [{zh: 运行时解析让磁盘数据只保留解析过程或哈希，关键 API 身份在执行时才恢复，降低可检查性并形成数据遮蔽。SplatDropper 样本和官方 GetProcAddress 语义支持 high；动态跟踪导出、目标地址和结果能够还原。, en: Runtime resolution leaves only resolver logic or hashes on disk and restores critical API identity at execution time reducing inspectability and producing Data Obscuration. SplatDropper and official GetProcAddress semantics support high confidence; dynamic tracing of exports target addresses and outcomes restores it.}]}
+  evidence_refs: [REF-000224, REF-000226]
+  confidence: high
+defense: {detections: {coverage: available, strategy_refs: [DET-000061]}, mitigations: {coverage: available, mitigation_refs: [MIT-000083]}}
+evidence: {claim_refs: [CLM-000279, CLM-000419, CLM-000423], case_refs: [CASE-000078], reference_refs: [REF-000224, REF-000226]}
+research:
+  limitations: {paragraphs: [{zh: 直接案例为 Windows API 哈希；其他 OS 只在等价动态符号解析范围内推广。动态解析极其常见，必须结合关键 API 集合、解析模式、调用者完整性和后继结果；若静态制品已包含可逆名称表，数据遮蔽强度应降低。, en: The direct case is Windows API hashing and other operating systems generalize only to equivalent dynamic symbol resolution. Dynamic resolution is ubiquitous and requires sensitive API set resolver pattern caller integrity and successor outcome. If static artifacts contain a reversible name table Data Obscuration confidence should be lower.}]}
+lifecycle: {status: review, version: 1.1.0, created: '2026-09-10', modified: '2026-09-12', contributors: [Niji Matrix Research], reviewers: []}

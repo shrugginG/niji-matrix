@@ -1,0 +1,167 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000330
+strategy_ref: DET-000250
+name:
+  zh: ONTAP SMB/NFS 成功读取与授权范围差分
+  en: ONTAP SMB or NFS Successful-Read and Authorized-Scope Differential
+summary:
+  zh: 按对象、主体、会话与结果字段实现“ONTAP SMB/NFS 成功读取与授权范围差分”。
+  en: Implement ONTAP SMB or NFS Successful-Read and Authorized-Scope Differential with object, principal, session, and outcome
+    fields.
+domains:
+- enterprise
+platforms:
+- Linux
+- Windows
+logic:
+  paragraphs:
+  - zh: '在选定 ONTAP SVM 和高价值卷上先创建并验证 NAS audit 配置，再为 SMB 的 List folder/Read data 或 NFSv4 审计 ACE 配置成功事件；未经该前提不得从缺日志推断未读取。解析转换后的
+      EVTX/XML 或受管 FPolicy 通知，保留 SVM、协议、客户端 IP、Windows 用户或 UNIX UID/GID、ObjectName/卷与相对路径、operation=READ、成功/失败结果、HandleID
+      和事件时间。FPolicy 若启用 first-read，只能证明观察期内首次读取通知，不能恢复所有读次数。
+
+      将成功 READ 按客户端、主体、export/share、对象敏感度和三十分钟窗口聚合，并接到 connected-client/export-policy、身份映射以及批准备份、迁移、扫描和业务应用清单。对象路径需由 ObjectName
+      中的卷和相对路径还原到 junction path。只有成功 READ 越出批准路径/职责或由陌生客户端和进程来源发起时提升；access denied 或 security trace 仅表示授权结果。后续文件/外联结果作为优先级信息，不把
+      NAS 管理 REST 的对象读取误认为普通 SMB/NFS 审计已覆盖，因为官方文档说明管理 REST 可绕过 NAS audit。'
+    en: 'Create and validate a NAS audit configuration on selected ONTAP SVMs and high-value volumes before configuring successful
+      events for SMB List folder or Read data or NFSv4 audit ACEs. Without that prerequisite, missing logs cannot establish
+      no read. Parse converted EVTX or XML or governed FPolicy notifications and retain SVM, protocol, client IP, Windows
+      principal or UNIX UID and GID, ObjectName with volume and relative path, operation READ, success or failure result,
+      HandleID, and event time. If FPolicy uses first-read, it proves only the first notification in the observation period
+      and cannot reconstruct every read count.
+
+      Aggregate successful READ events by client, principal, export or share, object sensitivity, and a thirty-minute window,
+      then join connected-client or export-policy state, identity mapping, and approved backup, migration, scanning, and business
+      application inventories. Reconstruct the full path by joining the volume and relative path in ObjectName to its junction
+      path. Elevate only when successful READ leaves approved path or duty or comes from an unfamiliar client or process source;
+      access denied or a security trace establishes authorization outcome only. Later file or egress results change priority.
+      Do not assume ordinary SMB or NFS audit covers administrative REST content access, because official documentation states
+      that management REST can bypass NAS audit.'
+data_requirements:
+- source_type: ontap-nas-audit-read
+  name:
+    zh: 经验证的Ontap Nas Audit Read数据
+    en: Ontap Nas Audit Read
+  channel: ONTAP converted EVTX/XML audit log with successful file-operation auditing
+  required_fields:
+  - timestamp
+  - svm_id
+  - protocol
+  - client_ip
+  - principal
+  - uid
+  - gid
+  - event_id
+  - operation
+  - success
+  - object_name
+  - handle_id
+- source_type: ontap-fpolicy-read-notification
+  name:
+    zh: 经验证的Ontap Fpolicy Read Notification数据
+    en: Ontap Fpolicy Read Notification
+  channel: validated FPolicy event stream when deployed
+  required_fields:
+  - timestamp
+  - svm_id
+  - protocol
+  - client_ip
+  - principal
+  - operation
+  - filter
+  - object_path
+  - result
+- source_type: ontap-client-export-and-path-state
+  name:
+    zh: 经验证的Ontap Client Export And Path State数据
+    en: Ontap Client Export And Path State
+  channel: ONTAP connected-clients, export policy, volume, and junction inventory
+  required_fields:
+  - svm_id
+  - client_ip
+  - protocol
+  - volume_id
+  - export_policy_id
+  - share_or_export
+  - junction_path
+- source_type: authorized-nas-reader-inventory
+  name:
+    zh: 经验证的Authorized Nas Reader Inventory数据
+    en: Authorized Nas Reader Inventory
+  channel: null
+  required_fields:
+  - principal_id
+  - client_id
+  - application_or_job_id
+  - approved_share_or_export
+  - approved_paths
+  - owner
+  - valid_from
+  - valid_to
+- source_type: nas-object-sensitivity
+  name:
+    zh: 经验证的Nas Object Sensitivity数据
+    en: Nas Object Sensitivity
+  channel: null
+  required_fields:
+  - normalized_object_path
+  - sensitivity
+  - business_owner
+  - authorized_roles
+observables:
+- zh: 需人工核实的正常活动。
+  en: successful_nas_read
+- zh: 需人工核实的正常活动。
+  en: first_read_notification
+- zh: 需人工核实的正常活动。
+  en: client_principal_path_scope_deviation
+- zh: 需人工核实的正常活动。
+  en: nas_audit_bypass_gap
+correlation:
+  window:
+    zh: 成功 READ 按三十分钟分组，并保留主体、客户端和导出范围三十天基线。
+    en: successful READs grouped for 30m; principal/client/export baseline 30d
+  dimensions:
+  - svm_id
+  - protocol
+  - client_ip
+  - principal
+  - uid
+  - gid
+  - share_or_export
+  - volume_id
+  - normalized_object_path
+  - handle_id
+  - application_or_job_id
+  - time
+false_positives:
+- zh: NAS 备份、快照/恢复验证、文件迁移、反恶意软件或分类扫描、索引、媒体工作流、电子发现和合法 NFS 计算任务都会批量读取。版本升级或 failover 还可能改变 node、client/session 和重复通知特征。
+  en: NAS backup, snapshot or restore validation, file migration, antimalware or classification scanning, indexing, media
+    workflows, e-discovery, and authorized NFS compute jobs all perform bulk reads. Upgrade or failover can also change node,
+    client or session identity, and duplicate-notification behavior.
+blind_spots:
+- zh: 审计配置、SACL/ACE、转换空间和保留任何一项缺失都会丢失读取；NFS UID/GID 映射、共享 NAT、FPolicy first-read 和未支持的协议版本会降低计数与归因。ONTAP 管理 REST 文件访问可绕过 NAS
+    audit，且成功 READ 仍不证明攻击者保存了完整对象。
+  en: Missing audit configuration, SACL or ACE, conversion capacity, or retention loses reads. NFS UID and GID mapping, shared
+    NAT, FPolicy first-read, and unsupported protocol versions reduce count and attribution. ONTAP administrative REST file
+    access can bypass NAS audit, and a successful READ still does not prove the adversary retained the complete object.
+tuning_guidance:
+  paragraphs:
+  - zh: 按最小必要范围对高价值卷部署成功 READ 审计，先验证一组已知 SMB/NFS 测试读取能生成完整路径、主体、客户端和成功结果。对备份/迁移例外使用精确 SVM、export/share、路径、主体、客户端、job ID 和时间窗口，保留越权路径与陌生客户端；不要按协议或
+      NAS 产品名称直接判恶。
+    en: Deploy successful-READ audit on the smallest necessary high-value volume scope and first verify known SMB and NFS
+      test reads produce complete path, principal, client, and success fields. Define backup and migration exceptions by exact
+      SVM, export or share, path, principal, client, job ID, and window, while retaining out-of-scope paths and unfamiliar
+      clients. Do not classify activity as malicious by protocol or NAS product name.
+evidence_refs:
+- REF-001090
+- REF-001091
+- REF-001092
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-10-05'
+  modified: '2026-10-05'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

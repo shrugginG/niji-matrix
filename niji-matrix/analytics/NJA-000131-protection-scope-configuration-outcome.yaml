@@ -1,0 +1,65 @@
+schema_version: "2.0.0"
+type: detection-analytic
+id: NJA-000131
+strategy_ref: DET-000130
+name:
+  zh: 防护范围配置—对象结果差分
+  en: Protection-Scope Configuration–Object Outcome Differential
+summary:
+  zh: 对安全策略版本做语义差分，并验证新排除范围内对象是否失去实际检查或阻断。
+  en: Semantically diff security-policy versions and verify whether objects entering newly excluded scope lose actual inspection or blocking.
+domains: [enterprise]
+platforms: []
+logic:
+  paragraphs:
+    - zh: 对每个 tool_instance_id 保存规范化、可排序的策略版本，展开文件/目录/扩展名/进程/签名、规则、扫描方向、事件类别、提供程序、租户/账户/区域与资源选择器。每次变化记录 writer、authority、old_version、new_version、changed_selector、action、reason、approval_id 和生效范围；把新增 exclude、规则禁用、提供程序拆除或覆盖集合缩小转换为 scope_removed 集合，不能只按原始配置文本或键名告警。
+      en: Preserve a normalized, sortable policy version for each tool_instance_id and expand file, directory, extension, process, signer, rule, scan-direction, event-class, provider, tenant, account, Region, and resource selectors. Record writer, authority, old_version, new_version, changed_selector, action, reason, approval_id, and effective scope for every change. Convert added exclusions, disabled rules, removed providers, or narrowed coverage sets into a scope_removed set instead of alerting only on raw configuration text or key names.
+    - zh: 在策略生命周期内把 scope_removed 与实际 file/process/request/resource/event 对象匹配，并连接产品 evaluation、scan_result、alert 或 block decision。未经批准或范围异常宽的变化先输出 scope_contraction_suspicious；只有 heartbeat 仍正常、对象命中新收缩范围、基线策略本应检查且当前缺少 evaluation 或结果由 block 变 allow 时，才输出 scope_contraction_confirmed。没有受影响对象时保持潜在暴露，不把配置风险升级为已利用盲区。
+      en: During the policy lifetime, match scope_removed against real file, process, request, resource, or event objects and join product evaluation, scan_result, alert, or block decisions. An unapproved or unusually broad change first emits scope_contraction_suspicious. Emit scope_contraction_confirmed only when heartbeat remains healthy, an object enters the newly removed scope, baseline policy would have inspected it, and current evaluation is missing or the outcome changes from block to allow. Without an affected object, retain potential exposure rather than upgrading configuration risk to an exploited blind spot.
+data_requirements:
+  - source_type: security-policy-audit
+    name: {zh: 安全策略与排除项变更审计, en: Security-policy and exclusion-change audit}
+    channel: null
+    required_fields: [timestamp, tool_instance_id, asset_or_scope_id, writer_id, authority, old_version, new_version, selector_type, selector_value, old_action, new_action, approval_id]
+  - source_type: normalized-policy-snapshot
+    name: {zh: 规范化防护策略快照, en: Normalized protection-policy snapshots}
+    channel: null
+    required_fields: [timestamp, tool_instance_id, policy_version, selector_type, selector_value, action, inherited_from, effective_scope]
+  - source_type: security-product-evaluation
+    name: {zh: 安全产品检查、告警与阻断结果, en: "Security-product evaluation, alert, and block outcomes"}
+    channel: null
+    required_fields: [timestamp, tool_instance_id, object_id, object_type, policy_version, evaluation_present, scan_result, alert_id, product_decision]
+  - source_type: independent-object-activity
+    name: {zh: 独立对象与活动遥测, en: Independent object and activity telemetry}
+    channel: null
+    required_fields: [timestamp, asset_or_scope_id, object_id, object_type, path_or_resource, process_id, signer, event_class, observed_action]
+observables:
+  - {zh: 新增排除项、禁用规则、移除提供程序或缩小租户与资源覆盖, en: "A new exclusion, disabled rule, removed provider, or narrowed tenant and resource coverage"}
+  - {zh: 工具 heartbeat 保持正常但命中新范围的对象不再产生 evaluation, en: Tool heartbeat remains healthy while an object matching new scope produces no evaluation}
+  - {zh: 同类对象在旧策略下被阻断而新策略下允许, en: Comparable objects are blocked under the old policy and allowed under the new policy}
+  - {zh: 高权限 writer 在后续恶意活动前短时间内创建宽范围例外, en: A privileged writer creates a broad exception shortly before follow-on malicious activity}
+correlation:
+  window:
+    zh: 从策略变化前一小时关联至该版本被替换或最多三十天；首次命中新收缩范围的对象优先，并保留旧版本对照。
+    en: Correlate from one hour before a policy change until that version is replaced or for at most thirty days, prioritizing the first object entering newly removed scope and retaining the previous-version comparison.
+  dimensions: [tool_instance_id, asset_or_scope_id, policy_version, selector_type, selector_value, writer_id, object_id, object_type, approval_id, time]
+false_positives:
+  - {zh: 经验证的兼容性、性能、备份或开发工作流排除, en: "Validated compatibility, performance, backup, or development-workflow exclusions"}
+  - {zh: 事件响应期间为隔离或取证临时调整的规则, en: Temporary rule changes for isolation or forensics during incident response}
+  - {zh: 产品迁移时短暂重叠或拆除旧提供程序, en: Temporary overlap or removal of an old provider during product migration}
+blind_spots:
+  - {zh: 本地管理员合并的排除项未上传集中审计, en: Locally merged administrator exclusions are not uploaded to centralized audit}
+  - {zh: 产品不记录对象级 evaluation 或策略版本, en: The product does not record object-level evaluation or policy version}
+  - {zh: 动态、加密或代码内策略无法规范化为选择器, en: "Dynamic, encrypted, or code-resident policy cannot be normalized into selectors"}
+tuning_guidance:
+  paragraphs:
+    - zh: 以组织批准的完整策略为基线，对排除项设置 owner、业务对象、最窄 selector、到期时间和验证样本；高风险范围如整盘、通配扩展、解释器进程、审计类别或全租户资源应单独评分。白名单绑定具体 version 与 approval，过期后必须恢复比较；不能因 heartbeat 正常就降低配置差分，也不能仅因排除项存在就宣称已利用。
+      en: Baseline the complete approved policy and assign every exclusion an owner, business object, narrowest selector, expiry, and validation sample. Score high-risk scope such as an entire drive, wildcard extension, interpreter process, audit class, or all-tenant resources separately. Allowlists bind an exact version and approval and must return to comparison after expiry. Healthy heartbeat does not suppress configuration differences, and the existence of an exclusion alone does not establish exploitation.
+evidence_refs: [REF-000446, REF-000447, REF-000450]
+lifecycle:
+  status: review
+  version: "1.0.0"
+  created: "2026-09-22"
+  modified: "2026-09-22"
+  contributors: [Niji Matrix Research]
+  reviewers: []

@@ -1,0 +1,49 @@
+schema_version: "2.0.0"
+type: detection-analytic
+id: NJA-000230
+strategy_ref: DET-000199
+name: {zh: SafeBoot 载荷存活注册分析, en: SafeBoot Payload-Survival Enrollment Analytic}
+summary: {zh: 识别攻击者把自身 service/COM/payload 加入 SafeBoot 允许集，并在防御组件缺席的实际受限启动中被消费。, en: "Identify adversary enrollment of a service, COM path, or payload in the SafeBoot allowlist and its consumption during an actual restricted boot where defensive components are absent."}
+domains: [enterprise]
+platforms: [Windows]
+logic:
+  paragraphs:
+    - zh: 版本化 HKLM\SYSTEM\CurrentControlSet\Control\SafeBoot\Minimal、Network 及相关 COM/service 配置，保留 key/value old-new-delete、writer principal/process/session/source、approval、service name、ImagePath/binPath、start type、binary hash/signature、file creation 与关联 BCD boot_intent_id。把每个新增允许项解析为 safeboot_enrollment_id，并与批准系统/安全/维护 service inventory 比较。
+      en: Version HKLM\SYSTEM\CurrentControlSet\Control\SafeBoot\Minimal and Network plus related COM or service configuration, retaining key or value old, new, and delete, writer principal, process, session, and source, approval, service name, ImagePath or binPath, start type, binary hash or signature, file creation, and the related BCD boot_intent_id. Resolve each new allowed item into a safeboot_enrollment_id and compare it with approved system, security, and maintenance service inventory.
+    - zh: 在后续实际 Safe Mode boot_id 中，连接 Service Control Manager/COM activation、loaded module、payload process lineage 和 enrollment binary，并同时计算 baseline defense component gap。若未批准 enrollment 在重启前生效、对应 service/payload 在受限 session 启动、至少一个正常防御组件缺席且 payload 产生安全目录修改、恢复删除或加密等结果，则输出 confirmed_payload_survival_enrollment。
+      en: In the subsequent actual Safe Mode boot ID, join Service Control Manager or COM activation, loaded modules, payload process lineage, and enrollment binary while also computing the baseline defense-component gap. Emit confirmed_payload_survival_enrollment when unapproved enrollment takes effect before reboot, the corresponding service or payload starts in the restricted session, at least one normal defensive component is absent, and the payload produces security-directory modification, recovery deletion, encryption, or another malicious outcome.
+    - zh: 只有 Registry/service 变化输出 payload_enrollment_exposure；载荷未启动输出 unconsumed_enrollment；Windows/安全产品批准的 Safe Mode service、OEM 恢复组件和维护脚本按签名、owner、工单、host role 与期限排除。删除 WinDefend SafeBoot 条目或直接 stop/rename defense 另可映射 NJT-0123，但 child 仍要求攻击者载荷非对称存活。
+      en: Registry or service change alone produces payload_enrollment_exposure, and a payload that never starts produces unconsumed_enrollment. Approved Windows or security-product Safe Mode services, OEM recovery components, and maintenance scripts are excluded by signature, owner, ticket, host role, and expiry. Deleting a WinDefend SafeBoot entry or directly stopping or renaming a defense can also map to NJT-0123, while this child still requires asymmetric survival of the adversary payload.
+data_requirements:
+  - source_type: safeboot-allowlist-audit
+    name: {zh: SafeBoot Minimal/Network 与 COM/Service 版本, en: SafeBoot Minimal or Network and COM or Service Versions}
+    channel: Registry auditing configuration management Service Control Manager
+    required_fields: [timestamp, host_id, registry_path, value_name, old_value, new_value, change_type, writer_principal, writer_process_id, writer_process_path, source_host, session_id, approval_id, service_name, service_image_path, service_start_type, com_clsid, safeboot_enrollment_id]
+  - source_type: binary-and-service-identity
+    name: {zh: 注册载荷二进制、签名与文件谱系, en: Enrolled Payload Binary Signature and File Lineage}
+    channel: File integrity code-signing inventory software catalog
+    required_fields: [timestamp, host_id, file_path, file_hash, signer, signature_status, product_name, first_seen, creator_process_id, source_url_or_share, owner_id, approved_role]
+  - source_type: restricted-boot-consumption
+    name: {zh: Safe Mode Service/COM 消费与防御组件差, en: Safe Mode Service or COM Consumption and Defensive-Component Difference}
+    channel: Boot log Service Control Manager COM telemetry process and external EDR management plane
+    required_fields: [timestamp, host_id, boot_id, boot_mode, safeboot_enrollment_id, service_name, service_status, activation_id, process_id, parent_process_id, loaded_module, component_name, expected_state, loaded_state, heartbeat_time, outcome]
+observables:
+  - {zh: 未批准 service/COM 在重启前被加入 SafeBoot Minimal/Network, en: An unapproved service or COM object is added to SafeBoot Minimal or Network before reboot}
+  - {zh: 注册二进制在下一 Safe Mode boot 中启动，而基线 EDR/AV 组件没有加载, en: The enrolled binary starts in the next Safe Mode boot while baseline EDR or AV components do not load}
+  - {zh: 载荷随后修改安全产品目录、删除恢复数据或执行加密，并清理 enrollment, en: The payload then modifies security-product directories deletes recovery data or encrypts and cleans up enrollment}
+correlation:
+  window: {zh: 从 SafeBoot/service 首次变化前一小时到 enrollment 删除并恢复正常启动后七日。, en: "Correlate one hour before the first SafeBoot or service change through seven days after enrollment removal and return to normal boot."}
+  dimensions: [host_id, boot_intent_id, boot_id, safeboot_enrollment_id, registry_path, service_name, com_clsid, file_hash, signer, writer_principal, session_id, process_id, parent_process_id, component_name, approval_id, time]
+false_positives:
+  - {zh: 安全产品或运维工具经批准增加 Safe Mode 支持并在维护窗口测试, en: A security product or administration tool is approved to add Safe Mode support and tested in a maintenance window}
+  - {zh: OEM/Windows 恢复组件、存储或网络 driver 正常注册进 SafeBoot 集, en: An OEM or Windows recovery component storage driver or network driver is legitimately enrolled in the SafeBoot set}
+  - {zh: 安装/升级事务暂时写入 service 或 Registry，随后回滚且未在 Safe Mode 消费, en: An install or upgrade transaction temporarily writes service or Registry state then rolls back without Safe Mode consumption}
+blind_spots:
+  - {zh: Registry old-new 未远程保存且攻击者在重启后清理 enrollment, en: Registry old and new is not remotely retained and the adversary cleans enrollment after reboot}
+  - {zh: Payload 使用受信系统 service/COM identity、内存替换或离线 Registry 修改，普通文件/Writer 归因失效, en: The payload uses a trusted system service or COM identity memory replacement or offline Registry modification and ordinary file or writer attribution fails}
+tuning_guidance:
+  paragraphs:
+    - zh: 以精确 registry path、service identity、binary hash/signature、host role 和有效期维护 Safe Mode allowlist，不按名称包含 WinDefend 或随机 service 直接阻断。高置信要求 enrollment、实际 boot consumption、defense gap 和 payload result 四者闭环；安全产品为获得 Safe Mode 覆盖而新增项应有独立审批且仍记录消费。
+      en: Maintain the Safe Mode allowlist by exact Registry path, service identity, binary hash or signature, host role, and validity interval rather than blocking on WinDefend or random-looking service names. High confidence requires closure across enrollment, actual boot consumption, defense gap, and payload result. Security-product additions intended to gain Safe Mode coverage need independent approval and their consumption remains recorded.
+evidence_refs: [REF-000359, REF-000754, REF-000755, REF-000758]
+lifecycle: {status: review, version: "1.0.0", created: "2026-09-23", modified: "2026-09-23", contributors: [Niji Matrix Research], reviewers: []}

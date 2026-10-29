@@ -1,0 +1,118 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000209
+strategy_ref: DET-000188
+name:
+  zh: 签名密钥暴露到依赖方接受谱系
+  en: Signing-Key Exposure to Relying-Party Acceptance Lineage
+summary:
+  zh: 签名密钥暴露到依赖方接受谱系输出分层异常结果。
+  en: Signing-Key Exposure to Relying-Party Acceptance Lineage emits a graded anomaly result.
+domains:
+- enterprise
+platforms:
+- Identity Provider
+- SaaS
+- IaaS
+- Windows
+logic:
+  paragraphs:
+  - zh: 对已登记 IdP 签名密钥、机器 DPAPI 保护材料、AD FS 配置/复制接口和联合信任变更收集访问者、主机、对象、旧新 signer、审批和结果。单独的 4663 文件访问、复制调用或信任变更只生成 capability_exposure。若同一 signer
+      有后续依赖方成功且缺失对应 IdP 签发，再按证书指纹、IdP、relying party 和有效期连接为 suspected_offchain_minting；只有材料接受或资源结果才能升级，不能把密钥读取直接写成令牌已造。
+    en: Collect actor, host, object, old and new signer, approval, and result for inventoried IdP signing keys, machine-DPAPI protection material,
+      AD FS configuration or replication interfaces, and federation-trust changes. A 4663 file access, replication call, or trust change alone
+      emits capability_exposure. If the same signer later appears in a relying-party success without matching IdP issuance, join by certificate
+      fingerprint, IdP, relying party, and validity as suspected_offchain_minting. Escalation requires accepted material or a resource result;
+      key reads alone do not prove token creation.
+data_requirements:
+- source_type: signing-key-and-protection-access
+  channel: configured SACL 4663 or EDR cryptographic-key and DPAPI artifact telemetry
+  required_fields:
+  - timestamp
+  - host_id
+  - actor_id
+  - process_id
+  - object_path_or_key_id
+  - access_operation
+  - result
+  name:
+    zh: signing-key-and-protection-access
+    en: Signing Key And Protection Access
+- source_type: federation-trust-inventory-audit
+  channel: IdP or tenant audit and trusted external inventory
+  required_fields:
+  - timestamp
+  - identity_provider_or_domain
+  - signer_fingerprint
+  - change_type
+  - initiator
+  - approval_id
+  - effective_from
+  - effective_to
+  name:
+    zh: federation-trust-inventory-audit
+    en: Federation Trust Inventory Audit
+- source_type: relying-party-federated-signin
+  channel: Entra sign-in or SaaS federation authentication log
+  required_fields:
+  - timestamp
+  - tenant_or_application_id
+  - principal_id
+  - issuer_id
+  - result
+  - session_or_correlation_id
+  - source_ip
+  name:
+    zh: relying-party-federated-signin
+    en: Relying Party Federated Signin
+observables:
+- zh: 活动签名密钥被访问
+  en: An active signing key is accessed
+- zh: 机器 DPAPI 签名材料被访问
+  en: Machine DPAPI signing material is accessed
+- zh: 联合 signer 或信任发生变化
+  en: A federation signer or trust changes
+- zh: 联合登录被依赖方接受
+  en: A federated sign-in is accepted
+- zh: 暴露 signer 的接受事件缺少签发记录
+  en: Acceptance under an exposed signer lacks issuance
+correlation:
+  window:
+    zh: signer-validity-and-session-lifetime
+    en: signer-validity-and-session-lifetime
+  dimensions:
+  - identity_provider_or_domain
+  - signer_fingerprint
+  - host_id
+  - actor_id
+  - principal_id
+  - tenant_or_application_id
+  - session_or_correlation_id
+  - time
+false_positives:
+- zh: 批准的证书轮换、AD FS 节点加入/恢复、HSM 迁移、备份和灾难恢复会访问或改变密钥；须核对双人批准、活动 signer、目标节点及迁移窗口。
+  en: Approved certificate rotation, AD FS node enrollment or recovery, HSM migration, backup, and disaster recovery access or change keys; check
+    dual approval, active signer, target node, and migration window.
+blind_spots:
+- zh: SACL 未配置时没有 4663，内存内或 HSM 内操作可能没有文件路径，依赖方常不暴露 signer 指纹；过时数据库证书访问也可能与活动 signer 无关。
+  en: Event 4663 is absent without SACL configuration, in-memory or HSM operations may lack a file path, relying parties often omit signer fingerprints,
+    and access to a stale database certificate may not involve the active signer.
+tuning_guidance:
+  paragraphs:
+  - zh: 清单必须区分活动、次要、过期和数据库残留证书；仅对精确对象、批准操作者、维护主机和限时窗口降权。key access 与依赖方接受使用独立证据等级，只有再出现发行缺口、异常声明或资源结果才提升严重度。定期用无生产权限的 canary 验证 SACL、日志出口和 signer
+      映射。
+    en: Inventory active, secondary, expired, and database-stale certificates separately. Down-weight only exact objects, approved actors, maintenance
+      hosts, and bounded windows. Keep key access and relying-party acceptance as separate evidence tiers and raise severity only with an issuance
+      gap, claim anomaly, or resource result. Regularly validate SACLs, export, and signer mapping with a nonproduction-capable canary.
+evidence_refs:
+- REF-000712
+- REF-000713
+- REF-000304
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-09-23'
+  modified: '2026-09-23'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

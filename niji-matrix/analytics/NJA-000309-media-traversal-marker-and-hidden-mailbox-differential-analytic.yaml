@@ -1,0 +1,151 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000309
+strategy_ref: DET-000239
+name:
+  zh: 介质遍历标记与隐藏信箱差分分析
+  en: Media Traversal-Marker and Hidden-Mailbox Differential Analytic
+summary:
+  zh: 比较介质行程中的身份信箱、角色标记与隐藏状态变化。
+  en: Compare identity mailboxes, role markers, and hidden-state changes across a media trip.
+domains:
+- enterprise
+platforms:
+- Windows
+logic:
+  paragraphs:
+  - zh: 在受管检查站为每个获准可写介质采集组织资产号、所见序列号、物理容量、逻辑扇区大小、启动区域摘要、分区表摘要、卷身份、文件清单和隐藏/系统属性。每次从联网区出发、进入受限区、离开受限区和返回联网区时重新采集，并把原始差分归一到
+      byte_offset、before_hash、after_hash、changed_length、file_manifest_delta 和 trip_role。识别与区域访问顺序一致的少量启动区域字节反复变化、新增小型标记、被隐藏的任务/结果目录，以及只有两个角色标记均满足后才出现的读写或执行。
+    en: At a managed checkpoint, acquire organizational asset ID, observed serial, physical capacity, logical sector
+      size, boot-region digest, partition-table digest, volume identity, file manifest, and hidden or system attributes
+      for every approved writable medium. Reacquire when leaving the connected zone, entering the restricted zone, leaving
+      it, and returning, normalizing raw differences into byte_offset, before_hash, after_hash, changed_length, file_manifest_delta,
+      and trip_role. Identify small boot-region changes that recur in the order of zone visits, new small markers, hidden
+      task or result directories, and read, write, or execution that begins only after both role markers are satisfied.
+  - zh: 只有原始或隐藏状态差分与同一行程上的任务对象、受限端执行及返回对象相连时才升级为遍历门控 C2；单纯 MBR 变化、隐藏属性或高熵内容保持介质异常。若检查站无法取得完整原始镜像，可用签名启动区域摘要和全量可见清单提供较低置信覆盖。GoldenDealer
+      的两个 BOOTMGR 字节和隐藏双向文件是直接样本锚点，USBStealer 的 desktop.in 与本地硬件 ID 记忆提供文件级对照。
+    en: Escalate to traversal-gated C2 only when raw or hidden-state differences join task objects, restricted-side execution,
+      and return objects on the same trip. An MBR change, hidden attribute, or high-entropy content alone remains a media
+      anomaly. If the checkpoint cannot acquire a complete raw image, a signed boot-region digest and full visible manifest
+      provide lower-confidence coverage. GoldenDealer's two BOOTMGR-byte markers and hidden bidirectional files are direct
+      sample anchors, while USBStealer's desktop.in and remembered hardware ID provide a file-level contrast.
+data_requirements:
+- source_type: raw-media-checkpoint-inventory
+  name:
+    zh: 检查站原始介质与文件清单
+    en: Checkpoint Raw-Media and File Inventory
+  channel: managed removable-media inspection station
+  required_fields:
+  - timestamp
+  - checkpoint_id
+  - media_asset_id
+  - observed_serial
+  - physical_capacity_bytes
+  - logical_sector_size
+  - boot_region_hash
+  - partition_table_hash
+  - volume_id
+  - file_path
+  - file_size
+  - content_hash_when_available
+  - hidden_and_system_attributes
+  - scan_completeness
+- source_type: raw-device-access-events
+  name:
+    zh: 端点原始设备访问
+    en: Endpoint Raw-Device Access
+  channel: EDR, minifilter, or storage telemetry with validated physical-disk attribution
+  required_fields:
+  - timestamp
+  - endpoint_id
+  - process_unique_key
+  - process_image
+  - raw_device_path
+  - access_type
+  - byte_offset
+  - byte_length
+- source_type: media-device-and-file-events
+  name:
+    zh: 接入角色与隐藏信箱活动
+    en: Attachment Role and Hidden-Mailbox Activity
+  channel: endpoint device, file, and process telemetry
+  required_fields:
+  - timestamp
+  - endpoint_id
+  - endpoint_zone
+  - media_asset_or_instance_id
+  - drive_or_mount_path
+  - file_path
+  - file_attributes
+  - action_type
+  - initiating_process_key
+  - execution_result
+- source_type: media-transfer-ledger
+  name:
+    zh: 介质区域访问顺序台账
+    en: Media Zone-Visit Order Ledger
+  channel: managed checkpoint or governance system
+  required_fields:
+  - media_asset_id
+  - trip_id
+  - zone_role
+  - entry_time
+  - exit_time
+  - custodian
+  - approver
+observables:
+- zh: 同一介质的启动区域在联网与受限角色接入后发生互补的小范围变化，随后隐藏目录出现命令与结果文件
+  en: The same medium's boot region undergoes complementary small changes after connected- and restricted-role attachment,
+    followed by command and result files in a hidden directory
+- zh: 标记满足前无处理中继，标记满足后由固定进程读取任务、执行并更新返回对象
+  en: No relay processing occurs before markers qualify, while a stable process reads tasking, executes, and updates
+    return objects after qualification
+correlation:
+  window:
+    zh: 每个检查站事件与本次行程严格绑定；跨区比较覆盖完整行程，默认四十五日，不把不同资产或重新基线后的摘要混合。
+    en: Bind every checkpoint event to its trip; compare across one complete rotation, forty-five days by default, without
+      mixing different assets or post-rebaseline digests.
+  dimensions:
+  - media_asset_id
+  - observed_serial
+  - trip_id
+  - ordered_zone_role
+  - boot_region_hash
+  - raw_region_delta
+  - file_manifest_delta
+  - raw_writer_process
+  - task_result_object_lineage
+false_positives:
+- zh: 获批准的启动盘制作、引导修复、介质初始化、分区调整和加密卷元数据更新
+  en: Approved boot-media creation, boot repair, media initialization, repartitioning, and encrypted-volume metadata
+    update
+- zh: 合法同步工具、离线补丁系统或防病毒检查站写入隐藏状态和处理清单
+  en: Legitimate synchronization, offline patch systems, or antivirus checkpoints write hidden state and processing manifests
+blind_spots:
+- zh: 固件隐藏区域不响应标准原始读取，检查站无法获得完整介质或扫描破坏了原状态
+  en: Firmware-hidden regions evade standard raw reads, the checkpoint lacks full-media acquisition, or scanning destroys
+    prior state
+- zh: 介质直接绕过检查站、角色台账错误或原始写入未关联到进程
+  en: Media bypasses the checkpoint, zone-role records are wrong, or raw writes lack process attribution
+- zh: 文件系统或控制器的合法小型启动区更新频繁，导致字节差分无稳定资产基线
+  en: Frequent legitimate small boot-region updates by the file system or controller prevent a stable per-asset baseline
+tuning_guidance:
+  paragraphs:
+  - zh: 为每个资产型号和合法用途保存签名启动区域、分区和文件清单，所有重分区或启动修复必须绑定工单并重新基线。优先调查“有序双角色差分、隐藏信箱、任务执行和返回”四项组合；不得使用全局熵阈值、任一 MBR 变化或隐藏属性单独阻断。对不能原始成像的介质，将结论标为文件级门控线索。
+    en: Keep signed boot-region, partition, and file manifests by asset and approved use, requiring a ticket and new
+      baseline for every repartition or boot repair. Prioritize the combination of ordered dual-role difference, hidden
+      mailbox, task execution, and return. Do not block from a universal entropy threshold, any MBR change, or a hidden
+      attribute alone. Where raw imaging is unavailable, label the result a file-level gating lead.
+evidence_refs:
+- REF-000596
+- REF-001032
+- REF-000419
+- REF-000597
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-10-04'
+  modified: '2026-10-04'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

@@ -1,0 +1,110 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000109
+strategy_ref: DET-000123
+name:
+  zh: 低价值工作耗时与后继载荷分析
+  en: Low-Value Work Consumption and Successor-Payload Analytic
+summary:
+  zh: 输出操作模板重复、低工作输出比、用时主导与循环后恶意载荷的关系。
+  en: Produce relationships among repeated operation templates, low work-output ratio, dominant elapsed time, and a malicious
+    payload after the loop.
+domains:
+- enterprise
+platforms:
+- Windows
+- Linux
+- macOS
+logic:
+  paragraphs:
+  - zh: 按 sample hash 和 process start key 归一命令、注册表、文件、网络与其他 API 操作模板，统计重复次数、唯一对象、读写字节、持久输出、CPU、I/O 和墙钟用时，并计算每单位资源的信息增益与业务输出。将循环结束后的解包、注入、网络或破坏动作回连。当少量低价值模板主导用时、加速时间使后继载荷更早出现，且循环后结果恶意时，输出 work_consuming_delay。
+    en: Normalize command, Registry, file, network, and other API-operation templates by sample hash and process start key.
+      Count repetition, unique objects, bytes read or written, durable output, CPU, I/O, and wall-clock time and calculate information
+      gain and business output per resource unit. Join unpacking, injection, networking, or impact after the loop. Emit work_consuming_delay
+      when a small set of low-value templates dominates elapsed time, accelerated time reveals the successor earlier, and the
+      post-loop outcome is malicious.
+data_requirements:
+- source_type: process-operation-telemetry
+  name:
+    zh: 进程命令、API、注册表、文件与网络操作
+    en: Process command, API, Registry, file, and network operations
+  channel: null
+  required_fields:
+  - event.timestamp
+  - host.id
+  - sample.hash
+  - process.start_key
+  - operation.type
+  - operation.template_hash
+  - object.id
+  - bytes.read
+  - bytes.written
+  - result
+- source_type: process-resource-accounting
+  name:
+    zh: 进程资源与持久输出
+    en: Process resources and durable output
+  channel: null
+  required_fields:
+  - event.timestamp
+  - process.start_key
+  - cpu.time
+  - io.operations
+  - wall_clock.elapsed
+  - durable_output.count
+  - durable_output.bytes
+- source_type: successor-action-telemetry
+  name:
+    zh: 循环后敏感动作
+    en: Sensitive actions after the loop
+  channel: null
+  required_fields:
+  - event.timestamp
+  - sample.hash
+  - process.start_key
+  - action.type
+  - payload.stage
+  - child.start_key
+  - network.destination
+  - outcome
+observables:
+- zh: 少量注册表或文件模板被重复数十万次且几乎不产生持久输出
+  en: A small set of Registry or file templates repeats hundreds of thousands of times with almost no durable output
+- zh: 循环结束或加速时间后才出现解包、注入或网络载荷
+  en: Unpacking, injection, or network payload appears only after the loop or under accelerated time
+correlation:
+  window:
+    zh: 覆盖高密度工作区间及其后第一个敏感动作；环境按样本正常执行上限、资源预算和加速时间协议记录具体期限。
+    en: Cover the high-density work interval and the first sensitive action afterward. Record the concrete limit by normal sample
+      execution ceiling, resource budget, and accelerated-time protocol.
+  dimensions:
+  - host.id
+  - sample.hash
+  - process.start_key
+  - operation.type
+  - operation.template_hash
+  - payload.stage
+false_positives:
+- zh: 索引、扫描、备份、数据迁移、性能测试、故障重试和密集构建任务
+  en: Indexing, scanning, backup, data migration, performance testing, fault retry, and intensive build tasks
+blind_spots:
+- zh: 遥测只采样数量而不保留操作模板与对象、资源计量不可用或分析在后继载荷前结束
+  en: Telemetry samples counts without operation templates and objects, resource accounting is unavailable, or analysis ends
+    before the successor payload
+tuning_guidance:
+  paragraphs:
+  - zh: 按应用角色建立操作重复、对象数、工作输出比和资源分布，并为索引、备份、测试与构建任务绑定 owner 和用途。严重度优先低信息增益、用时主导、加速差分和恶意后继结果，不使用单一 API 计数阈值。
+    en: Baseline operation repetition, object count, work-output ratio, and resource distributions by application role and bind
+      indexing, backup, test, and build jobs to owner and purpose. Prioritize low information gain, dominant elapsed time, accelerated
+      differential, and malicious successor outcome rather than one API-count threshold.
+evidence_refs:
+- REF-000387
+- REF-000417
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-09-21'
+  modified: '2026-09-21'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

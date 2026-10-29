@@ -1,0 +1,178 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000314
+strategy_ref: DET-000242
+name:
+  zh: 服务提供方到真实控制命名空间与端点结果分析
+  en: Service Provider to Real Control Namespace and Endpoint Outcome Analytic
+summary:
+  zh: 解析合法 provider 背后的真实控制命名空间并连接端点后果。
+  en: Resolve the real control namespace behind a legitimate provider and join endpoint outcomes.
+domains:
+- enterprise
+platforms:
+- Windows
+- Linux
+- macOS
+logic:
+  paragraphs:
+  - zh: 先把 provider_host 映射到 provider，仅输出 provider_only。以 device/source IP、AppId、SessionId、SignInActivityId、RequestId/CorrelationId
+      或 token hash 解析 resource tenant、account/app 与 resource URI，同批准 registry 比较得到 namespace_resolved 或 unapproved_namespace。随后在相同
+      process_start_key/父子谱系三十分钟内寻找成功 read 后的子进程、模块、命令、文件执行或心跳。未批准命名空间、成功服务读取和控制样式端点结果同时成立才输出 namespace_c2_confirmed；外部
+      tenant 无日志时保留 external_tenant_unresolved。
+    en: Map provider_host to a provider first and emit only provider_only. Resolve resource tenant, account or application,
+      and resource URI by device or source IP, AppId, SessionId, SignInActivityId, RequestId or CorrelationId, or token
+      hash, and compare with the approved registry to produce namespace_resolved or unapproved_namespace. Then seek a
+      child process, module, command, file execution, or heartbeat within thirty minutes in the same process_start_key
+      or lineage after a successful read. Emit namespace_c2_confirmed only when an unapproved namespace, successful service
+      read, and control-like endpoint outcome coexist; retain external_tenant_unresolved when outside-tenant logs are
+      absent.
+data_requirements:
+- source_type: endpoint-process-network
+  name:
+    zh: endpoint process network
+    en: endpoint process network
+  channel: Sysmon Event 3, EDR, or endpoint proxy
+  required_fields:
+  - event_time
+  - device_id
+  - process_start_key
+  - process_id
+  - process_image
+  - principal_id
+  - provider_host
+  - provider_ip
+  - provider_port
+  - transport
+- source_type: microsoft-graph-activity
+  name:
+    zh: Microsoft Graph 活动
+    en: Microsoft Graph activity
+  channel: MicrosoftGraphActivityLogs
+  required_fields:
+  - event_time
+  - resource_tenant_id
+  - client_app_id
+  - auth_method
+  - device_id
+  - source_ip
+  - operation_group_id
+  - provider_request_id
+  - service_action
+  - resource_uri
+  - result_status
+  - granted_scopes
+  - service_principal_id
+  - auth_session_id
+  - signin_activity_id
+  - token_id
+  - client_fingerprint
+  - service_user_id
+- source_type: microsoft-365-service-audit
+  name:
+    zh: Microsoft 365 服务审计
+    en: Microsoft 365 service audit
+  channel: Office 365 Management Activity API or equivalent provider audit
+  required_fields:
+  - provider_event_id
+  - event_time
+  - service_action
+  - resource_tenant_id
+  - actor_type
+  - actor_id
+  - service_name
+  - result_status
+  - resource_object_id
+  - service_user_id
+  - source_ip
+  - service_api_id
+  - client_app_id
+  - correlation_id
+  - token_id
+- source_type: approved-service-resource-registry
+  name:
+    zh: 批准服务资源登记
+    en: Approved service resource registry
+  channel: SaaS governance, CASB, OAuth, and tenant inventory
+  required_fields:
+  - provider
+  - resource_namespace_id
+  - approved_app_id
+  - approved_service_principal
+  - approved_token_owner
+  - approved_resource_scope
+  - approved_process
+  - approved_principal
+  - approved_actions
+  - namespace_owner
+  - approval_expiry
+  - policy_version
+- source_type: endpoint-outcome
+  name:
+    zh: 端点后果
+    en: Endpoint outcome
+  channel: EDR process, file, module, and command telemetry
+  required_fields:
+  - event_time
+  - device_id
+  - process_start_key
+  - parent_process_start_key
+  - outcome_type
+  - object_name
+  - object_path
+  - command_line
+  - object_hash
+observables:
+- zh: 非批准进程访问未知 tenant/account/app 并在读取后执行命令或载荷
+  en: An unapproved process accesses an unknown tenant, account, or application and executes a command or payload after
+    a read
+- zh: 允许 provider 后的命名空间缺失于登记表或低历史令牌反复读取资源
+  en: The namespace behind an allowed provider is absent from inventory or a low-history token repeatedly reads resources
+correlation:
+  window:
+    zh: 读取到后果三十分钟、重复使用二十四小时、应用/令牌历史三十日。
+    en: Thirty minutes from read to outcome, twenty-four hours for recurring use, and thirty days for application or
+      token history.
+  dimensions:
+  - device_id
+  - process_start_key
+  - provider
+  - resource_namespace_id
+  - resource_tenant_id
+  - client_app_id
+  - service_principal_id
+  - token_id
+  - auth_session_id
+  - provider_request_id
+  - resource_object_id
+  - endpoint_outcome_id
+  - time
+false_positives:
+- zh: 官方同步/邮件客户端、批准个人账号、CI/CD、备份和 SaaS 集成
+  en: Official sync or mail clients, approved personal accounts, CI/CD, backup, and SaaS integrations
+blind_spots:
+- zh: 外部攻击者租户、URI 不透明、provider 审计缺失或共享合法令牌
+  en: An external actor tenant, opaque URI, absent provider audit, or a shared legitimate token
+tuning_guidance:
+  paragraphs:
+  - zh: provider 分别维护 tenant/account/app/resource 正向清单，不对白名单域整体豁免；开发、备份、邮件和浏览器使用独立基线。token 只保留 hash/UniqueTokenId。外部
+      tenant 先观察并结合端点后果，日志缺失只降置信。
+    en: Maintain provider-specific tenant, account, application, and resource allowlists rather than exempting an allowed
+      domain. Use separate baselines for development, backup, mail, and browsers. Retain only token hash or UniqueTokenId.
+      Observe outside tenants and combine with endpoint outcome; missing logs only lower confidence.
+evidence_refs:
+- REF-000945
+- REF-001048
+- REF-001049
+- REF-000833
+- REF-000944
+- REF-000986
+- REF-000230
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-10-04'
+  modified: '2026-10-04'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

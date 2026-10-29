@@ -1,0 +1,237 @@
+schema_version: 2.0.0
+type: technique
+id: NJT-0221
+name:
+  zh: 端口预期语义错配
+  en: Port-Expectation Semantic Mismatch
+summary:
+  zh: 攻击者让实际 C2 协议或应用语义与环境对所用端口的服务预期不一致，使按端口过滤、解析或记录的防守面错误放行、错分或缺失语义。
+  en: An adversary makes actual C2 protocol or application semantics disagree with the environment's service expectation for
+    the selected port, causing port-based filtering, parsing, or logging to allow, misclassify, or omit semantics.
+aliases:
+- Non-Standard Port
+classification:
+  tactic_refs:
+  - TA0011
+  origin:
+    kind: attack-adapted
+    source_attack_id: T1571
+    source_attack_version: '19.1'
+  decision_ref: DEC-TA0011-T1571
+definition_and_concept:
+  paragraphs:
+  - zh: 端口预期语义错配是攻击者配置控制端与植入体，使线上实际运行的协议或应用，与目标环境为该来源、目的地和端口组合登记的服务不一致。实际通信可以是完整的 HTTP、SSH 等应用事务，也可以是自定义二进制会话；攻击者借用按端口放行的策略、解析器选择或服务标签，以降低阻断和语义可见性。技术边界由当地预期与真实语义之间的差确定，不由端口号高低、IANA
+      默认表或协议名称决定。
+    en: Port-Expectation Semantic Mismatch is adversary configuration of a C2 client and server, listener, or session such
+      that actual on-wire protocol or application semantics differ from the service registered or assumed by the target environment
+      for the source-to-destination-to-port combination. Actual semantics may be a real application transaction such as HTTP,
+      SSH, or TLS or a custom or raw framed protocol. The direct purpose is to borrow a port-based allow rule, parser activation,
+      or service label to avoid blocking or reduce semantic visibility. Port number, IANA table, protocol name, and high or
+      low port do not constitute the technique; the difference between environment expected_service and detected_semantics
+      does.
+  - zh: 认定时需要连接四层证据：实际连接及端口；通过载荷感知解析、协议仿真或端点实现证明的真实语义；资产目录、策略和解析器配置所给出的预期服务与处理结果；以及同一会话或端点进程产生的任务、响应、命令结果或持续信标。缺少策略和解析差异时只能记录端口配置，缺少后继控制时只能记录协议异常，两者都不足以完成本技术。
+    en: 'The evidence gate has four layers: an observable flow and selected port; actual semantics established by payload-aware
+      analysis, protocol emulation, or endpoint implementation; expected service and filter or log decision established by
+      CMDB, policy, rule, or parser configuration; and a task, response, command execution, result, or continuing beacon from
+      the same flow or endpoint process. Without a parser, filter, or logging differential, only port configuration is known.
+      Without successor C2, only a protocol anomaly is known. Neither independently completes formal T1571.'
+stealth_characteristics:
+  paragraphs:
+  - zh: 只按端口放行的防火墙可能把 TCP/443 或 UDP/53 视作必需的 Web 或 DNS 出口，即使实际载荷并非 TLS 或 DNS。按端口启动解析器的传感器也可能选错协议、解析失败，或在日志中留下“未知服务”而没有任务和结果字段。只看目的端口和表面服务标签的分析者因此会把自定义控制通信误作被允许的业务。公开流量研究与
+      Zeek 的解析示例说明端口名称不能代替内容确认。
+    en: In a port-based firewall, TCP/443 or UDP/53 may be allowed because Web or DNS is needed even when payload is not TLS
+      or DNS. In a port-selected sensor, the expected analyzer can start incorrectly, fail into unknown or null, or leave
+      logs carrying the surface service label. Analysts reviewing only destination port, port category, or records without
+      a service field can interpret custom C2 or another application as an allowed service. A 2012 traffic study found that
+      only some samples described as TLS actually used TLS and identified likely researcher classification by port alone.
+      Zeek's official example separately shows TLS-analyzer failure on 443 followed by a plain HTTP response.
+  - zh: 这种错配不会消除首包、握手和响应、解析器确认或失败、应用识别结果、策略规则与动作、端点进程和命令结果等残余痕迹。端口无关的动态协议检测、协议仿真和应用感知策略可以恢复真实语义；加密、未知专有协议、采样或只保存流量摘要会限制这一能力，但“未知”本身不能证明恶意。
+    en: 'Stable residue remains: first payload bytes, handshake or response, Zeek service, confirmation, violation, or failure,
+      Suricata app_proto and directional mismatch, firewall Application, non_standard_dest_port, rule and action, endpoint
+      process and remote port, and command or result. Port-independent DPD, protocol emulation, and application-aware policy
+      recover actual semantics. Encrypted content, an unsupported proprietary protocol, sampling, short flows, or NetFlow-only
+      collection preserve blind spots, but unknown does not automatically mean malicious.'
+scope_boundary_definition:
+  paragraphs:
+  - zh: 纳入范围要求控制通信的真实语义与当地服务预期不一致，并由此产生过滤、解析或记录差异。HTTP 使用非预期高位端口、自定义二进制协议使用 443、专有消息使用 53 都可能满足条件，但必须逐一证明本地映射、具体防守效果和后继控制结果。已登记且正确解析的内部自定义服务、测试服务、厂商管理端口、端口共享、TLS
+      卸载和迁移例外是反例；偏离 IANA 默认端口并不自动构成攻击。
+    en: Scope includes a flow where actual C2 semantics disagree with environment-expected service and port and produce a
+      defensive differential. HTTP on 14146, SSH on 443, custom binary on 443, or proprietary messages on UDP/53 can qualify,
+      but the specific environment's expected mapping, parser, filter, or log effect, and C2 result must be established. A
+      legitimate internal custom service, development test, alternate management port, service mesh, port sharing, TLS offload,
+      STARTTLS, vendor appliance, or migration-time temporary port is a counterexample when registered and correctly parsed
+      or authorized. A port outside an IANA default is not automatically an attack.
+  - zh: 非应用层协议技术拥有自定义 TCP、UDP 或 ICMP 通信本身；本项只拥有该通信与端口预期的错配，因此同一 FlawedGrace、Winnti 或 PseudoManuscrypt 会话可以并列归类，却不会因为使用 443
+      就成为 HTTPS。应用层协议技术则拥有真实 HTTP、SSH 或其他应用事务，不受端口号限制；当这些事务使用当地未预期的端口时才另外成立本项。
+    en: 'T1095 and NJT-0208 own direct applicationless carriage: custom or raw TCP, UDP, or ICMP session or packet semantics.
+      T1571 owns only mismatch between that carriage and port expectation. FlawedGrace, Winnti, and PseudoManuscrypt can therefore
+      satisfy both T1095 and T1571, but raw TCP on 443 does not become HTTPS because of the port. NJT-0160 owns real application
+      transactions regardless of port. HTTP, SSH, or TLS on an environment-unexpected port may co-classify with T1571, but
+      port mismatch cannot substitute for application-session evidence.'
+  - zh: 代理技术拥有中继路径，协议隧道技术要求可识别的内层会话被外层承载，流量信令技术要求特殊输入激活隐藏功能；任何一个端口号都不能替代这些行为证据。动态求得的端口归运行时端点求取，伪造 TLS 握手或服务外观归消息与服务伪装，附加密码层归加密通道。只有各自变量与后继控制分别成立时才并列归类。
+    en: T1090 owns proxy or relay and path relationships; a destination port does not establish a relay. T1572 requires an
+      intact or recognizable inner session carried by an outer protocol or tunnel; putting custom frames directly on TCP/443
+      is not tunneling. T1205 owns a special sequence or content that activates a hidden listener or function; the signal
+      port and successor channel port are not its children. T1571 coexists only where continuing C2 after activation also
+      has a semantic-to-port mismatch. T1573 encryption and NJT-0152 fake TLS or service camouflage can coexist but each requires
+      its own cryptographic or visible-feature evidence.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: 在仅按 TCP/443 放行 Web 出口的环境，植入体可直接以自定义二进制协议连接控制端。DFIR Report 在真实入侵中观察到 FlawedGrace 从被注入的 svchost.exe 连接多个 443 控制端，却没有
+        SSL 证书或 JA3；VMware 的 Winnti 4.0 协议仿真也在 443 发出自定义加密请求并得到可验证响应。这些案例证明真实语义与 HTTPS 标签不同，并存在后继控制；具体企业是否因此误放行仍须核对当地策略。
+      en: In an environment allowing Web egress by TCP/443, an implant can communicate with C2 using a custom binary protocol
+        directly. In a real intrusion, The DFIR Report observed FlawedGrace connecting from injected svchost.exe to several
+        TCP/443 C2 endpoints without SSL certificates or JA3. VMware's Winnti 4.0 emulator sent a custom encrypted request
+        over TCP/443 and received a decryptable response with valid header and payload type. These cases establish actual
+        semantics differing from HTTPS expectation plus successor C2.
+    - zh: PseudoManuscrypt 在 UDP/53 和 TCP/443 上使用自有的分层消息协议。BitSight 实现该协议后，通过接管的控制端收到约五万台感染设备的通信；53 和 443 在此都不能直接等同 DNS 或
+        TLS。若某组织将同样端口正式分配给专有设备并能正确识别协议，就没有本项要求的当地预期差；预期必须来自该组织的策略和资产登记。
+      en: Similarly, PseudoManuscrypt implements its own two-layer messaging protocol over UDP/53 and TCP/443. BitSight implemented
+        that protocol and received telemetry from roughly fifty thousand infections through sinkholing. UDP/53 does not automatically
+        become DNS and TCP/443 does not automatically become TLS. If an environment registers a proprietary appliance service
+        and correctly recognizes it through content-aware parsing, the same port combination does not produce this technique.
+        Expected mapping must come from local policy and inventory rather than the case itself.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者需要控制植入体和监听器的端口配置、选取目标可达且较易放行的端口，并实现能够交换任务与结果的实际协议。匿迹收益还取决于对目标防火墙、解析器和日志按端口作何假设的了解；动态协议检测与应用识别会削弱这种收益。无效握手、未知载荷、异常进程和长连接也可能让错配更显眼，自定义协议还增加开发与运维成本。
+        en: The actor must control client and server or listener configuration, choose a reachable port that is allowed or
+          weakly inspected, and implement an actual protocol able to exchange tasks or results. Stealth benefit also requires
+          predicting the target filter, parser, or logging assumptions based on port. Modern DPD and App-ID reduce that benefit.
+          An invalid handshake, unknown payload, long connection, or anomalous process can make the mismatch more conspicuous,
+          while a custom protocol adds development, compatibility, and server-maintenance cost.
+    defender_model:
+      paragraphs:
+      - zh: 防守方至少掌握连接流量和一种能够识别载荷的解析器或防火墙，并可把它们与端点进程或协议仿真的控制结果相连。资产目录及策略提供来源角色、目的服务、允许应用、规则版本和所有者；传感器提供实际识别的协议、解析失败和策略动作。缺少真实语义或当地预期映射时，只能标记为未知或未登记，不能断言端口预期错配。
+        en: The defender is assumed to have network flow plus at least one payload-aware analyzer or firewall and either endpoint
+          process and network or protocol-emulation and C2 outcome. CMDB and policy provide source role, destination service,
+          rule, allowed application and port, and owner. Detection computes expected_service first, derives detected_semantics
+          from DPD, App-ID, app_proto, or handshake, and joins policy action with successor C2. Without actual semantics or
+          a local expected mapping, output only unknown or unregistered and do not assert T1571.
+      - zh: 合法自定义服务应按来源、目的地、端口、协议、解析规则、用途和期限登记，避免把一切非默认通信告警。TLS、QUIC、VPN、代理、NAT、采样及不受支持的专有协议会降低解析能力；解析失败也可能来自短流、丢包或正常应用。端点任务结果可以提高置信，却不能倒推出未被记录的过滤或日志差异。
+        en: Legitimate custom-service inventory must version source, destination, port, protocol, parser, signature, purpose,
+          and expiry to avoid alerting on all non-default traffic. TLS, QUIC, ECH, VPN, proxy, NAT, sampling, and unsupported
+          proprietary protocols reduce parsing. Parser failed can mean attack, a short flow, packet loss, or an unknown legitimate
+          application. Endpoint process or a validated C2 response raises confidence but cannot backfill a missing policy
+          effect.
+stealth_mechanisms:
+- mechanism_ref: NM-FD
+  role: primary
+  summary:
+    zh: 端口所暗示的服务身份替代实际 C2 协议语义
+    en: Service identity implied by the port substitutes for actual C2 protocol semantics
+  analysis:
+    paragraphs:
+    - zh: 攻击者把自定义协议或另一种应用协议放到环境标为 Web、DNS 或其他允许服务的端口，令连接记录中的端口标签与真实语义分离。依赖端口类别的规则和分析者把预期服务误当作实际服务，恶意会话借用正常服务外观，形成特征伪装。FlawedGrace、Winnti、PseudoManuscrypt
+        和流量研究支持这种错配；载荷感知解析与握手验证可以恢复真实协议。
+      en: The actor places a custom or raw or different application protocol on a port the environment maps to Web, DNS, or
+        another allowed service, separating destination-port service label from real semantics. Rules and analysts relying
+        on port category treat expected service as actual, allowing the malicious flow to borrow normal service appearance
+        and produce Feature Disguise. FlawedGrace, Winnti, PseudoManuscrypt, and traffic research support the mismatch; payload-aware
+        DPD, App-ID, and handshake analysis recover it, supporting high confidence.
+  evidence_refs:
+  - REF-001132
+  - REF-001133
+  - REF-001134
+  - REF-001135
+  confidence: high
+- mechanism_ref: NM-BT
+  role: secondary
+  summary:
+    zh: 错误或失败的端口选定解析器使 C2 事务不进入预期语义日志
+    en: Wrong or failed port-selected parsing keeps C2 transactions out of expected semantic logs
+  analysis:
+    paragraphs:
+    - zh: 如果传感器按端口启用错误解析器，或不支持自定义协议，任务与结果可能只留下连接记录、未知服务或解析失败，而没有进入预期的 TLS、HTTP 或 DNS 事务日志。只查询该事务日志的检测因此看不到关键控制动作，形成有条件的行为透明。Zeek
+        与 Suricata 的解析状态字段可记录这一断点；启用端口无关检测后，效果会明显减弱。
+      en: If a sensor starts the wrong analyzer by port or an unsupported custom protocol produces only TCP flow, unknown,
+        or null, tasks and results do not enter TLS, HTTP, DNS, or other expected transaction logs. Detection querying only
+        the expected service log sees a blank or failure without joining C2, producing Behavioral Transparency. Zeek analyzer
+        confirmation and violation and Suricata app_proto, failed, and mismatch fields establish that observation break. Modern
+        DPD materially weakens the mechanism, so confidence is medium.
+  evidence_refs:
+  - REF-001136
+  - REF-001137
+  - REF-001138
+  - REF-001135
+  confidence: medium
+subtechnique_taxonomy:
+  narrative:
+    paragraphs:
+    - zh: 端口策略借用与按端口选定解析器的错位，分别影响放行决策和语义日志，但攻击者控制的共同变量都是“真实协议与预期服务不一致”。两种结果由防守部署决定，不能稳定分成兄弟子技术；父级机理和检测分析保留这两类影响。
+      en: A zero-child open search is complete. Port-policy allowance borrowing and port-selected parser displacement affect
+        filter decision and semantic log respectively, but the common attacker-controlled variable is the mismatch between
+        actual semantics and expected service. The specific outcome depends on defender deployment and cannot stably form
+        sibling children. Parent mechanisms and Analytic branches retain both effects.
+    - zh: 真实通信是已知应用还是专有协议，属于应用层协议与非应用层协议的直接对象；端口范围、传输层、方向和工具名称也只是实现条件。运行时端口计算、伪造服务握手和信号激活分别由相邻技术拥有。现有证据没有给出另一项独立攻击者变量及其专属防御，因此本技术不再拆分子项。
+      en: The difference between a recognized alternative application and an unsupported custom protocol is owned by NJT-0160
+        or T1095 direct objects and parser coverage, not a T1571 sibling. Well-known, high, ephemeral, or listener port, TCP
+        or UDP, HTTP, SSH or TLS, tool, platform, and inbound or outbound are implementations or context. Dynamically computed
+        ports belong to T1568, fake TLS or service surfaces on the same port may coexist with NJT-0152, and signal activation
+        belongs to T1205. No independent NJS evidence and defense identity remains, so no independent child is established.
+  coverage: none-justified
+  subtechnique_refs: []
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000257
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000227
+evidence:
+  claim_refs:
+  - CLM-001098
+  - CLM-001099
+  - CLM-001100
+  - CLM-001101
+  case_refs:
+  - CASE-000334
+  - CASE-000335
+  - CASE-000336
+  reference_refs:
+  - REF-001132
+  - REF-001133
+  - REF-001134
+  - REF-001135
+  - REF-001136
+  - REF-001137
+  - REF-001138
+  - REF-001139
+  - REF-001140
+  - REF-000625
+  - REF-000634
+  - REF-000604
+  - REF-000230
+  - REF-001041
+research:
+  limitations:
+    paragraphs:
+    - zh: FlawedGrace、Winnti 与 PseudoManuscrypt 直接证明真实协议、所用端口及后继控制，却没有公开各受害组织的防火墙策略、代理预期或解析器输出。它们不能单独证明具体现场已发生过滤绕过或日志错分。正式认定须补充当地规则、动作与解析结果；缺少部署证据时，只能记录协议—端口错配候选。
+      en: FlawedGrace, Winnti, and PseudoManuscrypt directly establish actual protocol semantics, selected port, and successor
+        C2, but they do not publish each victim organization's firewall policy, proxy expectation, or parser output. They
+        therefore do not independently prove that filtering was bypassed or logs were misclassified at a particular site.
+        Formal classification must add local policy, rule and action, and analyzer result. Without that deployment evidence,
+        record only a protocol-port mismatch candidate rather than a complete stealth effect.
+    - zh: Zeek、Suricata 与 PAN-OS 文档证明字段和控制措施可以实施，并不证明检测率或恶意意图。解析失败可由协议升级、错误配置、短流与单向流引起；应用识别也可能在会话中变化，并受解密和签名覆盖限制。十五分钟与二十四小时窗口只是工程起点，应以当地测试流量、报文重放和合法自定义服务校准。
+      en: Zeek, Suricata, and PAN-OS documentation establishes implementable fields and controls, not detection rates or malicious
+        intent. Zeek analyzer failure can arise from protocol upgrades or misconfigured services, Suricata failed or skipped
+        can arise from short and one-direction flows, and App-ID can change during a session and depends on decryption and
+        signature coverage. The stated fifteen-minute and twenty-four-hour windows are engineering starting points requiring
+        calibration with local canaries, PCAP replay, and legitimate custom services.
+    - zh: 较早的流量研究说明按端口推断 TLS 容易错分及内容验证的价值，但其样本和网络环境不能代表当前流行度或阈值。专有加密可能阻止真实语义恢复；协议仿真可以验证已知家族响应，却不能假定总能对活跃控制端合法探测。解析器没有得出语义，既不能证明本技术存在，也不能证明其不存在。
+      en: The 2012 study directly demonstrates port-based malware and TLS misclassification and the value of content validation,
+        but its samples, TLS ecosystem, and IDS are old. It supports causality rather than current prevalence or thresholds.
+        Proprietary encryption may prevent recovery of actual semantics. Protocol emulation can prove a known-family response,
+        but probing live C2 has legal and operational constraints and cannot be assumed available. Absence of semantic parsing
+        proves neither absence nor presence of T1571.
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-10-05'
+  modified: '2026-10-05'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

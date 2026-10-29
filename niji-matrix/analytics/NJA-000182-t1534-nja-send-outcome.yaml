@@ -1,0 +1,144 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000182
+strategy_ref: DET-000169
+name:
+  zh: 内部消息到第二账户结果谱系
+  en: Internal Message to Second-Account Outcome Lineage
+summary:
+  zh: 重建受陷内部发件账户到另一收件者动作与第二账户失陷的有向消息谱系。
+  en: Reconstruct a directed message lineage from a compromised internal sender through another recipient's action to second-account
+    compromise.
+domains:
+- enterprise
+platforms:
+- SaaS
+- Windows
+logic:
+  paragraphs:
+  - zh: 以 EmailEvents 中 EmailDirection=Intra-org、SenderObjectId、RecipientObjectId 和 NetworkMessageId 建立已确认受害发件者到另一内部账户的有向边。将边连接发件前的账户入侵证据，并按
+      NetworkMessageId 连接 UrlClickEvents；附件分支仅在邮件附件文件名或可用摘要能经收件端文件和进程证据独立确认为同一对象时启用。最后在 24 小时默认窗口内按收件者对象 ID 连接后续异常登录和调查确认的会话接管，输出
+      sent、acted、second_principal_compromised 三个分级状态；单一内部邮件、点击或风险分数不自动证明横向成功。
+    en: Build a directed edge from a confirmed compromised sender to another internal account using EmailDirection=Intra-org,
+      SenderObjectId, RecipientObjectId, and NetworkMessageId in EmailEvents. Join the edge to sender compromise evidence
+      before sending and to UrlClickEvents by NetworkMessageId; enable an attachment branch only where filename or an available
+      digest is independently corroborated by recipient endpoint file and process evidence. Within a default 24-hour window,
+      join by recipient object ID to later abnormal sign-in and investigator-confirmed session takeover. Emit distinct sent,
+      acted, and second_principal_compromised states; one internal email, click, or risk score does not automatically establish
+      lateral success.
+data_requirements:
+- source_type: m365-email-processing
+  name:
+    zh: 内部邮件投递事件
+    en: Internal email-processing events
+  channel: Microsoft Defender XDR/EmailEvents
+  required_fields:
+  - timestamp
+  - network_message_id
+  - sender_object_id
+  - recipient_object_id
+  - sender_from_address
+  - recipient_email_address
+  - email_direction
+  - subject
+- source_type: m365-url-click
+  name:
+    zh: 邮件 URL 点击事件
+    en: Email URL click events
+  channel: Microsoft Defender XDR/UrlClickEvents
+  required_fields:
+  - timestamp
+  - network_message_id
+  - account_upn
+  - url
+  - action_type
+  - workload
+- source_type: identity-and-investigation
+  name:
+    zh: 身份登录与事件调查
+    en: Identity sign-in and investigation
+  channel: null
+  required_fields:
+  - timestamp
+  - account_object_id
+  - source_ip
+  - device_id
+  - session_id
+  - compromise_verdict
+- source_type: email-attachment-metadata
+  name:
+    zh: 邮件附件元数据
+    en: Email attachment metadata
+  channel: Microsoft Defender XDR/EmailAttachmentInfo
+  required_fields:
+  - timestamp
+  - network_message_id
+  - recipient_object_id
+  - file_name
+- source_type: recipient-endpoint-file-process
+  name:
+    zh: 收件端文件和进程结果
+    en: Recipient endpoint file and process outcome
+  channel: null
+  required_fields:
+  - timestamp
+  - device_id
+  - account_upn
+  - file_name
+  - process_id
+  - action_type
+observables:
+- zh: 已确认受害的内部账户在异常会话后向另一员工发送带行动要求的消息。
+  en: A confirmed compromised internal account sends an action-bearing message to another employee after an anomalous session.
+- zh: 同一消息的收件者点击或可靠关联的附件打开先于其新异常认证或账户接管。
+  en: The recipient click or reliably linked attachment open precedes new abnormal authentication or account takeover.
+correlation:
+  window:
+    zh: 默认二十四小时连接消息投递、点击或附件打开与第二账户异常；针对延迟动作按事件调查延长，保留先前已失陷的替代解释。
+    en: Default to twenty-four hours joining delivery, click or attachment open, and second-account anomaly; extend for delayed
+      action while retaining prior compromise as an alternative explanation.
+  dimensions:
+  - sender_object_id
+  - recipient_object_id
+  - network_message_id
+  - message_subject
+  - clicked_url
+  - attachment_hash
+  - recipient_device_id
+  - session_id
+  - time
+false_positives:
+- zh: 获批安全演练、帮助台通知和真实内部共享也会出现带链接或附件的内网消息。
+  en: Approved security simulations, help-desk notices, and genuine internal sharing also produce intra-organization messages
+    with links or attachments.
+blind_spots:
+- zh: 没有邮件安全许可、协作消息不入日志或收件者身份调查未完成时，无法确认完整跨主体结果。
+  en: Missing mail-security licensing, unlogged collaboration messages, or an unfinished recipient identity investigation
+    prevent a complete cross-principal outcome conclusion.
+- zh: EmailAttachmentInfo 的摘要可能为空，只有同名附件而无收件端文件/进程证明时不能确认打开或执行。
+  en: EmailAttachmentInfo hashes may be empty; a matching attachment name without recipient file or process evidence cannot
+    confirm opening or execution.
+tuning_guidance:
+  paragraphs:
+  - zh: 按发件者和收件者的既有关系、获批培训与真实共享项目建立基线，并核实来源受害、消息、动作和第二账户异常的顺序。仅内部域名、宏附件或单次异常 IP 不足以封锁；高风险目标可缩短处置窗口，但调查须保留延迟动作可能。
+    en: Baseline sender-recipient relationships, approved simulations, and genuine sharing projects, and verify the ordering
+      of compromised source, message, action, and second-account anomaly. An internal domain, macro attachment, or one unusual
+      IP alone is insufficient for blocking. High-risk recipients may use a shorter response window while investigations retain
+      delayed-action possibilities.
+evidence_refs:
+- REF-000607
+- REF-000608
+- REF-000609
+- REF-000610
+- REF-000611
+- REF-000572
+- REF-000475
+- REF-000598
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-09-22'
+  modified: '2026-09-22'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

@@ -1,0 +1,154 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000336
+strategy_ref: DET-000253
+name:
+  zh: Microsoft 365 云盘成功下载与客户端职责偏离
+  en: Microsoft 365 Cloud-Drive Successful Download and Client-Duty Deviation
+summary:
+  zh: 按对象、主体、会话与结果字段实现“Microsoft 365 云盘成功下载与客户端职责偏离”。
+  en: Implement Microsoft 365 Cloud-Drive Successful Download and Client-Duty Deviation with object, principal, session, and
+    outcome fields.
+domains:
+- enterprise
+platforms:
+- Office Suite
+- SaaS
+logic:
+  paragraphs:
+  - zh: '从 Unified Audit Log/Management Activity API 提取 Workload=OneDrive/SharePoint 且 Operation=FileDownloaded 或 FileSyncDownloadedFull、ResultStatus=Succeeded
+      的事件，以 ObjectId 或 SiteUrl+SourceRelativeUrl+SourceFileName、UserId/UserType、ClientIP、UserAgent、CreationTime、CorrelationId、AppAccessContext.ClientAppId/Name/UniqueTokenId
+      构造 cloud_drive_content_returned。FileAccessed 与 FileAccessedExtended 仅作较弱的访问证据；后者可聚合同一人最长三小时的连续访问，不能按条数推断对象读取次数。
+
+      对每个用户/应用/客户端按三十分钟聚合敏感对象、站点/云盘和扩展名，并同过去三十日职责站点、批准同步设备、备份/迁移/电子发现/合规工作流及工单比较。首次 PowerShell/脚本 user agent、陌生 ClientIP/地理、应用代理地址、职责外
+      OneDrive、短窗多敏感文件或同一身份紧邻异常登录时提高风险。若同时存在搜索事件，NJT-0143 可拥有 query-led 阶段；本分析只以成功下载确认 T1530 源读取。后继本地文件或外传可把结论提升为 confirmed_acquisition。'
+    en: 'Extract Workload=OneDrive or SharePoint with Operation=FileDownloaded or FileSyncDownloadedFull and ResultStatus=Succeeded
+      from the Unified Audit Log or Management Activity API. Build cloud_drive_content_returned from ObjectId or SiteUrl plus
+      SourceRelativeUrl and SourceFileName, UserId and UserType, ClientIP, UserAgent, CreationTime, CorrelationId, and AppAccessContext.ClientAppId,
+      ClientAppName, and UniqueTokenId. Treat FileAccessed and FileAccessedExtended as weaker access evidence. FileAccessedExtended
+      can aggregate continuing access by one person for up to three hours and cannot be counted as individual object reads.
+
+      Aggregate sensitive objects, sites or drives, and extensions for thirty minutes by user, application, and client, then
+      compare with the preceding thirty-day duty-site baseline, approved synchronization devices, backup, migration, e-discovery,
+      or compliance workflows, and tickets. Raise risk for a first-seen PowerShell or scripted user agent, unfamiliar ClientIP
+      or geography, proxy application address, out-of-duty OneDrive, short-window sensitive-file fan-out, or adjacent anomalous
+      sign-in. When search events also exist, NJT-0143 can own the query-led stage; this analytic confirms only the T1530
+      source read through successful download. A later local file or exfiltration can raise the result to confirmed_acquisition.'
+data_requirements:
+- source_type: microsoft365-cloud-drive-audit
+  name:
+    zh: 经验证的Microsoft365 Cloud Drive Audit数据
+    en: Microsoft365 Cloud Drive Audit
+  channel: Microsoft Purview Unified Audit Log or Office 365 Management Activity API
+  required_fields:
+  - creation_time
+  - workload
+  - operation
+  - result_status
+  - user_id
+  - user_type
+  - client_ip
+  - user_agent
+  - object_id
+  - site_url
+  - source_relative_url
+  - source_file_name
+  - source_file_extension
+  - item_type
+  - correlation_id
+  - app_access_context.client_app_id
+  - app_access_context.client_app_name
+  - app_access_context.unique_token_id
+- source_type: entra-signin-and-session
+  name:
+    zh: 经验证的Entra Signin And Session数据
+    en: Entra Signin And Session
+  channel: Microsoft Entra sign-in and risk telemetry
+  required_fields:
+  - timestamp
+  - user_id
+  - app_id
+  - session_id
+  - token_id
+  - source_ip
+  - device_id
+  - location
+  - authentication_result
+  - risk_state
+- source_type: m365-approved-reader-inventory
+  name:
+    zh: 经验证的M365 Approved Reader Inventory数据
+    en: M365 Approved Reader Inventory
+  channel: device management, app inventory, sync and compliance jobs, sensitivity labels
+  required_fields:
+  - user_or_app_id
+  - device_id
+  - client_app_id
+  - user_agent
+  - approved_sites_or_drives
+  - object_sensitivity
+  - workflow_or_job_id
+  - owner
+  - schedule
+  - valid_from
+  - valid_to
+observables:
+- zh: 需人工核实的正常活动。
+  en: successful_file_download
+- zh: 需人工核实的正常活动。
+  en: successful_sync_download
+- zh: 需人工核实的正常活动。
+  en: first_seen_client_or_origin
+- zh: 需人工核实的正常活动。
+  en: out_of_duty_object
+- zh: 需人工核实的正常活动。
+  en: sensitive_object_fanout
+- zh: 需人工核实的正常活动。
+  en: adjacent_risky_signin
+correlation:
+  window:
+    zh: 登录或会话到下载默认八小时，读取片段三十分钟，用户、应用和设备基线保留三十天。
+    en: sign-in/session to downloads 8h; read episode 30m; user, app, and device baseline 30d
+  dimensions:
+  - tenant_id
+  - user_id
+  - user_type
+  - app_or_client_id
+  - token_or_session_id
+  - client_ip
+  - device_id
+  - object_id
+  - site_or_drive
+  - workflow_id
+  - time
+false_positives:
+- zh: OneDrive 正常同步、离线可用、迁移、备份、电子发现、合规导出、DLP/分类、用户换机和大量项目文件下载均可形成成功事件。
+  en: Normal OneDrive synchronization, offline availability, migration, backup, e-discovery, compliance export, DLP or classification,
+    device replacement, and large project downloads all produce successful events.
+blind_spots:
+- zh: Audit Standard 仅对多数组织默认启用，保留和高带宽能力依许可不同；ClientIP 可是代表用户调用的受信应用地址，app@sharepoint 或 service principal 会替代人。FileAccessed
+    有抑制/聚合语义，FileDownloaded 仍不证明完整保留或恶意目的。
+  en: Audit Standard is enabled by default only for most organizations, and retention and high-bandwidth access vary by licensing.
+    ClientIP can identify a trusted application calling for the user, while app@sharepoint or a service principal can replace
+    the person. FileAccessed has suppression or aggregation semantics, and FileDownloaded still does not prove complete retention
+    or malicious purpose.
+tuning_guidance:
+  paragraphs:
+  - zh: 先验证浏览器下载、Graph/PowerShell 下载、OneDrive full sync、按需文件与批准电子发现分别产生哪些 Operation 与 AppAccessContext 字段；例外绑定精确设备/app、站点、对象范围、工作流、owner
+      和有效期，保留来源或范围偏离。
+    en: First validate which Operation and AppAccessContext fields appear for browser download, Graph or PowerShell download,
+      OneDrive full sync, Files On-Demand, and approved e-discovery. Bind exceptions to exact device or application, site,
+      object scope, workflow, owner, and validity while retaining origin or scope deviation.
+evidence_refs:
+- REF-000944
+- REF-000561
+- REF-001118
+- REF-000731
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-10-05'
+  modified: '2026-10-05'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

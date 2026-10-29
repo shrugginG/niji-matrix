@@ -1,0 +1,139 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000302
+strategy_ref: DET-000237
+name:
+  zh: 收件人扇入与合法发送者邮件埋没分析
+  en: Recipient Fan-In and Legitimate-Sender Mail-Burial Analytic
+summary:
+  zh: 输出单一 recipient 在短窗接收大量 authenticated 多发送者邮件并出现处理/读取影响。
+  en: Emit a recipient receiving high volumes of authenticated multi-sender mail in a short window with handling or
+    reading impact.
+domains:
+- enterprise
+platforms:
+- SaaS
+logic:
+  paragraphs:
+  - zh: 从 EmailEvents/message trace 采集 NetworkMessageId/messageId、time、sender address/domain/IP、recipient、EmailClusterId、delivery
+      action/location、auth、BCL、size、subject/first contact/status。按 recipient 在 5/15/60 分钟和 24 小时聚合 count、distinct
+      sender/domain/IP/cluster/list、authenticated ratio、delivery/folder 和 baseline。
+    en: Collect NetworkMessageId or messageId, time, sender address, domain and IP, recipient, EmailClusterId, delivery
+      action and location, authentication, BCL, size, subject or first contact, and status from EmailEvents and message
+      trace. Aggregate count, distinct senders, domains, IPs, clusters or lists, authenticated ratio, delivery or
+      folder, and baseline by recipient over 5, 15, and 60 minutes and 24 hours.
+  - zh: 连接 Graph message isRead/folder/importance 与 MailItemsAccessed（缺失不等于未读）、用户/队列处理延迟、helpdesk 报告和 receive limits。只有高
+      fan-in 与合法邮件埋没/处理影响共同输出。
+    en: Join Graph message read, folder, and importance and MailItemsAccessed, where absence does not prove unread,
+      plus user or queue handling delay, helpdesk reports, and receive limits. Emit only when high fan-in joins legitimate-message
+      burial or handling impact.
+data_requirements:
+- source_type: email-events
+  name:
+    zh: Defender EmailEvents
+    en: Defender EmailEvents
+  channel: Microsoft Defender XDR EmailEvents
+  required_fields:
+  - timestamp
+  - network.message.id
+  - sender.address
+  - sender.domain
+  - sender.ip
+  - recipient.address
+  - email.cluster.id
+  - delivery.action
+  - delivery.location
+  - authentication.details
+  - bulk.level
+  - email.size
+  - first.contact
+- source_type: exchange-message-trace
+  name:
+    zh: Exchange message trace
+    en: Exchange message trace
+  channel: Microsoft Graph exchangeMessageTrace
+  required_fields:
+  - received.time
+  - message.id
+  - from.ip
+  - sender.address
+  - recipient.address
+  - subject
+  - message.size
+  - status
+- source_type: mailbox-message-access
+  name:
+    zh: 邮箱消息状态与访问
+    en: Mailbox message state and access
+  channel: Microsoft Graph message and MailItemsAccessed
+  required_fields:
+  - message.id
+  - internet.message.id
+  - received.time
+  - recipient.address
+  - folder.id
+  - is.read
+  - importance
+  - inference.classification
+  - access.time
+  - access.type
+- source_type: recipient-impact
+  name:
+    zh: 收件人处理与限额结果
+    en: Recipient handling and receive-limit outcomes
+  channel: null
+  required_fields:
+  - recipient.address
+  - window.start
+  - message.count
+  - legitimate.message.delay
+  - user.report.id
+  - receive.limit.state
+  - queue.state
+  - business.impact
+observables:
+- zh: 同一 recipient 在短窗出现大量 authenticated 多域/cluster/list 邮件
+  en: One recipient receives many authenticated multi-domain, cluster, or list messages in a short window
+- zh: 合法消息发现/处理延迟或 receive-limit/queue 结果出现
+  en: Legitimate-message discovery or handling delay or receive-limit or queue impact appears
+correlation:
+  window:
+    zh: 5/15/60 分钟多尺度，影响与清理 24 小时，recipient baseline 30 天。
+    en: Use 5, 15, and 60 minute scales, 24 hours for impact and cleanup, and a 30-day recipient baseline.
+  dimensions:
+  - recipient.address
+  - network.message.id
+  - email.cluster.id
+  - sender.domain
+  - sender.ip
+  - folder.id
+  - event.time
+false_positives:
+- zh: 营销/新闻活动、事件通知、组织 list migration、合法批量业务、告警 storm 和新员工 onboarding
+  en: Marketing or news campaigns, incident notification, organization list migration, legitimate bulk workflow, alert
+    storm, and onboarding
+blind_spots:
+- zh: 外部 provider mail 不可见、alias/distribution list 扩散、offline sync、message ID 变化或删除后审计缺失
+  en: Invisible external-provider mail, alias or distribution-list expansion, offline sync, changed message IDs, or
+    audit missing after deletion
+tuning_guidance:
+  paragraphs:
+  - zh: 按 recipient role 和业务时段基线，不按 spam label alone。维护批准 campaigns/lists 与事件日历；严重度需要 fan-in 和处理/限额 outcome。
+    en: Baseline by recipient role and business time rather than spam label alone. Maintain approved campaigns and
+      lists and event calendars; severity needs fan-in plus handling or limit outcome.
+evidence_refs:
+- REF-000609
+- REF-001016
+- REF-001017
+- REF-001018
+- REF-001019
+- REF-001020
+- REF-001022
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-10-04'
+  modified: '2026-10-04'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

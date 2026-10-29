@@ -1,0 +1,146 @@
+schema_version: 2.0.0
+type: mitigation
+id: MIT-000158
+name:
+  zh: 数据保留权限与独立恢复保护
+  en: Data-Retention Authority and Independent Recovery Protection
+summary:
+  zh: 限制单一身份改变删除规则或批量毁坏数据，并以受保护版本和独立副本保留恢复路径。
+  en: Limit one identity's ability to change deletion rules or destroy data in bulk while preserving recovery through
+    protected versions and independent copies.
+description:
+  paragraphs:
+  - zh: 此控制同时缩小破坏权限和损失后果。关键文件与对象的可恢复版本应与生产写入身份隔离并定期演练；对生命周期规则则单独治理配置权限和规则差分，因为禁止用户对象删除并不会阻止服务按已启用的生命周期规则执行。
+    en: This control reduces destructive authority and the consequences of loss. Recoverable versions of critical
+      files and objects should be isolated from production writers and periodically tested. Lifecycle rules require
+      separate governance of configuration authority and rule diffs, because denying user object deletion does not
+      stop a service executing an enabled lifecycle rule.
+domains:
+- enterprise
+measures:
+- key: protected-independent-copies
+  name:
+    zh: 受保护独立副本与恢复演练
+    en: Protected Independent Copies and Restore Exercises
+  description:
+    paragraphs:
+    - zh: 为关键文件和对象保留受版本控制、不可变保留或独立管理域保护的副本，定期验证能从已删除、覆写或隐藏的当前视图恢复业务。
+      en: Keep versioned, immutable, or separately administered copies of critical files and objects, and regularly
+        verify business restoration after deletion, overwrite, or disappearance from the current view.
+  control_type: containment
+- key: lifecycle-rule-authority
+  name:
+    zh: 生命周期规则权限与审批
+    en: Lifecycle Rule Authority and Approval
+  description:
+    paragraphs:
+    - zh: 只向少数管理身份授予生命周期配置写权限，对关键桶的前缀、标签和保留期变更施加审批、配置快照与实时告警；普通工作负载身份不得任意缩短保留。
+      en: Grant lifecycle-configuration write authority only to a small set of management identities. Apply approval,
+        configuration snapshots, and real-time alerting to critical-bucket filter and retention changes; ordinary
+        workload identities must not shorten retention arbitrarily.
+  control_type: preventive
+applications:
+- target_ref: NJT-0156
+  use:
+    paragraphs:
+    - zh: 对受影响业务文件和对象保留独立恢复副本、记录批准清理者和破坏权限，并演练从大规模删除或覆写中恢复真实业务读取。
+      en: For affected business files and objects, retain independent recovery copies, record authorized cleanup actors
+        and destructive rights, and exercise restoration of real business reads after mass deletion or overwrite.
+  expected_effect:
+    paragraphs:
+    - zh: 降低永久损失并使已受损对象可被清点和恢复，同时限制一个被盗生产身份可破坏的范围。
+      en: Reduce permanent loss, make damaged objects enumerable and recoverable, and limit the scope one stolen production
+        identity can destroy.
+  limitations:
+    paragraphs:
+    - zh: 备份不自动维持当前业务可用性；未覆盖的本地路径仍可被擦除，若备份处于同一权限域也可能被一并删除。
+      en: Backups do not automatically preserve current availability. Uncovered local paths may still be wiped, and
+        backups in the same authority domain may be deleted together.
+- target_ref: NJS-0156-001
+  use:
+    paragraphs:
+    - zh: 在关键 S3 桶保护旧对象版本，对 PutBucketLifecycleConfiguration 对应权限实行最小授权和变更审批，并保存规则前后快照以支持撤销与追溯。
+      en: Protect prior versions in critical S3 buckets, apply least privilege and change approval to lifecycle-configuration
+        writes, and preserve before-and-after rule snapshots for rollback and attribution.
+  expected_effect:
+    paragraphs:
+    - zh: 攻击者难以悄然扩大服务删除范围；受保护版本在保留期内不随恶意生命周期规则被永久移除，控制面变更更易早期发现。
+      en: It becomes harder to broaden service deletion silently. Protected versions resist permanent removal by a
+        malicious lifecycle rule during retention, and control-plane changes are easier to detect early.
+  limitations:
+    paragraphs:
+    - zh: 删除标记仍可能隐藏当前视图；治理模式绕过权限、保留期不足和未覆盖前缀会降低保护，合法生命周期清理也需要运维审批。
+      en: Delete markers can still hide the current view. Governance-mode bypass rights, insufficient retention, and
+        uncovered prefixes weaken protection; legitimate lifecycle cleanup also needs operational approval.
+- target_ref: NJT-0186
+  use:
+    paragraphs:
+    - zh: 在生产写入权限之外保留至少一份受版本或不可变控制保护的恢复副本，并定期从该副本恢复真实工作负载。
+      en: Keep at least one versioned or immutable recovery copy outside production-writer authority and regularly
+        restore the real workload from it.
+  expected_effect:
+    paragraphs:
+    - zh: 本地卷影或在线恢复点被删除时仍保留可用恢复路径，并能从演练验证依赖。
+      en: A usable recovery path survives deletion of local shadows or online recovery points and dependencies are
+        validated by exercises.
+  limitations:
+    paragraphs:
+    - zh: 同一身份或控制面的副本不独立，定期演练不能维持当前生产可用性，未覆盖资产仍会失去恢复。
+      en: Copies in the same identity or control plane are not independent, periodic exercises do not preserve current
+        production availability, and uncovered assets can still lose recovery.
+- target_ref: NJT-0202
+  use:
+    paragraphs:
+    - zh: 在生产盘 writer 权限之外保留裸机映像、partition maps、boot/config 和业务数据副本，并演练整盘/卷恢复。
+      en: Keep bare-metal images, partition maps, boot or configuration, and business-data copies outside production-disk
+        writer authority and exercise full disk or volume restoration.
+  expected_effect:
+    paragraphs:
+    - zh: disk wipe 不会消除所有恢复路径，恢复同时验证结构与文件。
+      en: Disk wipe does not eliminate every recovery path and restoration validates structures as well as files.
+  limitations:
+    paragraphs:
+    - zh: 同账户/controller snapshot 不独立，陈旧映像损失 RPO，备份不能阻止当前中断。
+      en: Snapshots in the same account or controller are not independent, stale images lose RPO, and backup cannot
+        prevent current outage.
+- target_ref: NJS-0202-001
+  use:
+    paragraphs:
+    - zh: 为关键元数据最小写入毁坏保留受不同权保护的 partition maps、boot/metadata 快照和裸机映像，并验证整卷重建。
+      en: For critical-metadata minimal-write destruction, keep differently authorized partition maps, boot or metadata
+        snapshots, and bare-metal images and validate full-volume rebuild.
+  expected_effect:
+    paragraphs:
+    - zh: 即使少量结构块被破坏，已知结构和独立映像仍可重建启动与文件系统。
+      en: Even when a few structural blocks are destroyed, known structures and independent images can rebuild boot
+        and filesystem.
+  limitations:
+    paragraphs:
+    - zh: 快照过旧、同控制面副本或结构记录不完整会降低恢复，且恢复不能阻止当前停机。
+      en: Stale snapshots, same-plane copies, or incomplete structure records weaken recovery, and restoration cannot
+        prevent current outage.
+evidence_refs:
+- REF-000647
+- REF-000648
+- REF-000652
+- REF-000653
+- REF-000654
+- REF-000655
+- REF-000657
+- REF-000877
+- REF-000878
+- REF-000879
+- REF-000880
+- REF-000988
+- REF-000990
+- REF-000995
+- REF-000996
+- REF-000989
+lifecycle:
+  status: review
+  version: 0.5.0
+  created: '2026-09-22'
+  modified: '2026-10-04'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

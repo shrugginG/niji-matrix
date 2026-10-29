@@ -1,0 +1,76 @@
+schema_version: "2.0.0"
+type: technique
+id: NJT-0170
+name: {zh: 交互命令历史记录前抑制, en: Interactive Command-History Pre-Recording Suppression}
+summary: {zh: 攻击者在交互命令进入预期持久历史之前关闭整段保存或选择性排除条目，使已执行操作缺少默认调查记录。, en: "Adversaries disable whole-session persistence or selectively exclude entries before interactive commands enter expected durable history, leaving executed operations absent from the default investigative record."}
+aliases: [Prevent Command History Logging, T1690]
+classification:
+  tactic_refs: [TA0112]
+  origin: {kind: attack-adapted, source_attack_id: T1690, source_attack_version: "19.1"}
+  decision_ref: DEC-TA0112-T1690
+definition_and_concept:
+  paragraphs:
+    - zh: 交互命令历史记录前抑制是攻击者控制 shell、数据库客户端或设备 CLI 的 history generation 条件、内存容量、保存方式或目标 sink，使本应记录的交互命令在形成预期持久条目前被丢弃。直接对象是 command execution—history-generation decision—durable entry 的结果差，不是命令执行本身，也不是所有日志的通用关闭。
+      en: Interactive Command-History Pre-Recording Suppression is adversary control of history-generation conditions, in-memory capacity, save style, or destination sink in a shell, database client, or device CLI so an interactive command expected to be recorded is discarded before the expected durable entry forms. Its direct object is the outcome difference from command execution through the history-generation decision to a durable entry, not command execution itself or generic shutdown of all logging.
+    - zh: 命令可以成功产生进程、文件、网络或配置结果，而本地 history 文件整体不增长，或只缺少命中输入 predicate 的条目。完成判断需要证明命令处于交互 session、当前平台/策略原本应记录、攻击者控制抑制条件，并在正常 flush/退出边界后仍无条目；历史空白本身只表示可见性缺口。
+      en: Commands can successfully create process, file, network, or configuration outcomes while the local history file either does not grow at all or lacks only entries matching an input predicate. Completion requires proof that the command occurred in an interactive session, the current platform and policy should have recorded it, the adversary controlled the suppressing condition, and no entry exists after the normal flush or exit boundary. Blank history alone establishes only a visibility gap.
+stealth_characteristics:
+  paragraphs:
+    - zh: 该技术保留解释器和命令的正常功能，只削弱最常被调查人员首先查看的用户级回溯面。HISTFILE=/dev/null、未设置路径、零历史容量或 PSReadLine SaveNothing 可让整段 session 没有持久条目；HISTCONTROL=ignorespace、HISTIGNORE 或等价 handler 可让相邻条目保留而敏感命令缺失。两类表面上都可能被解释为用户偏好或平台差异。
+      en: The technique preserves normal interpreter and command function while weakening the user-level retrospective surface investigators commonly inspect first. HISTFILE directed to /dev/null, an unset path, zero history capacity, or PSReadLine SaveNothing can leave an entire session without durable entries. HISTCONTROL=ignorespace, HISTIGNORE, or an equivalent handler can retain neighboring entries while omitting sensitive commands. Both can superficially resemble user preference or platform variation.
+    - zh: 残余通常仍存在于 session/TTY 录制、进程创建、审计、sudo/SSH、终端输入、配置/环境快照、history 文件元数据和命令产生的资源结果。匿迹收益来自默认 history 观察面的缺口，而不是全链无痕；独立采集命令序列并记录设置与 flush 结果可显著压缩。
+      en: Residue commonly remains in session or TTY recording, process creation, audit, sudo or SSH, terminal input, configuration or environment snapshots, history-file metadata, and resources produced by commands. Stealth comes from a gap in the default history observation plane rather than complete trace elimination. Independently collecting command sequences and recording settings plus flush outcomes substantially reduces it.
+scope_boundary_definition:
+  paragraphs:
+    - zh: 纳入要求至少有一条可独立证明的交互命令，平台基线表明它应进入指定 history store，session 中出现未批准的 history 设置、sink 或输入 predicate，且在应有持久化边界后观察到整体或选择性缺口。若只能看到配置变化而没有交互命令，报告 suppression exposure；若只有历史缺口而无设置/命令证据，报告 history anomaly。
+      en: Include only when at least one interactive command is independently established, the platform baseline says it should enter a named history store, an unapproved history setting, sink, or input predicate appears in the session, and a whole or selective gap remains after the expected persistence boundary. A setting change without an interactive command is suppression exposure. A history gap without setting or command evidence is a history anomaly.
+    - zh: 已经写入后再删除、截断或篡改的历史归 NJT-0112 证据对象擦除；禁用 ScriptBlock、syslog、EDR 或安全日志管线归 NJS-0123-003 或相应工具对象。非交互 shell、默认不保存的容器/自动化、合法隐私策略、只读路径、磁盘满、崩溃和并发 session flush 冲突必须作为反例处理。平台、shell 名称和命令内容不形成子技术。
+      en: Deleting, truncating, or altering history after it was written belongs to NJT-0112 evidence-object erasure. Disabling ScriptBlock, syslog, EDR, or a security-log pipeline belongs to NJS-0123-003 or the corresponding tool object. Noninteractive shells, containers or automation that do not save by default, approved privacy policy, read-only paths, full disks, crashes, and concurrent-session flush conflicts are counterexamples. Platform, shell name, and command content do not define sub-techniques.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+      - zh: 攻击者取得 Unix root shell 后可先把 HISTFILE 与数据库客户端历史指向 /dev/null，再执行发现、凭据访问或配置命令；在 PowerShell 交互会话中可将 HistorySaveStyle 改为 SaveNothing；也可在 Bash ignorespace 生效时只为敏感命令添加前导空格。BPFDoor 与 APT38 分别提供整体 sink 和选择性 predicate 的直接案例。
+        en: After obtaining a Unix root shell, an adversary can point HISTFILE and database-client history to /dev/null before discovery, credential-access, or configuration commands. In an interactive PowerShell session, it can change HistorySaveStyle to SaveNothing. With Bash ignorespace active, it can prepend a space only to sensitive commands. BPFDoor and APT38 provide direct whole-sink and selective-predicate cases respectively.
+  threat_model:
+    attacker_model:
+      paragraphs:
+        - zh: 攻击者需要控制当前 session 的环境/选项、用户配置或 CLI 历史策略，并了解何时加入内存历史、何时 flush 以及是否有其他独立记录。受限 shell、只读配置、强制远程 TTY 录制、不可由用户关闭的 audit 和命令结果关联会提高成本；仅删除历史文件不是本项路径。
+          en: The adversary needs control of the current session's environment or options, user configuration, or CLI history policy and knowledge of when entries enter in-memory history, when they flush, and whether independent recording exists. Restricted shells, read-only configuration, mandatory remote TTY recording, audit that users cannot disable, and command-outcome correlation raise cost. Merely deleting the history file is not this path.
+    defender_model:
+      paragraphs:
+        - zh: 防守方维护按 shell/version/session 类型区分的 history 期望，获得登录与 TTY/session 身份、实际命令或进程证据、环境/选项 old-new、history sink 的路径/文件系统状态、写入/退出事件和最终条目。敏感命令内容需按最小化与访问控制保存；没有独立命令序列时只能判定配置风险。
+          en: Defenders maintain history expectations by shell, version, and session type and obtain login and TTY or session identity, actual command or process evidence, environment or option old and new state, history-sink path and filesystem state, write or exit events, and final entries. Sensitive command content requires minimization and access controls. Without an independent command sequence, defenders can establish only configuration risk.
+stealth_mechanisms:
+  - mechanism_ref: NM-BT
+    role: primary
+    summary: {zh: 命令正常执行但不进入预期交互历史观察面, en: Commands execute normally but do not enter the expected interactive-history observation plane}
+    analysis:
+      paragraphs:
+        - zh: 攻击者不必改变命令语义或结果，只需改变 history consumer 的记录决定或 sink。真实行为仍发生，默认调查历史却缺少完整 session 或选定条目，因而形成行为透明；把独立命令序列与 history 生成状态、写入边界和结果差连接后可恢复该行为。
+          en: The adversary need not change command semantics or outcomes and changes only the history consumer's recording decision or sink. Real behavior still occurs while the default investigative history lacks an entire session or selected entries, producing behavioral transparency. Joining an independent command sequence to history-generation state, persistence boundaries, and outcome differences recovers the behavior.
+    evidence_refs: [REF-000453, REF-000737, REF-000738, REF-000739, REF-000740]
+    confidence: high
+subtechnique_taxonomy:
+  narrative:
+    paragraphs:
+      - zh: NJS-0170-001“会话历史持久化整体抑制”以一个交互 session 的全部或近全部命令均不进入预期 store 为变量，检测关注 sink、保存方式、容量、文件可写性和 session flush。NJS-0170-002“命令条目选择性历史遗漏”以 history 仍连续但命中输入 predicate 的条目缺失为变量，检测必须比较独立命令序列、相邻条目和 predicate 状态。
+        en: NJS-0170-001 Whole-Session History Persistence Suppression varies whether all or nearly all commands in one interactive session fail to enter the expected store, with detection centered on sink, save style, capacity, file writability, and session flush. NJS-0170-002 Selective Command-Entry History Omission varies whether history remains continuous while entries matching an input predicate are absent, requiring comparison of an independent command sequence, neighboring entries, and predicate state.
+      - zh: 两项按持久化范围、残余形态与恢复方法划分，而非按 Bash、PowerShell、MySQL 或网络设备平台。ATT&CK T1690 无子技术；其删除已有历史和关闭广义日志的示例由相邻 owner 处理。若同一 session 先整体不保存再选择性输入，整体结果优先，只有能证明不同时间窗/状态时才双重映射。
+        en: The children divide by persistence scope, residual shape, and recovery method rather than Bash, PowerShell, MySQL, or network-device platform. ATT&CK T1690 has no sub-techniques, and its examples involving deletion of existing history or shutdown of broader logging are handled by adjacent owners. If a session first disables all persistence and later uses selective input, the whole-session outcome takes precedence unless distinct time windows and states can be proved.
+  coverage: established
+  subtechnique_refs: [NJS-0170-001, NJS-0170-002]
+defense:
+  detections: {coverage: available, strategy_refs: [DET-000195]}
+  mitigations: {coverage: available, mitigation_refs: [MIT-000176]}
+evidence:
+  claim_refs: [CLM-000836, CLM-000837, CLM-000838, CLM-000839, CLM-000840]
+  case_refs: [CASE-000240, CASE-000241]
+  reference_refs: [REF-000453, REF-000737, REF-000738, REF-000739, REF-000740]
+research:
+  limitations:
+    paragraphs:
+      - zh: BPFDoor 与 APT38 直接支持两个变量，GNU 与 Microsoft 文档支持消费语义，但公开案例通常不提供完整 session ID、TTY 输入、flush 时点和最终文件内容。因此案例能证明攻击者做法，却不能替代组织内基线或逐命令闭环；不同 shell/version 的 histappend、共享历史和退出行为需本地 canary 验证。
+        en: BPFDoor and APT38 directly support the two variables, while GNU and Microsoft documentation supports consumer semantics, but public cases rarely provide complete session IDs, TTY input, flush timing, and final file contents. The cases establish adversary practice but do not replace an organizational baseline or per-command closure. Histappend, shared-history, and exit behavior across shells and versions need local canary validation.
+      - zh: TTY/命令录制本身可能暴露密钥、个人数据和业务敏感信息，检测设计必须最小化内容、进行分级访问并优先保存 hash/结构特征。攻击者若同时控制 shell、审计代理和远程存储，独立性消失；没有外部证据时不得把历史空白提升为已确认技术。
+        en: TTY or command recording can itself expose secrets, personal data, and business-sensitive information. Detection must minimize content, enforce tiered access, and prefer hashes or structural features. If an adversary controls the shell, audit agent, and remote storage together, independence disappears. Blank history must not be promoted to a confirmed technique without external evidence.
+lifecycle: {status: review, version: "0.1.0", created: "2026-09-23", modified: "2026-09-23", contributors: [Niji Matrix Research], reviewers: []}

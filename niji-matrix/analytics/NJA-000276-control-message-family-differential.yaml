@@ -1,0 +1,112 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000276
+strategy_ref: DET-000223
+name:
+  zh: 控制回调消息族的数据承载差分
+  en: Data-Carriage Differential in a Control-Callback Message Family
+summary:
+  zh: 比较控制消息族的字段、体积和来源，发现回路内嵌的受害数据。
+  en: Compare fields, size, and provenance inside one control-message family to find embedded victim data.
+domains:
+- enterprise
+platforms: []
+logic:
+  paragraphs:
+  - zh: 在可检查 HTTP 或已解析的定制协议中，按设备、进程、客户端标识、目的端、方法、URI 模板或消息类型建立例行控制回路，记录其请求体长度、头字段集合、字段模式、方向和往返间隔。将敏感读取后的下一至数次事务同此前回路比较，识别目的端和消息族保持不变但请求体、字段组合、附件、消息长度或
+      client-to-server 比率出现无法由批准状态变化解释的增长；若响应继续下发任务、相同客户端稍后再回调或数据接收获得成功状态，则提高置信度。对未解密 TLS 只执行流量形态分支，不声称已经解析被盗内容。
+    en: In inspectable HTTP or a parsed custom protocol, build a routine control loop by device, process, client
+      identity, destination, method, URI template, or message type, recording request-body length, header set, field
+      pattern, direction, and round-trip interval. Compare the next several transactions after sensitive access
+      with the prior loop. Identify unexplained growth in body, field combination, attachment, message length, or
+      client-to-server ratio while destination and message family remain stable. Raise confidence when the response
+      continues tasking, the same client later calls back, or the receiver returns success. For opaque TLS, execute
+      only the traffic-shape branch and do not claim the stolen content was parsed.
+data_requirements:
+- source_type: inspectable-http-transaction
+  name:
+    zh: 可检查 HTTP 事务
+    en: Inspectable HTTP Transaction
+  channel: Zeek http.log after authorized TLS inspection or equivalent proxy/NDR log
+  required_fields:
+  - ts
+  - uid
+  - id.orig-h
+  - id.resp-h
+  - method
+  - host
+  - uri
+  - user-agent
+  - request-body-len
+  - response-body-len
+  - status-code
+- source_type: endpoint-object-access
+  name:
+    zh: 端点敏感对象访问
+    en: Endpoint Sensitive Object Access
+  channel: EDR file-access telemetry or Windows Security Event 4663 with deployment-validated SACLs
+  required_fields:
+  - timestamp
+  - device-id
+  - process-id-or-unique-key
+  - object-name
+  - access-type
+- source_type: network-flow-summary
+  name:
+    zh: HTTP 事务关联流量摘要
+    en: HTTP-Linked Flow Summary
+  channel: Zeek conn.log joined by uid
+  required_fields:
+  - ts
+  - uid
+  - id.orig-h
+  - id.resp-h
+  - orig-bytes
+  - resp-bytes
+  - duration
+observables:
+- zh: 例行回调的请求体长度、字段组合或熵在敏感读取后偏离基线
+  en: Routine callback body length, fields, or entropy deviates after sensitive access
+- zh: 相同客户端和 URI/消息类型开始携带系统信息、截图或命令结果
+  en: The same client and URI or message type begins carrying system information, screenshots, or command results
+correlation:
+  window:
+    zh: 以七日至三十日建立消息族基线，并在一次敏感读取后的两个回调周期内检查变化。
+    en: Build a seven-to-thirty-day message-family baseline and inspect change within two callback periods after
+      sensitive access.
+  dimensions:
+  - device-id
+  - process-start-key
+  - client-identifier
+  - destination-host
+  - method
+  - uri-or-message-template
+false_positives:
+- zh: 合法资产代理、EDR、远程支持和错误报告扩大消息体
+  en: Legitimate inventory agents, EDR, remote support, and error reporting enlarge messages
+blind_spots:
+- zh: TLS 或二进制协议不可解析，或攻击者渐进改变负载基线
+  en: TLS or a binary protocol is not parsable or the adversary gradually changes the payload baseline
+- zh: 没有软件所有权和批准字段清单
+  en: Software ownership and approved-field manifests are absent
+tuning_guidance:
+  paragraphs:
+  - zh: 以软件版本、服务器角色和客户端配置分别维护回路模板；允许已签名版本升级和批准诊断窗口，但不得为整个域名、CDN 或远程管理产品创建永久白名单。优先复核从高敏目录读取后紧邻发生且缺少对应业务工单的变化。
+    en: Maintain loop templates by software version, server role, and client configuration. Allow signed upgrades
+      and approved diagnostic windows, but do not permanently exempt an entire domain, CDN, or remote-management
+      product. Prioritize changes immediately following reads from high-sensitivity locations and lacking a corresponding
+      business ticket.
+evidence_refs:
+- REF-000928
+- REF-000927
+- REF-000926
+- REF-000632
+- REF-000634
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-10-04'
+  modified: '2026-10-04'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

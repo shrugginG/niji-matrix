@@ -1,0 +1,128 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000087
+strategy_ref: DET-000102
+name:
+  zh: 宿主构建到首次部署关联
+  en: Host Build to First Deployment Correlation
+summary:
+  zh: 输出未批准构建调用、构建期外部内容取得、新本地镜像和首次容器使用之间的谱系。
+  en: Produce lineage among unapproved build invocation, external content retrieval during build, a new local image, and its
+    first container use.
+domains:
+- enterprise
+platforms:
+- Containers
+logic:
+  paragraphs:
+  - zh: 以守护进程认证主体、主机和 build ID 建立构建事务，保存上下文、构建文件、基础镜像和依赖材料摘要，每步操作、构建期外连、输出镜像摘要与构建证明。随后按输出摘要连接标记、导出、扫描和首次容器创建。若调用者或项目未批准，且构建从非基线目的地取得可执行内容、新增可执行层或输出缺少可验证材料即被部署，则输出 host_build_lineage；内容分析或后继行为证明恶意时升级为 malicious_local_image_use。
+    en: Build a transaction by daemon-authenticated principal, host, and build ID and retain digests for context, build file,
+      base image, and dependency materials together with each step, build-time egress, output-image digest, and build attestation.
+      Join tagging, export, scanning, and first container creation by output digest. Emit host_build_lineage when caller or
+      project is unapproved and the build retrieves executable content from an off-baseline destination, adds an executable
+      layer, or deploys an output lacking verifiable materials. Upgrade to malicious_local_image_use when content analysis
+      or successor behavior establishes maliciousness.
+data_requirements:
+- source_type: container-build-control-plane
+  name:
+    zh: 容器构建控制面事件
+    en: Container build control-plane events
+  channel: null
+  required_fields:
+  - event.timestamp
+  - host.id
+  - daemon.principal
+  - build.id
+  - context.digest
+  - dockerfile.digest
+  - base_image.digest
+  - build.step
+  - build.network_destination
+  - output_image.digest
+  - result
+- source_type: build-network-telemetry
+  name:
+    zh: 构建执行环境网络遥测
+    en: Build-execution environment network telemetry
+  channel: null
+  required_fields:
+  - event.timestamp
+  - host.id
+  - build.id
+  - process.start_key
+  - network.destination
+  - network.protocol
+  - transfer.digest
+- source_type: image-provenance-and-content
+  name:
+    zh: 镜像证明、材料与内容分析
+    en: Image provenance, materials, and content analysis
+  channel: null
+  required_fields:
+  - output_image.digest
+  - attestation.builder
+  - attestation.materials
+  - attestation.source
+  - image.layer_digest
+  - image.entrypoint
+  - scan.verdict
+- source_type: container-lifecycle-events
+  name:
+    zh: 镜像与容器生命周期事件
+    en: Image and container lifecycle events
+  channel: null
+  required_fields:
+  - event.timestamp
+  - host.id
+  - image.digest
+  - image.source
+  - container.id
+  - container.action
+  - workload.identity
+  - deployment.approval
+observables:
+- zh: 正常基础镜像后出现含外部下载步骤的新本地摘要
+  en: A benign base image is followed by a new local digest containing an external download step
+- zh: 未经证明的新镜像在构建后短时间内首次部署
+  en: An unattested new image is first deployed shortly after its build
+correlation:
+  window:
+    zh: 构建事务覆盖完整构建时长；输出摘要谱系保留到该摘要首次部署、被明确废弃或超过组织镜像生命周期上限，环境应记录实际选定期限而不使用通用时长。
+    en: Cover the complete build transaction. Retain output-digest lineage until first deployment, explicit abandonment, or
+      the organization's image-lifecycle ceiling, and record the selected environmental limit rather than use a generic duration.
+  dimensions:
+  - host.id
+  - daemon.principal
+  - build.id
+  - context.digest
+  - base_image.digest
+  - output_image.digest
+  - container.id
+  - workload.identity
+false_positives:
+- zh: 开发者临时构建、持续集成流水线、应急补丁和离线镜像定制
+  en: Developer experiments, continuous-integration pipelines, emergency patches, and offline image customization
+blind_spots:
+- zh: 构建服务不记录上下文和步骤、BuildKit 缓存复用隐藏执行、镜像在另一主机部署
+  en: Builders omitting context and step records, BuildKit cache reuse hiding execution, or deployment on another host
+tuning_guidance:
+  paragraphs:
+  - zh: 按项目、调用身份、批准流水线、基础镜像和允许外连建立组合基线，并要求本地生成摘要进入与注册表镜像相同的扫描和证明流程。不要仅允许守护进程身份或常见基础镜像；对开发环境降低严重度时仍保留输出摘要与跨环境部署关联。
+    en: Baseline combinations of project, caller identity, approved pipeline, base image, and permitted egress and require
+      locally generated digests to enter the same scanning and attestation path as registry images. Do not allow merely by
+      daemon identity or common base image. When lowering severity for development environments, retain output digest and
+      cross-environment deployment correlation.
+evidence_refs:
+- REF-000383
+- REF-000384
+- REF-000385
+- REF-000412
+- REF-000413
+lifecycle:
+  status: review
+  version: 0.2.0
+  created: '2026-09-19'
+  modified: '2026-09-21'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

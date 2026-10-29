@@ -1,0 +1,130 @@
+schema_version: 2.0.0
+type: evasion-subtechnique
+id: NJS-0097-002
+parent_ref: NJT-0097
+name:
+  zh: 外部启动源重定向
+  en: External Boot-Source Redirection
+summary:
+  zh: 攻击者修改本地 boot pointer，使设备在启动时通过标准网络功能从攻击者外部源取得并运行恶意 image。
+  en: Adversaries change a local boot pointer so the device uses standard network functionality to retrieve and run a malicious image from an
+    external source at boot.
+aliases: []
+lineage:
+  attck_subtechnique_inherited: false
+definition_and_concept:
+  paragraphs:
+  - zh: 外部启动源重定向是攻击者修改 ROMMON、boot variable 或等价启动配置，把设备下一次启动的 image 来源从批准本地/服务器改为攻击者控制的 TFTP 或网络位置，并通过正常 netboot 加载的匿迹子技术。直接目标是让持久控制由小型本地指针和远端可变
+      image 共同维持。
+    en: External Boot-Source Redirection changes ROMMON a boot variable or equivalent configuration so the next boot image source moves from an
+      approved local or server image to an adversary-controlled TFTP or network location and loads through normal netboot. Its direct objective
+      is persistence jointly maintained by a small local pointer and a remotely mutable image.
+stealth_characteristics:
+  paragraphs:
+  - zh: 外部启动源重定向使本地设备只保留看似正常 netboot 配置，真实代码身份在启动网络交换中决定；设备配置团队可能看不到 server image hash，网络团队又不了解批准 boot pointer。config diff、server/destination、transfer、image
+      hash、reboot 和 running version 仍可连接。
+    en: External Boot-Source Redirection leaves the device with an apparently normal netboot configuration while actual code identity is decided
+      during boot-time network exchange. Device-configuration teams may not see the server image hash and network teams may not know the approved
+      boot pointer. Configuration difference server or destination transfer image hash reboot and running version can still be joined.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 纳入攻击者控制 boot pointer 到外部源并实际/预期加载恶意 image。合法集中 TFTP/PXE、一次文件下载或运行中 image 更新排除；协议不必是 TFTP，只要来源分离和启动消费关系相同。
+    en: Include adversary control of a boot pointer to an external source plus actual or intended malicious-image load. Legitimate centralized
+      TFTP or PXE one-time file download or running-image update is excluded. The protocol need not be TFTP when provenance separation and boot
+      consumption are equivalent.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: 攻击者修改 NVRAM、boot order、ROMMON 或网络设备启动配置，使下一次重启通过标准 PXE/TFTP/FTP/SCP 或等价机制从攻击者控制服务器取得镜像。命令和协议可以完全合法，但 source、image hash 或批准发生变化；设备启动后运行被替换系统并恢复后门。
+      en: An adversary changes NVRAM, boot order, ROMMON, or network-device boot configuration so the next restart obtains an image from an attacker-controlled
+        server through standard PXE, TFTP, FTP, SCP, or an equivalent mechanism. Commands and protocols can be legitimate while source, image
+        hash, or approval changes. After boot, the device runs the substituted system and restores a backdoor.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者需要 boot configuration/NVRAM/ROMMON 管理权限、可到达的外部启动服务、与设备型号兼容且能通过必要格式/签名检查的镜像，并能触发或等待安全重启。还需控制 DHCP/boot server、网络路径或配置中的 source pointer，确保设备不回退到本地可信映像。
+        en: The adversary needs boot-configuration, NVRAM, or ROMMON administrative authority; a reachable external boot service; an image compatible
+          with the device model and any format or signature checks; and ability to trigger or await a safe reboot. It must also control DHCP or
+          boot server, network path, or source pointer and prevent fallback to a trusted local image.
+      - zh: 签名/secure boot、只读 boot variables、双人配置批准、受限管理平面、启动服务器 allowlist、image digest pinning 和独立 running-image verification 提高成本。错误镜像会使设备无法启动或进入
+          recovery，网络启动会留下流量与 server 证据。
+        en: Signing or secure boot, read-only boot variables, two-person configuration approval, restricted management plane, boot-server allowlists,
+          image-digest pinning, and independent running-image verification raise cost. A bad image prevents boot or enters recovery, while network
+          boot leaves traffic and server evidence.
+    defender_model:
+      paragraphs:
+      - zh: 防守方需要 boot order/NVRAM/ROMMON old/new、writer/session、管理来源、批准、DHCP/PXE/TFTP/FTP/SCP server、requested filename、image hash/signature、boot
+          ID、running image identity 和 OS/设备首个行为。配置、网络和运行态通常由不同团队掌握，必须按设备和 boot ID 连接。
+        en: Defenders need boot order, NVRAM, or ROMMON old and new state, writer or session, management origin, approval, DHCP, PXE, TFTP, FTP,
+          or SCP server, requested filename, image hash or signature, boot ID, running-image identity, and first operating-system or device behavior.
+          Configuration, network, and runtime are often held by different teams and must be joined by device and boot ID.
+      - zh: 只看标准 TFTP/PXE 流量会把恶意启动当运维，只看本地磁盘会漏掉外部镜像，只看配置不能证明设备实际启动。应建立批准 boot server/image/维护窗口基线并验证每次重启后 running image；无认证 TFTP、边界日志短和设备自报 image
+          被篡改是盲区。
+        en: Standard TFTP or PXE traffic alone makes malicious boot look operational, local-disk-only review misses the external image, and configuration
+          alone cannot prove actual boot. Defenders should baseline approved boot servers, images, and maintenance windows and verify running
+          image after every restart. Unauthenticated TFTP, short boundary-log retention, and compromised self-reported image are blind spots.
+stealth_mechanisms:
+- mechanism_ref: NM-FD
+  role: primary
+  summary:
+    zh: 标准 Netboot 外观承载未经批准的远程 Image
+    en: Standard netboot appearance carries an unapproved remote image
+  analysis:
+    paragraphs:
+    - zh: 设备通过正常 boot 命令和协议取得 image，粗粒度观察把它归为管理功能，恶意来源借用标准外观形成特征伪装；server、hash 和批准差异可识别。
+      en: The device retrieves an image through normal boot commands and protocols so coarse observation treats it as administration while the
+        malicious source borrows standard appearance and produces Feature Disguise; server hash and approval differences distinguish it.
+  evidence_refs:
+  - REF-000193
+  - REF-000195
+  confidence: high
+- mechanism_ref: NM-BT
+  role: secondary
+  summary:
+    zh: 本地 Boot 配置与远端 Image 身份分置观察面
+    en: Local boot configuration and remote image identity occupy separate observation planes
+  analysis:
+    paragraphs:
+    - zh: 指针、网络取像和运行版本由不同系统记录，单侧无法恢复完整来源，关键关系落在观察边界外形成行为透明；跨面 object/hash 关联可恢复。
+      en: The pointer network retrieval and running version are recorded by different systems so one side cannot recover full provenance and the
+        critical relationship falls outside the observation boundary producing Behavioral Transparency; cross-plane object or hash linkage restores
+        it.
+  evidence_refs:
+  - REF-000195
+  confidence: high
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000077
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000077
+evidence:
+  claim_refs:
+  - CLM-000388
+  case_refs: []
+  reference_refs:
+  - REF-000193
+  - REF-000195
+research:
+  limitations:
+    paragraphs:
+    - zh: ATT&CK T1542.005 直接支持网络设备通过 TFTP 等标准功能加载恶意 image，父级与 NIST 支持 OS 前恢复；公开材料不能保证所有外部启动协议、签名与日志相同。子项变量是 source pointer 与 actual image，而不是
+        TFTP 产品或协议。
+      en: ATT&CK T1542.005 directly supports network devices loading a malicious image through standard functions such as TFTP, while the parent
+        and NIST support pre-operating-system recovery. Public material cannot guarantee identical protocols, signing, and logs for every external
+        boot. The child variable is source pointer and actual image rather than TFTP product or protocol.
+    - zh: 合法灾备、PXE 装机、网络设备升级和 lab boot 会产生相同配置/流量；必须有未经批准 writer/server/image 差和重启后结果。无服务器日志或设备只自报 running image 时归因降低；只修改 boot pointer 但没有实际或可证明未来消费只能是风险状态。
+      en: Legitimate recovery, PXE provisioning, network-device upgrade, and lab boot create the same configuration and traffic. An unapproved
+        writer, server or image difference, and post-reboot outcome are required. Attribution falls without server logs or when the device only
+        self-reports the running image. A changed boot pointer with no actual or demonstrable future consumption remains a risk state.
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-09-11'
+  modified: '2026-09-12'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

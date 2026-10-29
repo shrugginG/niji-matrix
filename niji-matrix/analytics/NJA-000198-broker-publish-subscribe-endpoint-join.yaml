@@ -1,0 +1,129 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000198
+strategy_ref: DET-000180
+name:
+  zh: broker 发布订阅与端点执行双侧关联
+  en: Broker Publish-Subscribe to Endpoint Bilateral Join
+summary:
+  zh: 以发布者、订阅者和主题路由事件证明经 broker 的任务投递与受害端结果。
+  en: Use publisher, subscriber, and topic-routing events to prove broker-delivered tasks and victim-side results.
+domains:
+- enterprise
+platforms:
+- Windows
+- Linux
+- Network Devices
+logic:
+  paragraphs:
+  - zh: 在自营或可审计 broker 中持续导出 message_delivered、session_subscribed 和 client_connected 事件。先以 topic、timestamp、from_clientid、clientid
+      建发布者到订阅者边，再以 peerhost、设备身份及 Sysmon Event 3 的 ProcessGuid 把订阅者映射到受害进程；检查任务投递后是否启动解释器或其他未批准动作，以及结果是否经另一主题回报。EMQX
+      Cloud 的 Rule Engine 事件字段可实现这组联接，但必须配置 Data Integration 将事件持续外送并保留。
+    en: Continuously export message_delivered, session_subscribed, and client_connected events on a managed or auditable
+      broker. Build publisher-to-subscriber edges using topic, timestamp, from_clientid, and clientid. Map the subscriber
+      to a victim process using peerhost, device identity, and ProcessGuid from Sysmon Event 3; then check for interpreter
+      launch or other unapproved action after task delivery and results on another topic. EMQX Cloud Rule Engine
+      event fields support these joins, but Data Integration must be configured to export and retain them continuously.
+  - zh: 输出区分不合业务角色的 broker 连接、已复原发布—订阅路径和任务—执行—结果闭环。公共 broker 未向防守方提供服务事件时，仅能凭进程角色、外联和本地执行报告候选；定向 Log Trace 的部署与时长限制使它不能回填未知主题的全量历史。
+    en: Separate outputs for a broker connection inconsistent with device role, reconstructed publisher-to-subscriber
+      path, and a closed task-to-execution-to-result chain. Without service events from a public broker, only process
+      role, egress, and local execution support a candidate. Deployment and duration limits on targeted Log Trace
+      mean it cannot backfill complete history for unknown topics.
+data_requirements:
+- source_type: broker-delivery
+  name:
+    zh: broker 消息投递事件
+    en: Broker message-delivery events
+  channel: EMQX Cloud Data Integration message_delivered
+  required_fields:
+  - timestamp
+  - topic
+  - from_clientid
+  - clientid
+  - peerhost
+- source_type: broker-subscription
+  name:
+    zh: broker 订阅事件
+    en: Broker subscription events
+  channel: EMQX Cloud Data Integration session_subscribed
+  required_fields:
+  - timestamp
+  - topic
+  - clientid
+  - peerhost
+- source_type: broker-connection
+  name:
+    zh: broker 客户端连接事件
+    en: Broker client connection events
+  channel: EMQX Cloud Data Integration client_connected
+  required_fields:
+  - timestamp
+  - clientid
+  - peername
+- source_type: endpoint-network
+  name:
+    zh: 端点进程网络连接
+    en: Endpoint process network connection
+  channel: Sysmon Event 3 or equivalent EDR
+  required_fields:
+  - utc_time
+  - device_id
+  - process_guid
+  - image
+  - destination_ip
+  - destination_port
+- source_type: endpoint-process
+  name:
+    zh: 端点进程后果
+    en: Endpoint process outcome
+  channel: Sysmon Event 1 or equivalent EDR
+  required_fields:
+  - utc_time
+  - device_id
+  - process_guid
+  - parent_process_guid
+  - image
+observables:
+- zh: 同一主题上独立发布者给订阅植入投递任务并触发后继进程
+  en: An independent publisher delivers tasks over a subscribed topic and triggers successor processes
+- zh: 受害进程将结果经另一主题回传，而业务目录没有批准该客户端关系
+  en: A victim process returns results over another topic without an approved client relationship
+correlation:
+  window:
+    zh: 初始投递后十分钟关联端点后果，并保留至少二十四小时 broker 路由事件以比较重复会话。
+    en: Join endpoint outcomes within ten minutes of initial delivery and retain at least twenty-four hours of broker
+      routing events for repeated conversations.
+  dimensions:
+  - topic
+  - from_clientid
+  - clientid
+  - peerhost
+  - device_id
+  - process_guid
+  - time
+false_positives:
+- zh: 正常 IoT 指令、OTA 更新、远程运维和 broker 测试
+  en: Legitimate IoT commands, OTA updates, remote administration, and broker testing
+blind_spots:
+- zh: 外部 broker 无事件共享、MQTT over TLS 仅有网关元数据、NAT 或轮换 clientid、进程内执行
+  en: External broker does not share events, MQTT over TLS exposes gateway metadata only, NAT or rotating client
+    IDs, or in-process execution
+tuning_guidance:
+  paragraphs:
+  - zh: 先登记设备角色、批准 broker、客户端证书及主题所有权，再按越权发布和任务后继动作排序。数字主题、1883/8883 端口或单个连接不构成结论；事件导出丢包时明确降低置信度。
+    en: Inventory device roles, approved brokers, client certificates, and topic ownership first, then rank unauthorized
+      publication and post-task action. Numeric topics, ports 1883 or 8883, and a single connection are not verdicts;
+      lower confidence when event export drops records.
+evidence_refs:
+- REF-000679
+- REF-000680
+- REF-000684
+- REF-000230
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-09-22'
+  modified: '2026-09-22'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

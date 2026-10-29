@@ -1,0 +1,181 @@
+B5-T1665-NJS-REQUEST-QUALIFIED:
+  summary:
+    zh: C2 前端只向满足植入体请求资格的流量暴露真实控制端，其余请求得到良性或错误表面。
+    en: A C2 front exposes the real controller only to traffic matching an implant request qualification while other requests
+      receive a benign or error surface.
+  definition_and_concept:
+    paragraphs:
+    - zh: 请求资格门控 C2 暴露是攻击者在前端或监听器上设置正向请求条件，只有携带匹配的路径、消息校验、头字段组合或会话序列的植入体请求才被转发到控制端或得到任务。直接目标是让普通扫描器无法到达真实 C2 功能；稳定变量是请求与植入体资格的匹配关系，不是具体
+        Cookie、令牌或产品。
+      en: Request-Qualified C2 Exposure places a positive request condition at a front or listener. Only implant requests
+        with the matching path, message checksum, header combination, or session sequence are forwarded to the controller
+        or receive tasking. Its direct purpose is keeping ordinary scanners from reaching the true C2 function. The stable
+        variable is request congruence with the implant qualification rather than a particular cookie, token, or product.
+    - zh: 正式判定要求同一端点在可控请求变体下给出不同路由或响应，并至少一次把合格分支连接到受害植入体的命令或结果。IronNet 对乌克兰相关 Cobalt Strike 基础设施记录用于 Nginx 的防御绕过 profile，并说明
+        redirector 把特定 Beacon 流量送往 team server；Mandiant 文档补充校验和与用户代理规则的实现语义。产品能力本身不能替代事件链。
+      en: Classification requires different route or response outcomes for controlled request variants at the same endpoint
+        and at least one join from the qualified branch to a victim implant command or result. IronNet documented an Nginx-directed
+        defender-bypass profile on Ukraine-related Cobalt Strike infrastructure and explained redirectors sending specific
+        Beacon traffic to a team server. Mandiant documents checksum and user-agent rule semantics. Product capability alone
+        cannot replace an incident chain.
+  stealth_characteristics:
+    paragraphs:
+    - zh: 请求资格门控 C2 暴露使未掌握有效请求格式的探针只能看到普通站点、404、重定向或超时；真实 team server 的 banner、路径和任务从这一观察面消失。合格植入体却可以在同一地址持续收发控制数据，形成按请求内容而非地址划分的观察差。
+      en: Request-Qualified C2 Exposure leaves probes without the valid request form seeing only an ordinary site, 404, redirect,
+        or timeout. The team server's banner, route, and tasking disappear from that vantage while a qualified implant continues
+        exchanging control data at the same address, creating an observation difference keyed to request content rather than
+        address.
+    - zh: 残余包括前端匹配规则、请求 ID、命中与未命中动作、上游 origin 访问、变体响应摘要和受害端任务结果。取得样本配置或受害请求并在授权环境中逐字段比较，可以恢复门控；一次无效探针或单个 CDN 地址没有证明力。
+      en: Residuals include front-end match rules, request IDs, matched and unmatched actions, upstream origin access, variant
+        response digests, and victim task results. Sample configuration or victim requests support field-by-field comparison
+        in an authorized setting to recover the gate. One invalid probe or a CDN address alone proves nothing.
+  scope_boundary_definition:
+    paragraphs:
+    - zh: 纳入要求攻击者控制的正向资格条件、同端点请求差分和合格分支的真实 C2 结果。前端只隐匿 origin 但所有请求路由一致时归 NJT-0206；内容仅伪装为 Web 却不分支时归 NJT-0152；向合法源站与受害者之间的路径注入伪造响应时归
+        NJT-0052。多个变量可并列，但不能把前端正常反爬规则本身算作攻击。
+      en: Inclusion requires an actor-controlled positive qualification, a same-endpoint request differential, and a real
+        C2 result on the qualified branch. A front that merely hides its origin while routing every request alike belongs
+        to NJT-0206. Content that only resembles web traffic without branching belongs to NJT-0152. A forged response inserted
+        between a legitimate origin and victim belongs to NJT-0052. Variables may co-apply, but ordinary anti-bot rules alone
+        are not attacks.
+    - zh: 兄弟项依据观察者身份执行负向抑制，即保持请求相同而更换来源会改变结果；本项保持来源相同而改变请求资格即可触发分支。合法 API token、访问控制、WAF challenge 和灰度发布可产生相似差分，必须凭恶意租户、植入体请求与任务结果排除。
+      en: The sibling applies negative suppression by observer identity, so changing source while holding the request constant
+        changes the result. This child branches when qualification changes with the source held constant. Legitimate API tokens,
+        access control, WAF challenges, and staged releases can produce similar differences and require exclusion using malicious
+        tenant, implant request, and task outcome evidence.
+  application_scenarios_and_threat_model:
+    application_scenarios:
+      paragraphs:
+      - zh: 攻击者把 Cobalt Strike 类 team server 放在反向代理之后，令扫描器访问普通站点，只有预置 profile 的 Beacon 才到达控制端。在已受控主机继续轮询时，这种设置降低公开扫描与研究者对基础设施的发现机会，并让同一前端地址同时呈现正常与恶意结果。
+        en: An actor can place a Cobalt Strike-style team server behind a reverse proxy that sends scanners to an ordinary
+          site while only Beacons with a preset profile reach the controller. Continued polling by compromised hosts reduces
+          discovery by public scanners and researchers while one front address presents both ordinary and malicious outcomes.
+    threat_model:
+      attacker_model:
+        paragraphs:
+        - zh: 攻击者需要维护前端规则、植入体请求 profile 与 origin 映射，并让密钥或校验条件在客户端和服务器版本间一致。有效 profile 泄漏、规则误配或前端日志被取得会暴露控制端；过严门控也可能拒绝自己的植入体。
+          en: The actor must maintain front rules, implant request profiles, and origin mapping and keep secret or checksum
+            conditions synchronized across client and server versions. Leaked profiles, misconfigured rules, or recovered
+            front logs expose the controller, while an overly strict gate can reject the actor's own implants.
+      defender_model:
+        paragraphs:
+        - zh: 防守方需取得受害请求或样本 profile、前端 request ID/rule/action、origin 日志、端点任务结果以及合法站点配置。以同一来源和时间固定变量后安全地更改一个请求字段，观察 edge-to-origin
+            与响应差；无前端权限时仅能建立较低置信的外部差分。
+          en: Defenders need victim requests or a sample profile, front request IDs and rule actions, origin logs, endpoint
+            task outcomes, and legitimate site configuration. Hold source and time constant while safely varying one request
+            field and compare edge-to-origin routing and responses. Without front access, external differentials support lower
+            confidence.
+  stealth_mechanisms:
+  - mechanism_ref: NM-BT
+    role: primary
+    summary:
+      zh: 未满足植入体资格的请求无法观察真实 C2 功能
+      en: Requests failing implant qualification cannot observe the real C2 function
+    analysis:
+      paragraphs:
+      - zh: 攻击者以正向资格规则把合格请求送往 team server、其余请求送往良性表面，导致普通探针即使命中同一地址也没有任务或 origin 指纹。关键控制行为在其观察模型中消失；将有效请求、前端规则、origin 访问及植入体结果连接，才能恢复被门控的行为。
+        en: The actor uses a positive qualification rule to route matching requests to a team server and other requests to
+          a benign surface. An ordinary probe can reach the same address yet see no task or origin fingerprint, making the
+          control behavior absent from its observation model. Joining valid requests, front rules, origin access, and implant
+          outcomes restores the gated behavior.
+    evidence_keys:
+    - B5-T1665-REF-IRONNET-UKRAINE-CS
+    - B5-T1665-REF-MANDIANT-CS-COMPONENTS
+    confidence: medium
+  research:
+    limitations:
+      paragraphs:
+      - zh: IronNet 把配置与已知 C2 集群相连，但未公开每个生产请求的转发日志；Mandiant 的组件说明证明可实施性，不是独立入侵事件。没有受害任务结果或服务提供方路由记录时，只能保留“可能存在请求门控”的推断。
+        en: IronNet links the configuration to a known C2 cluster but does not publish every production forwarding log. Mandiant's
+          component account establishes implementation capability rather than an independent intrusion. Without victim task
+          outcomes or provider routing records, the conclusion remains a request-gating hypothesis.
+B5-T1665-NJS-DEFENDER-SUPPRESSION:
+  summary:
+    zh: C2 前端识别安全厂商、研究者或扫描网络并对其拒绝或伪装，同时继续服务受害植入体。
+    en: A C2 front identifies security vendors, researchers, or scanning networks and denies or disguises responses to them
+      while continuing to serve victim implants.
+  definition_and_concept:
+    paragraphs:
+    - zh: 防守观察者选择性抑制是攻击者在 C2 前端或监听器上维护防守来源分类，对命中的安全厂商、扫描器、研究机构或关联网络实施拒绝、重置、超时或诱饵响应，同时让非命中的受害端继续控制通信。直接目的在于延长基础设施可用时间；稳定变量是攻击者控制的观察者分类与差别动作，不是特定
+        IP、国家或名单。
+      en: Defender-Observer Selective Suppression is an actor-maintained classification of defensive sources at a C2 front
+        or listener. Matching security vendors, scanners, research organizations, or related networks receive denial, reset,
+        timeout, or decoy responses while unmatched victim hosts continue control communication. The direct purpose is prolonging
+        infrastructure availability. The stable variable is attacker-controlled observer classification and differential action,
+        not a particular IP, country, or list.
+    - zh: 判定要固定请求格式、端点和短时间窗，比较至少两类来源的响应，并把规则命中或服务端日志与真实受害者 C2 结果连接。Unit 42 在柬埔寨政府目标相关基础设施中观察已知安全公司和部分云/VPS 范围被屏蔽，同时多个目标组织长期通信，直接支持来源分类与后继控制。
+      en: Classification holds request form, endpoint, and a short time window constant, compares responses from at least
+        two source classes, and joins matched rules or server logs to real victim C2 outcomes. Unit 42 observed known security-company
+        and some cloud or VPS ranges blocked on infrastructure linked to Cambodian government targets while multiple victim
+        organizations communicated over time, directly supporting source classification and continuing control.
+  stealth_characteristics:
+    paragraphs:
+    - zh: 防守观察者选择性抑制使公共扫描器对 C2 的可达性、banner 和内容测量为阴性或呈良性，而同一时间的受害端仍保持会话。基于安全厂商探针结果建立的封锁清单会低估基础设施；抑制行为依赖攻击者对防守来源类别的识别，而不是请求本身包含有效任务格式。
+      en: Defender-Observer Selective Suppression makes public scanners measure a C2 endpoint as unavailable or benign while
+        victim hosts retain sessions at the same time. Blocklists built from security-vendor probes can therefore undercount
+        infrastructure. The effect depends on the actor recognizing defensive source classes rather than the request containing
+        a valid task form.
+    - zh: 残余包括前端 deny rule、命中来源组织/ASN、edge action、重置或诱饵响应、受害连接与命令结果，以及同请求跨来源的响应差。分布式视点和服务提供方规则审计可还原；若攻击者也门控请求资格，测试必须一次只改变一个因素以避免混淆兄弟项。
+      en: Residuals include front deny rules, matched source organization or ASN, edge action, reset or decoy response, victim
+        connections and command outcomes, and same-request differences across sources. Distributed vantages and provider rule
+        audit can restore visibility. If the actor also gates request qualification, tests must change one factor at a time
+        to avoid confusing the sibling.
+  scope_boundary_definition:
+    paragraphs:
+    - zh: 纳入要求攻击者对防守来源类别有负向匹配、相同请求跨来源出现稳定差分，并有非命中受害端的真实 C2 结果。按工作时段开关而不识别观察者的时窗暴露仍为父级延期轴；客户端本地识别沙箱属于 T1497。合法 WAF 阻断扫描、DDoS、滥用来源或速率限制不满足恶意
+        C2 结果门。
+      en: Inclusion requires a negative match on defensive source class, a stable difference for the same request across sources,
+        and a real C2 outcome for an unmatched victim. Time-window exposure without observer recognition remains the parent
+        deferred axis, and client-side sandbox recognition belongs to T1497. Legitimate WAF scan blocking, DDoS mitigation,
+        abuse suppression, and rate limits fail the malicious C2 outcome gate.
+    - zh: 兄弟请求资格项以植入体请求条件作正向放行；本项保持请求不变，只因来源被归类为防守者而抑制。代理隐匿真实 origin 可同时发生，但 T1090/NJT-0206 只拥有中继关系，不能由“研究者看不到页面”反推代理或本项。
+      en: The request-qualified sibling positively allows implant-congruent requests. This child holds the request constant
+        and suppresses only because the source is classified as a defender. A proxy can also hide the true origin, but T1090
+        and NJT-0206 own the relay relationship, which cannot be inferred from a researcher seeing no page.
+  application_scenarios_and_threat_model:
+    application_scenarios:
+      paragraphs:
+      - zh: 当攻击者知道安全厂商或研究者常用扫描出口时，可在 C2 前端对这些来源返回关闭端口或诱饵内容，同时让已感染组织继续轮询。Unit 42 观察的柬埔寨目标活动提供多组织持续连接与来源过滤的现场组合；单次扫描失败不能独立证明该模式。
+        en: When an actor knows common scanning egress ranges of vendors and researchers, a C2 front can return a closed service
+          or decoy content to those sources while infected organizations keep polling. Unit 42's Cambodia-targeting report
+          combines continued communications from several organizations with source filtering in the field. One failed scan
+          cannot establish the pattern alone.
+    threat_model:
+      attacker_model:
+        paragraphs:
+        - zh: 攻击者须维护安全来源名单或分类规则并避免误伤植入体使用的云代理、VPN 或动态出口。名单过时会暴露服务，过宽会丢失控制会话；规则版本与例外本身又会在提供方审计中留下证据。
+          en: The actor must maintain security-source lists or classification rules without blocking the cloud proxies, VPNs,
+            or changing egress used by implants. Stale lists expose the service, overly broad lists lose control sessions,
+            and rule versions and exceptions leave evidence in provider audit.
+      defender_model:
+        paragraphs:
+        - zh: 防守方需在授权范围从研究、安全厂商和中性来源发送相同安全探针，比较响应摘要/可达性，并取得 edge rule、matched action 和 origin route 与受害端连接结果。若只持有被屏蔽视点或无受害端证据，不能把普通
+            WAF 误判为恶意隐藏。
+          en: Defenders use the same safe probe from research, security-vendor, and neutral sources within authorized scope,
+            compare response digests and reachability, and join edge rules, matched actions, origin routes, and victim connection
+            outcomes. A blocked vantage alone or absent victim evidence cannot distinguish ordinary WAF behavior from malicious
+            concealment.
+  stealth_mechanisms:
+  - mechanism_ref: NM-BT
+    role: primary
+    summary:
+      zh: 防守来源分类让扫描视点缺失受害端可见的控制行为
+      en: Defender-source classification removes victim-visible control behavior from scanning vantages
+    analysis:
+      paragraphs:
+      - zh: 攻击者让前端对防守来源执行 deny 或 decoy，同时让受害请求继续抵达控制端；相同服务于是对扫描器呈现空白或良性，对植入体呈现任务。只依赖公共扫描的防守观察模型遗漏控制行为，跨来源比较与规则日志关联可以恢复，形成行为透明。
+        en: The actor makes the front deny or decoy defensive sources while victim requests keep reaching the controller.
+          The same service appears blank or benign to a scanner and task-bearing to an implant. A model relying only on public
+          scanning misses control behavior, while cross-source comparison joined to rule logs restores it, producing Behavioral
+          Transparency.
+    evidence_keys:
+    - B5-T1665-REF-UNIT42-CAMBODIA
+    confidence: high
+  research:
+    limitations:
+      paragraphs:
+      - zh: Unit 42 报告直接记录目标组织通信和对已知安全来源的屏蔽，但没有发布完整规则历史或每次探针的配对抓包。不同地区 CDN、反滥用和速率限制可产生相似外观；结论须随提供方规则、同请求多视点复现和受害端结果增强。
+        en: Unit 42 directly documents victim-organization communication and blocking of known security sources but does not
+          publish complete rule history or paired captures for every probe. Regional CDNs, anti-abuse controls, and rate limits
+          can resemble the effect; confidence should rise with provider rules, same-request multivantage reproduction, and
+          victim outcomes.

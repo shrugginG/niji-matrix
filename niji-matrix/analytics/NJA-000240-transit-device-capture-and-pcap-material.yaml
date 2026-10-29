@@ -1,0 +1,171 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000240
+strategy_ref: DET-000203
+name:
+  zh: 网络设备抓包会话—PCAP 导出—认证流关联
+  en: Network-Device Capture Session–PCAP Export–Authentication Flow Correlation
+summary:
+  zh: 关联转发设备命令、抓包对象、PCAP 导出、认证流覆盖和材料可恢复性。
+  en: Correlate forwarding-device commands, capture objects, PCAP export, authentication-flow coverage, and material recoverability.
+domains:
+- enterprise
+platforms: []
+logic:
+  paragraphs:
+  - zh: 以集中 AAA 命令记账和设备运行盘点恢复 capture name、interface、direction、filter、limit、buffer、start/stop 与操作者，再连接 flash/NVRAM 文件及 TFTP、SCP、FTP
+      或管理通道导出。将抓包有效区间和过滤范围与认证流目录相交；命中敏感流且无精确批准时报告未授权观察面，PCAP 受限评估确认材料后升级。抓包随后被删除或 running state 被恢复时仍保留生命周期告警。
+    en: Use centralized AAA command accounting and runtime inventory to recover capture name, interface, direction, filter,
+      limit, buffer, start and stop, and actor, then join device-storage files and TFTP, SCP, FTP, or management-channel exports.
+      Intersect capture intervals and filters with the authentication-flow inventory. Report an unauthorized observation surface
+      when sensitive flows match without precise approval and upgrade only after restricted PCAP assessment confirms material.
+      Preserve the lifecycle alert when capture objects are deleted or running state is restored.
+data_requirements:
+- source_type: network-device-command-accounting
+  name:
+    zh: 网络设备特权命令记账
+    en: Network-device privileged command accounting
+  channel: TACACS+/RADIUS AAA accounting or equivalent remote log
+  required_fields:
+  - timestamp
+  - device_id
+  - admin_session_id
+  - actor_id
+  - source_address
+  - privilege_level
+  - command
+  - command_hash
+  - outcome
+- source_type: network-device-capture-state
+  name:
+    zh: 抓包对象与缓冲运行状态
+    en: Capture object and buffer runtime state
+  channel: device operational inventory
+  required_fields:
+  - timestamp
+  - device_id
+  - capture_name
+  - interface_id
+  - direction
+  - filter_or_acl
+  - start_time
+  - stop_time
+  - packet_count
+  - buffer_size
+  - file_path
+  - state
+- source_type: network-device-file-transfer
+  name:
+    zh: 设备文件与导出传输
+    en: Device file and export transfer
+  channel: device filesystem and network telemetry
+  required_fields:
+  - timestamp
+  - device_id
+  - admin_session_id
+  - artifact_id
+  - file_path
+  - file_hash
+  - size
+  - transfer_protocol
+  - destination
+  - outcome
+- source_type: authentication-flow-inventory
+  name:
+    zh: 认证流与加密边界目录
+    en: Authentication-flow and encryption-boundary inventory
+  channel: identity, service, and flow metadata
+  required_fields:
+  - timestamp
+  - device_id
+  - interface_id
+  - flow_id
+  - source
+  - destination
+  - protocol_family
+  - service_role
+  - material_class_expected
+  - encryption_or_obfuscation
+  - termination_boundary
+- source_type: restricted-material-assessment
+  name:
+    zh: 受限凭据材料评估
+    en: Restricted credential-material assessment
+  channel: privacy-controlled forensic review
+  required_fields:
+  - case_id
+  - artifact_id
+  - artifact_hash
+  - flow_id
+  - material_class
+  - plaintext_or_recoverable
+  - recovery_condition
+  - reviewer_id
+  - raw_secret_retained
+- source_type: capture-approval
+  name:
+    zh: 网络设备抓包批准
+    en: Network-device capture approval
+  channel: change and incident management
+  required_fields:
+  - ticket_id
+  - device_id
+  - actor_id
+  - interface_scope
+  - filter_scope
+  - valid_from
+  - valid_to
+  - output_destination
+  - purpose
+  - owner
+observables:
+- zh: 未批准管理员在承载 TACACS+、RADIUS、LDAP、SMB 或 Web 认证流的接口建立短时抓包并导出 PCAP
+  en: An unapproved administrator creates a short capture on an interface carrying TACACS+, RADIUS, LDAP, SMB, or web authentication
+    and exports a PCAP
+- zh: 抓包对象删除前向非管理目的地传输新建的 PCAP，且过滤器与高权限认证流重合
+  en: A newly created PCAP transfers to a nonmanagement destination before capture deletion and its filter overlaps privileged
+    authentication flows
+correlation:
+  window:
+    zh: 从首条 capture 定义命令前十五分钟覆盖 start、stop、export、删除及其后二十四小时；按 capture name、admin session 和 artifact hash 可跨越设备重启。
+    en: Start fifteen minutes before the first capture-definition command and span start, stop, export, deletion, and twenty-four
+      hours afterward; capture name, admin session, and artifact hash may join across reboot.
+  dimensions:
+  - device_id
+  - admin_session_id
+  - actor_id
+  - capture_name
+  - interface_id
+  - filter_or_acl
+  - flow_id
+  - artifact_id
+  - destination
+  - ticket_id
+  - time
+false_positives:
+- zh: 有工单的厂商支持、链路故障诊断、协议迁移验证、NDR 传感器校验和事件响应
+  en: Ticketed vendor support, link troubleshooting, protocol-migration validation, NDR sensor validation, and incident response
+blind_spots:
+- zh: 设备未启用远程命令记账、行为者停用或清除日志、固件级抓包绕过 CLI、物理 TAP，以及设备文件被直接从存储读取
+  en: Missing remote command accounting, actor-disabled or cleared logs, firmware-level capture bypassing CLI, physical taps,
+    and direct reads from device storage
+tuning_guidance:
+  paragraphs:
+  - zh: 按设备角色维护哪些接口与认证流属于高敏感范围。合法抓包批准应限制 capture name、命令主体、ACL/filter、持续时间、最大包长、文件路径和唯一导出目的地；即使账户常用于运维，也不永久白名单。对没有命令字段的平台使用配置差分、文件与流量证据降级关联，并明确置信度。
+    en: Maintain high-sensitivity interfaces and authentication flows by device role. Authorized capture approvals should
+      constrain capture name, command principal, ACL or filter, duration, maximum packet length, file path, and one export
+      destination. Do not permanently allow an account because it often performs administration. On platforms lacking command
+      fields, use lower-confidence joins across configuration difference, file, and flow evidence and state that confidence
+      explicitly.
+evidence_refs:
+- REF-000792
+- REF-000794
+- REF-000801
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-09-27'
+  modified: '2026-09-27'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

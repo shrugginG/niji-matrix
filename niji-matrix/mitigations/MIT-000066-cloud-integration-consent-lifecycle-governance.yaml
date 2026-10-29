@@ -1,0 +1,183 @@
+schema_version: 2.0.0
+type: mitigation
+id: MIT-000066
+name:
+  zh: 云集成身份、同意与生命周期治理
+  en: Cloud-Integration Identity, Consent, and Lifecycle Governance
+summary:
+  zh: 通过受控注册/同意、强应用身份、最小 scope、短寿凭据、持续盘点和全链撤销，减少恶意持久集成。
+  en: Reduce malicious durable integrations through controlled registration and consent, strong application identity, least
+    scope, short-lived credentials, continuous inventory, and full-chain revocation.
+description:
+  paragraphs:
+  - zh: 本缓解把应用、service principal、publisher、同意、权限、凭据、token 和资源用途作为一个生命周期对象。限制谁能注册、同意和授予高权限，验证 client ID、publisher、tenant 与
+      redirect URI，按用途最小化 scope 并设置到期；持续盘点 owner、最近使用和授权状态。处置必须同时撤销 grant、credentials、tokens、owners 与关联工作流，不能只重置最初用户密码。
+    en: This mitigation treats application, service principal, publisher, consent, permission, credential, token, and resource
+      purpose as one lifecycle object. It limits who can register, consent, and grant high privilege, verifies client ID,
+      publisher, tenant, and redirect URI, minimizes scope by purpose with expiry, and continuously inventories owner, last
+      use, and grant state. Response revokes grants, credentials, tokens, owners, and linked workflows together rather than
+      only resetting the original user's password.
+domains:
+- enterprise
+measures:
+- key: controlled-app-consent
+  name:
+    zh: 受控应用注册与同意
+    en: Controlled Application Registration and Consent
+  description:
+    paragraphs:
+    - zh: 默认限制用户自助高风险同意，对新应用、publisher、redirect URI、scope 和管理员 grant 实施强认证、审批与到期。
+      en: Restrict self-service high-risk consent by default and apply strong authentication, approval, and expiry to new
+        applications, publishers, redirect URIs, scopes, and administrator grants.
+  control_type: preventive
+- key: application-identity-inventory
+  name:
+    zh: 应用身份与用途清单
+    en: Application Identity and Purpose Inventory
+  description:
+    paragraphs:
+    - zh: 以 app/client ID 而非名称盘点 publisher、tenant、owner、scope、credential、token、资源、最近使用和业务用途，定期访问复核。
+      en: Inventory publisher, tenant, owner, scope, credential, token, resource, last use, and business purpose by app or
+        client ID rather than name and perform periodic access review.
+  control_type: governance
+- key: complete-integration-revocation
+  name:
+    zh: 完整集成撤销
+    en: Complete Integration Revocation
+  description:
+    paragraphs:
+    - zh: 可疑时保全审计后撤销 consent/grant、keys、secrets、tokens、roles、owners 和自动化，并验证 API 活动停止。
+      en: On suspicion, preserve audit before revoking consent or grant, keys, secrets, tokens, roles, owners, and automation
+        and verify API activity stops.
+  control_type: containment
+- key: dormant-privileged-integration-expiry
+  name:
+    zh: 休眠高权限集成到期与首次使用复核
+    en: Dormant Privileged-Integration Expiry and First-Use Review
+  description:
+    paragraphs:
+    - zh: 持续计算 app last-used 与 credential-unused-since，对无 owner、超出业务周期或长期静默的高权限应用自动禁用、缩权或要求重新审批；首次或恢复使用前验证 owner、来源、目标资源和计划。保留创建、授权与凭据事件到最长允许休眠期。
+      en: Continuously calculate application last used and credential unused since, automatically disabling, reducing, or
+        requiring reapproval for privileged applications without an owner, beyond business cadence, or silent for a long period.
+        Before first or resumed use, validate owner, origin, target resource, and schedule. Retain creation, grant, and credential
+        events through the longest allowed dormancy.
+  control_type: exposure-reduction
+- key: third-party-integration-connection-isolation
+  name:
+    zh: 第三方集成逐连接隔离与供应商事件响应
+    en: Per-Connection Third-Party Integration Isolation and Vendor Incident Response
+  description:
+    paragraphs:
+    - zh: 为每个客户/资源连接使用独立 token 或密钥、最小 scope、来源限制和可单独撤销的 connection ID，要求供应商提供认证与 token 事件和事件通知。供应商受侵时撤销/轮换全部相连 token、禁用受影响集成并跨系统调查，而不是只重置一个用户。
+      en: Use an independent token or key, minimum scope, origin restriction, and separately revocable connection ID for every
+        customer or resource connection, requiring vendor authentication and token events plus incident notification. On vendor
+        compromise, revoke or rotate all connected tokens, disable affected integrations, and investigate across systems rather
+        than resetting one user.
+  control_type: containment
+applications:
+- target_ref: NJT-0086
+  use:
+    paragraphs:
+    - zh: 将注册、同意、权限、凭据和资源用途绑定到一个批准生命周期，阻止未批准长期集成并在原账户处置时同时审查所有关联应用。
+      en: Bind registration, consent, permission, credential, and resource purpose to one approved lifecycle, blocking unapproved
+        long-lived integrations and reviewing every linked app when the original account is remediated.
+  expected_effect:
+    paragraphs:
+    - zh: 缩小持续授权面，使攻击者必须取得更高审批权限或频繁重建被撤销集成，并保留完整关联证据。
+      en: Narrows durable grant surface, forces the adversary to obtain stronger approval authority or repeatedly rebuild
+        revoked integrations, and preserves complete correlation evidence.
+  limitations:
+    paragraphs:
+    - zh: SaaS 字段与撤销语义不同，业务集成可能依赖长期 token；错误撤销会中断关键流程，且被攻陷批准应用仍可通过。
+      en: SaaS fields and revocation semantics differ and business integrations may depend on long-lived tokens. Erroneous
+        revocation interrupts critical workflows, while a compromised approved app can still pass.
+- target_ref: NJS-0086-001
+  use:
+    paragraphs:
+    - zh: 受信集成不得按显示名批准，必须固定 client ID、publisher、tenant、redirect URI、scope 与所有者；同名或近似 Data Loader 的应用若身份不符立即阻止 consent 和 token。
+      en: Never approve a trusted integration by display name. Pin client ID, publisher, tenant, redirect URI, scope, and
+        owner; block consent and tokens for a Data Loader-named or similar app whose identity differs.
+  expected_effect:
+    paragraphs:
+    - zh: 取消熟悉名称与平台 token 的隐式信任，使拟态应用必须复制更多受控身份属性或失去授权。
+      en: Removes implicit trust from familiar names and platform tokens, forcing an impersonating app to reproduce more controlled
+        identity properties or lose authorization.
+  limitations:
+    paragraphs:
+    - zh: 合法应用迁移会改变 client ID 或 publisher，攻击者也可攻陷真实应用；需期限明确的迁移例外和资源行为监测。
+      en: Legitimate migration can change client ID or publisher and an adversary can compromise the real app, requiring time-bounded
+        migration exceptions and resource-behavior monitoring.
+- target_ref: NJS-0086-002
+  use:
+    paragraphs:
+    - zh: 对休眠集成延迟激活，为高权限应用定义按业务周期的最大静默期、owner 复核和自动到期；首次 token 或资源活动需与原创建、consent 和凭据记录重新关联。超期应用在恢复使用前重新审批，处置时撤销应用凭据、授权和 token。
+      en: For Dormant Integration Delayed Activation, define a business-cadence maximum silence period, owner review, and
+        automatic expiry for privileged applications. First token or resource activity must reconnect to original creation,
+        consent, and credential records. Applications beyond the period require reapproval before resumed use, and response
+        revokes application credentials, grants, and tokens.
+  expected_effect:
+    paragraphs:
+    - zh: 该应用缩短攻击者可利用的静默等待窗口，并使应用年龄不能替代近期所有者和用途验证；延迟后的首次使用产生明确复核事件。
+      en: This application shortens the silent waiting window available to an adversary and prevents application age from
+        substituting for recent owner and purpose validation; first use after delay creates an explicit review event.
+  limitations:
+    paragraphs:
+    - zh: 季节性和灾备应用需要长静默期，自动禁用可能在关键时刻中断业务；部分平台 last-used 不精确或只保留 30 天。例外必须有 owner、计划和测试记录，不能永久放行。
+      en: Seasonal and disaster-recovery applications need long silence and automatic disablement can interrupt business at
+        a critical time. Some platforms have imprecise last-used data or only 30-day history. Exceptions need an owner, schedule,
+        and test record and cannot be permanent.
+- target_ref: NJS-0086-003
+  use:
+    paragraphs:
+    - zh: 对既有第三方集成控制挪用，逐连接隔离 token、限制来源和 scope，维护 vendor/client/connection 清单与紧急联系人。发现供应商 token 事件时冻结受影响 client，跨全部连接撤销并轮换，保存
+        API 与 vendor 证据，验证每个租户不再接受旧 token。
+      en: For Existing Third-Party Integration Control Co-option, isolate tokens per connection, restrict origin and scope,
+        and maintain vendor, client, connection inventory, and emergency contacts. On a vendor token incident, freeze the
+        affected client, revoke and rotate across every connection, preserve API and vendor evidence, and verify that every
+        tenant rejects old tokens.
+  expected_effect:
+    paragraphs:
+    - zh: 该应用限制一个供应商 token 事件的横向影响，并让既有 client 的真实控制来源和撤销范围可审查，迫使攻击者分别攻陷更多连接或暴露异常来源。
+      en: This application limits lateral impact of one vendor-token incident and makes the true control source and revocation
+        scope of an existing client reviewable, forcing an adversary to compromise more connections separately or expose anomalous
+        origins.
+  limitations:
+    paragraphs:
+    - zh: 部分 SaaS 不支持逐连接 token、来源绑定或即时撤销，供应商事件通知也可能延迟；全面禁用集成会中断业务流程。应预先演练降级模式和分阶段隔离，并验证缓存 token 的剩余寿命。
+      en: Some SaaS platforms lack per-connection tokens, origin binding, or immediate revocation, and vendor notification
+        may be delayed. Disabling an integration globally interrupts workflows. Organizations should rehearse degraded operation
+        and staged isolation and verify residual lifetime of cached tokens.
+- target_ref: NJS-0178-001
+  use:
+    paragraphs:
+    - zh: 对由 connected app/consent 形成的签发返回分支，限制自助高风险 consent，按 client ID、publisher、owner、redirect、scope 和用途审批，并在事件中同时撤销 grant、app
+        credentials、token 和关联自动化；IMDS/workload 分支仍由专用 MIT 覆盖。
+      en: For issuance returns through connected applications or consent, restrict self-service high-risk consent, approve
+        by client ID, publisher, owner, redirect, scope, and purpose, and revoke grant, application credentials, tokens, and
+        linked automation together during response. The IMDS or workload branch remains covered by the dedicated mitigation.
+  expected_effect:
+    paragraphs:
+    - zh: 减少攻击者让正规 issuer 向恶意 app 返回 token 的机会，并让合法第三方委派具有可核验 owner 和完整撤销路径。
+      en: Reduce opportunities for an adversary to make a legitimate issuer return tokens to a malicious application and give
+        legitimate third-party delegation a verifiable owner and complete revocation path.
+  limitations:
+    paragraphs:
+    - zh: 管理员或批准供应商本身被控时 app 身份仍可完全匹配；该控制不处理 process memory、普通 token 文件或 IMDS 读取。
+      en: Application identity can match perfectly when an administrator or approved vendor is compromised. This control does
+        not address process memory, ordinary token files, or IMDS retrieval.
+evidence_refs:
+- REF-000145
+- REF-000158
+- REF-000159
+- REF-000160
+- REF-000161
+- REF-000177
+- REF-000178
+lifecycle:
+  status: review
+  version: 1.1.0
+  created: '2026-09-11'
+  modified: '2026-09-27'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

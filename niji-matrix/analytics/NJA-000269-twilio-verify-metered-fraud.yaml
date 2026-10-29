@@ -1,0 +1,112 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000269
+strategy_ref: DET-000218
+name:
+  zh: Twilio Verify 入口—短信交易—转换分析
+  en: Twilio Verify Entry–SMS Transaction–Conversion Analytic
+summary:
+  zh: 输出公共验证入口驱动的异常计费短信、目标前缀和低转换结果。
+  en: Emit abnormal billable messages, destination prefixes, and low conversion driven by a public verification entry.
+domains:
+- enterprise
+platforms:
+- SaaS
+logic:
+  paragraphs:
+  - zh: 连接公共 OTP/验证请求日志的时间、request ID、source IP、user-agent、账户/设备、endpoint 与目的号码到 Twilio Verify sid、account/service
+      SID、to、channel、conversionStatus 和干预/状态；按 E.164 得到国家，并在有对应产品日志时加入价格/消息状态。
+    en: Join public OTP or verification request time, request ID, source IP, user-agent, account or device, endpoint,
+      and destination to Twilio Verify sid, account and service SID, to, channel, conversionStatus, and intervention
+      or status; derive country from E.164 and add price or message status where the corresponding product log provides
+      it.
+  - zh: 在五分钟滚动窗口和 24 小时成本范围比较请求率、不同号码、连续/高价前缀、低转换率、source-to-destination fan-out 和 provider blocks。没有 provider 交易是应用滥用企图；完成/计量发送才确认资源消耗。
+    en: Over a five-minute rolling window and 24-hour cost horizon, compare request rate, distinct numbers, sequential
+      or high-cost prefixes, low conversion, source-to-destination fan-out, and provider blocks. An application request
+      without a provider transaction is an abuse attempt; completed or metered sends confirm consumption.
+data_requirements:
+- source_type: verification-entry-log
+  name:
+    zh: 公共验证入口日志
+    en: Public verification-entry log
+  channel: null
+  required_fields:
+  - event.time
+  - request.id
+  - source.ip
+  - user.agent
+  - account.id
+  - device.id
+  - endpoint.id
+  - destination.number
+- source_type: twilio-verify-attempt
+  name:
+    zh: Twilio Verify 交易
+    en: Twilio Verify transactions
+  channel: Twilio Verify Logs
+  required_fields:
+  - sid
+  - account.sid
+  - service.sid
+  - date.created
+  - date.updated
+  - destination.number
+  - channel
+  - conversion.status
+  - transaction.status
+  - intervention.status
+- source_type: message-cost-outcome
+  name:
+    zh: 短信成本与投递结果
+    en: Message cost and delivery outcome
+  channel: null
+  required_fields:
+  - sid
+  - destination.country
+  - price.amount
+  - price.currency
+  - delivery.status
+  - campaign.id
+observables:
+- zh: 公共入口在短窗驱动高价/连续号码的大量已发送交易
+  en: A public entry drives many sent transactions to high-cost or sequential numbers in a short window
+- zh: 高 fan-out 和低转换伴随提供方 fraud intervention 或成本异常
+  en: High fan-out and low conversion co-occur with provider fraud intervention or cost anomaly
+correlation:
+  window:
+    zh: 入口到 provider 两分钟，滥用 burst 五分钟，转换/成本二十四小时。
+    en: Use two minutes from entry to provider, five minutes for abuse bursts, and 24 hours for conversion and cost.
+  dimensions:
+  - application.id
+  - endpoint.id
+  - source.ip
+  - device.id
+  - request.id
+  - service.sid
+  - destination.country
+  - event.time
+false_positives:
+- zh: 客户登录峰值、产品发布、事件驱动重认证、旅行、QA/负载测试和运营误用 Verify
+  en: Customer sign-in peaks, product launch, incident-driven reauthentication, travel, QA or load tests, and operational
+    misuse of Verify
+blind_spots:
+- zh: 无入口到 Verify 映射、CDN 丢失来源、分布式 bot、provider 延迟、跨国家号码或其他 provider 字段不同
+  en: Absent entry-to-Verify mapping, source lost behind CDN, distributed bots, provider delay, numbers across countries,
+    or different fields from another provider
+tuning_guidance:
+  paragraphs:
+  - zh: 按 source/device/account 和 destination prefix 限速，维护 endpoint 的转换与国家成本基线；不对白名单公共入口取消转换分析。只有 provider 交易成功才确认消耗。
+    en: Rate-limit by source, device, account, and destination prefix and maintain conversion and country-cost baselines
+      per endpoint. Do not remove conversion analysis for an allowlisted public entry. Confirm consumption only on
+      successful provider transactions.
+evidence_refs:
+- REF-000902
+- REF-000909
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-10-04'
+  modified: '2026-10-04'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

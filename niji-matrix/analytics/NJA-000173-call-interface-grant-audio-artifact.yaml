@@ -1,0 +1,98 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000173
+strategy_ref: DET-000162
+name:
+  zh: 通话接口授权与录音产物关联
+  en: Call-Interface Grant and Audio Artifact Correlation
+summary:
+  zh: 在实际导出接口审计的应用中连接第三方授权、通话时段及录音结果。
+  en: For apps that actually export interface audit, join third-party grants, call intervals, and recording outcomes.
+domains:
+- enterprise
+platforms:
+- Windows
+logic:
+  paragraphs:
+  - zh: 对确实提供接口授权或插件附着审计的通话应用，记录 requester_id、app_session_id、grant_actor 和 event_time，关联同一用户与设备的通话开始结束事件；若未经批准的请求组件在通话期间或临近时取得接口访问，且在会话中或结束后三十分钟内出现相应音频文件或导出任务，则生成候选。若只有接口授权而无音频结果，标注为暴露或企图。旧
+      Skype API 名称仅作为 T9000 案例证据，不作为现代产品的通用检测字段。
+    en: For a call app that actually exports interface-grant or plugin-attachment audit, record requester_id, app_session_id,
+      grant_actor, and event_time and join call start and end events for the same user and endpoint. Generate a candidate
+      when an unapproved requester gains interface access during or near a call and a corresponding audio file or export task
+      appears during the call or within thirty minutes afterward. A grant without audio outcome is exposure or attempt. Old
+      Skype API names are evidence for T9000, not universal detection fields for current products.
+data_requirements:
+- source_type: call-app-interface-audit
+  name:
+    zh: 通话应用第三方接口审计
+    en: Call-app third-party interface audit
+  channel: product-specific admin or client audit validated before deployment
+  required_fields:
+  - user_id
+  - endpoint_id
+  - requester_id
+  - app_session_id
+  - event_time
+  - grant_actor
+  - action
+- source_type: call-app-session
+  name:
+    zh: 通话应用会话事件
+    en: Call-app session event
+  channel: product-specific call or meeting session events
+  required_fields:
+  - user_id
+  - endpoint_id
+  - app_session_id
+  - call_start
+  - call_end
+- source_type: endpoint-file-creation
+  name:
+    zh: 端点音频文件创建
+    en: Endpoint audio-file creation
+  channel: EDR file telemetry or Sysmon Event ID 11
+  required_fields:
+  - endpoint_id
+  - process_id
+  - event_time
+  - file_path
+  - file_size
+observables:
+- zh: 未批准第三方组件在通话附近取得媒体接口授权
+  en: An unapproved third-party component gains media-interface access near a call
+- zh: 同会话随后出现音频文件或导出任务
+  en: An audio file or export task follows in the same call session
+correlation:
+  window:
+    zh: 从通话开始前十五分钟到结束后三十分钟关联。
+    en: Correlate from fifteen minutes before call start through thirty minutes after call end.
+  dimensions:
+  - user_id
+  - endpoint_id
+  - app_session_id
+  - requester_id
+false_positives:
+- zh: 经审批的会议录制机器人、转写集成、培训录制和无障碍工具也可获得接口授权并保存音频；会议主办人临时批准新集成会改变基线。
+  en: Approved recording bots, transcription integrations, training recordings, and accessibility tools can receive grants
+    and save audio; a host's temporary approval of a new integration can change the baseline.
+blind_spots:
+- zh: 不提供接口审计的应用无法执行该关联；从通信应用进程内部直接录音或通过设备回路录音也可能不产生第三方接口事件。文件后缀不能单独证明音频内容，端到端加密或云端处理可能无本地文件。
+  en: Apps without interface audit cannot support this join. In-process recording or device loopback may produce no third-party
+    interface event. An extension alone does not prove audio content, and end-to-end encryption or cloud processing may leave
+    no local file.
+tuning_guidance:
+  paragraphs:
+  - zh: 只对已验证日志字段与已登记的产品版本启用；维护按请求组件、租户、会议类型和审批单限定的许可表，定期复核长期授权。保留首次见到的请求者和会后产物线索，即使它属于常见会议软件生态。
+    en: Enable only for app versions with verified log fields. Maintain grants bounded by requester, tenant, meeting type,
+      and approval ticket; periodically revalidate durable grants. Preserve first-seen requesters and post-call artifacts
+      even within a common meeting-software ecosystem.
+evidence_refs:
+- REF-000584
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-09-22'
+  modified: '2026-09-22'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

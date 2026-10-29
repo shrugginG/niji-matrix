@@ -1,0 +1,127 @@
+schema_version: 2.0.0
+type: evasion-subtechnique
+id: NJS-0213-003
+parent_ref: NJT-0213
+name:
+  zh: 解析响应参数合成
+  en: Resolver-Response Parameter Synthesis
+summary:
+  zh: 攻击者让植入把解析应答字段作为计算材料，运行时合成与应答字面值不同的 C2 地址或端口。
+  en: Adversaries have implants use resolver-answer fields as calculation material to synthesize a C2 address or port
+    different from the answer's literal value at runtime.
+aliases: []
+lineage:
+  attck_subtechnique_inherited: false
+definition_and_concept:
+  paragraphs:
+  - zh: 解析响应参数合成是攻击者让植入读取 DNS 应答中的地址/字段，但不直接连接其字面 endpoint，而是通过预置公式计算另一个 IP、port 或连接参数并用于 C2。稳定变量是 answer material→deterministic
+      transform→successor socket，而不是 DNS record 类型、计算公式名称或端口数值。
+    en: Resolver-Response Parameter Synthesis means an actor has an implant read an address or field from a DNS answer
+      but not connect to that literal endpoint. A preconfigured formula calculates another IP, port, or connection parameter
+      used for C2. The stable variable is answer material to deterministic transformation to successor socket rather
+      than DNS-record type, formula name, or port value.
+  - zh: CrowdStrike 对 Numbered Panda 的分析记录恶意代码通常使用两个 DNS 名称，一个是实际 C2，另一个应答用于计算通信端口；常见公式把应答 IP 前两 octet 相乘再加第三 octet，例如
+      200.2.43.X 得到 443。该报告还说明此设计用于绕过出口端口过滤，并给出经测试的网络规则。
+    en: CrowdStrike's Numbered Panda analysis documents malware commonly using two DNS names, one as the actual C2 and
+      another answer to calculate the communication port. A common formula multiplies the first two answer-IP octets
+      and adds the third, such as 200.2.43.X yielding 443. The report also states that the design is used to bypass egress
+      port filtering and provides tested network rules.
+stealth_characteristics:
+  paragraphs:
+  - zh: 解析响应参数合成使解析器日志显示计算域和普通 IP，应答与实际 C2 域/IP 可能不同；连接日志只显示后继端口，任一单独观察面都没有字面桥。静态阻断应答 IP 可能无效，端口策略也会被攻击者通过改变计算材料调整。残余为同
+      ProcessGuid 的 query/answer、固定时间关系、稳定公式输出和后继 RemoteIP/port。
+    en: Resolver-Response Parameter Synthesis means resolver logs show a calculation domain and ordinary IP while the
+      actual C2 domain or IP may differ. Connection logs show only the successor port, leaving no literal bridge in either
+      observation plane. Blocking the answer IP can be ineffective, and the actor can alter calculation material to change
+      the port policy outcome. Residuals include query and answer by the same ProcessGuid, fixed timing, stable formula
+      output, and successor RemoteIP and port.
+  - zh: 合法 SRV/SVCB/HTTPS 记录、service discovery、负载均衡、STUN/ICE、应用配置服务和端口映射也会让解析值影响后续连接。只有非标准 transform、同进程消费和 C2 结果形成闭环时成立；DNS
+      answer 与连接不一致本身不能定性。
+    en: Legitimate SRV, SVCB, and HTTPS records, service discovery, load balancing, STUN or ICE, application configuration
+      services, and port mapping also let resolver values influence later connections. Classification requires a nonstandard
+      transformation, same-process consumption, and C2 outcome. A mismatch between DNS answer and connection is insufficient
+      by itself.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 纳入要求解析 answer、可重复或样本支持的转换和按输出参数建立的 C2 socket。直接使用 A/AAAA 地址归解析应答轮换或父级；远端 HTTP/Web 对象直接给 IP/port 归 NJT-0209/0210；标准
+      SRV/SVCB 客户端行为是正常反例。
+    en: Inclusion requires a resolver answer, repeatable or sample-supported transformation, and a C2 socket established
+      with the output parameters. Direct use of an A or AAAA address belongs to Resolver-Answer Endpoint Rotation or
+      the parent. An HTTP or Web object directly providing IP and port belongs to NJT-0209 or NJT-0210. Standard SRV
+      or SVCB client behavior is a normal counterexample.
+  - zh: 计算出的非典型 port 可以并列 T1571，但 T1571 拥有协议—端口配对；如果 DNS response 同时传命令，NJT-0160 拥有 carriage。失败后才计算备用 endpoint 时 NJT-0153
+      拥有 activation trigger。
+    en: A calculated atypical port can coexist with T1571, which owns protocol-to-port pairing. If the DNS response also
+      carries commands, NJT-0160 owns carriage. If calculation occurs only after failure to derive a reserve endpoint,
+      NJT-0153 owns the activation trigger.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: 植入先解析一个控制者可改应答的“计算域”，读取返回 IP 的 octet 并得到 port；再解析/连接另一个 C2 域并使用该 port。操作者只改计算域应答即可让既有样本跨不同出口端口恢复控制，无需更新配置。
+      en: An implant first resolves a calculation domain whose answer the controller can change, reads the returned IP
+        octets to derive a port, and then resolves or connects to another C2 domain using that port. By changing only
+        the calculation-domain answer, the operator can move existing samples across egress ports without updating configuration.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者需控制计算材料和实际 C2，并保证公式输出是有效端口/地址且未与网络中间件冲突。公式固定后可被逆向、从重复 answer→connection 配对推断或写入检测；不同变体会增加运营与服务端监听复杂度。
+        en: The actor needs control of calculation material and actual C2 and must ensure formula outputs are valid ports
+          or addresses that do not conflict with middleboxes. A fixed formula can be reversed, inferred from repeated
+          answer-to-connection pairs, or encoded in detection. Multiple variants increase operational and server-listener
+          complexity.
+    defender_model:
+      paragraphs:
+      - zh: 防守方需在端点将 DNS Event 22/QueryName 和网络 Event 3/RemoteIP/port 以 ProcessGuid/时间连接，保存完整 answers/TTLs，并从样本、内存或重复观测获取
+          transform。只有递归器日志且看不到端点 process 时，多主机共享缓存会造成错误配对。
+        en: The defender must join DNS Event 22 and QueryName to network Event 3 and RemoteIP or port on the endpoint
+          by ProcessGuid and time, retain complete answers and TTLs, and obtain the transformation from a sample, memory,
+          or repeated observations. Recursive-resolver logs without endpoint process identity can mispair hosts sharing
+          a cache.
+stealth_mechanisms:
+- mechanism_ref: NM-BT
+  role: primary
+  summary:
+    zh: 响应到连接的私有计算语义落在常规 DNS 与流量日志之外
+    en: Private answer-to-connection semantics fall outside ordinary DNS and flow logs
+  analysis:
+    paragraphs:
+    - zh: 攻击者让 DNS answer 只作为数值材料，实际连接参数经植入私有公式出现；DNS 和 socket 日志分别可见却缺少直接语义关系，使静态规则看不见求值步骤。Numbered Panda 公式直接支持该链；逆向公式或按进程重复配对可恢复。
+      en: The actor uses a DNS answer only as numeric material and has the actual connection parameter emerge through
+        a private implant formula. DNS and socket logs are individually visible but lack a direct semantic relationship,
+        leaving the evaluation step outside static analytics. The Numbered Panda formula directly supports the chain.
+        Reversing the formula or repeated process-level pairing restores it.
+  evidence_refs:
+  - REF-001073
+  confidence: high
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000247
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000219
+evidence:
+  claim_refs:
+  - CLM-001060
+  case_refs:
+  - CASE-000324
+  reference_refs:
+  - REF-001073
+  - REF-000635
+research:
+  limitations:
+    paragraphs:
+    - zh: CrowdStrike 来源明确说明算法和 C2 port 使用，并称规则经过测试，但公开页面没有提供特定样本 hash、完整 PCAP 或逐受害连接，因此支持技术存在与公式，不支持任一组织的实际漏报率或所有变体都用同一公式。
+      en: CrowdStrike explicitly describes the algorithm and C2 port use and states that rules were tested, but the public
+        page provides no specific sample hash, complete PCAP, or per-victim connection. It supports technique existence
+        and the formula, not a real-world miss rate or use of one formula by every variant.
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-10-05'
+  modified: '2026-10-05'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

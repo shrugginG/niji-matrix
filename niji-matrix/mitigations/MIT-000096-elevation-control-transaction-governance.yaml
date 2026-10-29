@@ -1,0 +1,88 @@
+schema_version: 2.0.0
+type: mitigation
+id: MIT-000096
+name:
+  zh: 提权控制事务完整性与临时权限治理
+  en: Elevation-Control Transaction Integrity and Temporary-Privilege Governance
+summary:
+  zh: 通过逐操作授权、受信中介与策略最小化、短期权限范围/寿命约束及不可变事务谱系，减少攻击者借用控制路径或瞬时窗口提权的机会。
+  en: Reduce opportunities to elevate through borrowed control paths or transient intervals by enforcing per-operation authorization, minimizing trusted intermediaries and policy surfaces, bounding temporary privilege scope and lifetime, and retaining immutable transaction lineage.
+description:
+  paragraphs:
+  - zh: 本缓解把提权视为从低权限请求到高权限结果的完整授权事务，而不是只管理管理员组成员。组织应盘点所有能自动提升、代理授权、改变执行身份、缓存授权或签发短期高权限凭据的控制，明确请求者、中介、目标权限、输入来源、批准条件、最大寿命和可观察结果。默认策略应要求每个高风险操作重新证明身份与意图，并使用户可写输入不能被受信中介无边界消费。
+    en: This mitigation treats elevation as a complete authorization transaction from a low-privilege request to a privileged outcome rather than merely managing administrator-group membership. Organizations inventory every control that can auto-elevate, broker authorization, change execution identity, cache authorization, or issue short-lived privileged credentials and define requester, intermediary, target privilege, input origin, approval conditions, maximum lifetime, and observable outcome. Default policy re-establishes identity and intent for every high-risk operation and prevents trusted intermediaries from consuming user-writable input without boundaries.
+  - zh: 宿主控制应保护 UAC、sudoers、setuid/setgid、Authorization Services、TCC/PPPC 与对应 handler/二进制完整性；云控制应把 eligible 与 active 分离，要求抗钓鱼认证、独立批准、最小 scope、短 duration、自动失效和双身份审计。处置时先保全请求、审批、策略版本、token/session 和资源使用，再终止窗口、撤销缓存/令牌、恢复控制状态并验证高权限结果；统一禁止所有提权会破坏维护与可用性，因此必须使用可审计的短例外。
+    en: Host controls protect UAC, sudoers, setuid and setgid, Authorization Services, TCC or PPPC, and related handler and binary integrity. Cloud controls separate eligible from active, require phishing-resistant authentication, independent approval, minimum scope, short duration, automatic expiry, and dual-identity audit. During response, preserve request, approval, policy version, token or session, and resource use before ending the interval, revoking cache or token, restoring control state, and validating privileged outcomes. Uniform prohibition of elevation would break maintenance and availability, so exceptions must be short and auditable.
+domains: [enterprise]
+measures:
+- key: per-operation-elevation-authorization
+  name: {zh: 逐操作强授权与自动提权最小化, en: Per-Operation Strong Authorization and Auto-Elevation Minimization}
+  description:
+    paragraphs:
+    - zh: 对敏感管理操作要求每次重新认证或显式批准，并在受保护界面展示目标应用、发布者、路径、权限和操作范围。禁用不必要的 auto-elevation、无密码 sudo、跨会话凭据缓存和宽泛 impersonation；无法禁用的 broker 只接受固定 schema、不可变目标与调用者白名单，并拒绝来自用户可写 handler、路径或可变脚本的输入。
+      en: Require fresh authentication or explicit approval for each sensitive administrative operation and display target application, publisher, path, privilege, and operation scope on a protected interface. Disable unnecessary auto-elevation, passwordless sudo, cross-session credential caching, and broad impersonation. Brokers that cannot be disabled accept only fixed schemas, immutable targets, and caller allowlists and reject input from user-writable handlers, paths, or mutable scripts.
+  control_type: preventive
+- key: elevation-control-state-and-intermediary-integrity
+  name: {zh: 提权控制状态与中介完整性, en: Elevation-Control State and Intermediary Integrity}
+  description:
+    paragraphs:
+    - zh: 对 UAC 策略与 handler、sudoers/timestamp、setuid/setgid 文件、授权 helper、TCC/PPPC profile、PIM/PAM 策略和 token broker 建立 owner、签名/hash、writer、old/new 值、批准与版本基线。最小化 setuid 程序和获批应用，使用受控配置部署与双人审批，阻止普通用户、日常管理员或工作负载自行改变其可用提权路径。
+      en: Maintain owner, signing or hash, writer, old and new value, approval, and version baselines for UAC policy and handlers, sudoers and timestamps, setuid and setgid files, authorization helpers, TCC or PPPC profiles, PIM or PAM policy, and token brokers. Minimize setuid programs and approved applications, deploy configuration through controlled channels and dual approval, and prevent ordinary users, daily administrators, or workloads from changing their own available elevation paths.
+  control_type: exposure-reduction
+- key: temporary-privilege-scope-lifetime-and-revocation
+  name: {zh: 临时权限作用域、寿命与撤销约束, en: Temporary Privilege Scope Lifetime and Revocation Bounds}
+  description:
+    paragraphs:
+    - zh: 将永久 active 权限替换为按角色与资源限定的 eligible 状态；激活要求抗钓鱼 MFA、独立批准、理由与工单，duration 不超过任务所需，并禁止同一主体并发激活不相容角色。短期凭据绑定 audience/scope/device，不能自动刷新；提前结束工作时立即 deactivation，并验证缓存 token、会话和派生凭据均在规定传播期内失效。
+      en: Replace permanent active privilege with role- and resource-scoped eligibility where feasible. Activation requires phishing-resistant MFA, independent approval, justification, and a work record; duration does not exceed task need, and one principal cannot concurrently activate incompatible roles. Temporary credentials bind audience, scope, and device and cannot auto-refresh. Early work completion triggers immediate deactivation with verification that cached tokens, sessions, and derived credentials expire within the defined propagation period.
+  control_type: preventive
+- key: requester-authorization-outcome-lineage-retention
+  name: {zh: 请求者—授权—结果谱系留存, en: Requester–Authorization–Outcome Lineage Retention}
+  description:
+    paragraphs:
+    - zh: 为本地 broker 与云控制生成贯穿请求、认证/批准、中介或 effective identity、高权限进程/session 和资源结果的稳定事务 ID；同时保留原始与有效主体、策略版本、start/end、scope 和拒绝结果。日志以独立权限写入集中存储并覆盖最长窗口与撤销传播期，检测不能因中介受信、二进制签名或角色常见而丢弃链条。
+      en: Generate a stable transaction ID across request, authentication or approval, intermediary or effective identity, privileged process or session, and resource outcome for local brokers and cloud controls. Retain original and effective principals, policy version, start and end, scope, and denial outcomes. Write logs to centralized storage under independent authority for longer than the maximum interval and revocation propagation period, and never discard a chain because the intermediary is trusted, binary signed, or role common.
+  control_type: detective-support
+applications:
+- target_ref: NJT-0098
+  use:
+    paragraphs:
+    - zh: 对提权控制路径滥用，组织先枚举每个从普通用户/进程或 eligible 主体通向高权限结果的控制事务，给出 owner、允许调用者、输入边界、授权强度、目标权限、最大时长、审批和遥测责任。高风险路径优先改为逐操作授权并移除静默、跨会话或可变输入；残留路径必须同时实施状态完整性、稳定事务 ID 和高权限结果核验。
+      en: For elevation-control path abuse, enumerate every control transaction leading from an ordinary user or process or eligible principal to a privileged result and assign owner, allowed caller, input boundary, authorization strength, target privilege, maximum duration, approval, and telemetry responsibility. Convert high-risk paths to per-operation authorization and remove silent, cross-session, or mutable-input behavior first. Residual paths require control-state integrity, a stable transaction ID, and privileged-outcome validation together.
+  expected_effect:
+    paragraphs:
+    - zh: 该应用减少可被借用或静默重用的提权入口，使攻击者必须取得更强认证/批准、篡改受保护控制状态或使用留下完整请求与结果链的路径。高权限结果与低权限发起之间不再因受信 broker 或短寿命状态而自然断开，检测和处置可以定位具体事务。
+      en: The application reduces elevation entries that can be borrowed or silently reused, forcing an adversary to obtain stronger authentication or approval, tamper with protected control state, or use a path that leaves a complete request-and-outcome chain. A trusted broker or short-lived state no longer naturally severs a privileged result from its lower-privilege initiation, allowing detection and response to identify a concrete transaction.
+  limitations:
+    paragraphs:
+    - zh: 旧应用、无人值守维护、恢复流程、离线主机和多云服务不一定支持逐操作授权或统一事务 ID；过度缩短缓存与激活会增加中断和用户绕过。若攻击者控制 broker、审批者、配置发布和日志存储，记录可内部一致；仍需职责分离、独立完整性验证和 T1068 等相邻检测。
+      en: Legacy applications, unattended maintenance, recovery workflows, offline hosts, and multicloud services may not support per-operation authorization or one transaction ID, while overly short caches and activations can increase outage and user workarounds. If an adversary controls the broker, approver, configuration release, and log store, records can remain internally consistent; separation of duties, independent integrity validation, and adjacent detections such as T1068 remain necessary.
+- target_ref: NJS-0098-001
+  use:
+    paragraphs:
+    - zh: 对受信提权中介谱系借用，减少允许自动提升或代理高权限的二进制、应用、helper 和服务账户；为每个中介固定允许的调用者、输入 schema/路径、目标权限与签名版本，禁止用户可写 handler 或可变内容改变解析结果。日志同时记录原始请求者、中介、授权方式和结果进程/资源，allowlist 只绑定完整组合与期限。
+      en: For Trusted Elevation-Intermediary Lineage Borrowing, minimize binaries, applications, helpers, and service accounts allowed to auto-elevate or broker privilege. Fix each intermediary's allowed caller, input schema or path, target privilege, and signed version, and prevent user-writable handlers or mutable content from changing resolution. Log original requester, intermediary, authorization method, and result process or resource together, and bind allowlists only to the complete combination and validity.
+  expected_effect:
+    paragraphs:
+    - zh: 攻击者不能仅凭调用常见受信组件或模拟合法服务账户就继承其信任；要么其输入在中介前被拒绝，要么 requester—intermediary—outcome 链完整留存。签名/父进程作为单一良性信号的权重下降，来源和结果差异更易暴露。
+      en: An adversary cannot inherit trust merely by invoking a common trusted component or impersonating a legitimate service account. Input is either rejected before the intermediary or the requester-intermediary-outcome chain is retained intact. Signing or parent process carries less weight as a solitary benign signal, exposing provenance and outcome differences more readily.
+  limitations:
+    paragraphs:
+    - zh: 某些操作系统 broker 与云托管服务不暴露内部 request ID 或输入来源；强制调用者绑定可能破坏辅助功能、安装器和自动化。已被攻陷但仍正确签名的中介可能产生完整而恶意的链，必须结合内容完整性、审批与结果风险，不能只验证二进制身份。
+      en: Some operating-system brokers and managed cloud services do not expose internal request IDs or input origin, and strict caller binding can break accessibility, installers, and automation. A compromised but correctly signed intermediary can produce a complete malicious chain, so content integrity, approval, and outcome risk must supplement binary identity.
+- target_ref: NJS-0098-002
+  use:
+    paragraphs:
+    - zh: 对短寿命权限窗口激活，将 eligible、request、approval、effective、deactivation/expiry 与资源使用作为一个受控 interval。按任务限制角色、资源、duration、audience 和设备，要求独立批准与强认证，禁用自动续期，并在任务结束时验证所有 token/session 实际失效；审批例外必须含 owner 与短到期。
+      en: For Ephemeral Privilege-Window Activation, treat eligibility, request, approval, effective state, deactivation or expiry, and resource use as one controlled interval. Limit role, resource, duration, audience, and device to the task, require independent approval and strong authentication, disable automatic renewal, and verify every token and session actually expires when work ends. Approval exceptions carry an owner and short expiry.
+  expected_effect:
+    paragraphs:
+    - zh: 临时权限继续减少长期暴露，但其短寿命不再形成审计空窗：每个敏感操作能追溯到原始主体、批准、scope 和仍有效的 interval。攻击者必须盗用更短的强认证窗口、控制批准者或在明确异常的范围/时长内行动，且到期后的持久访问被阻断。
+      en: >-
+        Temporary privilege continues to reduce long-term exposure without becoming an audit gap: every sensitive action traces to an original principal, approval, scope, and still-valid interval. An adversary must steal a shorter strongly authenticated window, control an approver, or act within visibly anomalous scope or duration, while persistent access after expiry is blocked.
+  limitations:
+    paragraphs:
+    - zh: JIT 本身不能证明使用合法，审批疲劳、紧急 break-glass、机器自动化、时钟偏差和撤销传播会产生例外；过短窗口可能促使用户申请过宽角色或反复激活。必须按角色风险校准时长并验证 token 实际寿命，不能仅相信控制台显示 inactive。
+      en: JIT does not prove legitimate use. Approval fatigue, emergency break-glass, machine automation, clock skew, and revocation propagation create exceptions, while overly short intervals can drive users toward broader roles or repeated activation. Calibrate duration by role risk and verify actual token lifetime rather than trusting an inactive console state alone.
+evidence_refs: [REF-000317, REF-000318, REF-000319, REF-000320, REF-000322, REF-000323, REF-000324]
+lifecycle: {status: review, version: 0.1.0, created: '2026-09-13', modified: '2026-09-13', contributors: [Niji Matrix Research], reviewers: []}

@@ -1,0 +1,550 @@
+handoff_schema_version: "2.0.0"
+type: technique-research-handoff
+batch_ref: BATCH-TA0010-002
+work_item_ref: WORK-TA0010-T1041
+temporary_key_prefix: B10-2-T1041-
+candidate:
+  source_type: attack
+  source_attack_id: T1041
+  name:
+    zh: 通过 C2 通道外传
+    en: Exfiltration Over C2 Channel
+recommendation:
+  decision: adapt
+  confidence: high
+  rationale:
+    paragraphs:
+      - zh: >-
+          Enterprise ATT&CK 19.1 将 T1041 定义为通过已经存在的命令控制通道、以与命令控制相同的协议外传被盗数据。该行为在 TA0010 中独立成立，但 Niji 准入必须把“发往 C2 服务器”收窄为对既有逻辑控制关系的实际复用：外传不另建专用目的关系，导致连接、进程、协议和控制端历史同时归属于 C2 与数据外送，防守方更难从已经识别或尚未识别的控制流中分离外传阶段。SolarMarker 与 FakeUpdates 的原始分析分别展示了既有加密 HTTP C2 上的数据外送，以及同一 C2 请求族先回传系统信息、后回传截图的真实实现。
+        en: >-
+          Enterprise ATT&CK 19.1 defines T1041 as exfiltrating stolen data through an existing command-and-control channel with the same protocol used for C2. The behavior is independently relevant to TA0010, but Niji admission must narrow “sent to a C2 server” to actual reuse of an existing logical control relationship. Exfiltration creates no dedicated destination relationship, so its connection, process, protocol, and controller history are shared with C2 and defenders have more difficulty separating the data-loss phase from control traffic whether or not that traffic has already been identified as C2. Primary SolarMarker and FakeUpdates analyses respectively show data leaving through an existing encrypted HTTP C2 channel and a repeated C2 request family carrying system information and later screenshots.
+  original_attack_subtechniques_imported: false
+  scope_notes:
+    zh: >-
+      “通道”按已承担任务下发、回调或结果回送的逻辑 C2 关系判定，不要求单一 TCP/TLS socket 始终存活。T1048 负责切换到不同于 C2 的协议路径；T1567 负责以外部 Web 服务为外传媒介；T1132、T1573 与 NJT-0152 分别负责编码、加密和 C2 消息混淆；NJT-0160 负责 C2 应用会话的控制关系。上述对象可以与本候选并列，但均不能仅凭目标是 C2 服务器替代“既有关系复用”的证据。
+    en: >-
+      “Channel” is assessed as a logical C2 relationship that already carries tasking, callbacks, or results; one TCP or TLS socket need not remain alive throughout. T1048 owns a path using a protocol separate from C2, T1567 owns an external web service used as an exfiltration medium, and T1132, T1573, and NJT-0152 own encoding, encryption, and C2-message obfuscation. NJT-0160 owns the control relationship of the C2 application session. These objects may co-occur with this candidate, but none substitutes for evidence of relationship reuse merely because the destination is a C2 server.
+proposed_content:
+  name:
+    zh: C2 关系复用外传
+    en: C2-Relationship Reuse Exfiltration
+  summary:
+    zh: 攻击者让已经承担命令控制的逻辑关系同时输送被盗数据，减少专用外传连接痕迹，并使数据泄露更难从控制回调和结果流量中分离。
+    en: An adversary uses a logical relationship already carrying command and control to transport stolen data, reducing dedicated exfiltration-connection traces and making data loss harder to separate from callbacks and result traffic.
+  definition_and_concept:
+    paragraphs:
+      - zh: >-
+          C2 关系复用外传指攻击者在植入体或远程控制组件已能同控制端交换任务、回调或执行结果后，让同一逻辑关系继续承载从受害环境取得的数据。直接目标是把数据交付给攻击者可接收的一侧；分类所固定的变量是外传与既有控制关系的同一性，而不是 HTTP、DNS、TCP、TLS、邮件或某一产品名称。
+        en: >-
+          C2-Relationship Reuse Exfiltration occurs after an implant or remote-control component can already exchange tasks, callbacks, or execution results with its controller and then uses that same logical relationship to carry data acquired from the victim environment. Its direct objective is delivery to an attacker-accessible receiver. The classification variable is identity between the exfiltration path and the established control relationship, not HTTP, DNS, TCP, TLS, mail, or a product name.
+      - zh: >-
+          同一逻辑关系可以由一个长连接实现，也可以由指向同一控制端、使用相同客户端状态和消息协议的重复短连接实现。关键判定是外传未形成独立的控制面、目的关系或传输协议，而是借用原有 C2 的身份、路由和会话历史。只观察到恶意进程向一个被称为 C2 的主机上传文件，若无法证明此前存在控制交换，仍不足以确认本技术。
+        en: >-
+          The logical relationship may be implemented by one long-lived connection or by repeated short connections that preserve the same controller, client state, and message protocol. The essential test is that exfiltration does not create a separate control plane, destination relationship, or transfer protocol but borrows the C2 relationship's identity, routing, and conversation history. Observing a malicious process upload a file to a host labeled as C2 is insufficient when no preceding control exchange can be established.
+  stealth_characteristics:
+    paragraphs:
+      - zh: >-
+          本技术减少外传阶段专有的新域名解析、目的主机、端口、证书握手、进程网络关系或应用身份。出站数据继承 C2 已有的源进程、控制端、协议与时间历史，使按“新外传目的地”或“收集后新建连接”建模的检测失去独立事件，也使调查者难以仅凭一条连接记录判断其中哪些字节是心跳、命令结果、主机登记还是被盗内容。
+        en: >-
+          This technique reduces exfiltration-specific traces such as a new DNS lookup, destination, port, certificate handshake, process-to-network relationship, or application identity. Outbound data inherits the C2 process, controller, protocol, and temporal history. Detection models looking for a new exfiltration destination or a new connection after collection lose a separate event, and one connection record cannot by itself show which bytes are heartbeat, command output, host registration, or stolen content.
+      - zh: >-
+          复用并不消除痕迹。敏感文件或数据库读取、序列化与临时缓冲、客户端到服务端方向字节增加、请求体或消息长度变化、发送周期扰动以及控制端收到数据后的状态变化仍可观察。若防守方能把源数据读取、进程身份、C2 关系基线和关系内出站增量连接起来，复用优势会显著下降；若只有未解密 TLS 的最终连接摘要，则最多能证明流量形态变化，不能判定具体内容被盗。
+        en: >-
+          Reuse does not erase traces. Sensitive file or database reads, serialization and temporary buffering, growth in client-to-server bytes, request-body or message-length changes, cadence disturbance, and receiver-side state changes remain observable. The advantage falls when a defender can join source-data access, process identity, the C2 relationship baseline, and outbound growth inside that relationship. With only a final summary for opaque TLS, the defender can establish a traffic-shape change at most, not theft of particular content.
+  scope_boundary_definition:
+    paragraphs:
+      - zh: >-
+          纳入必须同时证明三点：存在早于相关数据外送的 C2 任务、回调或结果关系；攻击者控制的组件通过该逻辑关系发送受害数据；关系复用改变了防守方对外传专用连接、功能阶段或数据来源的观察。重复 HTTP 请求仍可属于同一 C2 关系，单一持久 socket 也可成立；正常远程管理工具上传、软件遥测、故障转储和技术支持会产生相似形态，必须结合授权、源数据、操作者和目的端所有权排除。
+        en: >-
+          Inclusion requires three linked facts: a C2 tasking, callback, or result relationship existed before the relevant data left; an attacker-controlled component sent victim data through that logical relationship; and reuse changed defender observation of an exfiltration-specific connection, functional phase, or data source. Repeated HTTP requests may remain one C2 relationship, and a single persistent socket may also qualify. Authorized remote-administration uploads, software telemetry, crash dumps, and technical support can look similar and must be excluded using authorization, source data, operator, and destination ownership.
+      - zh: >-
+          若攻击者另用 FTP、DNS 隧道或其他不同于 C2 的协议外传，直接对象属于 T1048；若核心是把数据送到云盘、代码托管或其他 Web 服务，且不依赖先前控制关系，则属于 T1567 或 T1537。Base64、压缩、加密和高熵只改变内容表示或可解释性，分别检查 T1132、T1573、NJT-0133 与 NJT-0152，不能成为本项子技术。TA0011 的 NJT-0160 分析应用会话如何维持控制，NJT-0152 分析控制消息如何混淆；本项分析已窃数据如何借同一控制关系离开。
+        en: >-
+          If the actor exfiltrates over FTP, a DNS tunnel, or another protocol separate from C2, T1048 owns the direct behavior. If the central behavior is delivery to cloud storage, code hosting, or another web service without dependence on a prior control relationship, T1567 or T1537 applies. Base64, compression, encryption, and high entropy change representation or interpretability and should be assessed under T1132, T1573, NJT-0133, and NJT-0152; they do not define a child here. TA0011 NJT-0160 examines how an application session sustains control and NJT-0152 how control messages are obscured. This object examines how stolen data leaves through that same control relationship.
+  application_scenarios_and_threat_model:
+    application_scenarios:
+      paragraphs:
+        - zh: >-
+            在植入体已周期访问控制端的环境中，攻击者可让同一客户端在回调时附带主机枚举、浏览器数据、命令输出或截图。Unit 42 的 SolarMarker 分析记录 .NET C2 客户端以加密 HTTP POST 同控制端通信、每六十秒检查指令，并通过既有 C2 通道外传基本主机信息；Mandiant 的 FakeUpdates 分析记录初始回调、系统信息回传与截图回传均指向同一 C2，并重复使用定制 Age 与 User-Agent 请求特征。这些案例证明关系复用真实存在，但不证明任何企业检测规则实际漏报。
+          en: >-
+            Where an implant already contacts its controller periodically, the attacker may attach host inventory, browser data, command output, or screenshots to the same client's callbacks. Unit 42 records a SolarMarker .NET C2 client communicating with encrypted HTTP POST, checking for instructions every 60 seconds, and exfiltrating basic host information over an existing C2 channel. Mandiant records FakeUpdates sending its initial callback, system information, and later screenshots to the same C2 while reusing custom Age and User-Agent request features. These cases establish real relationship reuse but do not show that any enterprise detection rule actually missed it.
+    threat_model:
+      attacker_model:
+        paragraphs:
+          - zh: >-
+              攻击者必须已经控制受害端组件及 C2 接收侧，能够读取拟外传数据，并使现有客户端协议接受数据上传、命令结果或扩展字段。攻击者可能维持原消息节奏与大小，也可能接受显著的出站增量以提高吞吐；复用减少基础设施和新连接成本，却把数据交付绑定到同一控制端的可用性，一旦 C2 关系被封锁、会话被终止或端点被隔离，外传能力也会同时丧失。
+            en: >-
+              The attacker must already control the victim-side component and C2 receiver, be able to read the intended data, and make the existing client protocol accept uploads, command results, or extended fields. The actor may preserve prior cadence and size or accept a conspicuous outbound increase for throughput. Reuse reduces infrastructure and new-connection cost but couples delivery to the same controller's availability; blocking the C2 relationship, terminating its sessions, or isolating the endpoint removes the exfiltration path at the same time.
+      defender_model:
+        paragraphs:
+          - zh: >-
+              防守方假定至少在部分主机拥有进程唯一标识与网络连接归属，并在出口保存连接方向字节、持续时间、端点、协议和可得的 HTTP 事务元数据；敏感文件访问来自 EDR 或已配置 SACL 的对象访问审计。连接日志可识别相同进程与目的关系，HTTP 日志可借 uid 连接请求与流量，文件审计可提供源数据先行事件。若 Event 3 未启用、文件读取未审计、代理丢失原主机身份、TLS 不可检查或 C2 从内存收集数据，关联只能依赖较弱的流量相位变化。
+            en: >-
+              The defender is assumed to have process-unique identifiers and network attribution on at least some endpoints and to retain directional bytes, duration, endpoints, protocol, and available HTTP transaction metadata at egress. Sensitive file access comes from EDR or object-access auditing with appropriate SACLs. Connection logs identify a recurring process-destination relationship, HTTP logs join requests to flows by uid, and file audit supplies a preceding source-data event. If Event 3 is disabled, reads are not audited, a proxy loses source identity, TLS is opaque, or the C2 collects in-memory data, correlation must rely on a weaker traffic-phase change.
+  stealth_mechanisms:
+    - mechanism_ref: NM-BT
+      role: primary
+      summary:
+        zh: 复用控制关系消除独立外传关系事件
+        en: Reusing the control relationship removes a separate exfiltration-relationship event
+      analysis:
+        paragraphs:
+          - zh: >-
+              攻击者让已经承担任务与结果交换的 C2 客户端和控制端同时承载被盗数据，因而不产生一条可单独标记为外传的源进程—目的端—协议关系。只寻找收集之后的新域名、新连接或新上传进程的观察逻辑看不到额外关系，必须在既有 C2 历史内部比较源数据访问与出站相位。ATT&CK 的父定义、SolarMarker 的既有通道描述与 FakeUpdates 的同端点请求序列共同支持行为到痕迹的链条；检测效果仍取决于端点和网络数据能否用稳定身份连接。
+            en: >-
+              The attacker makes the C2 client and controller that already exchange tasks and results carry stolen data as well, so no source-process, destination, and protocol relationship exists solely for exfiltration. Observation logic that searches only for a new domain, connection, or upload process after collection sees no added relationship and must compare source-data access with phases inside the existing C2 history. The ATT&CK parent definition, SolarMarker's explicit existing-channel description, and FakeUpdates' same-destination request sequence jointly support the behavior-to-trace chain. Detection still depends on whether endpoint and network records can be joined with stable identities.
+      evidence_keys:
+        - B10-2-T1041-REF-ATTACK
+        - B10-2-T1041-REF-SOLARMARKER
+        - B10-2-T1041-REF-HEADFAKE
+      confidence: medium
+  subtechnique_taxonomy:
+    narrative:
+      paragraphs:
+        - zh: >-
+            建议建立一个 Niji 原生子项“控制回路内嵌外传”。它按外传功能同例行回调、登记或任务结果事务的结合程度划界：被盗数据进入已经重复出现的控制消息族，使防守必须比较同一关系中的消息语义、大小和源数据先行事件，而不能依赖新连接。该变量不按协议、服务、编码或数据类型划分，HTTP、定制 TCP 或其他可重复 C2 消息均可实现。
+          en: >-
+            One Niji-native child, Control-Loop-Embedded Exfiltration, is proposed. Its boundary is how the exfiltration function is combined with recurring callbacks, registration, or task-result transactions. Stolen data enters an already recurring control-message family, so defenders must compare message semantics and sizes plus preceding source-data access inside the same relationship rather than rely on a new connection. The variable is independent of protocol, service, encoding, and data type and can be implemented in HTTP, custom TCP, or other repeatable C2 messaging.
+        - zh: >-
+            “复用同一长连接但启动独立批量传输阶段”形成了另一条候选轴，ATT&CK DET0348 也建议分析 persistent socket 上的敏感读取与出站量；然而本轮事件来源没有证明同一 socket 的存续、攻击者有意控制该变量及其独立防守差异，故只在研究层暂缓。逻辑 C2 关系复用仍由父项覆盖，不强行建立第二个 NJS。
+          en: >-
+            Reusing one long-lived transport connection while entering a distinct bulk-transfer phase is a second candidate axis, and ATT&CK DET0348 recommends analyzing sensitive reads and outbound volume on persistent sockets. The reviewed incidents do not establish socket continuity, attacker control of that variable, and a distinct defense difference together, so the axis is deferred in research. The parent still covers logical C2 relationship reuse without forcing a second NJS.
+proposed_subtechniques:
+  - temporary_key: B10-2-T1041-CHILD-LOOP
+    name:
+      zh: 控制回路内嵌外传
+      en: Control-Loop-Embedded Exfiltration
+    confidence: medium
+    summary:
+      zh: 攻击者把被盗数据放入周期回调、主机登记或任务结果的既有消息族，使外传表现为控制回路内部的数据增长而非新的传输关系。
+      en: An adversary places stolen data into an existing family of periodic callbacks, host registration, or task-result messages so exfiltration appears as growth inside the control loop rather than a new transfer relationship.
+    definition_and_concept:
+      paragraphs:
+        - zh: >-
+            控制回路内嵌外传是 C2 关系复用外传的一种实现：植入体把受害数据序列化到本来用于回调、登记、状态报告或命令结果的重复事务或消息外壳中，由原控制端按相同客户端身份解析。其直接目标仍是交付被盗数据，子项变量是数据外送与例行控制消息族的事务级合流，而不是采用 POST、JSON、XOR 或任何特定字段。
+          en: >-
+            Control-Loop-Embedded Exfiltration is a form of C2-relationship reuse in which an implant serializes victim data into recurring transactions or message envelopes already used for callbacks, registration, status reporting, or command results, and the controller parses it under the same client identity. The direct objective remains delivery of stolen data. The child variable is transaction-level coalescence between exfiltration and the routine control-message family, not POST, JSON, XOR, or a particular field.
+    stealth_characteristics:
+      paragraphs:
+        - zh: >-
+            控制回路内嵌外传使外传消息保留原有目的端、客户端状态、请求族和往返顺序；连接表不会出现一个新的外传关系，按消息观察时也可能只看到一次较大的回调或结果。剩余痕迹包括例行消息的请求体长度、方向字节、字段组合或熵发生变化，以及敏感读取后紧接同一消息族的发送。FakeUpdates 的系统信息与截图请求重复使用同一 C2 和定制请求特征，SolarMarker 则把主机信息送入已有的加密 HTTP 控制关系，但两份来源均未量化与良性回调的可分性。
+          en: >-
+            Control-Loop-Embedded Exfiltration preserves the controller, client state, request family, and request-response order, so connection tables show no new exfiltration relationship and a message-level observer may see only a larger callback or result. Residual traces include changes in request-body length, directional bytes, field combinations, or entropy within the routine message family and a send immediately after sensitive access. FakeUpdates reused the same C2 and custom request features for system information and screenshots, while SolarMarker placed host information into an existing encrypted HTTP control relationship. Neither source quantifies distinguishability from benign callbacks.
+    scope_boundary_definition:
+      paragraphs:
+        - zh: >-
+            纳入要求存在可重复的 C2 消息族，并有证据把受害数据映射到该消息族中的回调、登记、状态或结果事务。通过同一逻辑 C2 关系启动一个另有 URI、操作码或传输阶段的文件上传仍由父项覆盖，除非能证明它继续使用例行控制外壳；仅因请求被编码或加密也不成立。合法资产代理、杀毒遥测、崩溃报告和远程支持会在固定回路中上送主机数据，必须以软件所有权、批准字段、数据来源及目的端排除。
+          en: >-
+            Inclusion requires a recurring C2 message family and evidence mapping victim data into its callback, registration, status, or result transaction. A file upload that uses the same logical C2 relationship but switches to another URI, opcode, or transfer phase remains parent coverage unless it demonstrably retains the routine control envelope. Encoding or encryption alone is also insufficient. Legitimate inventory agents, security telemetry, crash reporting, and remote support send host data in fixed loops and must be excluded using software ownership, approved fields, source data, and destination ownership.
+    application_scenarios_and_threat_model:
+      application_scenarios:
+        paragraphs:
+          - zh: >-
+              后门完成初始回调并从控制端取得指令后，可在下一轮例行请求中把系统枚举、浏览器记录、命令输出或截屏作为状态字段、结果体或附件提交。SolarMarker 的既有 C2 外传与六十秒指令检查展示了周期控制语境；FakeUpdates 的第二次 POST 回传系统信息，并在后续同类定制请求中回传截图，展示了同一客户端请求族可以逐步承担不同被窃数据。
+            en: >-
+              After a backdoor completes its initial callback and receives instructions, it can submit system inventory, browser records, command output, or screenshots as a status field, result body, or attachment in the next routine request. SolarMarker's existing-channel exfiltration and 60-second instruction checks show the periodic control context. FakeUpdates returned system information in a second POST and later sent screenshots in similarly customized requests, showing that one client request family can progressively carry different victim data.
+      threat_model:
+        attacker_model:
+          paragraphs:
+            - zh: >-
+                攻击者需要控制消息生成器和控制端解析器，知道例行事务允许的字段或负载，并能在不破坏客户端状态机的情况下序列化、分段或重组数据。维持消息族可减少新接口开发和基础设施暴露，但容量上升、字段异常或回调延迟会偏离原回路；若严格保持小消息，则必须接受更长交付时间和更多重复事务。
+              en: >-
+                The attacker needs control of the message generator and controller-side parser, knowledge of fields or payloads allowed by the routine transaction, and the ability to serialize, segment, or reconstruct data without breaking the client state machine. Preserving the message family reduces new interface development and infrastructure exposure, but increased capacity, unusual fields, or delayed callbacks may deviate from the prior loop. Keeping messages small instead imposes longer delivery and more repeated transactions.
+        defender_model:
+          paragraphs:
+            - zh: >-
+                防守方需把同一进程、客户端标识、目的端和 URI 或消息类型的历史事务作为回路基线，再将敏感读取与下一轮出站消息连接。可检查 HTTP 时能比较方法、URI、请求体长度、头字段和状态码；只有流量摘要时只能比较方向字节、持续时间和周期。代理重写、TLS 不可见、定制二进制协议或不记录读取的内存收集会降低消息级归因。
+              en: >-
+                The defender needs a loop baseline of historical transactions sharing a process, client identity, destination, and URI or message type, then joins a sensitive read to the next outbound message. Inspectable HTTP permits comparisons of method, URI, request-body length, headers, and status; flow summaries permit only directional bytes, duration, and cadence. Proxy rewriting, opaque TLS, custom binary protocols, or in-memory collection without read telemetry weakens message-level attribution.
+    stealth_mechanisms:
+      - mechanism_ref: NM-BT
+        role: primary
+        summary:
+          zh: 外传语义藏入例行控制消息观察范围
+          en: Exfiltration semantics remain outside observation of routine control messages
+        analysis:
+          paragraphs:
+            - zh: >-
+                攻击者把受害数据放入已经重复出现的回调或结果事务，使防守设备继续记录同一进程、同一控制端和同一消息族，却没有独立的外传事件类型。若检测逻辑只识别新连接或只把该事务归为 C2 心跳，数据外送发生但不进入有效的外传告警视野；把敏感读取、请求体变化与同一回路的下一次发送连接起来可恢复观察。案例证明了相同 C2 请求族中的数据回传，实际漏报概率仍须在本地协议解析和阈值下验证。
+              en: >-
+                The attacker places victim data in recurring callback or result transactions, so defensive systems continue to record the same process, controller, and message family without a separate exfiltration event type. If logic looks only for new connections or classifies the transaction solely as a C2 heartbeat, data leaves without entering effective exfiltration alerting. Joining sensitive access and request-body change to the next send in the same loop restores observation. The cases establish data return in a shared C2 request family; actual miss probability still requires validation against local parsing and thresholds.
+        evidence_keys:
+          - B10-2-T1041-REF-SOLARMARKER
+          - B10-2-T1041-REF-HEADFAKE
+          - B10-2-T1041-REF-DET0348
+        confidence: medium
+    evidence_keys:
+      - B10-2-T1041-CLM-LOOP
+      - B10-2-T1041-CASE-SOLARMARKER
+      - B10-2-T1041-CASE-HEADFAKE
+      - B10-2-T1041-REF-SOLARMARKER
+      - B10-2-T1041-REF-HEADFAKE
+      - B10-2-T1041-REF-DET0348
+    limitations:
+      paragraphs:
+        - zh: >-
+            两项事件研究提供 HTTP 层面的控制与数据回传顺序，但未公开完整 PCAP、消息模式统计、误报率或部署阈值，也未证明每次回传都在同一 TCP/TLS socket 中完成。因此本子项只声称重复控制事务族的内嵌，不把持久传输会话续用或检测绕过效果写成事实。
+          en: >-
+            The two incident studies provide HTTP-level control and data-return sequences but do not publish complete PCAP, message-pattern statistics, false-positive rates, or deployment thresholds, and do not show that every return used one TCP or TLS socket. This child therefore claims embedding in a recurring control-transaction family only and does not present persistent-transport-session reuse or measured detection bypass as fact.
+defense_candidates:
+  detection_strategies:
+    - temporary_key: B10-2-T1041-DET-RELATIONSHIP
+      name:
+        zh: 既有 C2 关系内敏感读取与出站相位关联
+        en: Sensitive-Read and Outbound-Phase Correlation Inside an Existing C2 Relationship
+      objective:
+        zh: 在不要求出现新目的地或新连接的条件下，把敏感数据访问与同一进程、控制端及协议关系中的出站增量或控制消息变化连接起来。
+        en: Join sensitive-data access to outbound growth or control-message change inside the same process-controller-protocol relationship without requiring a new destination or connection.
+      detects_keys:
+        - B10-2-T1041-PARENT
+        - B10-2-T1041-CHILD-LOOP
+      domains: [enterprise]
+      analytic_keys:
+        - B10-2-T1041-NJA-PHASE
+        - B10-2-T1041-NJA-LOOP
+      evidence_keys:
+        - B10-2-T1041-REF-DET0348
+        - REF-000230
+        - REF-000632
+        - REF-000634
+        - B10-2-T1041-REF-SOLARMARKER
+        - B10-2-T1041-REF-HEADFAKE
+  detection_analytics:
+    - temporary_key: B10-2-T1041-NJA-PHASE
+      name:
+        zh: C2 关系内敏感读取后的出站相位变化
+        en: Post-Sensitive-Read Outbound Phase Change Within a C2 Relationship
+      logic:
+        zh: >-
+          先以设备、进程启动唯一键、目的主机或 SNI、目的端口和协议建立逻辑关系，至少保留若干先前回调或已确认 C2 告警作为关系基线。随后在建议的十五分钟窗口内，把敏感文件对象访问、数据库导出或收集进程结果与该关系中的 client-to-server 字节、请求体长度、消息数和方向字节比变化连接；即使没有新的 connect 事件，只要同一关系在读取后进入超出自身历史与资产角色基线的出站相位，也生成候选。以文件敏感度、读取进程与网络进程同一性、接收成功和多个周期重复提高置信度，不以通用一兆字节常量或“目标已知恶意”替代本地基线。
+        en: >-
+          Build a logical relationship key from device, process-start unique key, destination host or SNI, destination port, and protocol, retaining several preceding callbacks or a confirmed C2 alert as its baseline. Within a suggested 15-minute window, join sensitive object access, database export, or collection-process output to changes in client-to-server bytes, request-body length, message count, and directional byte ratio inside that relationship. Generate a candidate when the same relationship enters an outbound phase beyond its own history and asset-role baseline after the read, even without a new connect event. Raise confidence for data sensitivity, identity between the reader and network process, receiver success, and repetition across cycles. Do not substitute a universal one-megabyte constant or a “known malicious” destination for local baselining.
+      data_requirements:
+        - source_type: endpoint_object_access
+          name:
+            zh: 端点敏感对象访问
+            en: Endpoint Sensitive Object Access
+          channel: EDR file-access telemetry or Windows Security Event 4663 with deployment-validated SACLs
+          required_fields: [timestamp, device_id, process_id_or_unique_key, user_or_logon_id, object_name, access_type]
+        - source_type: process_network_connection
+          name:
+            zh: 进程网络连接归属
+            en: Process Network Connection Attribution
+          channel: Sysmon Event ID 3 or equivalent EDR network event
+          required_fields: [timestamp, device_id, process_guid_or_unique_key, image, source_ip, destination_ip, destination_port, protocol]
+        - source_type: network_flow_summary
+          name:
+            zh: 双向连接流量摘要
+            en: Bidirectional Connection Flow Summary
+          channel: Zeek conn.log or equivalent flow sensor
+          required_fields: [ts, uid, id.orig_h, id.orig_p, id.resp_h, id.resp_p, proto, service, duration, orig_bytes, resp_bytes]
+      observables:
+        zh: 同一进程与控制端关系、敏感读取先行、无新目的关系的出站字节相位抬升、客户端到服务端方向比变化。
+        en: A stable process-controller relationship, preceding sensitive access, outbound-byte phase growth without a new destination relationship, and a changed client-to-server byte ratio.
+      correlation:
+        window: 15 minutes around source access, with a relationship baseline retained for 24 hours or longer
+        dimensions: [device_id, process_start_key, destination_host_or_sni, destination_ip, destination_port, protocol]
+      false_positives:
+        zh: 获批远程支持、备份代理、终端管理、崩溃转储、杀毒样本提交与软件遥测会在长期关系中读取本地数据并增加出站量。
+        en: Approved remote support, backup agents, endpoint management, crash reporting, antivirus sample submission, and software telemetry can read local data and increase outbound volume on long-lived relationships.
+      blind_spots:
+        zh: 未审计的读取、内存数据、共享代理或 NAT、无法关联进程的流量以及只在连接结束生成的摘要会降低及时性与归属；小体积机密也可能不产生明显字节差。
+        en: Unaudited reads, in-memory data, shared proxies or NAT, flows without process attribution, and summaries emitted only at connection close reduce timeliness and attribution; small secrets may create no conspicuous byte delta.
+      tuning_guidance:
+        zh: 按资产角色和具体进程—目的关系学习出站方向、周期与体积分布；对批准代理使用精确软件签名、服务所有权和有期限任务例外，仍保留读取高敏对象后出现新字段、新消息型或异常成功上传的覆盖。
+        en: Learn direction, cadence, and volume per asset role and specific process-destination relationship. Use exact software identity, service ownership, and time-bounded job exceptions for approved agents while retaining coverage for new fields, new message types, or anomalous successful uploads after high-sensitivity reads.
+      evidence_keys:
+        - B10-2-T1041-REF-DET0348
+        - REF-000230
+        - REF-000634
+        - B10-2-T1041-REF-SOLARMARKER
+    - temporary_key: B10-2-T1041-NJA-LOOP
+      name:
+        zh: 控制回调消息族的数据承载差分
+        en: Data-Carriage Differential in a Control-Callback Message Family
+      logic:
+        zh: >-
+          在可检查 HTTP 或已解析的定制协议中，按设备、进程、客户端标识、目的端、方法、URI 模板或消息类型建立例行控制回路，记录其请求体长度、头字段集合、字段模式、方向和往返间隔。将敏感读取后的下一至数次事务同此前回路比较，识别目的端和消息族保持不变但请求体、字段组合、附件、消息长度或 client-to-server 比率出现无法由批准状态变化解释的增长；若响应继续下发任务、相同客户端稍后再回调或数据接收获得成功状态，则提高置信度。对未解密 TLS 只执行流量形态分支，不声称已经解析被盗内容。
+        en: >-
+          In inspectable HTTP or a parsed custom protocol, build a routine control loop by device, process, client identity, destination, method, URI template, or message type, recording request-body length, header set, field pattern, direction, and round-trip interval. Compare the next several transactions after sensitive access with the prior loop. Identify unexplained growth in body, field combination, attachment, message length, or client-to-server ratio while destination and message family remain stable. Raise confidence when the response continues tasking, the same client later calls back, or the receiver returns success. For opaque TLS, execute only the traffic-shape branch and do not claim the stolen content was parsed.
+      data_requirements:
+        - source_type: inspectable_http_transaction
+          name:
+            zh: 可检查 HTTP 事务
+            en: Inspectable HTTP Transaction
+          channel: Zeek http.log after authorized TLS inspection or equivalent proxy/NDR log
+          required_fields: [ts, uid, id.orig_h, id.resp_h, method, host, uri, user_agent, request_body_len, response_body_len, status_code]
+        - source_type: endpoint_object_access
+          name:
+            zh: 端点敏感对象访问
+            en: Endpoint Sensitive Object Access
+          channel: EDR file-access telemetry or Windows Security Event 4663 with deployment-validated SACLs
+          required_fields: [timestamp, device_id, process_id_or_unique_key, object_name, access_type]
+        - source_type: network_flow_summary
+          name:
+            zh: HTTP 事务关联流量摘要
+            en: HTTP-Linked Flow Summary
+          channel: Zeek conn.log joined by uid
+          required_fields: [ts, uid, id.orig_h, id.resp_h, orig_bytes, resp_bytes, duration]
+      observables:
+        zh: 例行回调消息族保持稳定、敏感读取先行、请求体或字段容量增加、同一客户端和目的端继续控制往返。
+        en: A stable routine callback family, preceding sensitive access, increased body or field capacity, and continuing control exchanges under the same client and destination.
+      correlation:
+        window: 30 minutes or three expected callback cycles, whichever is longer
+        dimensions: [device_id, process_start_key, client_identifier, destination_host, method, uri_or_message_template]
+      false_positives:
+        zh: 软件资产登记、配置同步、诊断包、代理健康报告和获批远程支持会在同一回调族中因状态变化发送更大内容。
+        en: Software inventory, configuration sync, diagnostic bundles, agent health reporting, and approved remote support can send larger content in the same callback family after legitimate state changes.
+      blind_spots:
+        zh: TLS 未解密、代理改写 URI 或头字段、协议解析器缺失以及攻击者把数据均匀拆入许多小回调时，消息族差分会减弱；无端点读取证据时无法可靠判定内容来源。
+        en: Opaque TLS, proxy rewriting of URI or headers, a missing protocol parser, and uniform distribution across many small callbacks weaken message-family comparison; without endpoint read evidence, the content source cannot be established reliably.
+      tuning_guidance:
+        zh: 以软件版本、服务器角色和客户端配置分别维护回路模板；允许已签名版本升级和批准诊断窗口，但不得为整个域名、CDN 或远程管理产品创建永久白名单。优先复核从高敏目录读取后紧邻发生且缺少对应业务工单的变化。
+        en: Maintain loop templates by software version, server role, and client configuration. Allow signed upgrades and approved diagnostic windows, but do not permanently exempt an entire domain, CDN, or remote-management product. Prioritize changes immediately following reads from high-sensitivity locations and lacking a corresponding business ticket.
+      evidence_keys:
+        - B10-2-T1041-REF-HEADFAKE
+        - B10-2-T1041-REF-SOLARMARKER
+        - B10-2-T1041-REF-DET0348
+        - REF-000632
+        - REF-000634
+  mitigations:
+    - temporary_key: B10-2-T1041-MIT-CONTAIN
+      name:
+        zh: C2 关系终止与敏感读取进程出口控制
+        en: C2-Relationship Termination and Sensitive-Reader Egress Control
+      purpose:
+        zh: 限制可同时读取敏感数据并维持外部控制关系的进程，并在确认 C2 后终止现有关系及其重连路径，使同一通道不能继续承载外传。
+        en: Limit processes that can both read sensitive data and maintain external control relationships, then terminate a confirmed C2 relationship and its reconnection paths so the same channel cannot continue carrying exfiltration.
+      measures:
+        - key: process-role-egress-policy
+          control_type: preventive
+          description:
+            zh: 对保存敏感数据的资产采用拒绝为默认的出站策略，以进程或工作负载身份、目的服务、协议和业务角色批准连接；将直接互联网访问汇聚到可保留原主机与应用身份的受管代理，并定期清理无业务依据的例外。
+            en: Apply deny-by-default egress on assets holding sensitive data, approving connections by process or workload identity, destination service, protocol, and business role. Route direct Internet access through managed proxies that retain originating host and application identity, and remove exceptions lacking current business justification.
+        - key: validated-c2-relationship-termination
+          control_type: containment
+          description:
+            zh: 确认 C2 关系后，在端点、代理和边界设备同时隔离主机、终止现有连接、封锁域名/IP/证书或服务身份、移除植入与持久化，并验证控制端、备用目的地和重连尝试不再可达。
+            en: After validating a C2 relationship, isolate the host, terminate existing connections, block the domain, IP, certificate, or service identity at endpoint, proxy, and boundary layers, remove the implant and persistence, and verify that the controller, alternate destinations, and reconnection attempts are no longer reachable.
+        - key: sensitive-read-egress-enforcement
+          control_type: exposure-reduction
+          description:
+            zh: 将敏感对象标签与读取进程、网络目的关系和批准任务连接；对未获授权的读取后外联执行阻断、隔离或人工放行，并保留关系内字节和消息证据供响应核查。
+            en: Join sensitive-object labels to the reading process, network destination relationship, and approved job. Block, isolate, or require review for unauthorized post-read egress, retaining in-relationship byte and message evidence for response.
+      applications:
+        - target_key: B10-2-T1041-PARENT
+          use:
+            zh: 为持有敏感数据的主机限定可以外联的进程—目的—协议组合；一旦验证某组合为 C2，不等待新的外传连接，立即终止现有关系、隔离端点并调查该关系建立以来的全部出站量和数据访问。
+            en: Restrict process-destination-protocol combinations allowed from hosts holding sensitive data. Once a combination is validated as C2, terminate the existing relationship and isolate the endpoint without waiting for a new exfiltration connection, then investigate all outbound volume and data access since the relationship began.
+          expected_effect:
+            zh: 攻击者可复用的控制关系在确认后同时失去任务与数据交付能力，且建立替代关系需要留下新的目的或会话痕迹。
+            en: Once confirmed, the reusable control relationship loses both tasking and data-delivery capability, forcing the attacker to create an alternative relationship with new destination or session traces.
+          limitations:
+            zh: 在确认前已经送出的数据无法追回；共享云或 CDN、被入侵的合法管理工具和快速轮换基础设施可能使关系级封锁产生业务影响或被替换，处置必须同时清除端点植入与凭据。
+            en: Data sent before validation cannot be recovered. Shared cloud or CDN infrastructure, compromised legitimate management tools, and rapidly rotating infrastructure can make relationship blocking disruptive or replaceable, so response must also remove the endpoint implant and compromised credentials.
+        - target_key: B10-2-T1041-CHILD-LOOP
+          use:
+            zh: 对批准的周期代理定义可发送字段、对象类别与最大诊断范围，把敏感读取后出现的未批准字段或附件作为阻断或隔离条件；对已确认恶意的客户端标识和回调模板在代理与端点同时失效。
+            en: Define permitted fields, object classes, and diagnostic scope for approved periodic agents. Treat unapproved fields or attachments following sensitive access as a block or isolation condition, and invalidate confirmed-malicious client identities and callback templates at both proxy and endpoint.
+          expected_effect:
+            zh: 控制回路不能无限扩展为任意数据出口，攻击者必须改变消息族、突破过程策略或建立新通道，从而产生新的可观察差异。
+            en: The control loop cannot expand into an unrestricted data outlet; the attacker must change the message family, defeat process policy, or create a new channel, producing new observable differences.
+          limitations:
+            zh: 未知或频繁变化的自定义协议难以预先定义字段契约，端到端加密会阻止代理执行内容策略；仅限消息大小也可能被切块规避，必须与累计关系和端点读取控制结合。
+            en: Field contracts are difficult to predefine for unknown or frequently changing custom protocols, and end-to-end encryption prevents proxy content enforcement. Size-only limits can be bypassed by chunking and must be combined with relationship accumulation and endpoint read controls.
+      evidence_keys:
+        - REF-000646
+        - B10-2-T1041-REF-CISA-EGRESS
+        - B10-2-T1041-REF-ATTACK
+existing_library_reuse:
+  reference_refs:
+    - REF-000230
+    - REF-000632
+    - REF-000634
+    - REF-000646
+  claim_refs: []
+  case_refs: []
+  strategy_refs: []
+  analytic_refs: []
+  mitigation_refs: []
+  relationship_refs: []
+  notes:
+    zh: >-
+      REF-000230、REF-000632、REF-000634 与 REF-000646 的来源身份和字段含义完全一致，可直接复用。语义检索未发现检测目标同时要求“既有 C2 关系、敏感读取和关系内出站相位”的 DET/NJA，也未发现同时具备关系终止与敏感读取进程出口控制的 MIT。MIT-000156 以切块和低速外传的累计预算为核心，MIT-000136 以暂存落点和汇聚节点为核心，均不能只增加目标应用就覆盖已存在 C2 关系的失效处置。
+    en: >-
+      REF-000230, REF-000632, REF-000634, and REF-000646 have identical source identities and field meanings and can be reused. Semantic searches found no DET or NJA whose objective jointly requires an existing C2 relationship, sensitive access, and an outbound phase inside that relationship, nor a MIT combining relationship termination with egress control for sensitive-reading processes. MIT-000156 centers on cumulative budgets for chunked and low-rate exfiltration, and MIT-000136 on staging destinations and aggregation nodes; adding a target application to either would not cover invalidation of an established C2 relationship.
+library_candidates:
+  references:
+    - temporary_key: B10-2-T1041-REF-ATTACK
+      title: MITRE ATT&CK Enterprise 19.1 T1041 Exfiltration Over C2 Channel
+      url: https://attack.mitre.org/versions/v19/techniques/T1041/
+      supports: parent behavior, TA0010 mapping, same-protocol existing C2 relationship, zero ATT&CK children
+    - temporary_key: B10-2-T1041-REF-DET0348
+      title: MITRE ATT&CK Enterprise 19.1 DET0348 Detection Strategy for Exfiltration Over C2 Channel
+      url: https://attack.mitre.org/versions/v19/detectionstrategies/DET0348/
+      supports: sensitive access followed by outbound volume mismatch, persistent-socket and directional-byte analysis, Sysmon and Zeek data suggestions; thresholds require local validation
+    - temporary_key: B10-2-T1041-REF-SOLARMARKER
+      title: Unit 42 New SolarMarker Campaign Demonstrates the Malware's Changing Attack Patterns
+      url: https://unit42.paloaltonetworks.com/solarmarker-malware/
+      supports: encrypted HTTP POST C2, basic victim information exfiltrated over an existing C2 channel, 60-second instruction checks
+    - temporary_key: B10-2-T1041-REF-HEADFAKE
+      title: Mandiant Head Fake Tackling Disruptive Ransomware Attacks
+      url: https://cloud.google.com/blog/topics/threat-intelligence/head-fake-tackling-disruptive-ransomware-attacks/
+      supports: initial C2 POST, system data returned in another POST to the same C2, screenshots returned with the same custom request features, explicit T1041 mapping
+    - temporary_key: B10-2-T1041-REF-CISA-EGRESS
+      title: CISA AA22-083A Network Segmentation and Egress Monitoring Guidance
+      url: https://www.cisa.gov/news-events/cybersecurity-advisories/aa22-083a
+      supports: firewalls and filtering between segments, monitoring at Internet egress and key chokepoints; does not quantify T1041 prevention
+  claims:
+    - temporary_key: B10-2-T1041-CLM-ADMISSION
+      statement_zh: 既有 C2 关系可直接承载被盗数据，使外传不必建立独立目的关系，同时仍留下源数据读取与关系内方向字节变化。
+      statement_en: An existing C2 relationship can directly carry stolen data, removing the need for a separate destination relationship while preserving source-data access and directional-byte changes inside the relationship.
+      evidence_keys: [B10-2-T1041-REF-ATTACK, B10-2-T1041-REF-SOLARMARKER, B10-2-T1041-REF-HEADFAKE, B10-2-T1041-REF-DET0348]
+      confidence: high
+    - temporary_key: B10-2-T1041-CLM-LOOP
+      statement_zh: SolarMarker 与 FakeUpdates 证明恶意客户端能在重复的 HTTP C2 事务族中回送主机信息或截图，但公开材料不证明所有事务复用同一 TCP/TLS socket。
+      statement_en: SolarMarker and FakeUpdates show malicious clients returning host information or screenshots through recurring HTTP C2 transaction families, but public material does not establish that every transaction reused one TCP or TLS socket.
+      evidence_keys: [B10-2-T1041-REF-SOLARMARKER, B10-2-T1041-REF-HEADFAKE]
+      confidence: high
+    - temporary_key: B10-2-T1041-CLM-DEFENSE
+      statement_zh: 检测既有 C2 关系内外传需要把敏感访问与进程归属、方向字节或应用请求变化关联，不能把新连接作为必要条件。
+      statement_en: Detecting exfiltration inside an existing C2 relationship requires joining sensitive access with process attribution and directional-byte or application-request change rather than requiring a new connection.
+      evidence_keys: [B10-2-T1041-REF-DET0348, REF-000230, REF-000632, REF-000634]
+      confidence: high
+    - temporary_key: B10-2-T1041-CLM-MITIGATION
+      statement_zh: 拒绝为默认的受管出口、关键出口监测和确认 C2 后的关系终止可减少同一控制关系继续承载数据的机会，但无法追回确认前已送出的内容。
+      statement_en: Deny-by-default managed egress, monitoring at key egress points, and termination after C2 validation reduce the opportunity for the same control relationship to continue carrying data but cannot recover content sent before validation.
+      evidence_keys: [REF-000646, B10-2-T1041-REF-CISA-EGRESS]
+      confidence: medium
+  cases:
+    - temporary_key: B10-2-T1041-CASE-SOLARMARKER
+      name_zh: SolarMarker 既有加密 C2 通道上的主机信息外传
+      name_en: SolarMarker Host-Information Exfiltration over an Existing Encrypted C2 Channel
+      evidence_keys: [B10-2-T1041-REF-SOLARMARKER]
+      boundary: observed malware capability and protocol sequence; no measured defender miss rate or same-socket proof
+    - temporary_key: B10-2-T1041-CASE-HEADFAKE
+      name_zh: FakeUpdates 同一 C2 请求族中的系统信息与截图回传
+      name_en: FakeUpdates System-Information and Screenshot Return in One C2 Request Family
+      evidence_keys: [B10-2-T1041-REF-HEADFAKE]
+      boundary: incident-observed repeated HTTP C2 request features; no proof of one persistent TCP/TLS session
+  detection_strategies:
+    - B10-2-T1041-DET-RELATIONSHIP
+  detection_analytics:
+    - B10-2-T1041-NJA-PHASE
+    - B10-2-T1041-NJA-LOOP
+  mitigations:
+    - B10-2-T1041-MIT-CONTAIN
+  relationships: []
+research:
+  taxonomy_breadth_review:
+    attack_subtechnique_count: 0
+    attack_subtechnique_ids: []
+    represented_dimensions: []
+    breadth_trigger: ordinary
+    coverage_resolutions: []
+    candidate_stealth_axes_examined:
+      - axis: logical C2 relationship reuse
+        resolution: parent-core
+        note: defines admission and remains broader than any one message or transport-session implementation
+      - axis: exfiltration embedded in recurring callback registration or result transactions
+        resolution: formal-child-proposed
+        key: B10-2-T1041-CHILD-LOOP
+      - axis: exact persistent transport-session continuation with a distinct bulk-transfer phase
+        resolution: evidence-deferred
+        note: DET0348 supplies an analytic lead, but reviewed incidents do not jointly prove socket continuity, attacker control, and a separate defense effect
+      - axis: data encoding encryption or high entropy
+        resolution: adjacent-technique
+        owner: T1132/T1573/NJT-0152/NJT-0133
+      - axis: alternative protocol selected for exfiltration
+        resolution: adjacent-technique
+        owner: T1048
+      - axis: external web service selected as destination
+        resolution: adjacent-technique
+        owner: T1567/T1537
+      - axis: C2 application protocol or intermediary topology
+        resolution: adjacent-technique
+        owner: NJT-0160 and other TA0011 candidates
+      - axis: exfiltration timing or volume shaping
+        resolution: adjacent-technique
+        owner: NJT-0154/NJT-0155
+      - axis: operating system data type or malware family
+        resolution: not-stealth-distinct
+    second_pass_required: false
+    second_pass_completed: false
+    proposed_niji_child_count: 1
+    breadth_gap_explained: true
+    reviewer_notes:
+      zh: >-
+        ATT&CK 19.1 的 T1041 无子项，本轮仍检查了关系、事务内嵌、传输会话续用、内容表示、协议、服务、时序和体积等轴。只有控制回路内嵌同时具备稳定可控变量、两项事件证据和独立消息级检测价值；持久 socket 轴暂缓，其他轴已有相邻所有者或不形成匿迹分类。
+      en: >-
+        ATT&CK 19.1 T1041 has no children, but this pass examined relationship, transaction embedding, transport-session continuation, content representation, protocol, service, timing, and volume. Only control-loop embedding has a stable controllable variable, support from two incidents, and distinct message-level detection value. The persistent-socket axis is deferred, and the remaining axes have adjacent owners or do not form stealth classifications.
+  evidence_coverage:
+    parent_behavior_keys:
+      - B10-2-T1041-REF-ATTACK
+      - B10-2-T1041-REF-SOLARMARKER
+      - B10-2-T1041-REF-HEADFAKE
+    boundary_keys:
+      - B10-2-T1041-REF-ATTACK
+      - B10-2-T1041-REF-DET0348
+      - REF-000230
+      - REF-000632
+      - REF-000634
+    mechanism_support:
+      - B10-2-T1041-REF-ATTACK
+      - B10-2-T1041-REF-SOLARMARKER
+      - B10-2-T1041-REF-HEADFAKE
+    child_existence_support:
+      - B10-2-T1041-REF-SOLARMARKER
+      - B10-2-T1041-REF-HEADFAKE
+      - B10-2-T1041-REF-DET0348
+    unsupported_or_deferred:
+      - Public incident reports do not establish that logical C2 reuse always preserves one TCP or TLS socket.
+      - DET0348 supplies implementable detection leads but does not by itself prove an attacker-controlled stealth child or measured alert reduction.
+      - Neither incident publishes false-positive rate, sensitivity, a universal threshold, or full packet capture.
+      - Encryption and encoding are orthogonal content transformations and are not evidence that relationship reuse itself obscures data semantics.
+      - A destination labeled as a C2 server does not prove the exfiltration reused a relationship that existed before the data transfer.
+  content_depth_review:
+    compared_with_njt_0001: true
+    field_responsibilities_complete: true
+    candidate_specific_prose: true
+    repeated_prose_reviewed: true
+    notes:
+      zh: >-
+        父项与子项分别覆盖逻辑关系复用和事务内嵌，均给出定义、变化痕迹、残余观察、正常反例、攻击与防守前提、证据层级及限制；防御对象分别处理关系相位和消息族，不以改名复用 T1030/T1029 内容。主 Agent仍需同 T1020、T1048、T1011 与 T1052 交接统一边界。
+      en: >-
+        The parent and child separately cover logical relationship reuse and transaction embedding, each addressing definition, changed traces, residual observation, benign counterexamples, attacker and defender assumptions, evidence level, and limitations. Defense objects separately address relationship phase and message family rather than renaming T1030 or T1029 content. The primary agent must still converge boundaries with the T1020, T1048, T1011, and T1052 handoffs.
+  automation_review:
+    canonical_prose_bulk_generated: false
+    mechanical_uses:
+      - batch brief creation from primary-agent-approved constraints
+      - library catalog generation and semantic duplicate lookup
+      - YAML serialization and parse validation only
+  limitations:
+    paragraphs:
+      - zh: >-
+          ATT&CK 固定版能够锚定既有 C2 关系与相同协议，SolarMarker 对“existing C2 channel”的表述最直接，FakeUpdates 对重复请求族和数据类型的观察最具体；但“channel”在公开材料中多为逻辑关系，不能自动解释为一个持续 socket。为避免证据越级，正式定义允许重复短连接，子项只划分控制事务族内嵌，持久会话续用保持待补证据。
+        en: >-
+          The fixed ATT&CK page anchors an existing C2 relationship and the same protocol, SolarMarker is most explicit about an “existing C2 channel,” and FakeUpdates is most concrete about repeated request features and data types. Public sources generally use “channel” as a logical relationship and cannot be read automatically as one persistent socket. To avoid exceeding the evidence, the formal definition allows repeated short connections, the child is limited to control-transaction-family embedding, and persistent-session continuation remains deferred.
+      - zh: >-
+          DET0348、Zeek 与 Sysmon 说明可实施的字段和关联方向，不证明某阈值或查询具有普遍准确度。Sysmon Event 3 默认未必启用，Windows 对象访问依赖 SACL 与部署，Zeek conn.log 通常在连接结束后产生，TLS 和共享代理会隐藏应用事务或原主机。正式 Analytic 应在本地验证字段、留存、时间和连接身份，缺少源数据访问时不得仅凭出站字节声称已发生外传。
+        en: >-
+          DET0348, Zeek, and Sysmon establish implementable fields and correlation directions, not universal accuracy for a threshold or query. Sysmon Event 3 may be disabled, Windows object access depends on SACL and deployment, Zeek conn.log is generally emitted after connection close, and TLS or shared proxies can hide application transactions or originating hosts. A canonical Analytic must validate fields, retention, time, and connection identity locally and must not claim exfiltration from outbound bytes alone when source-data access is absent.
+      - zh: >-
+          出口限制与关系终止会降低继续外送机会，但可能影响使用共享云、CDN 或合法远程管理产品的业务。已经外送的数据无法由后续控制追回，且攻击者可切换备用 C2、协议或服务；因此缓解应用必须同时处置端点植入、凭据与重连路径，并把新路径交给相邻候选分析。
+        en: >-
+          Egress restriction and relationship termination reduce the opportunity for continued transfer but can disrupt business using shared cloud, CDN, or legitimate remote-management products. Controls cannot recover data already sent, and the attacker may switch to alternate C2, protocol, or service. Mitigation must therefore address the endpoint implant, credentials, and reconnection paths together and route any new path to the adjacent candidate analysis.
+  rejected_mechanisms:
+    - mechanism_ref: NM-DO
+      reason: Encoding, encryption, compression, or semantic opacity may coexist but belongs to T1132, T1573, NJT-0133, or NJT-0152; relationship reuse alone does not alter inherent content interpretability.
+    - mechanism_ref: NM-FD
+      reason: The reviewed cases show shared C2 request features but do not independently prove imitation of a legitimate entity; reduced differentiation between control and exfiltration functions is handled as an observation-coverage gap rather than benign-feature camouflage.
+    - mechanism_ref: NM-ST
+      reason: Relationship reuse does not inherently disperse traces across time or space; timing and volume shaping require separate evidence under NJT-0154 or NJT-0155.
+  open_questions:
+    - The primary agent should confirm that the one-child taxonomy remains distinct after convergence with T1020 and T1048, especially where an automated implant serializes results on a different protocol.
+    - The exact persistent-socket axis should remain deferred unless packet capture or code-level evidence proves one live transport session, attacker control of phase reuse, and a defense difference beyond the parent.
+    - The primary agent should review whether the proposed mitigation is best created as a new object or whether another newly proposed batch-wide egress containment object has identical measures after all five handoffs arrive; MIT-000156 and MIT-000136 are not exact matches on current evidence.
+    - A canonical Detection Analytic must choose deployment-specific file-access telemetry and confirm process identifiers can be joined to the network source before claiming implemented coverage.
+integration:
+  status: pending
+  resolutions: []

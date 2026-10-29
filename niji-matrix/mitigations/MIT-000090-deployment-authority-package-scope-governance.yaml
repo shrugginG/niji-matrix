@@ -1,0 +1,87 @@
+schema_version: 2.0.0
+type: mitigation
+id: MIT-000090
+name: {zh: 部署权限、内容与 Fleet 范围治理, en: Deployment Authority Content and Fleet-Scope Governance}
+summary: {zh: 通过分离审批、JIT 权限、签名内容、受控目标范围、Agent 双向身份和不可变事务日志限制软件部署工具滥用, en: Constrain software-deployment abuse through separated approval JIT authority signed content controlled target scope mutual agent identity and immutable transaction logs}
+description:
+  paragraphs:
+    - zh: 本缓解将企业部署平台视为高影响执行控制面。策略分别约束 operator 身份、script/package 内容、target collection、agent 信任和终端结果，并要求从 author 到每个 agent receipt 的事务证据不可被同一部署管理员单独删除。允许的工具名称或签名 agent 不能替代对本次 operation 的授权、内容和范围验证。
+      en: This mitigation treats enterprise deployment platforms as high-impact execution control planes. Policy constrains operator identity script or package content target collections agent trust and endpoint outcomes and requires transaction evidence from author to each agent receipt that one deployment administrator cannot delete alone. Allowed tool names or signed agents do not replace authorization content and scope validation for the current operation.
+domains: [enterprise]
+measures:
+  - key: separated-jit-deployment-roles
+    name: {zh: 分离且即时的部署角色, en: Separated Just-in-Time Deployment Roles}
+    description:
+      paragraphs:
+        - zh: 分离 script/package author、approver、target owner 和 operator，生产运行使用 MFA、受管设备、JIT/PAM 与双人审批；限制远程脚本、SYSTEM、跨租户和全 fleet 权限，禁止共享服务账户，并对 API token 设置短期与条件访问。
+          en: Separate script or package authors approvers target owners and operators and require MFA managed devices JIT or PAM and two-person approval for production runs. Restrict remote script SYSTEM cross-tenant and all-fleet rights prohibit shared service accounts and apply short-lived conditional access to API tokens.
+    control_type: preventive
+  - key: immutable-signed-deployment-content
+    name: {zh: 不可变签名部署内容, en: Immutable Signed Deployment Content}
+    description:
+      paragraphs:
+        - zh: 对 package、script、command、依赖和配置保存版本、digest、签名、来源和审批，批准后内容不可原位修改；agent 只执行来自批准 repository/server 且 digest 匹配的内容，用户可写路径、代理二进制和动态下载必须显式审批或阻断。
+          en: Preserve versions digests signatures provenance and approval for packages scripts commands dependencies and configuration and prevent in-place changes after approval. Agents execute only digest-matching content from approved repositories or servers and user-writable paths proxy binaries and dynamic downloads require explicit approval or blocking.
+    control_type: preventive
+  - key: controlled-canary-fleet-scope
+    name: {zh: 受控目标范围与 Canary 发布, en: Controlled Target Scope and Canary Rollout}
+    description:
+      paragraphs:
+        - zh: 将动态 collection 解析结果冻结到 operation，限制单次目标比例和跨租户范围；先在低风险 canary 验证进程、网络与业务结果，再分阶段扩展。紧急全 fleet 操作需要独立审批、实时监控和自动中止条件。
+          en: Freeze dynamic-collection membership into each operation limit single-run target ratios and cross-tenant scope validate process network and business outcomes on low-risk canaries before staged expansion and require independent approval real-time monitoring and automatic abort conditions for emergency all-fleet actions.
+    control_type: containment
+  - key: mutual-agent-identity-and-audit
+    name: {zh: Agent 双向身份与不可变回执, en: Mutual Agent Identity and Immutable Receipts}
+    description:
+      paragraphs:
+        - zh: 让 agent 与管理服务器双向认证，禁止未批准 relay/repository，向端点传递 operation/content ID，并集中保存 operator、approval、target、receipt、process 与结果日志；EDR 不得全局排除管理 agent 子进程、缓存和内部管理流量。
+          en: Require mutual agent-to-management-server authentication block unapproved relays or repositories propagate operation and content IDs to endpoints and centralize operator approval target receipt process and outcome logs. EDR must not globally exclude management-agent children caches or internal management traffic.
+    control_type: detective-support
+applications:
+  - target_ref: NJT-0078
+    use:
+      paragraphs:
+        - zh: 对受信软件部署执行，把 identity、content、scope、agent 和 outcome 五类控制作为单个发布事务执行。任何 remote script/package 只有在 author/approver 分离、digest 固定、目标成员可审查且 agent 回执携带 operation ID 时才能进入生产；高风险 endpoint 动作触发全 fleet 查询和暂停同 operation 后续下发。
+          en: For Trusted Software-Deployment Execution enforce identity content scope agent and outcome controls as one release transaction. Remote scripts or packages enter production only with author and approver separation fixed digest reviewable target membership and agent receipts carrying operation IDs. High-risk endpoint actions trigger a fleet-wide query and pause later delivery of the same operation.
+        - zh: 对 TA0008 的跨主机动作，在 job 创建时冻结来源 operator、目标设备集合与内容摘要，并要求能够按 operation 撤销尚未由其他 agent 接收的任务。跨租户、跨安全区或高价值目标的任务须单独授权，不能沿用普通补丁的全 fleet 权限。
+          en: For TA0008 cross-host actions, freeze origin operator, destination membership, and content digest when creating a job, and require operation-level revocation before other agents receive it. Cross-tenant, cross-zone, or high-value target jobs need separate authorization rather than ordinary patching's fleet-wide rights.
+    expected_effect:
+      paragraphs:
+        - zh: 单一被盗 operator 难以借平台立即取得全 fleet SYSTEM 执行，恶意内容与目标范围在端点运行前更可能被阻断。即使部分 agent 已执行，不可变回执和 operation 传播也能迅速确定共同来源、影响设备和剩余队列，限制横向与勒索扩散。
+          en: A single stolen operator is less able to gain immediate fleet-wide SYSTEM execution and malicious content or scope is more likely blocked before endpoints run. Even after some agents execute immutable receipts and operation propagation rapidly identify common origin affected devices and remaining queue limiting lateral and ransomware spread.
+        - zh: 将目标范围和回执绑定到同一任务后，防守方能在第一台受管主机出现异常动作时识别尚未运行的其他目标并阻断后续横向扇出；来源与目标的资产差异也可供审计复核。
+          en: Binding target scope and receipts to one job lets defenders identify other targets still awaiting execution when the first managed host shows an abnormal action and stop subsequent lateral fan-out. Asset differences between origin and destinations become auditable.
+    limitations:
+      paragraphs:
+        - zh: 部署平台是业务关键基础设施，严格审批和 canary 会延迟紧急补丁与事件响应。攻击者控制 author、approver、repository 和审计根时仍可满足策略；离线 agent 可能在恢复连接后执行旧任务。必须支持可验证全局撤销和离线队列过期。
+          en: Deployment platforms are business-critical and strict approval plus canaries delay emergency patching and incident response. An adversary controlling author approver repository and audit roots may satisfy policy and offline agents may execute old jobs after reconnecting. Verifiable global revocation and offline-queue expiry are required.
+        - zh: 源登录设备或 MSP 控制点可能无法映射到单一企业资产，离线 agent 也可能在撤销前已缓存任务。来源不明时仍应按操作摘要和目标结果阻断，而不以缺少起点为放行理由。
+          en: The login source or MSP control point may not map to one enterprise asset, and an offline agent may have cached the job before revocation. When origin is unknown, block by operation digest and target outcome rather than treating the missing start point as an allow condition.
+  - target_ref: NJS-0078-001
+    use:
+      paragraphs:
+        - zh: 对受信管理 Agent 命令代理，限制 Run Script、remote shell、product deployment 和 SYSTEM execution 到专用 JIT 角色，要求内容批准后不可变，并把 operator/session、content digest 与 operation ID 传到 agent 和子进程审计。EDR 对 agent 子进程应用动作、路径和网络基线，而不按签名父级免检。
+          en: For Trusted Management-Agent Command Brokerage restrict Run Script remote shell product deployment and SYSTEM execution to dedicated JIT roles make content immutable after approval and propagate operator or session content digest and operation ID into agent and child-process audit. EDR applies action path and network baselines to agent children rather than exempting signed parents.
+    expected_effect:
+      paragraphs:
+        - zh: APT32/AvosLocker 式控制面命令不再仅以 ePO/PDQ agent 信誉获得放行，端点可以把本地 SYSTEM 进程回连具体中央主体与已审内容。攻击者需要控制多个审批角色或破坏 agent identity，显著提高受信来源代理成本。
+          en: APT32 or AvosLocker-style control-plane commands no longer gain allowance from ePO or PDQ agent reputation alone and endpoints can link local SYSTEM processes to a concrete central principal and approved content. Attackers must control multiple approval roles or break agent identity materially raising the cost of trusted-provenance brokerage.
+    limitations:
+      paragraphs:
+        - zh: 某些平台不能把 operator ID 传播到终端，旧 agent 也可能只记录包名。合法事件响应需要快速 remote script；例外应使用单次凭据、限定设备与命令、完整录屏/日志和自动过期。内容签名不能发现已批准脚本的恶意语义。
+          en: Some platforms cannot propagate operator IDs to endpoints and legacy agents may record only package names. Legitimate incident response needs rapid remote scripts and exceptions should use one-time credentials bounded devices and commands complete recording or logs and automatic expiry. Content signatures cannot detect malicious semantics in approved scripts.
+  - target_ref: NJS-0078-002
+    use:
+      paragraphs:
+        - zh: 对 Fleet 范围分布式执行，在 operation 创建时冻结 resolved target list，按环境设置最大比例、区域和并发，并先运行 canary；agent 每次 receipt 和执行回传同一 operation/digest。发现未批准命令、加密或高风险网络时，控制面立即取消未执行队列、撤销 token 并隔离已执行目标。
+          en: For Fleet-Scope Distributed Execution freeze resolved target lists at operation creation set maximum ratios regions and concurrency by environment and run canaries first while every agent receipt and execution reports the same operation and digest. On unapproved commands encryption or high-risk network the control plane cancels queued delivery revokes tokens and isolates executed targets.
+    expected_effect:
+      paragraphs:
+        - zh: 一个恶意 job 难以无审查扩散到全部系统，初始 canary 的异常在大规模 fan-out 前被发现。共同 operation ID 和完整成员表使 SOC 不会逐台关闭告警，而能一次性识别 AvosLocker/Medusa 式跨端点执行范围。
+          en: One malicious job cannot spread to all systems without review and anomalies on initial canaries appear before broad fan-out. Common operation IDs and complete membership prevent host-by-host alert closure and let SOC identify AvosLocker or Medusa-style cross-endpoint execution scope in one action.
+    limitations:
+      paragraphs:
+        - zh: 真正紧急的补丁、wiper containment 或证书轮换可能需要跳过 canary，大型远程 workforce 的 agent 检入天然分散。攻击者可只选择关键小集合避开比例阈值，因此范围控制必须与 operator、content 和端点结果组合，不能只设主机数量上限。
+          en: Genuine emergency patching wiper containment or certificate rotation may need to skip canaries and agent check-ins for remote workforces are naturally dispersed. Attackers may select small critical collections to evade ratio thresholds so scope controls must combine operator content and endpoint outcomes rather than rely only on host-count limits.
+evidence_refs: [REF-000276, REF-000277, REF-000278]
+lifecycle: {status: review, version: 1.1.0, created: '2026-09-12', modified: '2026-09-22', contributors: [Niji Matrix Research], reviewers: []}

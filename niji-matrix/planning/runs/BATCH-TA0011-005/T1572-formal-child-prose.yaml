@@ -1,0 +1,268 @@
+B5-T1572-SUB-ENDPOINT:
+  summary:
+    zh: 隧道端点把内部服务会话与外部可见连接分开，使边界设备看到外层对端而非真实内层服务。
+    en: A tunnel endpoint separates an internal service session from the externally visible connection, leaving boundary devices
+      with the outer peer rather than the real inner service.
+  definition_and_concept:
+    paragraphs:
+    - zh: 内层服务端点解耦指隧道进程在受害主机或边缘节点一侧接受本地或内部服务会话，并把仍可识别的 RDP、SMB、Tor 或其他内层语义封装到另一外部连接。直接目的在于让操作者跨越原本不可达的服务边界，同时让网络边界只登记隧道外层对端。服务
+        socket 与外联 socket 的对应关系是本项变量；所用隧道软件和外层协议不是分类依据。
+      en: Inner-Service Endpoint Decoupling occurs when a tunnel process accepts a local or internal service session on a
+        victim host or edge node and carries its still identifiable RDP, SMB, Tor, or other inner semantics in a separate
+        external connection. Its direct purpose is to cross a service boundary otherwise unavailable to the operator while
+        the network boundary records only the tunnel's outer peer. The relationship between the service socket and egress
+        socket is the variable, not the tunnel product or outer protocol.
+    - zh: 判定需把内层服务端点、隧道端点、外层连接、解封装后的服务结果接成同一链。APT29 的 meek/Tor 通道把受害主机本地 139、445 和 3389 端口经外层 HTTP/TLS 暴露给操作者；这支持端点分离，而单独观察一个
+        Google 相关 TLS 连接不足以证明内层服务。
+      en: Classification joins the inner service endpoint, tunnel endpoint, outer connection, and service result after decapsulation
+        into one chain. APT29's meek and Tor path exposed local victim ports 139, 445, and 3389 to the operator through outer
+        HTTP and TLS, supporting endpoint separation. Observing a Google-related TLS connection alone cannot establish the
+        inner service.
+  stealth_characteristics:
+    paragraphs:
+    - zh: 内层服务端点解耦让边界五元组中的目的地址与端口不再指向真实服务；边界的 RDP/SMB 规则和服务解析可能只看见允许的外层协议，目标侧服务日志又可能只看见本地或隧道进程。两侧各有片段，但没有进程和 socket 所有权关联时难以还原同一控制者。
+      en: Inner-Service Endpoint Decoupling removes the real service address and port from the boundary five-tuple. RDP or
+        SMB boundary rules and parsers may see only the allowed outer protocol, while service logs on the target may see only
+        a local or tunnel process. Each side retains a fragment, yet the common controller is hard to reconstruct without
+        process and socket ownership joins.
+    - zh: 残余包括监听配置、local accept、外联 connect、隧道进程启动、流量方向与字节关系，以及内层服务认证、桌面或文件操作。端点 socket telemetry、边界 flow 和服务审计均可打破遮蔽；内核/设备级隧道、双层加密或第三方平台不提供会话键时，结论只能降为候选。
+      en: Residual evidence includes listener configuration, local accept, external connect, tunnel process creation, traffic
+        direction and byte relationships, and inner service authentication, desktop, or file activity. Endpoint socket telemetry
+        joined to boundary flow and service audit can break the concealment. Kernel or appliance tunneling, layered encryption,
+        or a third-party platform without session keys limits the conclusion to a candidate.
+  scope_boundary_definition:
+    paragraphs:
+    - zh: 纳入必须有可识别的内层服务会话被外层承载，且服务端点与外层对端分离并产生后继访问或 C2 结果。普通代理的两段转发若没有独立内层协议关系由 NJT-0206 负责；合法堡垒机、企业 VPN、服务网格和获批 SSH 端口转发即使呈现同样拓扑，也须按
+        owner、peer、内层服务、工单和期限排除。
+      en: Inclusion requires a recognizable inner service session carried by an outer layer, separated service and outer peers,
+        and a successor access or C2 outcome. Two-leg proxy forwarding without an independent inner protocol belongs to NJT-0206.
+        Approved bastions, enterprise VPNs, service meshes, and SSH forwarding can show the same topology and must be excluded
+        through owner, peer, inner service, ticket, and expiry.
+    - zh: 多个内层流共享同一外层会话时可再并列多流汇聚；一个内层流被拆成多次外层事务时可并列事务化重组。本项只拥有端点关系，不能以 RDP/SMB 端口名称取代内层会话证据，也不能以外层 TLS 推断额外密码保护。
+      en: Multi-stream convergence can co-apply when several inner flows share one outer session, and transactionized reassembly
+        can co-apply when one inner flow spans several outer transactions. This child owns the endpoint relationship only;
+        an RDP or SMB port label cannot replace inner-session evidence, and outer TLS does not establish attacker-added cryptography.
+  application_scenarios_and_threat_model:
+    application_scenarios:
+      paragraphs:
+      - zh: 当企业阻断从互联网直接访问内部桌面或文件服务时，攻击者在已控主机上放置隧道端点，使内部服务连接通过允许的外层 Web/TLS 路径到达操作者。APT29 的本地端口暴露展示了这一结果；后继登录和访问属于证明隧道有用的结果，而非按服务种类再分子项。
+        en: When an enterprise blocks direct Internet access to internal desktop or file services, an adversary can place
+          a tunnel endpoint on a compromised host and carry service connections to the operator through an allowed outer web
+          or TLS path. APT29's local-port exposure demonstrates the outcome. Subsequent login and access prove tunnel use
+          rather than defining children by service type.
+    threat_model:
+      attacker_model:
+        paragraphs:
+        - zh: 攻击者需控制隧道两端或可用的远端解封装服务，拥有创建监听和外联 socket 的权限，并能访问目标内部服务。稳定映射、服务认证、重连和流控是运营成本；外层断开或本地服务变更会暴露失败与重试痕迹。
+          en: The actor needs control of both tunnel endpoints or a usable remote decapsulation service, authority to create
+            listener and egress sockets, and reachability to the target internal service. Stable mapping, service authentication,
+            reconnection, and flow control impose operating costs, and outer-path failure or local-service change leaves retries
+            and errors.
+      defender_model:
+        paragraphs:
+        - zh: 防守方至少需要端点进程/socket 归属、边界外层 flow 与内层服务审计，并以进程启动键、local socket、outer flow、服务会话和时间关联。只有边界 TLS 或只有本地服务日志时不能断言完整隧道；应保留合法远程运维的批准路径作为对照。
+          en: Defenders need endpoint process and socket ownership, boundary outer-flow data, and inner-service audit, joined
+            by process-start key, local socket, outer flow, service session, and time. Boundary TLS alone or local service
+            logs alone cannot establish a complete tunnel. Approved remote-administration paths must remain comparison cases.
+  stealth_mechanisms:
+  - mechanism_ref: NM-BT
+    role: primary
+    summary:
+      zh: 外层连接把内层服务对端移出边界服务观察
+      en: Outer carriage moves the inner service peer beyond boundary service observation
+    analysis:
+      paragraphs:
+      - zh: 攻击者让隧道端点接收内层服务连接并向外建立另一连接，边界记录的五元组和应用事务因而不再包含真实内部服务。专门查找内层服务的规则在边界视角看不到目标，而本地服务又只记录隧道端点；跨 socket 和后继服务结果关联可恢复这条行为链，故形成有条件的行为透明。
+        en: The actor has a tunnel endpoint accept an inner service connection and open another connection outward, so boundary
+          five-tuples and application transactions no longer contain the real internal service. Rules looking for that service
+          cannot see it at the boundary, while the local service records the tunnel endpoint. Joining sockets to successor
+          service outcomes restores the chain, making the transparency conditional on the defender's vantage.
+    evidence_keys:
+    - REF-001024
+    - B5-T1572-REF-ZEEK-TUNNEL
+    confidence: high
+  research:
+    limitations:
+      paragraphs:
+      - zh: Mandiant 的 APT29 现场材料证明内外层服务与端口链，但没有给出每个受害边界的完整传感器配置或漏报记录。Zeek tunnel 日志文档证明可用字段，不能证明所有应用隧道自动被识别；本项效应需按目标部署验证。
+        en: Mandiant's APT29 field report establishes the inner and outer service and port chain but does not publish every
+          victim boundary sensor configuration or missed alert. Zeek tunnel documentation establishes available fields, not
+          automatic recognition of every application tunnel; the effect requires validation against the target deployment.
+B5-T1572-SUB-MULTIPLEX:
+  summary:
+    zh: 多条并发内层控制或访问流复用一个外层会话，使连接数和服务数在边界观察中收缩。
+    en: Concurrent inner control or access streams share one outer session, reducing visible connection and service counts
+      at the boundary.
+  definition_and_concept:
+    paragraphs:
+    - zh: 外层会话多流汇聚是攻击者在一个持续外层连接中给多条独立内层流分配 stream ID、状态与流控，并在另一端拆分后分别交付服务或控制任务。直接目的在于保留多会话能力，同时让边界的连接计数、目的地和寿命只反映一个外层 socket。Yamux、smux
+        或 WebSocket 是实现，内层流与外层连接的多对一关系才是变量。
+      en: Outer-Session Multi-Stream Convergence assigns stream IDs, state, and flow control to several independent inner
+        flows in one continuing outer connection and demultiplexes them at the far end into separate services or control tasks.
+        It preserves concurrent capability while boundary connection count, destination, and lifetime reflect one outer socket.
+        Yamux, smux, and WebSocket are implementations; the many-to-one relationship between inner flows and outer connection
+        is the variable.
+    - zh: NVISO 对 BRICKSTORM 样本恢复 WebSocket、嵌套 TLS 与 Yamux/smux 结构，说明网络隧道和多个文件管理用户可在同一外层会话并发运行。样本逆向能证明流拓扑与命令能力；真实部署的每条用户操作和终止点位置仍需事件日志补证。
+      en: NVISO recovered BRICKSTORM's WebSocket, nested TLS, and Yamux or smux structure and showed network tunneling and
+        multiple file-manager users running concurrently within one outer session. Sample reverse engineering establishes
+        stream topology and command capability; incident logs are still needed for each deployed user action and termination
+        location.
+  stealth_characteristics:
+    paragraphs:
+    - zh: 外层会话多流汇聚让传统“一条连接对应一条服务”的图谱失效：多个内层用户、目标与命令被压入一个长连接，外层 flow 只能显示总字节和总时长。短窗口可能把不同任务误读为一个高流量服务，目的地基数和横向服务数被低估。
+      en: Outer-Session Multi-Stream Convergence breaks graphs that assume one connection represents one service. Several
+        inner users, targets, and commands collapse into a long connection whose flow record contains only aggregate bytes
+        and duration. Short windows can mistake separate tasks for one busy service and undercount destinations and lateral
+        services.
+    - zh: 流 ID、open/close/control frame、并发峰值、外层重连与本地 socket fan-in 仍是残迹。取得解封装器或端点内存时可重建每条内层流；只保留聚合 NetFlow、外层和内层均加密，或服务端在第三方环境时则只能形成多流候选。
+      en: Stream IDs, open and close control frames, concurrency peaks, outer reconnections, and local-socket fan-in remain
+        residual traces. A decapsulator or endpoint memory can restore each inner flow. Aggregate NetFlow alone, encryption
+        of both layers, or termination in a third-party service leaves only a multiplexing candidate.
+  scope_boundary_definition:
+    paragraphs:
+    - zh: 纳入要求至少两条可区分的内层流在时间上并发或重叠，具有独立 stream state，并由一个外层 session 承载，且至少一条流形成 C2 或访问结果。单个内层服务经单个外层连接是父级核心；合法 HTTP/2、SSH
+        ControlMaster、服务网格和 VPN 多路复用须按批准 owner、peer 和内层用途排除。
+      en: Inclusion requires at least two distinguishable inner flows that overlap in time, have independent stream state,
+        share one outer session, and produce a C2 or access outcome in at least one stream. One inner service through one
+        outer connection remains parent core. Approved HTTP/2, SSH ControlMaster, service-mesh, and VPN multiplexing must
+        be excluded by owner, peer, and inner purpose.
+    - zh: 本项控制内层流到外层连接的基数；内层服务 socket 与外层出口分离可同时归端点解耦，但不是多流成立的必要条件。事务化重组是一个内层流跨多个外层请求/响应的逆向基数变化，不能把普通外层心跳或重传当作本项的第二条内层流。
+      en: This child owns inner-flow to outer-connection cardinality. Separation of service and egress sockets can co-apply
+        as endpoint decoupling but is not necessary for multiplexing. Transactionized reassembly reverses the cardinality
+        by spreading one inner flow across several outer requests and responses; outer heartbeats or retransmissions do not
+        become a second inner flow.
+  application_scenarios_and_threat_model:
+    application_scenarios:
+      paragraphs:
+      - zh: 攻击者在已控服务器上维持一条可穿过代理的 WebSocket/TLS 会话，同时运行文件管理与内部网络隧道。BRICKSTORM 的多流协议使操作者可增加用户或目标而不必为每项活动新建显眼的边界连接。
+        en: An actor can keep one proxy-traversable WebSocket or TLS session from a compromised server while running file
+          management and internal network tunnels. BRICKSTORM's multi-stream protocol lets operators add users or targets
+          without opening a conspicuous new boundary connection for each activity.
+    threat_model:
+      attacker_model:
+        paragraphs:
+        - zh: 攻击者需要控制两端 stream allocator、流控、重连和错误恢复，并处理并发任务造成的拥塞与顺序。共享外层连接降低连接基数，却使一次断开影响多条流并留下长连接和复用 frame 指纹。
+          en: The actor must control stream allocation, flow control, reconnection, and error recovery at both ends and handle
+            congestion and ordering across concurrent tasks. A shared outer connection reduces connection cardinality but
+            a single failure disrupts many streams and leaves long-session and multiplex-frame fingerprints.
+      defender_model:
+        paragraphs:
+        - zh: 防守方需取得 outer session ID、stream ID 或端点 socket 映射、流 open/close 时刻、内层服务结果，并在整个外层寿命内比较并发流数与边界连接数。只有长连接或异常字节比不能证明多流；批准的反向代理和开发工具必须进入基线。
+          en: Defenders need the outer session ID, stream IDs or endpoint socket mapping, stream open and close times, and
+            inner service outcomes across the full outer lifetime to compare inner concurrency with boundary connection count.
+            A long connection or unusual byte ratio alone does not prove multiple flows, and approved reverse proxies and
+            development tools belong in the baseline.
+  stealth_mechanisms:
+  - mechanism_ref: NM-ST
+    role: primary
+    summary:
+      zh: 多条内层活动压缩到一条外层连接并稀释逐服务痕迹
+      en: Several inner activities collapse into one outer connection and dilute per-service traces
+    analysis:
+      paragraphs:
+      - zh: 攻击者把各内层流标记并复用外层会话，使独立服务和用户动作只在外层表现为一个持续连接和聚合吞吐。按连接或目的地计数的检测无法把这些活动分开，须跨 stream、socket 和服务结果重建；这使痕迹分散在外层与端点观察面，形成时空释痕。
+        en: The actor labels inner flows and reuses one outer session, causing separate services and user actions to appear
+          externally as one continuing connection and aggregate throughput. Connection- or destination-count analytics cannot
+          separate them without reconstructing stream, socket, and service outcomes. The trace is distributed across outer
+          and endpoint vantages, producing Spatiotemporal Trace Dilution.
+    evidence_keys:
+    - B5-T1572-REF-BRICKSTORM
+    confidence: high
+  research:
+    limitations:
+      paragraphs:
+      - zh: BRICKSTORM 逆向证据直接支持协议多流与并发能力，但公开材料不能量化受害者实际漏报，也未完全说明所有基础设施终止点。把任意长 WebSocket 视为多流会混入合法业务，必须有 stream 或内层结果证据。
+        en: BRICKSTORM reverse engineering directly supports multiplexing and concurrent capability, but public reporting
+          cannot quantify victim alert misses or locate every infrastructure termination point. Treating any long WebSocket
+          as multiplexing would mix in legitimate business traffic; stream or inner-outcome evidence is required.
+B5-T1572-SUB-TRANSACTION:
+  summary:
+    zh: 一个有状态内层控制流被拆入多次外层请求与响应，接收端按会话与片序重组后恢复命令。
+    en: One stateful inner control stream is divided among outer requests and responses and reassembled by session and fragment
+      order to recover commands.
+  definition_and_concept:
+    paragraphs:
+    - zh: 内层流事务化重组指攻击者保留一个有状态命令/访问会话，却把其字节和状态片段编码进多个独立外层事务，再由隧道端点按 session ID、方向、片号或 offset 恢复原流。直接目的在于让只逐条解析 DNS 或 HTTP 请求的防守方看不到完整内层命令。外层协议、域名长度和编码字母表只是限制与参数，跨事务恢复内层语义才是本项变量。
+      en: Transactionized Inner-Stream Reassembly retains a stateful command or access session while placing its bytes and
+        state fragments in several independent outer transactions. A tunnel endpoint restores the original flow by session
+        ID, direction, fragment index, or offset. The direct purpose is keeping a defender that parses individual DNS or HTTP
+        requests from seeing a complete inner command. Outer protocol, domain length, and encoding alphabet are constraints
+        and parameters; recovery of inner semantics across transactions is the variable.
+    - zh: FortiGuard 对 TrickBot DNS 变体的客户端逆向恢复片序、总片数、缓冲区和与 HTTP 版本同构的命令结构，证明内层并非“每条 DNS 查询就是一个完整命令”。dnscat2 协议文档进一步显示会话与窗口确认如何维持跨事务流状态，但它是实现规范，不可作为
+        TrickBot 现场服务端结果的证据。
+      en: FortiGuard's reverse engineering of a TrickBot DNS variant recovered fragment order, total count, buffers, and command
+        structure isomorphic to its HTTP variant, showing that one DNS query is not necessarily a complete command. The dnscat2
+        protocol specification further shows how session and window acknowledgment maintain stream state across transactions,
+        but it is an implementation reference rather than evidence for TrickBot's field server outcomes.
+  stealth_characteristics:
+    paragraphs:
+    - zh: 内层流事务化重组把一条命令链打散到许多正常形态的查询/响应，每条外层记录只含标签或小片段；短窗口、单事务规则和只看 DNS 异常长度的分析难以恢复命令方向与结果。流的状态在内存重组器和多个事务间移动，观察成本从单包解析变为长期排序与会话归并。
+      en: Transactionized Inner-Stream Reassembly scatters one command chain among many ordinary-shaped queries and responses,
+        each outer record holding only a label or small fragment. Short windows, single-transaction rules, and DNS-length
+        heuristics cannot recover command direction and result. State moves between an in-memory reassembler and several transactions,
+        shifting observation from one-packet parsing to longer ordering and session joins.
+    - zh: 残余包括重复 session ID、片号、offset、方向、确认、重传、相同进程的查询簇和重组后的命令/文件结果。完整原始事务、受管 resolver 日志与端点内存可恢复内层；缓存、丢包、加密 DNS 和低速间隔会使重组不完整，此时只能报告候选。
+      en: Residuals include repeated session IDs, fragment indices, offsets, direction, acknowledgments, retransmissions,
+        query clusters from one process, and command or file outcomes after reassembly. Complete raw transactions, managed-resolver
+        logs, and endpoint memory can restore the inner layer. Caching, loss, encrypted DNS, and slow intervals can leave
+        reconstruction incomplete, limiting the finding to a candidate.
+  scope_boundary_definition:
+    paragraphs:
+    - zh: 纳入要求同一内层会话跨至少两次外层事务被分片并按顺序恢复，且恢复后有可识别命令/访问结果。单条 DNS TXT 记录直接承载完整任务属于 NJT-0160 应用事务；仅 Base64 编码属于 NJT-0211；合法 DNS
+        隧道测试、远程调试或应用同步需按所有者、目的域和批准期限排除。
+      en: Inclusion requires one inner session fragmented across at least two outer transactions and reconstructed in order,
+        followed by a recognizable command or access outcome. One DNS TXT record directly containing a whole task belongs
+        to NJT-0160's application transaction. Base64 alone belongs to NJT-0211. Authorized DNS tunnel tests, remote debugging,
+        or application synchronization require exclusion by owner, destination domain, and approved period.
+    - zh: 本项是一条内层流到多次外层事务的分散关系；多流汇聚是多条内层流到一次外层会话。若隧道同时把内部服务端点与外部对端分开，还可并列端点解耦，但不得把同一片段计成多条内层服务。
+      en: This child disperses one inner flow into many outer transactions; multi-stream convergence maps several inner flows
+        into one outer session. Endpoint decoupling can co-apply if the tunnel also separates an internal service from the
+        external peer, but a fragment of one flow cannot be counted as another inner service.
+  application_scenarios_and_threat_model:
+    application_scenarios:
+      paragraphs:
+      - zh: 在只能通过受管解析器访问外网的主机上，植入可把内层命令流拆进连续 DNS 查询和应答，由对端按 session/片序重组并回送结果。TrickBot 样本展示了客户端如何收集、排序并复原控制结构；真实环境中是否成功交付命令仍需服务端或端点结果关联。
+        en: On a host whose external access is limited to managed resolution, an implant can split an inner command stream
+          among DNS queries and answers for reassembly by session and fragment order and return results. A TrickBot sample
+          shows how its client collects, orders, and restores control structures. Successful command delivery in a field environment
+          still needs server or endpoint outcome correlation.
+    threat_model:
+      attacker_model:
+        paragraphs:
+        - zh: 攻击者需实现分片、序列、重传、方向和内层状态机，并控制外层域名或解析服务。DNS 缓存、长度限制、递归器丢弃与速率限制会影响可靠性；降低发送频率虽减少单窗密度，却延长任务延迟并增加累计可关联事务。
+          en: The actor must implement fragmentation, ordering, retransmission, direction, and the inner state machine and
+            control the outer domain or resolver path. DNS caching, length limits, resolver loss, and rate limits reduce reliability.
+            Lowering the send rate reduces one-window density but increases task latency and the total correlatable transaction
+            count.
+      defender_model:
+        paragraphs:
+        - zh: 防守方应保存带查询 ID、完整标签/响应、进程、解析器、方向与时间的原始事务，并从协议中提取 session ID、片号和 offset，在数小时窗口重组后验证内层命令结构及端点后继动作。只有异常域名长度或高熵标签，不能证明存在可恢复内层会话。
+          en: Defenders retain raw transactions with query ID, full label and response, process, resolver, direction, and
+            time, extract session ID, fragment index, and offset from the protocol, and validate inner command structure and
+            endpoint follow-on actions after reassembly over hours. An unusual domain length or high-entropy label alone cannot
+            establish a recoverable inner session.
+  stealth_mechanisms:
+  - mechanism_ref: NM-ST
+    role: primary
+    summary:
+      zh: 一个内层控制流的痕迹分散到多次外层事务
+      en: One inner control flow is dispersed across multiple outer transactions
+    analysis:
+      paragraphs:
+      - zh: 攻击者在外层请求与应答中只放内层会话片段，单次解析得到的是局部合法形态而非完整任务；跨事务状态留在重组器。单事务和短窗检测因此失去语义，防守方需以 session、片序、方向及端点结果恢复完整链，形成时空释痕。
+        en: The actor places only fragments of an inner session in outer requests and responses, so one parsed transaction
+          shows a locally plausible shape rather than a complete task while cross-transaction state remains in the reassembler.
+          Single-transaction and short-window detection loses semantics; defenders must restore the chain by session, fragment
+          order, direction, and endpoint outcome, producing Spatiotemporal Trace Dilution.
+    evidence_keys:
+    - B5-T1572-REF-TRICKBOT-DNS
+    - B5-T1572-REF-DNSCAT2
+    confidence: medium
+  research:
+    limitations:
+      paragraphs:
+      - zh: FortiGuard 的客户端逆向与模拟服务端确认重组逻辑，但公开材料没有完整真实服务端事务或统一现场漏报记录；dnscat2 是独立实现说明。故本项的变量存在性成立，TrickBot 具体现场成功控制和普遍匿迹效果保持较低结论强度。
+        en: FortiGuard's client reverse engineering and simulated server confirm reconstruction logic, but public material
+          lacks full production server transactions or a common field miss record. dnscat2 documents an independent implementation.
+          The variable is supported, while specific TrickBot field control success and general stealth effect retain lower
+          confidence.

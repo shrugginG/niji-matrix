@@ -1,0 +1,135 @@
+schema_version: 2.0.0
+type: evasion-subtechnique
+id: NJS-0166-002
+parent_ref: NJT-0166
+name:
+  zh: 组合认证辅状态伪造
+  en: Composed-Authentication Auxiliary-State Forgery
+summary:
+  zh: 攻击者保留真实主认证或其他合法步骤，仅伪造表示额外验证已完成的 Cookie 或状态，使应用在不联系相应权威的情况下建立会话。
+  en: The adversary retains genuine primary authentication or another legitimate step but forges a cookie or state indicating that an additional
+    verification completed, causing the application to establish a session without the corresponding authority interaction.
+aliases: []
+lineage:
+  attck_subtechnique_inherited: false
+definition_and_concept:
+  paragraphs:
+  - zh: 组合认证辅状态伪造是攻击者不伪造整套主体凭据，而构造一个被应用解释为“额外认证、MFA、预认证或其他步骤已完成”的 Cookie、回调状态或等价证明，并把它与真实口令认证或现有应用流程组合。稳定边界是最终 allow 所依赖的各步骤来源不一致：主步骤确实发生，辅步骤只由攻击者计算的状态替代。若攻击者窃取用户已有辅
+      Cookie 并重放，归 T1539；若直接关闭 MFA 或修改验证器，归 T1556。
+    en: 'Composed-Authentication Auxiliary-State Forgery does not fabricate the entire principal credential. Instead, the adversary constructs
+      a cookie, callback state, or equivalent proof interpreted by an application as completion of an additional authentication, MFA, preauthentication,
+      or other step and combines it with real password authentication or an existing application flow. The stable boundary is inconsistent provenance
+      among steps supporting the final allow: the primary step occurred, while attacker-computed state substitutes for the auxiliary step. Theft
+      and replay of an existing user''s auxiliary cookie belongs to T1539, and disabling MFA or changing the validator belongs to T1556.'
+stealth_characteristics:
+  paragraphs:
+  - zh: 组合认证辅状态伪造使该变量保留了一部分真实认证痕迹，因此仅检查“是否有口令成功”或“应用是否看到格式正确的 Cookie”会把结果当作普通登录。缺口存在于认证链内部：MFA/集成供应商没有请求、挑战、批准或授权码交换，应用却建立了会话。残余包括主认证来源、辅 Cookie
+      或状态摘要、应用本地校验结果、会话 ID、供应商零事件、集成秘密访问和后继邮箱/资源行为。合法 bypass、fail-open、记住设备和迁移会产生相似链，必须以明确策略和有效期解释。
+    en: 'Composed-Authentication Auxiliary-State Forgery means that this variable preserves part of the genuine authentication trace, so checks
+      limited to successful password authentication or a well-formed cookie at the application can classify the result as ordinary login. The
+      gap lies inside the chain: the MFA or integration provider has no request, challenge, approval, or authorization-code exchange, yet the
+      application creates a session. Residuals include primary-authentication origin, auxiliary cookie or state digest, local validation outcome,
+      session ID, provider-side absence, integration-secret access, and downstream mailbox or resource activity. Legitimate bypass, fail-open,
+      remembered-device, and migration flows can look similar and require explicit policy and validity explanations.'
+scope_boundary_definition:
+  paragraphs:
+  - zh: 纳入要求至少一项真实认证步骤与一项由攻击者新构造的辅状态共同导致会话接受，并有供应商或应用语义说明该状态代表什么。仅有口令登录或 MFA 缺失可能是配置问题；仅看到 Cookie 无法区分新造与窃取；服务端 fail-open 归策略或流程问题，除非攻击者构造了被接受的材料。辅状态若由官方服务器在正常授权码交换后签发则不属于本项。
+    en: Inclusion requires at least one genuine authentication step and one newly constructed auxiliary state to jointly cause session acceptance,
+      with provider or application semantics explaining what the state represents. A password sign-in or absent MFA alone may be configuration
+      error. A cookie alone cannot distinguish construction from theft. Server-side fail-open is a policy or process issue unless the adversary
+      constructed accepted material. Auxiliary state issued by the official server after a normal authorization-code exchange is outside this
+      child.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: Volexity 在 Dark Halo 入侵中观察到攻击者对 OWA 提供正常用户名和口令，Exchange 记录正常主认证，却没有 Duo 认证尝试；内存取证确认攻击者提交了与 Duo MFA 会话有关的 duo-sid Cookie。攻击者此前取得 OWA
+        服务器上的 Duo 集成秘密并计算可被服务器判为有效的值，从而跳过第二因素。该事件直接证明“真实主认证加伪造辅状态”，但属于旧式集成，不能外推到使用现代授权码交换的所有 Duo 部署。
+      en: Volexity observed Dark Halo present a normal username and password to OWA. Exchange recorded ordinary primary authentication, while
+        Duo had no authentication attempt, and memory forensics confirmed a duo-sid cookie associated with a Duo MFA session. The adversary had
+        obtained the Duo integration secret from the OWA server and computed a value the server treated as valid, bypassing the second factor.
+        The event directly proves genuine primary authentication plus forged auxiliary state, but it involved a legacy integration and cannot
+        be generalized to every deployment using modern authorization-code exchange.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者需要完成或复用主认证，取得可计算辅状态的集成秘密或等价能力，并了解状态与用户名、会话、时间及应用回调的绑定规则。每会话高熵 state、同一浏览器会话保存、服务器到服务器 code exchange、用户名和 nonce 绑定、短有效期以及 fail-closed
+          能阻止静态或可预计算值跨会话使用。若主口令本身未知或应用要求不可导出的设备证明，攻击链可能无法完成。
+        en: The adversary needs to complete or reuse primary authentication, obtain an integration secret or equivalent ability to compute auxiliary
+          state, and understand bindings to username, session, time, and callback. High-entropy per-session state stored in the same browser session,
+          server-to-server code exchange, username and nonce binding, short validity, and fail-closed behavior prevent static or precomputed values
+          from working across sessions. The chain may fail if the primary password is unavailable or the application requires nonexportable device
+          proof.
+    defender_model:
+      paragraphs:
+      - zh: 防守方需同时保存应用主认证、MFA 供应商请求/结果、state 或授权码交换、应用最终会话和策略 bypass/fail-open 决策，并用同一主体、应用、session/request ID 和短时间窗关联。若供应商与应用日志时钟不同步或旧集成不记录辅状态摘要，零事件只能作为弱证据；内存取证可在事后确认
+          Cookie，但通常不能成为持续实时检测依赖。
+        en: Defenders need application primary authentication, MFA-provider request and result, state or authorization-code exchange, final application
+          session, and policy bypass or fail-open decisions joined by principal, application, session or request ID, and a short window. If provider
+          and application clocks differ or a legacy integration omits auxiliary-state digests, absence is only weak evidence. Memory forensics
+          can confirm a cookie after the fact but usually cannot be a continuous real-time dependency.
+stealth_mechanisms:
+- mechanism_ref: NM-BT
+  role: primary
+  summary:
+    zh: 真实主认证遮住辅验证链缺口
+    en: Genuine primary authentication masks the auxiliary verification gap
+  analysis:
+    paragraphs:
+    - zh: 攻击者让口令验证按正常路径成功，仅把第二因素完成状态移到本地伪造 Cookie。应用和 Exchange 能看到真实主认证与最终会话，Duo 侧却没有认证事件；不跨系统重建完整步骤图时，缺失的行为落在既有单点监控之外并形成行为透明。Volexity 对同一事件同时检查
+        Exchange、Duo 和 OWA 内存，直接支持这条因果链。
+      en: The adversary lets password validation succeed normally and moves only second-factor completion into a locally forged cookie. The application
+        and Exchange see genuine primary authentication and a final session, while Duo has no authentication event. Without cross-system reconstruction
+        of every step, the missing behavior falls outside point monitoring and creates Behavioral Transparency. Volexity examined Exchange, Duo,
+        and OWA memory in the same incident, directly supporting this causal chain.
+  confidence: high
+  evidence_refs:
+  - REF-000509
+- mechanism_ref: NM-FD
+  role: secondary
+  summary:
+    zh: 可验证辅 Cookie 模仿已完成 MFA 状态
+    en: A verifiable auxiliary cookie imitates completed MFA state
+  analysis:
+    paragraphs:
+    - zh: 由泄露集成秘密计算的值通过应用本地校验并呈现与真实 MFA 会话相同的 duo-sid 载体，令验证器把攻击者状态分类为已完成第二因素。恶意状态仍可由 Cookie 摘要、缺失供应商事务和异常会话来源区分，但单看格式和校验结果难以识别。该结论由 Dark Halo
+        案例直接支持，产品范围受旧式集成限制。
+      en: A value computed with the compromised integration secret passed local application validation in the same duo-sid carrier used for a
+        real MFA session, causing the verifier to classify attacker state as completed second factor. Cookie digest, absent provider transaction,
+        and anomalous session origin can still distinguish it, but format and validation result alone do not. The Dark Halo case directly supports
+        the conclusion within the limits of that legacy integration.
+  confidence: high
+  evidence_refs:
+  - REF-000509
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000189
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000170
+evidence:
+  claim_refs:
+  - CLM-000819
+  case_refs:
+  - CASE-000230
+  reference_refs:
+  - REF-000711
+  - REF-000509
+  - REF-000717
+research:
+  limitations:
+    paragraphs:
+    - zh: 公开直接事件集中在 Dark Halo 对旧式 Duo—OWA 集成的利用；当前 Duo Web SDK 使用每会话 state 和服务器端授权码交换，不应把旧 akey/duo-sid 细节当作现代产品字段。其他应用若用不同 Cookie、回调或服务器状态，需要重新证明绑定语义和日志字段，不能只替换产品名称。
+      en: Direct public incident evidence centers on Dark Halo's abuse of a legacy Duo and OWA integration. The current Duo Web SDK uses per-session
+        state and server-side authorization-code exchange, so old akey and duo-sid details are not modern product fields. Applications using different
+        cookies, callbacks, or server state need fresh evidence of binding semantics and log fields rather than product-name substitution.
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-09-23'
+  modified: '2026-09-23'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

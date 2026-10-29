@@ -1,0 +1,117 @@
+schema_version: 2.0.0
+type: evasion-subtechnique
+id: NJS-0147-001
+parent_ref: NJT-0147
+name:
+  zh: 受信消费身份转用
+  en: Trusted-Consumer Identity Repurposing
+summary:
+  zh: 攻击者利用本已获准读取的应用、会话或工作负载取出秘密，使保管库侧的成功调用带有正常身份外观。
+  en: The adversary uses an already permitted app, session, or workload to retrieve secrets, giving successful vault calls a normal consumer identity.
+aliases: []
+lineage:
+  attck_subtechnique_inherited: false
+definition_and_concept:
+  paragraphs:
+  - zh: 受信消费身份转用是攻击者控制或预置一个已经有权取得保管库秘密的应用、会话、插件或云工作负载，使其在正常取用权限内返回与攻击目标有关的条目。对象按“调用者名义与真实控制者分离”划界，而不是按 Keychain、KeePass 或云厂商命名。保管库返回数据是本项的关键结果；仅获得角色或修改触发器而未发生取用仍是前提。
+    en: Trusted-Consumer Identity Repurposing occurs when an adversary controls or prepositions an application, session, plugin, or cloud workload
+      already entitled to receive vault secrets, causing it to return target items under its ordinary access authority. The boundary is separation
+      of presented caller identity from actual controller, not Keychain, KeePass, or a cloud vendor. Secret return is the key outcome; gaining
+      a role or altering a trigger without a subsequent read remains a prerequisite.
+stealth_characteristics:
+  paragraphs:
+  - zh: 受信消费身份转用把未授权主体的失败或新程序读取，替换为允许的消费者对受保护条目的成功取用，因而简单的“成功且主体在白名单”规则会漏判。残余差异包括调用来源、工作负载实例、读取的 secret 集合、配置变更、导出文件及后继通信；云库还会保留 API 操作与资源标识，前提是相应日志确已启用。
+    en: Trusted-Consumer Identity Repurposing replaces denied or novel-caller reads with successful accesses by a permitted consumer, defeating
+      rules that equate an allowlisted successful principal with benign intent. Residual differences include origin, workload instance, secret
+      set, configuration change, export artifact, and later communications. Cloud vaults may retain API operation and resource identifiers when
+      the relevant audit logs are enabled.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 纳入要有现成消费权限被攻击者转用并实际产生异常秘密条目返回的链条。用户主动导出、轮换服务的定期读取、批准迁移以及同一角色在业务范围内的调用是反例，须核对用途和输出。仅伪装进程名却没有真实权限不成立；直接复制仍受保护的数据库只证明副本暴露，缺少同一事件解锁或返回时暂缓为独立子项；绕开
+      API 从内存取密则由运行态子项处理。
+    en: Inclusion requires an existing consumer entitlement repurposed by an adversary and a supported chain to abnormal secret-item return. User-initiated
+      export, scheduled rotation, approved migration, and in-scope business calls by the same role are counterexamples that need purpose and output
+      checks. Spoofing a process name without real authority is insufficient. Copying a still-protected database establishes copy exposure only;
+      absent same-incident unlock or return it remains a deferred separate child. API-bypassing memory retrieval belongs to the runtime child.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: 在已控用户下修改密码管理器事件配置并等待下一次解锁，或在已控云工作负载中调用其获准访问的少数 secret version，均可使取得秘密的动作出现在平常消费者路径。Mandiant 的红队实验明确观察到 KeePass 下次开启时导出全部口令；云工作负载分支目前由厂商
+        API 文档支持可行性，不把它冒充已证实在野匿迹案例。
+      en: An attacker may alter a password manager's event configuration under a controlled user and await the next unlock, or call selected secret
+        versions from a controlled cloud workload with existing rights. Both place retrieval on an ordinary consumer path. Mandiant directly observed
+        all passwords exported when KeePass was next opened in a red-team experiment. The cloud workload branch is feasible from vendor API documentation
+        but is not presented as a proven in-the-wild stealth case.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者需控制可修改配置的本地用户、已授权应用代码路径或获准调用秘密的 workload 身份，并知道目标条目与输出位置。其权限不自动覆盖所有库；额外确认、应用完整性、按 secret 收窄的策略和工作负载来源绑定可能阻止成功。
+        en: The adversary must control a local user able to alter configuration, an authorized application code path, or a workload identity permitted
+          to call the secret, and must know the target item and output path. Rights do not automatically cover every vault. Additional confirmation,
+          app integrity, per-secret policy, and workload-origin binding may prevent success.
+    defender_model:
+      paragraphs:
+      - zh: 防守方可比较受信消费者的稳定二进制身份、配置与签名、用户会话、云角色会话来源、实际返回条目、导出产物和后继连接。仅有保管库成功记录而没有调用栈或工作负载映射时，恶意与正常读取往往无法直接区分；秘密值不得进入检测日志。
+        en: Defenders can compare the trusted consumer's stable binary identity, configuration and signature, user session, cloud role-session
+          origin, returned item, export artifact, and later connection. A vault success record without call-path or workload mapping often cannot
+          distinguish malicious from routine reads, and secret values must not enter detection logs.
+stealth_mechanisms:
+- mechanism_ref: NM-FD
+  role: primary
+  summary:
+    zh: 合法消费身份遮蔽异常操控
+    en: Permitted consumer identity obscures abnormal control
+  analysis:
+    paragraphs:
+    - zh: 攻击者在调用前改变受信消费者的配置或运行上下文，令保管库按既有权限返回秘密。传感器看到的是熟悉主体与成功结果，真正差异转移到配置时间、来源、条目集合和输出链；Mandiant 的 KeePass 触发器实验支持此因果链，Apple 的允许访问机制和云 IAM 文档说明正常授权外观如何形成。
+      en: Before the read, the adversary changes a trusted consumer's configuration or runtime context, causing the vault to return a secret under
+        existing rights. A sensor sees a familiar principal and success, while the discriminating evidence moves to configuration timing, origin,
+        item set, and output chain. Mandiant's KeePass trigger experiment supports the causal chain; Apple access controls and cloud IAM documentation
+        explain the authorized appearance.
+  confidence: medium
+  evidence_refs:
+  - REF-000552
+  - REF-000543
+  - REF-000547
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000153
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000142
+evidence:
+  claim_refs:
+  - CLM-000724
+  - CLM-000727
+  case_refs:
+  - CASE-000189
+  reference_refs:
+  - REF-000552
+  - REF-000543
+  - REF-000547
+  - REF-000548
+  - REF-000544
+  - REF-000546
+  - REF-000550
+  - REF-000554
+  - REF-000555
+  - REF-000382
+  - REF-000366
+research:
+  limitations:
+    paragraphs:
+    - zh: 原始 KeePass 实验有明确明文导出，但不能证明所有保管库允许同类配置触发器；云库分支有 API 与审计可行性，缺少本批可直接归因的恶意小范围读取案例。受信调用的正常高频会降低身份字段的判别力，必须本地建立消费者到 secret 的用途基线。
+      en: The original KeePass experiment proves plaintext export in that product but not equivalent triggers in every vault. Cloud documentation
+        establishes API and audit feasibility, while this batch lacks a directly attributed malicious narrow-read case. Frequent legitimate trusted
+        calls weaken principal-only discrimination, requiring a local consumer-to-secret purpose baseline.
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-09-22'
+  modified: '2026-09-23'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

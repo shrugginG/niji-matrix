@@ -1,0 +1,224 @@
+schema_version: 2.0.0
+type: technique
+id: NJT-0153
+name:
+  zh: 条件式备用指挥控制通道
+  en: Conditional Fallback C2 Channels
+summary:
+  zh: 植入在原指挥控制路径失效后按预设条件转向备用路径，并使同一控制活动跨目的地或遥测面分散。
+  en: An implant conditionally moves C2 from a failed primary path to a reserve path, dispersing the same control
+    activity across destinations or telemetry surfaces.
+aliases: []
+classification:
+  tactic_refs:
+  - TA0011
+  origin:
+    kind: attack-adapted
+    source_attack_id: T1008
+    source_attack_version: '19.1'
+  decision_ref: DEC-TA0011-T1008
+definition_and_concept:
+  paragraphs:
+  - zh: 条件式备用指挥控制通道是攻击者在植入中预先配置、远程下发或由程序计算的路径选择行为。当主要 C2 路径不可用、被阻断或符合预设换路条件时，同一植入尝试另一条能够接收指令或回传结果的路径。这里的直接目标是维持控制会话与任务连续性；备用路径可以改变服务器、协议或服务环境，但单纯存在多个地址不说明发生了切换。
+    en: Conditional Fallback C2 Channels is an attacker configured, remotely supplied, or programmatically calculated
+      path selection behavior in an implant. When the primary C2 path becomes unavailable, is blocked, or reaches
+      a configured handoff condition, the same implant tries another path capable of receiving instructions or returning
+      results. Its direct goal is continuity of control and tasking. The reserve path may change server, protocol,
+      or service environment, but the mere presence of multiple addresses does not show a switch.
+  - zh: 作为匿迹对象，关键不在通道数量，而在攻击者利用条件式切换改变防守方可见的会话谱系。例如，原先被目的地规则标记的流量移到另一服务器，或者原先由 Web 代理观察的会话转到 DNS 查询；两种方式都只有在监控、保留或关联存在对应边界时才产生隐蔽收益。通信协议、DNS
+      算法、代理链和载荷阶段仍可作为并行技术事实描述，不替代这里的路径切换概念。
+    en: As a stealth object, the important fact is the attacker controlled conditional change in the defender visible
+      session lineage, rather than the number of channels. Traffic marked by a destination rule may move to another
+      server, or a session watched at a web proxy may move into DNS queries. Either yields a concealment benefit
+      only where collection, retention, or correlation has the corresponding boundary. Protocol choice, DNS algorithms,
+      proxy chains, and payload stages can be parallel technique facts but do not replace the path switch concept
+      here.
+stealth_characteristics:
+  paragraphs:
+  - zh: 备用通道的匿迹特性是把同一植入的连续控制活动拆成表面不连续的网络序列。在同一传输面更换端点时，旧目的地的连接或流量阈值计数停止，而新端点从低历史量开始；改变传输面时，原 Web/连接日志中的活动消失，DNS
+      等另一类日志开始出现。若告警仅按目的地、端口、协议或短时间窗口汇总，就可能分别看到旧路径故障与新路径正常通信，却无法还原同一操作。
+    en: The stealth property is a seemingly discontinuous network sequence produced by one continuous implant. With
+      endpoint failover on the same transport, counters for the old destination stop while the new destination begins
+      with little local history. With transport failover, activity disappears from web or connection logs and appears
+      in another source such as DNS. Rules aggregating only by destination, port, protocol, or short window may
+      see a failed old path and an apparently separate new path without reconstructing the same operation.
+  - zh: 切换仍留有可观察残迹：原路径的超时、拒绝或错误，继而同一主机/进程对新端点的解析、连接、响应和周期性回传。若终端进程身份与网络/DNS 遥测能够长窗关联，或者所有出站路径都经同一受控网关，匿迹效果显著下降。没有原路径失败证据时，不能从新目的地单独推断备用通道；没有新路径上的双向或持续控制迹象时，也不能把普通故障恢复断言为
+      C2。
+    en: 'The handoff leaves observable residue: timeouts, denials, or errors on the former path followed by resolution,
+      connection, response, and recurrent callback by the same host or process on a new endpoint. Long window joins
+      between endpoint process identity and network or DNS telemetry, or a common controlled gateway for every outbound
+      path, reduce the stealth effect. A new destination alone does not prove fallback without failure evidence,
+      and ordinary recovery must not be called C2 without bidirectional or sustained control indications on the
+      new path.'
+scope_boundary_definition:
+  paragraphs:
+  - zh: 纳入的最小序列是同一植入或进程的原 C2 路径、可验证的失败/不可达或受控触发、替代路径的启用，以及后继控制通信。仅向同一目的地重复 SYN、重发 HTTP 请求、轮询多个镜像地址、正常客户端按 DNS 答案连接、或合法服务故障切换，若缺少攻击者控制及匿迹观察差异，均在范围外。端点变化但传输面不变与传输面变化是两条候选子轴；两者同时发生时以导致主要防守观察变化的传输面切换为分类优先。
+    en: The minimum included sequence contains the same implant or process, a former C2 path, verifiable failure
+      or an attacker controlled trigger, activation of an alternate path, and subsequent control communication.
+      Repeated SYNs to one endpoint, retransmitted HTTP requests, polling mirror addresses, normal DNS answer selection,
+      and legitimate service failover are out of scope without adversary control and a changed defender observation.
+      Endpoint change within the same transport and change of transport surface are candidate child axes. When both
+      occur, classify by the transport switch if that is the dominant change to defender observation.
+  - zh: T1104 的直接对象是不同阶段或功能的 C2 分工，即使并无故障也可依次发生；T1568 的直接对象是算法或 DNS 将 C2 地址动态求出，只有失效后启用解析路径才与本技术相交；T1090 的直接对象是通过中介转发，只有原路径失败后改走代理才同时涉及本技术。NJT-0124
+      关注防火墙有效策略遭攻击者改写，本技术关注植入选择哪条 C2 路径；单纯配置更改、基础设施迁移或防火墙正常故障转移都不能替代植入切换证据。
+    en: T1104 concerns division of C2 by payload stage or function and may occur sequentially without any failure.
+      T1568 concerns dynamic computation or DNS resolution of C2 addresses and overlaps only when a failed primary
+      causes that resolution path to be used. T1090 concerns intermediary forwarding and overlaps only when failover
+      chooses a proxy route. NJT-0124 concerns adversary impairment of effective firewall policy, while this object
+      concerns which C2 path an implant chooses. A configuration change, infrastructure migration, or ordinary firewall
+      failover cannot substitute for evidence of an implant handoff.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: 长驻植入在原域名被封锁、服务器失联、代理拒绝或网络环境不允许原协议后，需要恢复任务拉取和结果回传。DustySky 的健康检查失败后尝试第二硬编码域名，TinyTurla 遍历可响应的 C2 地址；QUADAGENT
+        和 ISMAgent 在 HTTP 类请求失效后改用 DNS。此类活动常发生在已建立立足点后的持续控制或处置对抗期间，可能与协议选用、代理、动态解析并存。
+      en: A persistent implant may need to restore task retrieval and result return after its original domain is
+        blocked, server stops responding, proxy denies access, or the network disallows the original protocol. DustySky
+        tries a second hardcoded domain after a health check fails, and TinyTurla traverses configured C2 addresses
+        until one responds. QUADAGENT and ISMAgent use DNS after HTTP family requests fail. These behaviors occur
+        during continued control after a foothold or during defender disruption and may coexist with protocol selection,
+        proxying, or dynamic resolution.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者需控制植入的路径选择逻辑，事先配置可用备用端点或通信方法，并维持能识别该植入的后端或可重建会话的协议状态。端点迁移要求备用服务器或域名仍可达；跨传输面迁移还要求植入与服务端都支持第二种协议及其编码、认证和任务格式。攻击者不必控制防火墙，但通常需要预判目标出站政策并接受切换检测、延迟与备用基础设施成本。
+        en: The attacker must control path selection in the implant, preconfigure usable reserve endpoints or communication
+          methods, and maintain a backend that recognizes the implant or can reconstitute session state. Endpoint
+          migration requires a reachable reserve server or domain. Cross transport migration also requires both
+          implant and server to support the second protocol and its encoding, authentication, and task format. The
+          attacker need not control the firewall, but normally must anticipate target egress policy and accept health
+          check traces, delay, and reserve infrastructure cost.
+    defender_model:
+      paragraphs:
+      - zh: 防守方可以拥有终端进程网络事件、DNS 查询、网络连接状态、Web 代理/防火墙阻断日志及必要的时间同步，但并非每个部署都同时具备。终端侧 ProcessGuid 可把同一进程的多目的地串起；Zeek
+          的 conn、dns、http 日志可通过 uid、主机和时间复原不同协议片段。DNS 递归器、代理、NAT 与进程重启会改变关联键，因此应保留设备身份、进程谱系、前后地址和原始时间戳，至少覆盖正常回连周期与一次切换窗口。
+        en: The defender may have endpoint process network events, DNS queries, network connection state, web proxy
+          or firewall deny logs, and synchronized time, but deployments do not always collect all of them. A process
+          GUID can join multiple destinations of one process; Zeek conn, dns, and http logs can reconstruct protocol
+          fragments through uid, host, and time. Recursive DNS, proxies, NAT, and process restarts change join keys,
+          so device identity, process lineage, pre and post translation addresses, and original timestamps should
+          be retained over at least a normal callback cycle and one switch window.
+      - zh: 这种观察模型不假设任何新目的地都是恶意，也不假设拒绝后换路必然是攻击。合法客户端、浏览器、更新器、CDN 和灾备代理都有相似序列；防守方需要进程/服务身份、批准的故障切换设计和新路径上的控制样式来区分。若只保留成功会话或只收一个协议，旧路径失败或新路径活动可能不可见；加密
+          DNS、终端覆盖缺口和短保留期还会削弱关联。
+        en: This model does not assume that every new destination is malicious or that every handoff after a denial
+          is adversarial. Legitimate clients, browsers, updaters, CDNs, and disaster recovery proxies have similar
+          sequences. The defender needs process or service identity, approved failover design, and control like
+          behavior on the new path to distinguish them. If only successful sessions or one protocol are retained,
+          the old failure or new activity may be missing; encrypted DNS, endpoint coverage gaps, and short retention
+          further weaken correlation.
+stealth_mechanisms:
+- mechanism_ref: NM-ST
+  role: primary
+  summary:
+    zh: 按失败条件把同一控制谱系分散到不同目的地或日志面
+    en: Disperse one control lineage across destinations or log surfaces after failure
+  analysis:
+    paragraphs:
+    - zh: 植入先在原路径留下健康检查、拒绝或超时，随后改向新端点或新协议恢复任务通信；这一设计把原本连续的控制操作分割到不同目的地计数器和日志类别。只按单目的地、单协议或短窗口汇总的防守方会将两段活动分开，降低各局部序列的量与连续性，从而增加重建攻击链的成本。DustySky、TinyTurla、QUADAGENT
+        和 ISMAgent 证明切换序列存在；“低于阈值”只能在具体检测窗口和背景流量下验证，不得由切换本身普遍推出。
+      en: The implant leaves a health check, denial, or timeout on its old path and then resumes task communication
+        at a new endpoint or over a new protocol. This design splits one continuous control operation across destination
+        counters and log categories. A defender aggregating by one destination, protocol, or short window sees separate
+        fragments with less local volume and continuity, increasing reconstruction cost. DustySky, TinyTurla, QUADAGENT,
+        and ISMAgent establish the switch sequence; falling below a threshold requires validation against a specific
+        rule window and background traffic and cannot be generalized from switching alone.
+  evidence_refs:
+  - REF-000628
+  - REF-000629
+  - REF-000630
+  - REF-000631
+  confidence: medium
+- mechanism_ref: NM-BT
+  role: secondary
+  summary:
+    zh: 从只监控原协议的传感器视野切到另一通信面
+    en: Shift from a sensor watching only the original protocol into another communication surface
+  analysis:
+    paragraphs:
+    - zh: 当植入在 Web 请求失败后改用 DNS 承载同一任务流时，Web 代理不再是完整观察点，后续片段转入 DNS 查询和响应。若组织对 DNS 仅保留解析摘要、没有终端进程对应关系，原来的代理规则可能不再触发，形成覆盖盲区；若
+        DNS 与终端遥测完整采集并能关联，这一机理不成立。QUADAGENT 与 ISMAgent 支持协议切换，Zeek 与 Sysmon 文档支持日志面差异，特定组织的监控缺口仍需本地验证。
+      en: When an implant changes from failed web requests to carrying the same task stream in DNS, a web proxy
+        ceases to be a complete observation point and later fragments enter DNS queries and responses. If the organization
+        retains only summary DNS or lacks process joins, the former proxy rule may no longer fire, creating a coverage
+        blind spot. Where DNS and endpoint telemetry are complete and correlated, this mechanism does not hold.
+        QUADAGENT and ISMAgent support protocol switching, and Zeek and Sysmon document the distinct log surfaces;
+        any particular organization's gap still needs local validation.
+  evidence_refs:
+  - REF-000630
+  - REF-000631
+  - REF-000635
+  - REF-000230
+  confidence: low
+subtechnique_taxonomy:
+  narrative:
+    paragraphs:
+    - zh: 两项正式子技术按失败后改变的主要观察面区分：条件式端点迁移保持通信协议而更换 C2 目标，使按目的地分组的轨迹断开；跨协议遥测面切换将同一控制活动从 Web 等一个日志类别转到 DNS 等另一个类别，使单一传感器或日志管线不再包含完整序列。若端点和协议同时改变，以支配观察差的跨协议项为主，端点变化作为同一事件属性记录。
+      en: Two formal children are separated by the dominant observation surface changed after failure. Conditional
+        Endpoint Migration keeps the transport while changing C2 destination, breaking destination-keyed traces.
+        Cross-Protocol Telemetry-Surface Switch moves the same control activity from one log class such as web to
+        another such as DNS, leaving a single sensor or log pipeline incomplete. If endpoint and protocol both change,
+        classify under the cross-protocol child when it dominates observation and record endpoint change as an event
+        attribute.
+    - zh: 可信服务备用路径、长延时触发、DGA 算法和代理路线尚缺少独立充分的匿迹证据，须保留为未定边界或交给相邻技术。这里的分类依赖失败条件、痕迹变化和差异化防守，而不依赖域名、产品或协议名称。
+      en: Trusted-service recovery, long-delay triggers, DGA algorithms, and proxy routing lack sufficient independent
+        stealth evidence and remain unresolved boundaries or belong to adjacent techniques. This taxonomy rests
+        on failure conditions, trace changes, and distinct defense rather than domain, product, or protocol names.
+  coverage: established
+  subtechnique_refs:
+  - NJS-0153-001
+  - NJS-0153-002
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000164
+    - DET-000165
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000151
+evidence:
+  claim_refs:
+  - CLM-000750
+  - CLM-000751
+  - CLM-000752
+  - CLM-000753
+  case_refs:
+  - CASE-000201
+  - CASE-000202
+  reference_refs:
+  - REF-000625
+  - REF-000628
+  - REF-000629
+  - REF-000630
+  - REF-000631
+  - REF-000634
+  - REF-000635
+  - REF-000230
+  - REF-000636
+  - REF-000637
+research:
+  limitations:
+    paragraphs:
+    - zh: 直接样本证据证明了备用路径的实现与切换条件，但未提供防守方真实监控布局、告警阈值、流量基线或处置后的逐端点效果。因此，目的地计数被拆分、Web 规则遗漏 DNS 后继活动等匿迹结论都以观察边界为前提，应在具体环境中复测。特别是
+        QUADAGENT 的 DNS 仍有可见查询，TinyTurla 的新连接仍可由进程级日志关联。
+      en: Direct sample evidence establishes reserve paths and switch conditions but does not provide a defender's
+        actual sensor layout, alert thresholds, traffic baseline, or per-endpoint postresponse outcomes. Stealth
+        conclusions about split destination counters or web rules missing later DNS activity therefore depend on
+        an observation boundary and require local validation. QUADAGENT's DNS queries remain visible, and TinyTurla's
+        new connections remain joinable through process telemetry.
+    - zh: 拥塞、CDN 调度、合法灾备、代理配置和更新器镜像切换可产生相似失败序列；多个域名、端口或 DNS 查询本身不能判别攻击。检测窗口与阈值只是工程起点，需按当地日志质量与服务目录校准。可信服务、长延时和 DGA
+        触发模式的独立匿迹差异仍缺少充分证据，不能据此扩张子技术边界。
+      en: Congestion, CDN steering, legitimate disaster recovery, proxy configuration, and updater mirrors can produce
+        similar failure sequences; multiple domains, ports, or DNS queries cannot classify an attack by themselves.
+        Detection windows and thresholds are engineering starting points requiring calibration to local log quality
+        and service catalogs. Trusted-service, long-delay, and DGA-triggered patterns lack sufficient evidence for
+        independent stealth differences and cannot expand the child boundary yet.
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-09-22'
+  modified: '2026-09-22'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

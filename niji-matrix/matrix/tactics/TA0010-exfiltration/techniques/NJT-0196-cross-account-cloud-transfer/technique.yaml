@@ -1,0 +1,264 @@
+schema_version: 2.0.0
+type: technique
+id: NJT-0196
+name:
+  zh: 向云账户转移数据
+  en: Transfer Data to Cloud Account
+summary:
+  zh: 攻击者借用云服务内建共享或复制机制，使另一受控账户获得同一对象的权利或独立副本，并把外传痕迹分散到不同账户和控制面。
+  en: Adversaries use cloud-native sharing or replication so another controlled account obtains rights to the same
+    object or an independent copy, distributing exfiltration traces across accounts and control planes.
+aliases: []
+classification:
+  tactic_refs:
+  - TA0010
+  origin:
+    kind: attack-adapted
+    source_attack_id: T1537
+    source_attack_version: '19.1'
+  decision_ref: DEC-TA0010-T1537
+definition_and_concept:
+  paragraphs:
+  - zh: 向云账户转移数据是攻击者在数据已经位于 IaaS、Office Suite 或 SaaS 服务中时，调用该服务原生的分享、授权、同步、快照、复制、导出或备份机制，让同一服务内另一个账户或租户取得可用数据控制权。直接目标是无需先把内容下载到攻击者主机并重新上传，就让数据进入攻击者可持续访问的权限域或对象域。
+    en: Transfer Data to Cloud Account occurs when data already resides in an IaaS, Office Suite, or SaaS service
+      and an adversary invokes native share, entitlement, sync, snapshot, copy, export, or backup mechanisms so
+      another account or tenant on the same service obtains usable control over it. The direct objective is to place
+      data in an attacker-accessible authorization or object domain without first downloading it to an attacker
+      host and uploading it again.
+  - zh: “控制权转移”既可表现为原对象对外部账户新增读取/拥有权，也可表现为目标账户生成独立副本；不要求底层存储块经过公网。仅在受害账户内部创建暂存、快照或备份不成立。若攻击者从受害服务下载后再上传到外部 Web 服务，外传由
+      T1567 或相应通道承担；匿名 bearer link 若没有可识别账户/租户获得权利，也不属于本候选收紧后的账户边界。
+    en: Control transfer can grant an external account read or ownership over the original object or materialize
+      an independent copy in the destination account; underlying storage blocks need not cross the public Internet.
+      Staging, snapshot, or backup solely inside the victim account is insufficient. When an adversary downloads
+      from the victim service and reuploads to an external web service, T1567 or another channel owns the exfiltration.
+      An anonymous bearer link without an identifiable account or tenant gaining rights also falls outside this
+      candidate's tightened account boundary.
+stealth_characteristics:
+  paragraphs:
+  - zh: 服务内转移把主要痕迹从网络数据面移到权限、对象和账户控制面。企业出口可能只看到已有云服务 API，甚至没有面向外部接口的文件流；原对象授权轴只留下 share/permission/ownership 与外部访问事件，副本轴则留下
+      snapshot/share/copy/restore 和跨账户资源身份。传统按上行字节、外部目的地或恶意协议检测会丢失直接信号。
+    en: Service-internal transfer moves the primary traces from network data plane to entitlement, object, and account
+      control planes. Enterprise egress may show only existing cloud-service APIs or no file stream over an external
+      interface. The same-object entitlement axis leaves share, permission, ownership, and external-access events;
+      the replica axis leaves snapshot, share, copy, restore, and cross-account resource identities. Detection based
+      on uploaded bytes, external destinations, or malicious protocols loses its direct signal.
+  - zh: 痕迹仍然存在且通常比网络内容更结构化：acting user/service principal、源 tenant/account、object ID、target user/account/domain、old/new
+      role/visibility、link ID、snapshot ID、createVolumePermission、SharedSnapshotCopyInitiated、目标 copy ID、KMS grant、访问/下载与撤销时间。难点是这些字段分散在受害和接收账户，某些目标账户日志不在防守方权限内，服务身份还会替代最终操作者成为审计主体。
+    en: 'Traces remain and are often more structured than network content: acting user or service principal, source
+      tenant or account, object ID, target user, account or domain, old and new role or visibility, link ID, snapshot
+      ID, createVolumePermission, SharedSnapshotCopyInitiated, destination copy ID, KMS grant, access or download,
+      and revocation time. The difficulty is that fields split between victim and recipient accounts, destination-account
+      logs may be outside defender authority, and a service identity can replace the ultimate operator as the audit
+      actor.'
+scope_boundary_definition:
+  paragraphs:
+  - zh: 纳入要求源数据已存在于云服务、攻击者或未批准外部主体控制同服务另一账户/租户、云原生操作建立了有效访问或独立副本，并有外部访问、copy/restore、目标对象或等价结果证据。只创建 invitation、link、snapshot
+      或 backup 而没有权利生效或接收结果时，应分别报告为 exposure/capability，不能直接升级为完成外传。
+    en: Inclusion requires source data already present in a cloud service, another account or tenant on that service
+      controlled by the adversary or an unapproved external principal, a cloud-native operation establishing effective
+      access or an independent copy, and evidence of external access, copy or restore, destination object, or equivalent
+      outcome. An invitation, link, snapshot, or backup without effective rights or receipt is an exposure or capability
+      tier rather than completed exfiltration.
+  - zh: 合法客户协作、供应商交付、灾备、跨账户安全备份、并购迁移、法律发现和托管服务都会产生相同控制面事件，必须用批准关系、对象敏感度、目标账户清单、owner、用途、有效期和后继访问排除。普通共享动作只有目标主体未获批准且实际获得数据权利时才纳入；“外部”或“Guest”标签本身不是恶意判据。
+    en: Legitimate customer collaboration, vendor delivery, disaster recovery, cross-account security backup, merger
+      migration, legal discovery, and managed services create the same control-plane events. They require exclusion
+      through approved relationship, object sensitivity, destination-account inventory, owner, purpose, validity,
+      and successor access. Ordinary sharing enters scope only when an unapproved target actually obtains data rights;
+      an External or Guest label alone is not maliciousness.
+  - zh: 同账户内暂存、版本、备份与共享不发生跨账户控制权变化。下载后用 rclone、Mega、AzCopy 或浏览器上传到外部服务属于 T1567 或其他外传通道，除非能证明使用的是同服务账户间的原生 share/copy。匿名链接和
+      SAS bearer URI 只在可解析为另一个账户/租户并发生访问时纳入授权轴，否则保留给 T1567 或战术级缺口审查。
+    en: Staging, versioning, backup, and sharing inside one account do not change cross-account control. Download
+      followed by rclone, Mega, AzCopy, or browser upload to an external service belongs to T1567 or another exfiltration
+      channel unless a native same-service account-to-account share or copy is established. Anonymous links and
+      SAS bearer URIs enter the entitlement axis only when resolved to another account or tenant and followed by
+      access; otherwise they remain for T1567 or tactic-level gap review.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: 在 Office Suite 或 SaaS 中，攻击者可用被盗用户或服务身份把敏感文件、文件夹或站点分享给外部账户，转移 ownership，或把外部主体加入特定 link。Microsoft 审计会区分
+        invitation created、accepted、AddedToSecureLink、FileAccessed 等阶段并保留 ObjectId；Google Drive 审计可记录 target_user、owner、visibility
+        和 shared_drive_id。这些字段支持原对象连续轴，但不能仅凭 capability 文档证明某个野外攻击者已经使用。
+      en: In Office Suite or SaaS, an adversary can use a stolen user or service identity to share sensitive files,
+        folders, or sites with an external account, transfer ownership, or add an external principal to a specific
+        link. Microsoft audit separates invitation created, accepted, AddedToSecureLink, FileAccessed, and related
+        stages while preserving ObjectId. Google Drive audit records target_user, owner, visibility, and shared_drive_id.
+        These fields support the same-object continuity axis but capability documentation alone does not prove use
+        by a particular observed adversary.
+    - zh: 在 IaaS 中，攻击者可为卷或实例创建 snapshot，把 createVolumePermission 授予其账户，再在目标账户 copy 或创建 volume。DNC 诉状所述取证发现行为者制作云虚拟服务器的精确
+        snapshots 并移到其在同一服务上的其他账户；AWS 文档说明共享 snapshot 可由获授权账户复制，copy 获得唯一资源 ID，CloudTrail 还能记录 SharedSnapshotCopyInitiated
+        和 SharedSnapshotVolumeCreated。
+      en: In IaaS, an adversary can snapshot a volume or instance, grant its account createVolumePermission, then
+        copy the snapshot or create a volume in the destination account. The DNC complaint describes forensic findings
+        that actors made exact snapshots of cloud virtual servers and moved them to other accounts they controlled
+        on the same service. AWS documentation states that an authorized account can copy a shared snapshot, that
+        the copy receives a unique resource ID, and that CloudTrail can record SharedSnapshotCopyInitiated and SharedSnapshotVolumeCreated.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者需要在源租户拥有分享、修改 ACL/ownership、创建快照/备份、授予跨账户权限或调用复制流程的有效身份，并准备同服务目标账户。加密 snapshot 还可能需要共享或使用 KMS key；SaaS
+          受 domain allowlist、B2B、DLP、敏感度标签、下载限制和 guest 到期约束。权限不足时可能只能创建 invitation 而无法实现访问。
+        en: The adversary needs a valid identity in the source tenant with authority to share, modify ACL or ownership,
+          create snapshots or backups, grant cross-account rights, or invoke copy workflows, plus a destination
+          account on the same service. Encrypted snapshots may also require sharing or using a KMS key. SaaS is
+          constrained by domain allowlists, B2B, DLP, sensitivity labels, download restrictions, and guest expiry.
+          Insufficient authority may produce only an invitation without effective access.
+      - zh: 原对象授权便于持续读取更新，但依赖源侧 grant 保持有效并暴露 target identity；独立副本在 materialize 后抵抗源侧撤销，却需要更多控制面操作、目标存储与可能的密钥重加密。自动
+          sync 或 backup 会增加固定 workflow、service principal、频率和错误重试痕迹，攻击者必须控制这些残余。
+        en: Same-object entitlement supports continuing access to updates but depends on the source grant remaining
+          valid and exposes target identity. An independent copy resists source-side revocation after materialization
+          but requires more control-plane operations, destination storage, and possibly key re-encryption. Automated
+          sync or backup adds fixed workflow, service principal, cadence, and retry traces that the adversary must
+          manage.
+    defender_model:
+      paragraphs:
+      - zh: 防守方假定集中保存云控制面和数据面审计、目录/账户注册、对象敏感度、批准合作关系、资源 owner/ID、share/copy/restore 与撤销状态。原对象轴按 object ID 连接 grant→accept→access/download→revoke；副本轴按
+          source object/snapshot、target account、provider copy event 与 new object ID 建立 lineage。目的账户不受组织控制时，只能依赖提供方返回给源账户的共享资源事件或法律/响应协作。
+        en: The defender is assumed to centralize cloud control-plane and data-plane audit, directory and account
+          registry, object sensitivity, approved collaboration, resource owner and ID, share, copy, restore, and
+          revocation state. The same-object axis joins grant to accept, access or download, and revoke by object
+          ID. The replica axis builds lineage from source object or snapshot, target account, provider copy event,
+          and new object ID. When the destination account is outside organizational control, the defender depends
+          on shared-resource events returned by the provider to the source or on legal and incident-response cooperation.
+      - zh: 日志盲区包括匿名/bearer link、共享密钥或 SAS 造成主体不明、目标租户日志不可见、数据面日志未启用、审计保留短于 grant 生命周期、sync/backup 由服务身份执行，以及 copy
+          后目标对象 ID 未返回源侧。移除 grant 不证明数据未被读取，删除源 snapshot 也不能删除目标账户已复制的对象。
+        en: Blind spots include anonymous or bearer links, shared keys or SAS obscuring the actor, invisible destination-tenant
+          logs, disabled data-plane audit, retention shorter than grant lifetime, sync or backup performed by a
+          service identity, and destination object IDs not returned to the source after copy. Removing a grant does
+          not prove data was never read, and deleting a source snapshot cannot delete an object already copied into
+          the destination account.
+stealth_mechanisms:
+- mechanism_ref: NM-BT
+  role: primary
+  summary:
+    zh: 借用同服务正常分享和备份控制面避免独立外部文件流
+    en: Borrow normal same-service sharing and backup control planes to avoid a distinct external file flow
+  analysis:
+    paragraphs:
+    - zh: 攻击者调用云服务原生 grant、share、sync、snapshot 或 copy，使服务内部完成权利或对象交付；企业出口只见常见 API，甚至不见外部网络传输，传统大流量告警保持正常。ATT&CK
+        明确说明同提供商 API 和内部地址可混入正常流量或避开外部接口；结构化 share/copy 审计仍可恢复差异，因此属于行为透明而非痕迹消失。
+      en: The adversary invokes native grant, share, sync, snapshot, or copy so the cloud service performs entitlement
+        or object delivery internally. Enterprise egress sees common APIs or no external transfer, leaving traditional
+        large-transfer alerts normal. ATT&CK explicitly states that same-provider APIs and internal address space
+        can blend with normal traffic or avoid external interfaces. Structured share and copy audit still recovers
+        the difference, so this is Behavioral Transparency rather than trace erasure.
+  evidence_refs:
+  - REF-000946
+  - REF-000950
+  - REF-000948
+  confidence: high
+- mechanism_ref: NM-ST
+  role: secondary
+  summary:
+    zh: 将授权、接收、复制和后继访问分散到源与目标账户
+    en: Distribute grant, receipt, copy, and successor access across source and destination accounts
+  analysis:
+    paragraphs:
+    - zh: 源账户记录 grant、share 或 snapshot 权限，目标账户执行 accept、copy、restore 或后继访问；独立副本还获得新对象 ID，使单租户调查只看到链的一部分。AWS 共享 snapshot
+        事件与 copy 唯一 ID，以及 Microsoft/Google 的 acting/target 主体字段，证明跨账户关联键存在。没有组织级或提供方视角时，链被分散到不同管理域，形成时空释痕。
+      en: The source account records grant, share, or snapshot permission, while the destination account performs
+        accept, copy, restore, or successor access. An independent replica also receives a new object ID, so a single-tenant
+        investigation sees only part of the chain. AWS shared-snapshot events and unique copy IDs plus Microsoft
+        and Google acting and target principal fields establish available cross-account join keys. Without organization-wide
+        or provider visibility, the chain is distributed across administrative domains, producing Spatiotemporal
+        Trace Dilution.
+  evidence_refs:
+  - REF-000948
+  - REF-000949
+  - REF-000950
+  - REF-000951
+  confidence: high
+subtechnique_taxonomy:
+  narrative:
+    paragraphs:
+    - zh: 两项子技术按跨账户交付后对象身份和撤销效果划分。原对象跨账户授权投射保留源 object ID，目标账户的控制依赖源 grant，撤销可阻止未来访问但不能证明未下载；跨账户持久副本脱离生成目标账户新 object/snapshot
+        ID，copy 完成后源侧 revoke/delete 不能回收副本。它们分别需要 grant-access-revoke 与 source-share-copy-new-object 检测链。
+      en: The two children divide by object identity and revocation outcome after cross-account delivery. Same-Object
+        Cross-Account Entitlement Projection preserves the source object ID, and destination control depends on
+        the source grant; revocation stops future access but cannot prove no prior download. Cross-Account Durable
+        Replica Detachment generates a new object or snapshot ID in the destination account, and source revoke or
+        delete cannot recover the replica after copy. They require grant-access-revoke and source-share-copy-new-object
+        detection chains respectively.
+    - zh: 分享、同步、复制、导出和备份是实现，不决定分类：同步若只让外部账户持续读取同一对象，归授权轴；若在目标账户形成独立对象，归副本轴。同样，service principal 或批准 workflow 只改变审计
+        actor，不足以成为第三子项。匿名 link、同账户暂存、下载再上传与普通未使用共享分别按边界或证据层级处理。
+      en: Share, sync, copy, export, and backup are implementations rather than taxonomy. Sync that gives another
+        account continuing access to the same object belongs to the entitlement axis; sync that materializes an
+        independent destination object belongs to the replica axis. A service principal or approved workflow changes
+        the audit actor but is not a third child by itself. Anonymous links, same-account staging, download then
+        upload, and unused ordinary shares are handled by boundary or evidence tier.
+  coverage: established
+  subtechnique_refs:
+  - NJS-0196-001
+  - NJS-0196-002
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000228
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000204
+evidence:
+  claim_refs:
+  - CLM-000962
+  - CLM-000963
+  - CLM-000964
+  - CLM-000965
+  - CLM-000966
+  - CLM-000967
+  case_refs:
+  - CASE-000282
+  reference_refs:
+  - REF-000946
+  - REF-000947
+  - REF-000948
+  - REF-000949
+  - REF-000950
+  - REF-000951
+  - REF-000952
+  - REF-000953
+  - REF-000954
+  - REF-000513
+  - REF-000524
+  - REF-000540
+  - REF-000698
+  - REF-000874
+research:
+  limitations:
+    paragraphs:
+    - zh: 固定 ATT&CK 页面的 procedure examples 并不都满足同服务跨账户语义：Mega 工具上传和 AzCopy 到自有基础设施可能只是 Web 服务或普通通道外传。正式范围以资源 owner/target
+        account、object continuity 和 provider-native share/copy 为准，不用 ATT&CK 标签替代结论级证据。
+      en: Procedure examples on the fixed ATT&CK page do not all satisfy same-service cross-account semantics. Mega
+        utility uploads and AzCopy to actor infrastructure may be web-service or ordinary-channel exfiltration.
+        Formal scope relies on resource owner and target account, object continuity, and provider-native share or
+        copy rather than using an ATT&CK label as conclusion-level evidence.
+    - zh: 原对象授权资料来自权威产品文档而非公开恶意事件，因此证明可实施路径、字段和撤销语义，不证明实际规避率或攻击者意图。跨平台字段不能机械等价：Microsoft 的 ObjectId/link event、Google
+        的 target_user/visibility、AWS 的 snapshot/permission/copy 具有不同身份和保留期，Analytic 必须先规范化再关联。
+      en: 'Same-object entitlement material comes from authoritative product documentation rather than a public
+        malicious incident. It establishes an implementable path, fields, and revocation semantics, not measured
+        evasion or attacker intent. Cross-platform fields are not mechanically equivalent: Microsoft ObjectId and
+        link events, Google target_user and visibility, and AWS snapshot, permission, and copy have different identities
+        and retention and require normalization before correlation.'
+    - zh: DNC 案例是法院诉状对 CrowdStrike 取证和政府归因的总结，没有原始审计记录，Case 置信度保持 medium。目标账户不在组织控制下时，copy 后访问、再分享和删除可能无法直接观察；provider
+        共享资源事件也不总返回 destination object ID。响应结论必须区分 exposure、effective access、content delivery、copy initiated 和 durable
+        replica。
+      en: The DNC case is a court filing summarizing CrowdStrike forensics and government attribution without raw
+        audit, so Case confidence remains medium. When the destination account lies outside organizational control,
+        post-copy access, resharing, and deletion may not be directly visible, and provider shared-resource events
+        do not always return destination object IDs. Response conclusions must distinguish exposure, effective access,
+        content delivery, copy initiated, and durable replica.
+    - zh: 合法外部协作和灾备产生极高相似背景。撤销 share、禁用 external setting 或删除 source snapshot 只能改变未来源侧权利，不能证明未下载，也不能收回独立副本。防御对象因此必须同时治理批准关系、内容敏感度、账户
+        allowlist、密钥权威、到期与撤销后接收核查。
+      en: Legitimate external collaboration and disaster recovery create very strong benign background. Revoking
+        a share, disabling an external setting, or deleting a source snapshot changes only future source-side rights;
+        it cannot prove no download and cannot recall an independent replica. Defense must therefore govern approved
+        relationships, content sensitivity, account allowlists, key authority, expiry, and post-revocation receipt
+        assessment together.
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-10-04'
+  modified: '2026-10-04'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

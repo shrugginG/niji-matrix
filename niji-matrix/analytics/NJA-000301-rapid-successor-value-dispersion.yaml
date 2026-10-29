@@ -1,0 +1,115 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000301
+strategy_ref: DET-000236
+name:
+  zh: 首次恶意结算到快速后继价值图分析
+  en: Initial Malicious Settlement to Rapid Successor Value-Graph Analytic
+summary:
+  zh: 输出首次恶意入账后短时间内跨多账户/机构拆分的金额守恒图和追回状态。
+  en: Emit value-conserving graphs split across accounts or institutions shortly after initial malicious credit, with
+    recovery status.
+domains:
+- enterprise
+platforms: []
+logic:
+  paragraphs:
+  - zh: 以已确认 malicious beneficiary credit 为根，按 transaction IDs、account/address、amount/currency、time、institution/chain、owner
+      和 return 建 successor graph。对 fees/FX/partial returns 规范化后计算 fan-out、hops、velocity、保留余额和 amount conservation。
+    en: Use a confirmed malicious beneficiary credit as the root and build a successor graph from transaction IDs,
+      accounts or addresses, amount or currency, time, institution or chain, owner, and returns. Normalize fees, FX,
+      and partial returns and calculate fan-out, hops, velocity, retained balance, and amount conservation.
+  - zh: 在首次 credit 后 24 小时优先恢复窗口聚合，并持续到 rail/chain 合理终态。至少一个 successor transfer、异常 owner/目的与完整盗窃根才确认子项；单账户持有仍为父级。
+    en: Aggregate during the first 24-hour priority recovery window and continue to a reasonable rail or chain terminal
+      state. Confirm the child only with at least one successor transfer, anomalous owner or destination, and a completed-theft
+      root; single-account holding remains parent core.
+data_requirements:
+- source_type: value-transfer-event
+  name:
+    zh: 价值转移事件
+    en: Value-transfer events
+  channel: null
+  required_fields:
+  - event.time
+  - transaction.id
+  - parent.transaction.id
+  - source.account
+  - destination.account
+  - source.owner
+  - destination.owner
+  - amount
+  - currency
+  - institution.id
+  - status
+- source_type: settlement-root
+  name:
+    zh: 已确认恶意结算根
+    en: Confirmed malicious settlement root
+  channel: null
+  required_fields:
+  - root.transaction.id
+  - victim.account
+  - beneficiary.account
+  - victim.debit.status
+  - beneficiary.credit.status
+  - settled.time
+  - case.id
+- source_type: recovery-return-event
+  name:
+    zh: 冻结、追回与 return 事件
+    en: Freeze, recovery, and return events
+  channel: null
+  required_fields:
+  - event.time
+  - transaction.id
+  - freeze.status
+  - recall.status
+  - return.status
+  - returned.amount
+  - law.enforcement.case.id
+observables:
+- zh: 恶意入账后快速出现多 destination/hop fan-out
+  en: Rapid destination or hop fan-out follows malicious credit
+- zh: 近似金额守恒跨账户/机构移动且冻结/recall 窗口缩短
+  en: Approximately conserved value moves across accounts or institutions while freeze or recall windows shrink
+correlation:
+  window:
+    zh: 重点首 24 小时，并按 rail/chain finality 继续；阈值需机构数据验证。
+    en: Prioritize the first 24 hours and continue by rail or chain finality; thresholds need institutional validation.
+  dimensions:
+  - root.transaction.id
+  - transaction.id
+  - source.account
+  - destination.account
+  - institution.id
+  - currency
+  - event.time
+false_positives:
+- zh: treasury sweep、payment processor settlement、投资 rebalancing、payroll split、合法 crypto routing 和退款
+  en: Treasury sweeps, payment-processor settlement, investment rebalancing, payroll splits, legitimate crypto routing,
+    and refunds
+blind_spots:
+- zh: 跨机构数据不可见、mule owner 不透明、cash-out/bridge 断链、FX/fees 或 transaction ID 不连贯
+  en: Cross-institution invisibility, opaque mule ownership, cash-out or bridge gaps, FX or fees, or discontinuous
+    transaction IDs
+tuning_guidance:
+  paragraphs:
+  - zh: 从已确认 theft root 出发，不以 hop count alone 告警；按业务/rail 建 treasury/processor graph 白名单并保留 amount/owner 证据。24 小时窗口用于响应优先，不是通用恶意阈值。
+    en: Start from a confirmed theft root and never alert on hop count alone; baseline treasury or processor graphs
+      by business and rail while retaining amount and owner evidence. The 24-hour window prioritizes response and
+      is not a universal malicious threshold.
+evidence_refs:
+- REF-001004
+- REF-001007
+- REF-001008
+- REF-001009
+- REF-001010
+- REF-001013
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-10-04'
+  modified: '2026-10-04'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

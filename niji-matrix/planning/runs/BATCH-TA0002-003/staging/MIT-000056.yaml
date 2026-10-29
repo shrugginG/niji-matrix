@@ -1,0 +1,102 @@
+schema_version: "2.0.0"
+type: mitigation
+id: MIT-000056
+name:
+  zh: BITS 作业权限、状态寿命与执行治理
+  en: BITS Job Permission, State-Lifetime, and Execution Governance
+summary:
+  zh: 以最小作业权限、受控网络范围、通知程序约束、有限寿命和可保留审计减少 BITS 后台状态触发执行机会。
+  en: Reduce BITS background state-triggered execution through least job privilege, constrained network scope, notification-program control, bounded lifetime, and retained audit.
+description:
+  paragraphs:
+    - zh: 本缓解不建议一律禁用 BITS，因为 Windows Update、软件分发、同步与多种业务应用依赖该服务。它把控制放在作业创建主体、文件与网络范围、优先级和成本策略、通知程序、重试与终结行为上：只有具有明确业务需要的用户、服务或管理工具才能创建和修改作业；远端 URL、目标目录和可执行通知必须符合批准策略；作业应在业务允许的最短寿命内 Complete 或 Cancel，并保留能够连接创建、状态和执行的审计。
+      en: This mitigation does not recommend disabling BITS universally because Windows Update, software distribution, synchronization, and many business applications depend on the service. Controls apply to the job-creating principal, file and network scope, priority and cost policy, notification program, retry, and finalization behavior. Only users, services, or management tools with a defined business need may create and modify jobs. Remote URLs, destination directories, and executable notifications must satisfy approved policy. Jobs should be completed or canceled within the shortest business-compatible lifetime while retaining audit that connects creation, state, and execution.
+    - zh: 控制目标是减少攻击者建立作业的机会、阻断未经批准的传输或通知程序、缩短未完成状态可被利用的时间，并让合法例外可以被归因，而不是依赖单一签名、进程名称或优先级。策略变化必须先在更新和部署工作流中测试；清理活动应保存作业 GUID、所有者、URL、文件、通知命令、状态与时间证据，以免处置本身破坏调查链。
+      en: The control objective is to reduce opportunities to create adversary jobs, block unapproved transfer or notification programs, shorten the exploitable lifetime of non-final state, and make legitimate exceptions attributable rather than relying on one signature, process name, or priority. Policy changes must first be tested against update and deployment workflows. Cleanup should preserve job GUID, owner, URL, files, notification command, state, and time evidence so remediation does not destroy the investigative chain.
+domains: [enterprise]
+measures:
+  - key: bits-creator-least-privilege
+    name:
+      zh: BITS 创建主体最小权限与归因
+      en: BITS Creator Least Privilege and Attribution
+    description:
+      paragraphs:
+        - zh: 盘点能够通过命令、PowerShell、远程 PowerShell 或 COM 创建和修改 BITS 作业的用户、服务和管理工具，移除无业务需要的权限，并把管理员跨用户枚举与变更操作纳入审计。允许的自动化身份应绑定资产范围、调用来源、作业类型和审批记录。
+          en: Inventory users, services, and management tools able to create or modify BITS jobs through command, PowerShell, remote PowerShell, or COM; remove permissions without business need and audit administrator cross-user enumeration and modification. Approved automation identities should be bound to asset scope, invocation origin, job type, and approval record.
+    control_type: governance
+  - key: bits-transfer-scope-control
+    name:
+      zh: BITS 网络与文件范围控制
+      en: BITS Network and File Scope Control
+    description:
+      paragraphs:
+        - zh: 通过主机与网络策略限制 BITS 可访问的域名、代理、协议和网络区域，并控制可写目标目录与下载后文件执行。对业务外 URL、回环或无效触发 URL、用户缓存和高权限目录实行额外审批或阻断，同时保留服务宿主与作业身份之间的映射。
+          en: Use host and network policy to restrict domains, proxies, protocols, and network zones reachable by BITS and control writable destination directories and post-download file execution. Require additional approval or blocking for off-business URLs, loopback or invalid trigger URLs, user caches, and privileged directories while retaining the mapping between service host and job identity.
+    control_type: preventive
+  - key: bits-notification-execution-control
+    name:
+      zh: BITS 通知程序执行控制
+      en: BITS Notification-Program Execution Control
+    description:
+      paragraphs:
+        - zh: 枚举并审核 SetNotifyCmdLine、通知标志、程序完整路径和参数，只允许与批准应用、签名发布者、受控目录和明确作业用途一致的通知程序。应用控制与端点行为策略应评估由 BITS 服务触发的用户上下文程序，而不能因父进程属于 Windows 服务就自动放行。
+          en: Enumerate and review SetNotifyCmdLine, notification flags, full program path, and arguments, allowing only notification programs consistent with approved applications, signed publishers, controlled directories, and explicit job purpose. Application control and endpoint behavior policy should evaluate user-context programs triggered by BITS rather than automatically allowing them because their parent belongs to a Windows service.
+    control_type: preventive
+  - key: bits-lifetime-audit-cleanup
+    name:
+      zh: BITS 寿命、审计与证据化清理
+      en: BITS Lifetime, Audit, and Evidence-Preserving Cleanup
+    description:
+      paragraphs:
+        - zh: 按业务需要配置 JobInactivityTimeout、MaxDownloadTime、作业数量、重试和带宽策略，定期识别长期 queued、error、transferred 未确认或跨重启作业。未经批准的对象在保存 GUID、所有者、文件、URL、命令、参数、状态与时间后 Complete 或 Cancel，并保证 BITS-Client 日志和必要 QMGR 取证覆盖最长允许寿命。
+          en: Configure JobInactivityTimeout, MaxDownloadTime, job counts, retry, and bandwidth policy according to business need and regularly identify long-lived queued, errored, unacknowledged transferred, or post-reboot jobs. Complete or cancel unapproved objects only after preserving GUID, owner, files, URL, command, arguments, state, and time, and retain BITS-Client logs and necessary QMGR forensics for the longest permitted lifetime.
+    control_type: exposure-reduction
+applications:
+  - target_ref: NJT-0063
+    use:
+      paragraphs:
+        - zh: 对 BITS 后台作业执行同时实施创建主体最小权限、网络与文件范围、通知程序审核和作业寿命控制。建立批准作业清单，把创建者、GUID、URL、目标路径、优先级、通知程序、审批与终结时间绑定为一项可审计记录；发现未经批准且具有执行语义的作业时，先隔离网络或阻断通知程序，再保存状态并安全取消。
+          en: Apply creator least privilege, network and file scope, notification-program review, and job-lifetime control together for BITS Background-Job Execution. Maintain an approved-job inventory binding creator, GUID, URL, destination path, priority, notification program, approval, and finalization time into one auditable record. When an unapproved job with execution semantics is found, first isolate network or block the notification program, then preserve state and cancel it safely.
+    expected_effect:
+      paragraphs:
+        - zh: 该应用减少攻击者创建自包含 BITS 执行链的主体与目的地，阻止非常见程序借 transferred 或 error 状态启动，缩短未完成作业存活时间，并为创建—传输—状态—执行关联保留稳定证据。攻击者需要取得更高价值身份、使用批准来源或转向可产生更多独立痕迹的执行机制。
+          en: This application reduces principals and destinations available for self-contained BITS execution chains, prevents uncommon programs from starting on transferred or error state, shortens unfinalized job lifetime, and preserves stable evidence for creation-transfer-state-execution correlation. The adversary must obtain a higher-value identity, use an approved origin, or shift to an execution mechanism that creates additional independent traces.
+    limitations:
+      paragraphs:
+        - zh: BITS 是操作系统和企业管理的共享依赖，过度收紧会破坏更新、部署和断点续传；具有合法 BITS 权限并使用批准 URL、目录和签名程序的攻击者仍可能绕过静态策略。控制必须与行为关联和定期基线复核共同使用，清理也不能替代对已执行载荷的调查。
+          en: BITS is a shared dependency for the operating system and enterprise management, so excessive restriction can break updates, deployment, and resumable transfer. An adversary with legitimate BITS permission using approved URLs, directories, and signed programs may still bypass static policy. Controls must operate with behavioral correlation and periodic baseline review, and job cleanup does not replace investigation of payloads that already executed.
+  - target_ref: NJS-0063-001
+    use:
+      paragraphs:
+        - zh: 对活动感知型后台传输执行，按创建应用和资产角色限定可用后台优先级、成本策略、代理、域名和目标目录，并要求任何带可执行通知的 normal 或 low 作业具备具体业务用途和到期时间。网络控制保留实际带宽与目的地，端点控制把同一 GUID 的通知程序和后继进程纳入审批验证，而不是禁止全部后台优先级。
+          en: For Activity-Aware Background Transfer Execution, constrain permitted background priorities, cost policy, proxy, domains, and destination directories by creating application and asset role, and require every normal- or low-priority job with executable notification to have a concrete business purpose and expiry. Network controls retain actual bandwidth and destination, while endpoint controls validate the notification program and successor process for the same GUID against approval rather than prohibiting all background priority.
+    expected_effect:
+      paragraphs:
+        - zh: 该应用缩小攻击者借用更新式带宽节奏和常见作业属性的空间，使非常见创建者、URL、目录或通知程序即使使用 normal 优先级也保持可区分，并提高长期维持与合法基线一致配置的成本。
+          en: This application narrows the space in which an adversary can borrow update-like bandwidth cadence and common job properties, keeps an uncommon creator, URL, directory, or notification program distinguishable even at normal priority, and raises the cost of maintaining configuration consistent with legitimate baselines over time.
+    limitations:
+      paragraphs:
+        - zh: 后台优先级是 BITS 的正常功能，固定阈值无法区分恶意与合法传输；动态网络条件还会使合法作业出现突发或长时间停顿。策略必须按应用和业务目标调优，且不能把低速本身当作阻断依据，否则会造成更新失败并仍漏掉使用高优先级的攻击者。
+          en: Background priority is a normal BITS function, and a fixed threshold cannot distinguish malicious from legitimate transfer. Dynamic network conditions can also make benign jobs burst or pause for long periods. Policy must be tuned by application and business destination and cannot use low rate alone as a blocking condition, or it will break updates while still missing adversaries that select higher priority.
+  - target_ref: NJS-0063-002
+    use:
+      paragraphs:
+        - zh: 对长驻作业延迟激活，重点审核 transferred 与 error 通知、完整程序路径、参数、minimum retry delay、no progress timeout 和未 Complete 或 Cancel 的状态。对无业务理由的回环或无效 URL、重复通知失败、跨重启未完成作业和用户缓存中的通知程序立即阻断执行；在取消作业前导出 Operational 事件和 QMGR 记录。
+          en: For Long-Lived Job Deferred Activation, focus review on transferred and error notification, full program path, arguments, minimum retry delay, no-progress timeout, and state left without Complete or Cancel. Immediately block execution for loopback or invalid URLs without business justification, repeated notification failure, unfinalized post-reboot jobs, and notification programs in user cache; export Operational events and QMGR records before canceling the job.
+    expected_effect:
+      paragraphs:
+        - zh: 该应用直接破坏保存于 BITS 状态中的未来触发，减少错误重试和跨重启通知能够运行的次数，缩短创建者与执行结果之间的可利用间隔，并使每个允许的长驻通知作业具有可追溯所有者和用途。
+          en: This application directly disrupts future triggers retained in BITS state, reduces the number of error retries and post-reboot notifications that can execute, shortens the exploitable interval between creator and outcome, and gives every allowed long-lived notification job an attributable owner and purpose.
+    limitations:
+      paragraphs:
+        - zh: 合法的大文件传输、不稳定网络和离线用户可能需要较长寿命或重试，某些应用也会使用通知程序完成安装；过早 Cancel 会删除临时文件并影响业务。攻击者若已在获准应用和用户上下文内配置通知，单纯寿命限制不能阻止首次执行，因此仍需应用控制、作业关联和结果调查。
+          en: Legitimate large transfers, unstable networks, and offline users may require long lifetime or retry, and some applications use notification programs to finish installation. Premature Cancel deletes temporary files and can affect business. If an adversary configures notification within an approved application and user context, lifetime limits alone cannot prevent first execution, so application control, job correlation, and outcome investigation remain necessary.
+evidence_refs: [REF-000115, REF-000135, REF-000137, REF-000138, REF-000141]
+lifecycle:
+  status: draft
+  version: "1.1.0"
+  created: "2026-09-10"
+  modified: "2026-09-10"
+  contributors:
+    - Niji Matrix Research
+  reviewers: []

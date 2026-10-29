@@ -1,0 +1,55 @@
+schema_version: "2.0.0"
+type: detection-analytic
+id: NJA-000062
+strategy_ref: DET-000083
+name: {zh: IPC 请求来源、消息寿命与 Broker 结果分析, en: IPC Request Origin Message-Lifetime and Broker-Outcome Analytic}
+summary: {zh: 构造跨协议 IPC 会话并验证真实客户端、请求语义、broker 身份和执行结果是否符合批准关系。, en: Construct cross-protocol IPC sessions and validate whether true client request semantics broker identity and execution outcome match an approved relation.}
+domains: [enterprise]
+platforms: [Windows, macOS, Linux]
+logic:
+  paragraphs:
+  - zh: 从 COM activation/method、Office DDE conversation、XPC/Mach/Apple Event、Sysmon pipe create/connect、Unix socket 与应用审计生成 ipc_session_id，记录 host、client/server PID 与 process entity、user/session、signature/team/entitlement、endpoint/object/CLSID/service、method、request/response time、content 或 normalized hash 和 status。若只存在连接元数据，显式标记 content_missing 而不猜测命令。
+    en: Generate an IPC session ID from COM activation or method Office DDE conversations XPC Mach or Apple Events Sysmon pipe create or connect Unix sockets and application audit. Record host client and server PID or process entity user or session signature team or entitlement endpoint object CLSID or service method request and response time content or normalized hash and status. When only connection metadata exists mark content missing explicitly rather than guessing a command.
+  - zh: 将 server/broker 在 request 后的调用栈、子进程/线程、脚本/模块、文件/注册表/TCC/权限和网络结果连接。受信 broker 分支比较 client—method—outcome 与批准服务协议；短驻分支在消息内容缺失时使用 request hash、session 与窄时序连接结果并降低置信度。只有结果是请求直接导致的新执行或高权限动作时确认，stdout/心跳/纯数据同步排除。
+    en: Join server or broker call stack child process or thread script or module file registry TCC or privilege and network outcomes after the request. The trusted-broker branch compares client-method-outcome to an approved service contract. The transient branch uses request digest session and narrow timing to join outcomes when content is absent and lowers confidence. Confirm only when the request directly causes new execution or a privileged action; exclude stdout heartbeats and pure data synchronization.
+data_requirements:
+- source_type: ipc-client-server-identity
+  name: {zh: IPC 客户端、Server 与代码身份, en: IPC client server and code identity}
+  channel: null
+  required_fields: [timestamp, host_id, client_process_entity, server_process_entity, user_or_session, client_signature_or_team, client_entitlement, server_signature_or_role]
+- source_type: ipc-session-and-message
+  name: {zh: Endpoint、对象、方法与消息, en: Endpoint object method and message}
+  channel: null
+  required_fields: [ipc_session_id, protocol, endpoint_or_service, object_or_clsid, method_or_verb, request_id, content_or_hash, content_missing, request_time, response_time, status]
+- source_type: broker-execution-outcome
+  name: {zh: Broker 调用栈、子进程与资源结果, en: Broker call stack child and resource outcome}
+  channel: null
+  required_fields: [timestamp, ipc_session_id_or_server_entity, broker_call_stack, child_thread_or_process, command_or_module_hash, file_or_registry_or_tcc_action, privilege_change, network_destination, outcome]
+- source_type: platform-ipc-policy
+  name: {zh: IPC ACL、签名/Entitlement 与 Office 功能策略, en: IPC ACL signing or entitlement and Office feature policy}
+  channel: null
+  required_fields: [endpoint_or_service, allowed_client_identity, allowed_method, argument_schema, expected_outcome, dde_or_feature_control_state, validity]
+- source_type: approved-ipc-baseline
+  name: {zh: 客户端—方法—Broker—结果批准基线, en: Approved client-method-broker-outcome baseline}
+  channel: null
+  required_fields: [application_role, client_identity, server_identity, endpoint_method, expected_message_hash_or_schema, expected_child_or_resource, approval_or_version, time_pattern]
+observables:
+- {zh: 未批准或签名/entitlement 不匹配 client 调用高权限 XPC/COM 方法，broker 随后运行脚本或修改受保护资源, en: An unapproved or signing or entitlement-mismatched client invokes a privileged XPC or COM method and the broker then runs a script or modifies a protected resource}
+- {zh: Office DDE conversation 后 Office 进程启动 cmd/shell，消息只留 hash 或在文档字段中出现非常见命令, en: An Office DDE conversation is followed by Office starting cmd or a shell with the message retained only as a hash or an unusual command in a document field}
+- {zh: 命名 pipe/socket 连接由非常见 client 建立，server 在短窗内创建新线程/进程或执行下载内容，而无批准协议, en: A named pipe or socket connection from an uncommon client is followed by the server creating a thread or process or executing downloaded content without an approved protocol}
+correlation:
+  window: {zh: 从 IPC request 前一分钟到 broker 结果后一小时；长驻 service 按 ipc_session_id/request_id 保留二十四小时。, en: From one minute before the IPC request through one hour after the broker outcome with long-lived services retaining twenty-four hours by IPC session or request ID.}
+  dimensions: [host, client_process, server_process, user_session, signature_team_entitlement, protocol, endpoint, object_clsid, method, request_id, content_hash, broker_stack, child_process, resource_outcome, policy, time]
+false_positives:
+- {zh: Office 数据链接、辅助功能/自动化、软件更新器、浏览器 native messaging、备份/管理代理、调试与受控安全测试, en: Office data links accessibility or automation software updaters browser native messaging backup or management agents debugging and authorized security testing}
+blind_spots:
+- {zh: 只记录连接不记录方法/消息、短驻 buffer 在采集前消失或 client 进程提前退出, en: Connection-only logging without method or message transient buffers disappear before collection or client exits early}
+- {zh: 被攻陷批准 client 使用合法签名/entitlement 和正常消息 schema，恶意结果发生在 broker 进程内部无子进程, en: A compromised approved client uses valid signing or entitlement and normal message schema while malicious outcome stays inside broker without a child}
+tuning_guidance:
+  paragraphs:
+  - zh: 按应用和 OS 版本建立 client—endpoint/method—broker—outcome 合同，而不是按 pipe 名称、Office/Finder 或 COM/XPC 协议永久放行。对高权限方法要求精确 client code identity/entitlement，DDE 与 Office 子进程单独基线；内容缺失和内容恶意分层输出。
+    en: Baseline client-endpoint or method-broker-outcome contracts by application and OS version rather than permanently allowing pipe names Office Finder or COM or XPC protocols. Require exact client code identity or entitlement for privileged methods and baseline DDE and Office child processes separately. Tier content-missing and malicious-content outcomes.
+  - zh: 使用受控 COM/DDE/XPC/pipe 测试确认平台事件实际包含哪些 ID 和内容；无法保留原文时记录规范化 hash、长度、类型和 schema 验证结果。消息可能含敏感数据，实行加密、最小访问和有限保留，不能因隐私直接关闭全部会话关联。
+    en: Use controlled COM DDE XPC and pipe tests to determine actual IDs and content in platform events. When raw content cannot be retained record normalized hashes length type and schema-validation result. Messages can contain sensitive data and need encryption least access and bounded retention without disabling all session correlation for privacy.
+evidence_refs: [REF-000227, REF-000228, REF-000229, REF-000230, REF-000231, REF-000232]
+lifecycle: {status: review, version: 0.1.0, created: '2026-09-12', modified: '2026-09-12', contributors: [Niji Matrix Research], reviewers: []}

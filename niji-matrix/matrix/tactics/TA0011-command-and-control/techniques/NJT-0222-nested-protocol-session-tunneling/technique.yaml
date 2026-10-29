@@ -1,0 +1,238 @@
+schema_version: 2.0.0
+type: technique
+id: NJT-0222
+name:
+  zh: 嵌套协议会话隧道
+  en: Nested-Protocol Session Tunneling
+summary:
+  zh: 攻击者把完整或可识别的内层控制/访问会话封装进另一外层协议或连接，使边界设备只按外层解析，从而穿越过滤并隐藏真实服务关系。
+  en: An adversary encapsulates an intact or recognizable inner control or access session in another outer protocol or connection
+    so boundary devices parse only the outer layer, enabling filter traversal and concealing the real service relationship.
+aliases:
+- Protocol Tunneling
+classification:
+  tactic_refs:
+  - TA0011
+  origin:
+    kind: attack-retained
+    source_attack_id: T1572
+    source_attack_version: '19.1'
+  decision_ref: DEC-TA0011-T1572
+definition_and_concept:
+  paragraphs:
+  - zh: 嵌套协议会话隧道是攻击者让一条具有自身端点、状态、消息顺序或服务语义的内层通信，经隧道客户端封装、分片或多路复用后由另一外层协议/连接传输，并在隧道另一端解封装或重组的行为。直接目的是让原本不可路由、会被过滤或会触发专用解析器的
+      SMB、RDP、Tor、自定义 C2 或其他内层会话，在允许的 HTTPS、SSH、DNS、WebSocket 或等价外层路径上继续工作。
+    en: Nested-Protocol Session Tunneling is adversary behavior in which an inner communication with its own endpoints, state,
+      message order, or service semantics is encapsulated, fragmented, or multiplexed by a tunnel client, carried by another
+      outer protocol or connection, and decapsulated or reassembled at the far end. Its direct purpose is to keep SMB, RDP,
+      Tor, a custom C2 protocol, or another inner session operating across an allowed HTTPS, SSH, DNS, WebSocket, or equivalent
+      outer path when the inner session would otherwise be unroutable, filtered, or subject to a dedicated parser.
+  - zh: 概念锚是两层可分离语义：外层满足承载、路由或事务要求，内层在解封装后仍保持可识别的会话结构或目标服务关系。外层协议、隧道工具、加密算法、端口和厂商只是实现；若命令直接按 DNS、HTTP 或 MQTT 应用事务表达而没有独立内层会话，应研究
+      NJT-0160。若自定义 C2 直接运行在 TCP、UDP 或 ICMP 字节上而没有外层封装，应研究 NJT-0208。
+    en: The conceptual anchor is two separable semantics. The outer layer satisfies carriage, routing, or transaction requirements,
+      while the inner layer retains a recognizable session structure or target-service relationship after decapsulation. Outer
+      protocol, tunneling tool, encryption algorithm, port, and vendor are implementations. Commands expressed directly as
+      DNS, HTTP, or MQTT transactions without an independent inner session belong under NJT-0160, while custom C2 running
+      directly in TCP, UDP, or ICMP bytes without outer encapsulation belongs under NJT-0208.
+stealth_characteristics:
+  paragraphs:
+  - zh: 隧道改变防守方可见的协议栈和端点关系。网络边界可能只看到一个到允许 Web、SSH、DNS 或云端点的外层连接，内层的服务端口、目标主机、会话数量和命令结果不再对应外层五元组。事务化隧道把一个内层会话拆为许多合法形态的查询/响应，多路复用隧道又把多个内层流压入一个长期外层连接；只按端口、单事务、单五元组或外层协议分类的检测因此丢失真实控制图。
+    en: Tunneling changes the protocol stack and endpoint relationship visible to defenders. A boundary sensor may see only
+      one outer connection to an allowed web, SSH, DNS, or cloud endpoint, while inner service ports, destination hosts, session
+      count, commands, and results no longer correspond to the outer five-tuple. A transactionized tunnel splits one inner
+      session across many legitimate-looking queries and responses, while a multiplexed tunnel compresses several inner streams
+      into one long-lived outer connection. Detection keyed only to port, one transaction, one five-tuple, or the outer protocol
+      therefore loses the real control graph.
+  - zh: 隧道仍留有内外层关联残迹：隧道进程或配置、监听/转发规则、同一进程或 tunnel ID 的本地与外部 socket、外层长连接、字节与方向关系、WebSocket/SSH/VPN 控制面、多路流 ID、DNS 分片序号，以及解封装后的服务登录、命令、文件访问或远程桌面结果。能取得端点
+      socket 归属、隧道控制日志或原始报文并执行解封装的防守方可以恢复内层；若外层和内层都加密、隧道位于无 EDR 设备、提供方日志不可得或只保留聚合 flow，则结论只能降为隧道候选。
+    en: 'Tunnels leave inner-to-outer linkage residue: tunnel process or configuration, listener and forwarding rules, local
+      and external sockets owned by one process or tunnel ID, a long-lived outer connection, byte and direction relationships,
+      WebSocket, SSH, or VPN control state, multiplexed stream IDs, DNS fragment sequence, and post-decapsulation service
+      login, command, file access, or remote-desktop outcome. Defenders with endpoint socket ownership, tunnel-control logs,
+      or raw packets and a decapsulator can recover the inner layer. If outer and inner layers are both encrypted, the tunnel
+      resides on an agentless appliance, provider logs are unavailable, or only aggregated flow is retained, classification
+      must remain a tunnel candidate.'
+scope_boundary_definition:
+  paragraphs:
+  - zh: 纳入至少需要四项证据：可识别的内层会话或服务语义、外层承载事务或连接、封装/解封装或分片/重组关系、以及后继 C2 或访问结果。APT29 的 Tor→HTTP→TLS→本地 SMB/RDP 链、TrickBot 的 DNS 片段→重组→HTTP
+      版同构命令、BRICKSTORM 的外层 WebSocket/TLS→Yamux 流→文件管理/网络隧道，均满足该门。仅看到外层异常、工具落地、监听器、VPN 登录或大流量只构成 exposure。
+    en: 'Inclusion requires at least four evidence elements: a recognizable inner session or service semantic, an outer carrier
+      transaction or connection, an encapsulation-decapsulation or fragmentation-reassembly relationship, and a successor
+      C2 or access outcome. APT29''s Tor-to-HTTP-to-TLS-to-local-SMB-or-RDP chain, TrickBot''s DNS-fragments-to-reassembly-to-HTTP-isomorphic-command
+      chain, and BRICKSTORM''s outer-WebSocket-or-TLS-to-Yamux-stream-to-file-manager-or-network-tunnel chain satisfy this
+      gate. An anomalous outer flow, installed tool, listener, VPN login, or large transfer alone is exposure.'
+  - zh: '`NJT-0206`/T1090 的直接对象是中介节点接收一段连接并转发另一段，负载可以没有协议嵌套；本技术拥有内层语义被外层承载的关系。一个 meek/CDN、SOCKS-over-Yamux 或 SSH 跳板可同时是代理与隧道，但必须分别证明两段转发和内外层封装。`NJT-0160`
+      拥有真实应用事务本身承担任务/结果，`NJT-0208` 拥有无外层应用的直接低层 C2；简单 DNS C2 或 raw TCP 不因名称成为隧道。'
+    en: '`NJT-0206` and T1090 directly concern an intermediary receiving one connection leg and forwarding another, and the
+      payload need not be nested. This technique owns the relationship in which outer carriage contains inner semantics. A
+      meek or CDN path, SOCKS over Yamux, or an SSH jump host can be both proxy and tunnel, but the two-leg relay and inner-to-outer
+      encapsulation require separate evidence. `NJT-0160` owns real application transactions directly carrying tasking and
+      results, while `NJT-0208` owns direct lower-layer C2 without an outer application. Simple DNS C2 or raw TCP does not
+      become tunneling by name.'
+  - zh: T1573 只负责攻击者额外施加密码变换造成的无密钥不可恢复性；SSH、TLS 或 VPN 外层可能同时加密隧道，但加密不证明内层协议，解封装也不等同解密。`NJT-0212`/T1219 负责合法 IDE、RMM 或硬件远控工作流成为交互控制能力；其产品
+      session 只有在确实承载另一完整会话时才并列 T1572。合法企业 VPN、服务网格 sidecar、远程管理端口转发、开发隧道、灾备和监控 overlay 是强反例，需按批准 owner、identity、peer、inner
+      service、domain pair、工单和期限排除。
+    en: T1573 owns attacker-added cryptographic transformation that is unrecoverable without a key. An SSH, TLS, or VPN outer
+      layer may encrypt a tunnel, but encryption does not prove an inner protocol and decapsulation is distinct from decryption.
+      `NJT-0212` and T1219 own legitimate IDE, RMM, or hardware remote-control workflows becoming interactive control capabilities;
+      their product session co-classifies with T1572 only when it carries another intact session. Approved enterprise VPN,
+      service-mesh sidecar, administrative forwarding, development tunnel, disaster recovery, and monitoring overlay are strong
+      counterexamples and require exclusion by approved owner, identity, peer, inner service, domain pair, ticket, and expiry.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: 在禁止直接 RDP、SMB 或 Tor 的企业中，攻击者可在受害主机或边缘设备运行隧道端点，让本地服务或 Tor hidden service 的内层连接进入一个允许的 HTTPS/TLS 外层；远端解封装后继续路由到操作者。APT29
+        的 meek 链让边界看见 Google 相关 TLS/HTTP，而内层提供本地 139、445 和 3389 端口访问。若还经 CDN 中介转发，则 T1090 与本技术并列。
+      en: In an enterprise that blocks direct RDP, SMB, or Tor, an adversary can run a tunnel endpoint on a victim or edge
+        appliance and place the inner connection from a local service or Tor hidden service inside an allowed HTTPS or TLS
+        outer layer for remote decapsulation and routing to the operator. APT29's meek chain left the boundary observing Google-related
+        TLS and HTTP while the inner relationship exposed local ports 139, 445, and 3389. Where a CDN intermediary also forwards
+        the path, T1090 co-classifies.
+    - zh: 另一类场景把一个内层 C2 协议拆入许多外层事务，或把多个并发内层会话汇聚到一个外层 socket。TrickBot 用 DNS 查询/响应传输带 session ID、片号和总片数的命令协议并在内存重组；BRICKSTORM
+        在 WebSocket 与嵌套 TLS 内使用 Yamux 为网络隧道和多个文件管理用户建立并发流。两者分别改变事务关联范围和外层连接计数。
+      en: Another scenario places one inner C2 protocol across many outer transactions or converges multiple concurrent inner
+        sessions into one outer socket. TrickBot transports a command protocol with session ID, fragment index, and fragment
+        count in DNS queries and responses and reassembles it in memory. BRICKSTORM uses Yamux inside WebSocket and nested
+        TLS to establish concurrent streams for network tunneling and multiple file-manager users. These respectively change
+        transaction correlation scope and the number of visible outer connections.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者需要控制隧道两端或控制一个端点和可用的解封装服务，理解内外层的 framing、错误、顺序和流控，并在目标处取得足够权限创建 socket、监听、转发配置或加载组件。事务化隧道还需处理递归器缓存、重排、大小和字符限制；多路复用需管理
+          stream ID、并发、背压和重连；服务端点封装需能接触本地或内部服务。复杂嵌套增加延迟、带宽开销、故障点和可识别状态机。
+        en: The adversary needs control of both tunnel endpoints, or one endpoint plus an available decapsulation service,
+          knowledge of inner and outer framing, errors, ordering, and flow control, and sufficient target privileges to create
+          sockets, listeners, forwarding configuration, or loaded components. Transactionized tunnels must handle resolver
+          caching, reordering, size, and character constraints. Multiplexing requires stream IDs, concurrency, backpressure,
+          and reconnect behavior. Service-endpoint encapsulation requires access to local or internal services. Complex nesting
+          adds delay, bandwidth overhead, failure modes, and recognizable state machines.
+    defender_model:
+      paragraphs:
+      - zh: 防守方需要同时观察端点进程/服务与 socket、外层连接/事务、隧道或代理控制面、内层目标服务，以及批准路径目录。稳定键包括 device、process start key、listener、local/remote
+          socket、outer uid/flow、tunnel/session/stream ID、transaction ID、inner destination/service、identity 和 time。对 IP/GRE
+          等可识别封装，Zeek tunnel_parents 可把 conn.log 内层连接连到 tunnel.log 外层；对 SSH、TLS、WebSocket、DNS 等应用隧道，通常需端点或专用解封装器补足。
+        en: Defenders need concurrent visibility into endpoint processes or services and sockets, outer connections or transactions,
+          tunnel or proxy control state, inner destination service, and an approved-path inventory. Stable keys include device,
+          process-start key, listener, local and remote socket, outer uid or flow, tunnel, session, or stream ID, transaction
+          ID, inner destination or service, identity, and time. For recognizable IP or GRE encapsulation, Zeek tunnel_parents
+          can join an inner conn.log relationship to an outer tunnel.log record. SSH, TLS, WebSocket, and DNS application
+          tunnels usually require endpoint telemetry or a purpose-built decapsulator.
+      - zh: 只有外层 flow 时，长连接、字节比、DNS 标签长度或 WebSocket 使用只能生成形态候选；不能声称看到 RDP、SMB、Tor 或命令。外层加密、内层再次加密、无 EDR 边缘设备、NAT/代理、内核隧道和第三方服务会破坏归因。防守模型还必须包含合法
+          VPN、服务网格、SSH 运维、IDE tunnel 与远控平台的 owner、workload、peer、inner service 和变更期限，否则正常隧道会成为主要误报。
+        en: With outer flow alone, a long connection, byte ratio, DNS-label length, or WebSocket use produces only a shape
+          candidate and cannot claim observed RDP, SMB, Tor, or commands. Outer encryption, inner re-encryption, an agentless
+          edge appliance, NAT or proxying, kernel tunnels, and third-party services break attribution. The defender model
+          must also inventory owner, workload, peer, inner service, and change validity for legitimate VPNs, service meshes,
+          SSH administration, IDE tunnels, and remote-control platforms, or normal tunnels dominate false positives.
+stealth_mechanisms:
+- mechanism_ref: NM-BT
+  role: primary
+  summary:
+    zh: 外层解析边界使内层会话落出现有检测视野
+    en: The outer parse boundary moves the inner session outside existing detection visibility
+  analysis:
+    paragraphs:
+    - zh: 攻击者把内层服务或控制会话封装进允许的外层，使边界传感器记录外层协议、端点和事务，而针对内层协议的解析器、端口策略或服务审计不被调用。关键行为实际发生，但没有进入对应分析视野，形成行为透明。APT29 的本地 SMB/RDP
+        经 Tor/meek/HTTPS 暴露、TrickBot 的 HTTP 同构命令经 DNS 分片重组和 BRICKSTORM 的多层 WebSocket/TLS/Yamux 均直接支持行为—痕迹差；具体组织是否漏报仍需本地传感器验证。
+      en: The adversary encapsulates an inner service or control session in an allowed outer layer, causing boundary sensors
+        to record the outer protocol, endpoints, and transactions while parsers, port policies, or service audit for the inner
+        protocol are not invoked. Critical behavior occurs without entering its corresponding analytic view, producing Behavioral
+        Transparency. APT29 exposure of local SMB and RDP through Tor, meek, and HTTPS, TrickBot reassembly of HTTP-isomorphic
+        commands from DNS fragments, and BRICKSTORM layering of WebSocket, TLS, and Yamux directly support the behavior-to-trace
+        difference. Whether a particular organization misses it still requires local sensor validation.
+  evidence_refs:
+  - REF-000625
+  - REF-001024
+  - REF-001142
+  - REF-001141
+  confidence: high
+subtechnique_taxonomy:
+  narrative:
+    paragraphs:
+    - zh: 建议建立三个 Niji 原生子项。内层服务端点解耦控制内层服务 socket 与外层出口 socket 是否由隧道端点分开，需端点 socket/服务结果关联；外层会话多流汇聚控制多个并发内层逻辑流是否合并进一个外层连接，需
+        stream demux 或连接 fan-in 图；内层流事务化重组控制一个有状态内层会话是否被拆成多个外层请求/响应，需跨事务按 session、fragment 和 offset 重组。三者分别改变端点关系、连接基数和事务连续性，防御不互换。
+      en: Three Niji-native children are proposed. Inner-Service Endpoint Decoupling controls whether a tunnel endpoint separates
+        the inner service socket from the outer egress socket and requires endpoint socket and service-outcome joins. Outer-Session
+        Multi-Stream Convergence controls whether several concurrent inner logical streams merge into one outer connection
+        and requires stream demultiplexing or a connection fan-in graph. Transactionized Inner-Stream Reassembly controls
+        whether one stateful inner session is divided across outer requests and responses and requires cross-transaction reconstruction
+        by session, fragment, and offset. They change endpoint relationships, connection cardinality, and transaction continuity
+        respectively and need different defenses.
+    - zh: DNS、HTTP、SSH、VPN、Tor、Yamux、SOCKS 和具体工具都只是实现。一个样本可同时满足多个变量，例如 BRICKSTORM 在一个外层连接中汇聚多个网络隧道，并可能把内部服务经 SOCKS 暴露；分类可并列，但不能按每种协议建
+        NJS。普通单流隧道留在父级；只有代理两段关系而无内层语义归 NJT-0206，只有应用事务直接承载命令归 NJT-0160，只有外层密码保护归 T1573。
+      en: 'DNS, HTTP, SSH, VPN, Tor, Yamux, SOCKS, and specific tools are implementations. One sample may satisfy several
+        variables: BRICKSTORM converges multiple network tunnels in one outer connection and may expose internal services
+        through SOCKS. Co-classification is allowed, but protocols do not receive separate NJS. Ordinary single-stream tunneling
+        remains parent-level. A two-leg relay without inner semantics belongs to NJT-0206, direct command carriage by application
+        transactions belongs to NJT-0160, and outer cryptographic protection alone belongs to T1573.'
+  coverage: established
+  subtechnique_refs:
+  - NJS-0222-001
+  - NJS-0222-002
+  - NJS-0222-003
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000258
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000172
+    - MIT-000200
+evidence:
+  claim_refs:
+  - CLM-001102
+  - CLM-001103
+  - CLM-001104
+  - CLM-001105
+  - CLM-001106
+  - CLM-001107
+  case_refs:
+  - CASE-000337
+  - CASE-000338
+  reference_refs:
+  - REF-001141
+  - REF-001142
+  - REF-001143
+  - REF-001144
+  - REF-001145
+  - REF-000625
+  - REF-001024
+  - REF-000230
+  - REF-000632
+  - REF-000634
+  - REF-000635
+research:
+  limitations:
+    paragraphs:
+    - zh: 三项主证据处于不同层级。APT29/meek 是 Mandiant 现场观察，能证明外层 HTTPS/Tor 与本地服务关系，但同时含域前置、中介路由和双层加密，不能把所有匿迹效果只归因于隧道。BRICKSTORM 是多个样本和事件响应材料的逆向，可证明多路
+        framing，生产网络若无密钥仍可能不可解。TrickBot 是捕获样本与模拟服务端的实验链，应把客户端结构和实验响应严格区分。
+      en: The three primary sources have different evidence levels. APT29 and meek are Mandiant field observations proving
+        an outer HTTPS or Tor to local-service relationship, but the event also includes domain fronting, intermediary routing,
+        and layered encryption, so stealth effect cannot be attributed solely to tunneling. BRICKSTORM combines multiple samples
+        and incident-response material and establishes multiplex framing, while production traffic may remain undecodable
+        without keys. TrickBot combines captured samples with a simulated server and requires strict separation between direct
+        client structure and experimental responses.
+    - zh: Zeek tunnel.log 只对支持的网络层封装提供可靠 tunnel_parent，不能普遍解出 SSH、TLS、WebSocket、Yamux 或自定义 DNS。Sysmon Event 3 默认关闭且只记录连接，不完整覆盖
+        listen/accept；端点 socket 图通常需要 EDR/eBPF 或平台专用审计。缺少这些字段时，长连接、fan-in、字节比和 DNS 形态只支持候选，不满足正式 T1572 结果门。
+      en: Zeek tunnel.log supplies reliable tunnel_parent linkage only for supported network-layer encapsulation and does
+        not generally decode SSH, TLS, WebSocket, Yamux, or custom DNS. Sysmon Event 3 is disabled by default and records
+        connections without complete listen or accept coverage; endpoint socket graphs usually need EDR, eBPF, or platform-specific
+        audit. Without those fields, a long connection, fan-in, byte ratio, or DNS shape supports a candidate only and does
+        not pass the formal T1572 outcome gate.
+    - zh: 生产环境广泛使用合法 VPN、服务网格、SSH forwarding、IDE tunnels、远控 relay、数据库代理和 HTTP/2/QUIC 多路复用。缓解措施若仅按工具、端口、加密或并发数阻断会产生显著业务影响，也可被改名绕过。必须以批准
+        path graph、身份、inner service、outer peer、配置摘要和期限实施；OpenSSH 控制不能阻止有 shell 权限的用户安装另一 forwarder。
+      en: Production environments widely use legitimate VPNs, service meshes, SSH forwarding, IDE tunnels, remote-control
+        relays, database proxies, and HTTP/2 or QUIC multiplexing. Controls based only on tool, port, encryption, or concurrency
+        cause significant business impact and are bypassed by renaming. Enforcement needs an approved path graph, identity,
+        inner service, outer peer, configuration digest, and expiry. OpenSSH controls cannot stop a user retaining shell access
+        from installing another forwarder.
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-10-05'
+  modified: '2026-10-05'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

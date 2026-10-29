@@ -1,0 +1,168 @@
+handoff_schema_version: 2.0.0
+type: technique-research-handoff
+batch_ref: BATCH-TA0002-001
+work_item_ref: WORK-TA0002-T1559
+temporary_key_prefix: EX1-T1559
+candidate:
+  source_type: attack
+  source_attack_id: T1559
+  name:
+    zh: 进程间通信
+    en: Inter-Process Communication
+recommendation:
+  decision: adapt
+  confidence: medium
+  rationale:
+    paragraphs:
+    - zh: 恶意请求可混入 COM、DDE、XPC、管道、套接字或消息队列等正常通信，结果进程的直接父体和签名可能仍然可信；异常需要从请求者、端点、方法和执行结果联合恢复，能够形成稳定匿迹因果链；因此建议 adapt。
+      en: 'The candidate has the following causal basis: a malicious request can blend into normal COM, DDE, XPC, pipe, socket, or message-queue traffic while the resulting process retains
+        a trusted direct parent and signature; the anomaly requires joint recovery of requester, endpoint, method, and execution outcome. It forms a stable stealth chain and is recommended
+        for adapt.'
+proposed_content:
+  summary:
+    zh: 攻击者通过滥用本地进程间通信接口，把攻击者请求交给另一进程、服务或代理解释并执行代码或命令，并利用执行路径的正常外观或观察断点降低识别和归因概率。
+    en: 'Adversaries perform the following behavior: abusing local inter-process communication interfaces to have another process, service, or broker interpret an adversary request and
+      execute code or commands. They exploit normal execution appearance or observation breaks to reduce detection and attribution.'
+  definition_and_concept:
+    paragraphs:
+    - zh: 匿迹化进程间通信执行是指滥用本地进程间通信接口，把攻击者请求交给另一进程、服务或代理解释并执行代码或命令。其直接目标是通过既有进程边界和正常消息通道间接获得执行，并借用接收进程的身份与能力；在攻击执行战术中，以攻击者控制的代码、命令或任务开始运行为完成点，并以直接执行路径而不是工具、产品或文件格式界定对象。
+      en: Stealth-Conforming Inter-Process Execution means abusing local inter-process communication interfaces to have another process, service, or broker interpret an adversary request
+        and execute code or commands. Its direct objective is to obtain execution indirectly across an existing process boundary and normal message channel while borrowing the receiver's
+        identity and capabilities. Under the Execution tactic, the object ends when adversary-controlled code, a command, or a task begins to run and is defined by its direct execution
+        path rather than by tool, product, or file format.
+  stealth_characteristics:
+    paragraphs:
+    - zh: 匿迹化进程间通信执行的匿迹性来自恶意请求可混入 COM、DDE、XPC、管道、套接字或消息队列等正常通信，结果进程的直接父体和签名可能仍然可信；异常需要从请求者、端点、方法和执行结果联合恢复。这会改变执行来源、时间、父进程、内容可见性或控制层之间的痕迹关系，使防守方需要跨数据域恢复意图；相关控制调用、进程结果、完整性差异和时间关系仍是残余可观测线索。
+      en: 'The stealth of Stealth-Conforming Inter-Process Execution has the following basis: a malicious request can blend into normal COM, DDE, XPC, pipe, socket, or message-queue
+        traffic while the resulting process retains a trusted direct parent and signature; the anomaly requires joint recovery of requester, endpoint, method, and execution outcome.
+        This changes trace relationships involving execution provenance, timing, parent process, content visibility, or control layers, forcing defenders to recover intent across data
+        domains. Control invocations, process outcomes, integrity differences, and temporal relationships remain residual observables.'
+  scope_boundary_definition:
+    paragraphs:
+    - zh: 本技术纳入IPC 请求直接导致接收进程执行代码、命令或启动后继进程的行为；排除按 COM、DDE 或 XPC 名称继承 ATT&CK 子项、只交换数据而无执行语义的 IPC、执行流劫持和直接原生 API 调用。合法运维、软件功能、用户交互或自动化可能产生相似痕迹，只有攻击者有意利用相应执行路径改变防守观察并推动恶意操作时才属于本对象。
+      en: This technique includes IPC requests that directly cause a receiver to execute code or commands or start a successor process and excludes ATT&CK children inherited by COM,
+        DDE, or XPC name, IPC that only exchanges data without execution semantics, hijacked execution flow, and direct native-API invocation. Legitimate operations, software functions,
+        user interaction, or automation can produce similar traces; the object applies only when the adversary intentionally uses the execution path to change defender observation and
+        advance malicious activity.
+  application_scenarios_and_threat_model:
+    application_scenarios:
+      paragraphs:
+      - zh: 攻击者已在端点取得代码或脚本执行，希望通过受信应用、系统代理或具有更合适权限的进程完成间接命令执行时使用。
+        en: An adversary uses the technique after obtaining code or script execution on an endpoint and wants indirect command execution through a trusted application, system broker,
+          or process with more suitable privileges.
+    threat_model:
+      attacker_model:
+        paragraphs:
+        - zh: 攻击者需要访问目标 IPC 端点、了解消息或接口语义，并满足接收进程的权限与协议约束；访问控制和接口强化会缩小可用路径。
+          en: The adversary needs access to the target IPC endpoint, knowledge of message or interface semantics, and compliance with receiver permissions and protocol constraints; access
+            control and interface hardening reduce available paths.
+      defender_model:
+        paragraphs:
+        - zh: 防守方假定可见部分 IPC 创建与访问、进程谱系、模块或脚本执行，但许多 IPC 消息没有统一审计，且合法应用会产生高频通信。
+          en: The defender is assumed to see some IPC creation and access, process lineage, module or script execution, but many IPC messages lack uniform auditing and legitimate applications
+            generate high-volume communication.
+  stealth_mechanisms:
+  - mechanism_ref: NM-BT
+    role: primary
+    summary:
+      zh: 利用 IPC 消息审计不足隐藏执行请求
+      en: Exploit weak IPC message auditing to hide execution requests
+    analysis:
+      paragraphs:
+      - zh: 该行为设计使防守方可能看到接收进程的结果却缺少完整请求内容和发起者上下文。关键执行语义落在原有监控或关联逻辑之外，防守方虽可见局部结果却难以还原完整因果，因此形成行为透明效果。残余可观测线索仍包括控制请求、进程结果、完整性变化或跨层时间关系，扩大遥测范围可以削弱这种匿迹。
+        en: This behavior design means the defender may see the receiver's outcome without complete request content and initiator context. Critical execution semantics fall outside existing
+          monitoring or correlation logic. Defenders may see local outcomes but struggle to recover full causality, producing a Behavioral Transparency effect. Residual observables still
+          include control requests, process outcomes, integrity changes, or cross-layer timing, so broader telemetry can weaken the stealth effect.
+    evidence_refs:
+    - REF-000124
+    confidence: medium
+  - mechanism_ref: NM-FD
+    role: secondary
+    summary:
+      zh: 借用受信接收进程承载恶意结果
+      en: Borrow a trusted receiving process to carry the malicious outcome
+    analysis:
+      paragraphs:
+      - zh: 该行为设计使后继动作由正常应用、代理或服务发起并继承其直接谱系。恶意活动与合法实体共享可见特征，单点规则难以准确区分，因而形成特征伪装效果。残余可观测线索仍包括控制请求、进程结果、完整性变化或跨层时间关系，扩大遥测范围可以削弱这种匿迹。
+        en: This behavior design means follow-on activity is launched by a normal application, broker, or service and inherits its immediate lineage. The malicious activity shares visible
+          features with legitimate entities, weakening point classification and producing a Feature Disguise effect. Residual observables still include control requests, process outcomes,
+          integrity changes, or cross-layer timing, so broader telemetry can weaken the stealth effect.
+    evidence_refs:
+    - REF-000124
+    confidence: medium
+proposed_subtechniques:
+- canonical_ref: NJS-0072-001
+  name:
+    zh: 受信进程执行代理
+    en: Trusted-Process Execution Brokerage
+  stable_variable:
+    zh: 选择正常应用或系统代理作为 IPC 接收者，让其代为启动命令或加载代码
+    en: selecting a normal application or system broker as the IPC receiver so it launches a command or loads code on the adversary's behalf
+  evidence_refs:
+  - REF-000124
+  confidence: medium
+- canonical_ref: NJS-0072-002
+  name:
+    zh: 短驻 IPC 请求执行
+    en: Transient IPC-Request Execution
+  stable_variable:
+    zh: 把执行语义放在一次性消息、管道或套接字事务中，不创建可长期检查的脚本或任务对象
+    en: placing execution semantics in a one-shot message, pipe, or socket transaction without creating a long-lived script or task object
+  evidence_refs:
+  - REF-000124
+  confidence: medium
+defense_candidates:
+  detection_strategies:
+  - DET-000059
+  detection_analytics:
+  - NJA-000034
+  mitigations:
+  - MIT-000058
+existing_library_reuse:
+  reference_refs: []
+  claim_refs: []
+  case_refs: []
+  strategy_refs: []
+  analytic_refs: []
+  mitigation_refs: []
+  relationship_refs: []
+library_candidates:
+  references:
+  - REF-000124
+  claims:
+  - CLM-000274
+  - CLM-000275
+  - CLM-000276
+  cases: []
+  detection_strategies:
+  - DET-000059
+  detection_analytics:
+  - NJA-000034
+  mitigations:
+  - MIT-000058
+  relationships: []
+research:
+  limitations:
+    paragraphs:
+    - zh: IPC 广泛用于正常软件协调，端点名称或管道存在不能证明执行滥用；公开证据常描述接口和案例，但跨平台消息级遥测覆盖差异很大。
+      en: IPC is pervasive in normal software coordination, and an endpoint name or pipe does not prove execution abuse. Public evidence describes interfaces and cases, but message-level
+        telemetry coverage varies substantially across platforms.
+  rejected_mechanisms: []
+  open_questions: []
+integration:
+  status: complete
+  resolutions:
+  - disposition: create
+    objects:
+    - REF-000124
+    - CLM-000274
+    - NJT-0072
+    - CLM-000275
+    - CLM-000276
+    - NJS-0072-001
+    - NJS-0072-002
+    - DET-000059
+    - NJA-000034
+    - MIT-000058
+  - disposition: defer
+    objects: []

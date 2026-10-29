@@ -1,0 +1,44 @@
+schema_version: "2.0.0"
+type: mitigation
+id: MIT-000084
+name: {zh: IPC 对等身份、Handler 与请求审计治理, en: IPC Peer Identity Handler and Request-Audit Governance}
+summary: {zh: 以对等代码身份、最小可执行方法、参数校验、DDE/自动化限制和请求—结果审计降低受信 broker 与短驻 IPC 滥用。, en: Reduce trusted-broker and transient IPC abuse through peer code identity least executable methods argument validation DDE or automation restrictions and request-to-outcome audit.}
+description:
+  paragraphs:
+  - zh: 本缓解不禁用所有 IPC，而把每个可产生执行/高权限结果的 endpoint 视为安全边界。server 必须验证 client 用户、进程代码签名、team/entitlement、ACL 与 session，暴露最小方法和严格参数 schema；Office DDE/自动更新在无业务需求时关闭，在有需求时限定文档来源、Protected View 与子进程；pipe/socket 使用最小 ACL、不可预测/命名空间化 endpoint 和服务身份。
+    en: This mitigation does not disable all IPC but treats every endpoint capable of execution or privileged outcomes as a security boundary. Servers validate client user process code signature team or entitlement ACL and session expose least methods and strict argument schemas. Office DDE or automatic updates are disabled when unnecessary and otherwise constrained by document origin Protected View and child-process policy. Pipes or sockets use least ACL unpredictable or namespaced endpoints and service identities.
+  - zh: 每个执行性请求还应生成不可复用 request/session ID，记录 client、endpoint/object/method、内容 hash/schema 结果、broker 与后继结果；敏感内容加密并限制访问。异常时先保存 client/server、消息摘要、broker 进程和资源变化，再断开/禁用 endpoint、撤销 client 身份、终止后继进程并恢复资源；不能只把受信 broker 加入白名单。
+    en: Every execution-capable request generates a non-reusable request or session ID and records client endpoint object or method content digest or schema result broker and successor outcome, with sensitive content encrypted and access restricted. On anomaly preserve client and server message digest broker process and resource changes before disconnecting or disabling the endpoint revoking client identity terminating successor processes and restoring resources. A trusted broker must never be simply allowlisted.
+domains: [enterprise]
+measures:
+- key: ipc-peer-identity-validation
+  name: {zh: IPC 对等代码身份与权限验证, en: IPC Peer Code Identity and Authorization Validation}
+  description: {paragraphs: [{zh: 对 COM/XPC/pipe/socket client 验证签名、team/entitlement、用户/session 与 ACL，将高权限方法限定到具体批准 client 版本。, en: Validate signature team or entitlement user or session and ACL for COM XPC pipe or socket clients and restrict privileged methods to concrete approved client versions.}]}
+  control_type: preventive
+- key: least-handler-and-argument-schema
+  name: {zh: 最小 Handler 与参数 Schema 校验, en: Least Handler and Argument-Schema Validation}
+  description: {paragraphs: [{zh: 减少可执行方法，严格校验对象、类型、路径、命令、长度和目标，拒绝 handler 把任意字符串传给 shell、脚本或高权限文件操作。, en: Minimize executable methods and validate objects types paths commands lengths and targets rejecting handlers that pass arbitrary strings to shells scripts or privileged file operations.}]}
+  control_type: preventive
+- key: dde-automation-feature-control
+  name: {zh: DDE 与应用自动化功能控制, en: DDE and Application-Automation Feature Control}
+  description: {paragraphs: [{zh: 无业务需要时关闭 Office 自动 DDE/OLE；需要时强制 Protected View、可信文档来源、用户提示和 Office 子进程策略，并限制 Finder/Apple Events 等自动化 client。, en: Disable automatic Office DDE or OLE when unnecessary and otherwise enforce Protected View trusted document origin user prompts and Office child-process policy while restricting automation clients such as Finder or Apple Events.}]}
+  control_type: exposure-reduction
+- key: ipc-request-outcome-audit-response
+  name: {zh: IPC 请求—结果审计与证据化响应, en: IPC Request-Outcome Audit and Evidence-Preserving Response}
+  description: {paragraphs: [{zh: 为执行请求保留 client、request ID、endpoint/method、内容 hash、broker 与结果；异常时保存消息/进程证据、关闭 endpoint、撤销 client 并恢复 broker 产生的变化。, en: Retain client request ID endpoint or method content digest broker and outcome for execution requests. On anomaly preserve message and process evidence close the endpoint revoke the client and restore broker-created changes.}]}
+  control_type: containment
+applications:
+- target_ref: NJT-0072
+  use: {paragraphs: [{zh: 盘点本地可执行 IPC endpoint，按 client 身份、方法、参数和预期结果建立允许合同；对 COM/DDE/XPC/pipe/socket 分别实施平台控制，但统一生成 client—request—broker—outcome 记录。, en: Inventory local execution-capable IPC endpoints and establish allowed contracts by client identity method arguments and expected outcome. Apply platform controls separately to COM DDE XPC pipes and sockets while generating a unified client-request-broker-outcome record.}]}
+  expected_effect: {paragraphs: [{zh: 减少攻击者可调用的 broker 和任意消息空间，使受信执行来源可回溯、短驻请求可复核，并将协议滥用转化为身份或 schema 失败。, en: Reduces callable brokers and arbitrary message space makes trusted execution provenance traceable and transient requests reviewable and turns protocol abuse into identity or schema failures.}]}
+  limitations: {paragraphs: [{zh: 老旧 IPC 协议可能缺少强身份与 request ID，完整消息日志有性能/隐私成本；被攻陷批准 client 仍可发送合法外观请求，需要结果行为检测。, en: Legacy IPC protocols may lack strong identity and request IDs and full message logging has performance or privacy cost. A compromised approved client can still send normal-looking requests and needs outcome behavior detection.}]}
+- target_ref: NJS-0072-001
+  use: {paragraphs: [{zh: 对高权限 broker 实施精确 client code requirement/ACL、最小方法与结果约束；Office、Finder、XPC helper 或 COM server 的签名和父级不产生自动信任，任何未批准 client 请求都阻断或强审计。, en: Apply exact client code requirements or ACL least methods and outcome constraints to privileged brokers. Office Finder XPC helpers and COM servers receive no automatic trust from signature or parentage and every unapproved client request is blocked or strongly audited.}]}
+  expected_effect: {paragraphs: [{zh: 阻止攻击者仅借 broker 身份取得可信外观，并为真实请求者保留不可抵赖来源。, en: Prevents the adversary from gaining trusted appearance solely through a broker and preserves accountable provenance for the true requester.}]}
+  limitations: {paragraphs: [{zh: 合法插件、辅助功能和脚本自动化 client 多且版本变化，过严签名要求会破坏功能；需按 endpoint 分期审计和到期例外。, en: Legitimate plug-ins accessibility and scripted automation have many changing clients and overly strict signing can break functionality requiring per-endpoint audit rollout and expiring exceptions.}]}
+- target_ref: NJS-0072-002
+  use: {paragraphs: [{zh: 在 IPC message 被消费前验证并生成 request ID/hash，记录响应与 broker 结果；无法保存敏感原文时保留类型、长度、规范化 hash 与 schema 判定，并延长到结果窗口。, en: Validate and assign request ID or hash before IPC messages are consumed and record response and broker outcome. When sensitive raw content cannot be stored retain type length normalized digest and schema verdict through the outcome window.}]}
+  expected_effect: {paragraphs: [{zh: 把观察点移动到短驻载体存在的时刻，使会话结束不能切断执行语义与结果，并直接削弱行为透明。, en: Moves observation to the moment the transient carrier exists so session end cannot sever execution semantics from outcome directly weakening Behavioral Transparency.}]}
+  limitations: {paragraphs: [{zh: 高吞吐 RPC、共享内存和加密应用消息可能无法完整采集，hash 不能还原语义；需结合 client/server 身份、schema 与结果，避免仅按内容判断。, en: High-throughput RPC shared memory and encrypted application messages may resist full collection and hashes cannot reconstruct semantics. Combine client and server identity schema and outcome rather than content alone.}]}
+evidence_refs: [REF-000227, REF-000228, REF-000229, REF-000230, REF-000231, REF-000232]
+lifecycle: {status: review, version: 0.1.0, created: '2026-09-12', modified: '2026-09-12', contributors: [Niji Matrix Research], reviewers: []}

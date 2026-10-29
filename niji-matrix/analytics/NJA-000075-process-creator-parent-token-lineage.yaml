@@ -1,0 +1,211 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000075
+strategy_ref: DET-000096
+name:
+  zh: 新进程调用者—父体—令牌权威谱系分析
+  en: New-Process Caller–Parent–Token Authority Lineage Analytic
+summary:
+  zh: 保留并比较实际创建者、Security 创建与目标主体、显示父体、来源令牌和新进程权威，把未经批准的差异连接到敏感后继结果，并区分谱系匿迹与权限提升。
+  en: Preserve and compare actual creator, Security creator and target subjects, displayed parent, source token, and new-process
+    authority, join unapproved differences to sensitive successor outcomes, and distinguish lineage stealth from privilege
+    escalation.
+domains:
+- enterprise
+platforms:
+- Windows
+logic:
+  paragraphs:
+  - zh: 分析把每次进程创建规范为 process_start_key，而不是裸 PID，并并行保存四种关系：内核/ETW actual_creator_start_key，Security 4688 Creator Subject/Process
+      与 Target Subject，Sysmon/EDR displayed_parent_guid，以及 child primary token 的 user/groups/AuthenticationId/LogonId/integrity。若能观察
+      STARTUPINFOEX 或 PROC_THREAD_ATTRIBUTE_PARENT_PROCESS，再保留 selected_parent_handle、access mask 与 attribute-setting caller；标准化不得用一个
+      parent 字段覆盖其他来源。
+    en: The analytic normalizes every creation to a process start key rather than bare PID and preserves four relationships
+      in parallel—kernel or ETW actual creator start key, Security 4688 Creator Subject and Process plus Target Subject, Sysmon
+      or EDR displayed parent GUID, and child primary-token user, groups, AuthenticationId or LogonId, and integrity. When
+      STARTUPINFOEX or PROC_THREAD_ATTRIBUTE_PARENT_PROCESS is visible, it also retains selected parent handle, access mask,
+      and attribute-setting caller. Normalization must not overwrite distinct sources with one parent field.
+  - zh: 分析从实际创建者回溯三十分钟内的进程或令牌句柄访问、令牌复制、登录与显式父体打开，尝试把 child AuthenticationId 连接到来源令牌或新登录。随后比较实际调用者、显示父体、创建主体、目标主体、令牌身份与组织批准路径。攻击者控制且有独立视角支持的差异与敏感后继活动相连时输出
+      lineage_stealth；若 child 还获得高于调用者的身份、完整性或权限并消费，则同时输出 authority_lineage_decoupling。
+    en: The analytic traces process or token-handle access, token duplication, logon, and explicit-parent open during the
+      thirty minutes before creation, attempting to join child AuthenticationId to a source token or new logon. It then compares
+      actual caller, displayed parent, creator subject, target subject, token identity, and the approved organizational path.
+      Emit lineage_stealth when an adversary-controlled difference supported by an independent viewpoint connects to sensitive
+      successor activity. Also emit authority_lineage_decoupling when the child gains and consumes identity, integrity, or
+      privilege higher than the caller.
+  - zh: 评分按来源可证明性、视角不一致、攻击者控制、权限增量、父体合理性和结果敏感度。高置信谱系匿迹要求稳定来源令牌或显式父体句柄、至少一个独立实际与显示差异以及敏感后继活动；权限提升还要求更高权威和受保护操作。缺少来源令牌时只输出可疑创建谱系，符合获批运行、用户账户控制或服务基线时抑制。
+    en: Scoring uses provenance proof, viewpoint inconsistency, adversary control, authority gain, parent plausibility, and
+      outcome sensitivity. High-confidence lineage stealth requires a stable source token or explicit-parent handle, at least
+      one independent actual-versus-displayed difference, and sensitive successor activity. Privilege escalation additionally
+      requires higher authority and a protected operation. Without source token, emit suspicious creation lineage only, and
+      suppress paths matching approved run-as, user account control, or service baselines.
+data_requirements:
+- source_type: kernel-etw-process-create
+  name:
+    zh: 内核/ETW 实际进程创建者
+    en: Kernel or ETW actual process creator
+  channel: null
+  required_fields:
+  - timestamp
+  - host_id
+  - child_process_start_key
+  - child_process_id
+  - actual_creator_start_key
+  - actual_creator_process_id
+  - image_path
+  - command_line_or_hash
+  - session_id
+  - creation_flags
+- source_type: windows-security-process-create
+  name:
+    zh: Security 4688 创建与目标主体
+    en: Security 4688 creator and target subjects
+  channel: Microsoft-Windows-Security-Auditing/4688
+  required_fields:
+  - timestamp
+  - host_id
+  - new_process_id
+  - new_process_name
+  - creator_process_id
+  - creator_process_name
+  - creator_subject_sid
+  - creator_logon_id
+  - target_subject_sid
+  - target_logon_id
+  - token_elevation_type
+  - mandatory_label
+- source_type: endpoint-displayed-parent-and-token
+  name:
+    zh: EDR/Sysmon 显示父级与 Child Token
+    en: EDR or Sysmon displayed parent and child token
+  channel: null
+  required_fields:
+  - timestamp
+  - host_id
+  - child_process_start_key
+  - process_guid
+  - displayed_parent_process_start_key
+  - parent_process_guid
+  - child_token_id
+  - child_authentication_id
+  - child_user_sid
+  - child_group_sids
+  - child_integrity
+  - signer
+  - image_hash
+- source_type: token-and-parent-handle-provenance
+  name:
+    zh: 来源 Token 与显式父体句柄
+    en: Source token and explicit-parent handle provenance
+  channel: null
+  required_fields:
+  - timestamp
+  - host_id
+  - calling_process_start_key
+  - target_process_start_key
+  - handle_type
+  - access_mask
+  - source_token_id
+  - source_authentication_id
+  - selected_parent_start_key
+  - attribute
+  - api_or_operation
+  - result
+- source_type: privileged-process-outcome
+  name:
+    zh: 新进程高权限结果
+    en: New-process privileged outcome
+  channel: null
+  required_fields:
+  - timestamp
+  - host_id
+  - process_start_key
+  - effective_token_id
+  - effective_user_sid
+  - integrity_level
+  - target_object
+  - action
+  - outcome
+  - sensitivity
+observables:
+- zh: ETW actual creator 与 EDR/Sysmon parent GUID 不同，selected parent 为 SYSTEM 或常见管理进程，child token 的 AuthenticationId 与 actual
+    creator 不同且 child 立即执行敏感操作。
+  en: ETW actual creator differs from EDR or Sysmon parent GUID, the selected parent is SYSTEM or a common management process,
+    child-token AuthenticationId differs from actual creator, and the child immediately performs a sensitive action.
+- zh: 4688 Creator Subject 与 Target Subject 不同且没有批准 runas/服务/UAC 路径，来源 token 刚从另一高权限进程复制，child integrity 高于 caller。
+  en: 4688 Creator and Target Subject differ without an approved runas, service, or UAC path, the source token was just duplicated
+    from another privileged process, and child integrity exceeds the caller.
+- zh: 对目标父体出现 PROCESS_CREATE_PROCESS access 后立刻创建异常 child，内核 creating PID 与显示 parent 不同，child 随后加载驱动、修改服务或访问凭据。
+  en: PROCESS_CREATE_PROCESS access to a candidate parent is followed immediately by an anomalous child whose kernel creating
+    PID differs from displayed parent and that loads a driver, changes a service, or accesses credentials.
+- zh: 仅发现 PPID mismatch 而没有 token/integrity 提升或敏感结果；标为谱系问题并转交 Stealth 检测，不确认本 TA0004 子技术。
+  en: A PPID mismatch lacks token or integrity elevation and sensitive outcome, so it is labeled a lineage issue and referred
+    to Stealth detection rather than confirming this TA0004 child.
+correlation:
+  window:
+    zh: 以 child process_start_key 覆盖创建前 token/parent handle 三十分钟、创建事务本身及后继结果十五分钟；若 token 在更早登录取得，可按 AuthenticationId 回溯当前登录会话，最长八小时。进程
+      GUID/start key 保留到进程终止后至少三十日，正常 parent/creator/token 组合基线保留九十日。
+    en: Use child process start key to cover thirty minutes of token or parent-handle activity before creation, the creation
+      transaction, and fifteen minutes of successor outcome. If the token came from an earlier logon, trace AuthenticationId
+      through the current logon session for at most eight hours. Retain process GUID or start key at least thirty days after
+      termination and normal parent, creator, and token combinations for ninety days.
+  dimensions:
+  - host
+  - child_process_start_key
+  - actual_creator
+  - security_creator_subject
+  - security_target_subject
+  - displayed_parent
+  - selected_parent
+  - source_token
+  - child_token
+  - authentication_id
+  - integrity_delta
+  - image
+  - outcome
+  - approval
+  - time
+false_positives:
+- zh: UAC、runas、CreateProcessAsUser、服务控制管理器、任务计划、终端服务、应用池、软件部署和受控运维会合法地产生 Creator/Target Subject 或 actual/displayed parent
+    差异。
+  en: UAC, runas, CreateProcessAsUser, Service Control Manager, Task Scheduler, Terminal Services, application pools, software
+    deployment, and controlled administration legitimately produce Creator or Target Subject and actual or displayed parent
+    differences.
+- zh: EDR 沙箱、应用兼容性层、调试器和崩溃处理可能重设父级或代理创建；只有版本、调用者、目标、flag、工单、时段和结果全匹配才作为反例。
+  en: EDR sandboxes, application-compatibility layers, debuggers, and crash handling can reassign parent or broker creation
+    and qualify as counterexamples only when version, caller, target, flags, work record, time, and outcome all match.
+blind_spots:
+- zh: 未启用 4688、ETW 进程 provider 丢失、EDR 不提供 real PID/parent GUID 或 token AuthenticationId 时，无法完整比较四个视角。
+  en: Disabled 4688, lost ETW process provider, or EDR without real PID, parent GUID, or token AuthenticationId prevents complete
+    four-view comparison.
+- zh: 内核攻击者可同时篡改 token 与创建事件，传感器时钟差、父进程提前退出和 PID 复用也会产生不一致；必须保留 start key 并降低缺失来源的置信度。
+  en: A kernel adversary can alter both token and creation events, while clock skew, early parent exit, and PID reuse produce
+    inconsistency; retain start keys and lower confidence when sources are missing.
+tuning_guidance:
+  paragraphs:
+  - zh: 为正常创建路径建立 actual creator、displayed parent、Creator/Target Subject、token AuthenticationId/integrity、child image 与结果的组合基线，并按
+      OS build 与软件版本分层。允许规则绑定完整组合及期限，不能仅允许 explorer、services.exe、Taskmgr、SYSTEM、Microsoft signer 或某个 parent-child pair。
+    en: Baseline the combination of actual creator, displayed parent, Creator and Target Subject, token AuthenticationId and
+      integrity, child image, and outcome for normal creation paths, partitioned by OS build and software version. Allow logic
+      binds the full combination and expiry, never only Explorer, services.exe, Task Manager, SYSTEM, Microsoft signing, or
+      one parent-child pair.
+  - zh: 用受控 runas、UAC、CreateProcessWithTokenW 和显式 parent attribute 测试每个字段的真实语义，再注入单源丢失，确认输出从“已关联解耦”降为“谱系不完整”。将 PPID-only 告警与
+      TA0004 结果分开，只有 privilege/integrity delta 与敏感消费同时存在才升级。
+    en: Test field semantics with controlled runas, UAC, CreateProcessWithTokenW, and explicit parent attributes, then remove
+      one source to confirm output degrades from correlated decoupling to incomplete lineage. Keep PPID-only alerts separate
+      from TA0004 results and escalate only when a privilege or integrity delta and sensitive consumption coexist.
+evidence_refs:
+- REF-000326
+- REF-000329
+- REF-000330
+- REF-000333
+- REF-000334
+- REF-000281
+lifecycle:
+  status: review
+  version: 0.2.0
+  created: '2026-09-13'
+  modified: '2026-09-19'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

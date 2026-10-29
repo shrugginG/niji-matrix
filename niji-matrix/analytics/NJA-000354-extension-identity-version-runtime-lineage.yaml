@@ -1,0 +1,76 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000354
+strategy_ref: DET-000264
+name:
+  zh: 扩展身份、版本与运行结果纵向关联
+  en: Longitudinal Extension Identity Version and Runtime Outcome Correlation
+summary:
+  zh: 版本化精确扩展身份与内容，检测相似展示身份或异常版本变化，并连接以后宿主加载、子进程、外联和资源结果
+  en: Version exact extension identity and content detect similar displayed identities or anomalous version changes and join later host load child processes egress and resource outcomes
+domains: [enterprise]
+platforms: [Linux, Windows, macOS]
+logic:
+  paragraphs:
+  - zh: 分析把 host application、安装范围或 profile、registry、publisher ID 和 extension ID 规范成 extension_identity，并为每个版本保存显示名、说明、publisher ownership、version、package hash、signature、permissions、host patterns、update URL、enabled state、install origin、writer 与 first/last seen。批准和例外绑定精确 identity、内容与时间，而不是显示名或“来自市场”。
+    en: The analytic normalizes host application installation scope or profile registry publisher ID and extension ID into extension_identity and retains display name description publisher ownership version package hash signature permissions host patterns update URL enabled state install origin writer and first or last seen for every version. Approval and exceptions bind exact identity content and time rather than display name or marketplace origin.
+  - zh: 身份仿冒分支计算新扩展的名称、功能和 publisher 外观与资产或市场上批准对象的相似度，但要求 exact identity 不同；只有相似外观与未知 publisher、异常内容或后继风险结果相交时升级。版本分支在同一 identity 下检查 content、permissions、publisher ownership、update source 和 signature 改变，并把供应链来源保留给 NJT-0059，同时把目标上持续加载状态归本父级。
+    en: The impersonation branch scores a new extension's name function and publisher appearance against approved objects on the asset or marketplace while requiring a different exact identity. It escalates only when similar appearance intersects unknown publisher anomalous content or a risky successor outcome. The version branch checks content permissions publisher ownership update source and signature changes under one identity and preserves supply-chain provenance for NJT-0059 while assigning host-loaded durable state to this parent.
+  - zh: 每个安装或更新版本连接浏览器/IDE 启动、extension host 加载、workspace/page 活动、child process、network destination 和 resource outcome。输出区分 extension_identity_risk、host_load_confirmed、outcome_unresolved 与 extension_persistence_confirmed；只有状态跨原会话保存、以后宿主加载且产生攻击者控制结果时确认 Persistence。
+    en: Each installed or updated version joins browser or IDE start extension-host load workspace or page activity child processes network destinations and resource outcomes. Outputs distinguish extension_identity_risk host_load_confirmed outcome_unresolved and extension_persistence_confirmed. Persistence confirms only when state survives the original session a later host load consumes it and an adversary-controlled outcome occurs.
+data_requirements:
+- source_type: extension-inventory
+  name: {zh: 扩展身份、版本与权限清单, en: Extension identity version and permission inventory}
+  channel: null
+  required_fields: [timestamp, device_id, user_or_profile_id, host_application, install_scope, registry, publisher_id, extension_id, display_name, version, permissions, host_patterns, enabled_state, install_origin]
+- source_type: extension-package-integrity
+  name: {zh: 扩展包内容、签名和来源, en: Extension package content signature and provenance}
+  channel: null
+  required_fields: [timestamp, extension_id, version, package_path, package_hash, signature_state, signer, writer_process_id, source_url, update_url, first_seen]
+- source_type: marketplace-update-audit
+  name: {zh: 市场发布、publisher 与更新审计, en: Marketplace publication publisher and update audit}
+  channel: null
+  required_fields: [timestamp, registry, publisher_id, extension_id, publisher_account, upload_identity, version, publication_time, update_source, ownership_change, verification_state]
+- source_type: host-extension-runtime
+  name: {zh: 宿主和扩展运行时加载, en: Host and extension runtime load}
+  channel: null
+  required_fields: [timestamp, device_id, user_or_profile_id, host_application, host_process_id, extension_host_process_id, extension_id, version, package_hash, load_event, workspace_or_page_context, result]
+- source_type: extension-behavior-outcome
+  name: {zh: 扩展后继进程、网络与资源结果, en: Extension successor process network and resource outcomes}
+  channel: null
+  required_fields: [timestamp, device_id, extension_id, version, extension_host_process_id, child_process_id, destination_domain, resource_id, operation, authorization_decision, result]
+observables:
+- {zh: 新扩展显示名、功能或 publisher 外观接近批准对象，但 registry/publisher/extension ID 不同且内容或结果异常, en: A new extension resembles an approved object in display name function or publisher appearance but has a different registry publisher or extension ID and anomalous content or outcome}
+- {zh: 官方市场扩展在首次安装后由 extension host 加载并立即访问秘密、启动 shell 或连接未知域, en: An official-marketplace extension is loaded by the extension host after first installation and immediately accesses secrets starts a shell or contacts an unknown domain}
+- {zh: 同一 extension ID 的版本、权限、hash、publisher ownership 或 update URL 无批准地变化并产生新结果, en: One extension ID changes version permissions hash publisher ownership or update URL without approval and produces a new outcome}
+- {zh: 扩展在原始安装会话结束或主机重启后继续被加载并重复产生外联或资源访问, en: An extension continues loading after the original installation session ends or the host restarts and repeats egress or resource access}
+- {zh: inventory 显示扩展已移除或禁用，但远程或其他 profile 的 extension host 仍加载同一 identity, en: Inventory shows an extension removed or disabled while a remote or other-profile extension host still loads the same identity}
+correlation:
+  window:
+    zh: identity、版本、publisher ownership 与 package history 至少保留九十天；安装或更新后的结果同时使用二十四小时、七天和三十天窗口，并跨至少一次宿主重启或重新打开工作区验证持久加载。
+    en: Retain identity version publisher ownership and package history for at least ninety days. Correlate outcomes over twenty-four-hour seven-day and thirty-day windows after installation or update and verify durable load across at least one host restart or workspace reopen.
+  dimensions: [device, user_or_profile, host_application, install_scope, registry, publisher, extension, version, package_hash, signature, permissions, update_source, host_process, extension_host, child_process, destination, resource, time]
+false_positives:
+- {zh: 合法 publisher 迁移、企业 fork、改名或市场变更会产生相似 identity 差分, en: Legitimate publisher migration enterprise forks renaming or marketplace changes create similar identity differentials}
+- {zh: 批准更新可改变权限、content hash、签名和网络目的地, en: Approved updates can change permissions content hash signature and network destinations}
+- {zh: 开发与预发布扩展、主题、语言服务、调试器和代码助手可能启动进程或外联, en: Development and prerelease extensions themes language services debuggers and coding assistants may start processes or use network}
+- {zh: 远程开发和 profile 漫游会在多个端点或 host 上加载同一扩展, en: Remote development and profile roaming load one extension across multiple endpoints or hosts}
+blind_spots:
+- {zh: 市场不提供 upload identity、publisher ownership 或历史版本时，更新来源只能局部推断, en: Update provenance can be inferred only partially when marketplaces expose no upload identity publisher ownership or version history}
+- {zh: 宿主不记录具体扩展到 child process、network 或 resource 的归因时，结果保持 unresolved, en: Outcomes remain unresolved when the host does not attribute child processes network or resources to a specific extension}
+- {zh: 远程 extension host、容器或云开发环境的日志未回传时，本地 inventory 不完整, en: Local inventory is incomplete when remote extension hosts containers or cloud development environments do not return logs}
+- {zh: 扩展运行时下载或生成代码会使静态 package hash 与实际行为分离, en: Runtime-downloaded or generated code separates static package hashes from actual behavior}
+tuning_guidance:
+  paragraphs:
+  - zh: 批准项必须绑定 registry、publisher ID、extension ID、允许版本或 hash、permissions、update source、owner、host scope 和期限。显示名、官方市场、签名、宿主进程或 extension ID 任一单项不得永久放行；publisher 或 update source 变化触发重新审批。
+    en: Approval binds registry publisher ID extension ID allowed version or hash permissions update source owner host scope and expiry. Display name official marketplace signature host process or extension ID alone never creates a permanent allow and publisher or update-source changes trigger reapproval.
+  - zh: 按浏览器、IDE、profile、远程 host 和扩展角色建立版本化基线，并把身份相似度与内容、writer 和结果独立评分。新扩展只有显示名相似时保持 candidate；出现秘密访问、shell、未知外联或持续加载后升级。响应保全 package 和 publisher 证据，再移除全部 profile/remote host 状态并轮换暴露材料。
+    en: Build versioned baselines by browser IDE profile remote host and extension role and score identity similarity content writer and outcome independently. A new extension with display-name similarity only remains a candidate and escalates after secret access shell unknown egress or durable load. Preserve package and publisher evidence during response then remove state from every profile and remote host and rotate exposed material.
+evidence_refs: [REF-001166, REF-001167, REF-001168, REF-001169, REF-001170, REF-000581]
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-10-22'
+  modified: '2026-10-22'
+  contributors: [Niji Matrix Research]
+  reviewers: []

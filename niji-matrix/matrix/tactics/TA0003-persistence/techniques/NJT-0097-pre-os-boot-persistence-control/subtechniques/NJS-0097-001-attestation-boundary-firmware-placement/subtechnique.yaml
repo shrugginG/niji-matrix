@@ -1,0 +1,115 @@
+schema_version: 2.0.0
+type: evasion-subtechnique
+id: NJS-0097-001
+parent_ref: NJT-0097
+name:
+  zh: 度量边界外固件驻留
+  en: Attestation-Boundary Firmware Placement
+summary:
+  zh: 攻击者把启动代码置于主机传感器或平台 attestation 未覆盖的固件/组件，跨 OS 恢复持续执行。
+  en: Adversaries place boot code in firmware or a component outside host sensors or platform attestation coverage to continue execution across
+    OS recovery.
+aliases: []
+lineage:
+  attck_subtechnique_inherited: false
+definition_and_concept:
+  paragraphs:
+  - zh: 度量边界外固件驻留是攻击者选择或修改未被当前 root-of-trust 测量、主机软件无法读取验证的系统/组件 firmware 或 boot object，使代码先于 OS 执行并在磁盘重装后存续的匿迹子技术。直接目标是利用安全/观察边界的覆盖缺口，而不是按组件类别分类。
+    en: Attestation-Boundary Firmware Placement selects or modifies system or component firmware or a boot object not measured by the current
+      root of trust and not verifiable by host software so code executes before the OS and survives disk reimage. Its direct objective is to exploit
+      a security or observation coverage gap rather than partition by component class.
+stealth_characteristics:
+  paragraphs:
+  - zh: 度量边界外固件驻留可能让 TPM/secure boot 对已覆盖链报告正常，而未覆盖控制器/Option ROM/firmware 仍执行；OS agent 只看到恶意层交给它的后续状态。flash write、component identity、firmware
+      hash/version、readback、boot measurement 与首个 OS 结果仍可揭示。
+    en: Attestation-Boundary Firmware Placement can leave TPM or secure boot reporting normal for its covered chain while an uncovered controller
+      option ROM or firmware still executes. The OS agent sees only downstream state presented by the malicious layer. Flash writes component
+      identity firmware hash or version readback boot measurements and first OS outcomes remain revealing.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 纳入明确证明目标 firmware/boot object 不在现有 attestation 或主机检查范围且被攻击者修改并执行。任何 component firmware 不自动归入；若完整测量覆盖但签名/验证被绕过，保持父级或 defer，需独立变量证据。
+    en: Include only when the target firmware or boot object is proven outside existing attestation or host-inspection coverage and is adversary-modified
+      and executed. Component firmware does not qualify automatically. A fully measured object with bypassed signing or validation remains parent
+      scope or deferred pending independent variable evidence.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: 高权限攻击者把 implant 写入不在平台当前度量集合中的外围设备、系统组件或固件区域，使设备每次上电先执行该代码，再向 bootloader/OS 注入或恢复访问。主机 EDR 在恶意层之后启动，可能只看到由已控制固件呈现的正常文件和进程。
+      en: A highly privileged adversary writes an implant into a peripheral, system component, or firmware region outside the platform's current
+        measurement set so each power-on executes it first and then injects into the bootloader or operating system or restores access. Host EDR
+        starts after the malicious layer and may see only normal files and processes presented by compromised firmware.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者需要 firmware update、flash、raw device 或供应者调试权限，掌握硬件型号、映像格式、启动链、签名/校验、回滚和安全重启，并能把代码放在未测量或未验证区域。错误映像可能 brick 设备、触发 recovery 或留下签名/版本差，实际跨型号移植成本很高。
+        en: The adversary needs firmware-update, flash, raw-device, or vendor-debug authority and knowledge of hardware model, image format, boot
+          chain, signing or checksum, rollback, and safe reboot and must place code in an unmeasured or unverified region. A bad image can brick
+          the device, trigger recovery, or leave signature or version differences, and cross-model portability is costly.
+      - zh: 硬件写保护、签名更新、measured/verified boot、完整组件 inventory、独立 attestation、更新审计和离线 readback 提高成本。若目标组件已进入 root-of-trust 测量或只能从不可变 ROM 启动，攻击者需突破更低层信任；无法在重启后执行则不属于本子项。
+        en: Hardware write protection, signed updates, measured or verified boot, complete component inventory, independent attestation, update
+          audit, and offline readback raise cost. If the component is measured by the root of trust or boots only from immutable ROM, the adversary
+          must compromise a lower trust layer. Failure to execute after reboot places the behavior outside this child.
+    defender_model:
+      paragraphs:
+      - zh: 防守方需要独立于主机 OS 的 root-of-trust、组件/firmware inventory、厂商版本与签名、flash/raw-write/update actor、boot ID、TPM/attestation measurements、measurement
+          coverage、offline readback 和 OS 首个 driver/process 结果。仅看到 Secure Boot pass 不能证明未度量外围固件安全。
+        en: Defenders need a root of trust independent of the host operating system, component and firmware inventory, vendor version and signature,
+          flash or raw-write or update actor, boot ID, TPM or attestation measurements, measurement coverage, offline readback, and first operating-system
+          driver or process outcome. A Secure Boot pass alone cannot establish security of unmeasured peripheral firmware.
+      - zh: 应把 inventory 中每个可执行组件映射到是否测量、由谁验证、更新路径与恢复方法，并比较每次 boot 的预期值。远程 attestation、供应者 readback 和主机 EDR 可能掌握不同视角；如果恶意层能伪造主机报告，必须依赖外部 verifier。旧硬件、封闭
+          vendor 和无法读取固件是主要盲区。
+        en: Each executable component in inventory should map whether it is measured, who verifies it, its update path, and recovery method, with
+          expected values compared at every boot. Remote attestation, vendor readback, and host EDR can hold different views. If a malicious layer
+          can forge host reports, an external verifier is required. Legacy hardware, closed vendors, and unreadable firmware are primary blind
+          spots.
+stealth_mechanisms:
+- mechanism_ref: NM-BT
+  role: primary
+  summary:
+    zh: 未测量固件对象在主机传感器启动前执行
+    en: An unmeasured firmware object executes before host sensors start
+  analysis:
+    paragraphs:
+    - zh: 关键代码位于 attestation 与 OS 监控覆盖外，正常报告不能包含该行为，形成行为透明；扩大 measurement/readback 到组件可恢复。
+      en: Critical code lies outside attestation and OS monitoring coverage so normal reports cannot contain the behavior producing Behavioral
+        Transparency; extending measurement or readback to the component recovers it.
+  evidence_refs:
+  - REF-000193
+  - REF-000194
+  confidence: high
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000077
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000077
+evidence:
+  claim_refs:
+  - CLM-000387
+  case_refs: []
+  reference_refs:
+  - REF-000193
+  - REF-000194
+research:
+  limitations:
+    paragraphs:
+    - zh: ATT&CK 直接支持 below-OS 防守盲区和组件固件逃避完整性，NIST SP 800-193 提供保护—检测—恢复原则；这些来源不保证任何具体平台测量全部组件。子项边界取决于实际 attestation coverage，而不是固件类别名称。
+      en: ATT&CK directly supports below-operating-system defensive blind spots and component firmware evading integrity, while NIST SP 800-193
+        provides protect, detect, and recover principles. These sources do not guarantee that any platform measures every component. The child
+        boundary depends on actual attestation coverage rather than firmware-category name.
+    - zh: firmware readback、measurement log 和恢复能力高度依赖硬件/vendor，合法更新、换件和旧 unsigned boot 会产生差异。没有写入 actor、未测量边界和重启后结果时只能报告 firmware integrity risk；只造成
+        brick/不可用归 Impact。
+      en: Firmware readback, measurement logs, and recovery capability depend heavily on hardware and vendor, while legitimate updates, replacement
+        parts, and legacy unsigned boot create differences. Without a write actor, unmeasured boundary, and post-reboot outcome, only firmware-integrity
+        risk can be reported. Behavior causing only a brick or outage belongs to Impact.
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-09-11'
+  modified: '2026-09-12'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

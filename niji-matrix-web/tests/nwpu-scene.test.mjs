@@ -1,0 +1,27 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {readFileSync,mkdtempSync,rmSync,existsSync} from 'node:fs';
+import {join} from 'node:path';import {tmpdir} from 'node:os';import{createRequire}from'node:module';import{createHash}from'node:crypto';import{buildSync}from'esbuild';
+const load=p=>JSON.parse(readFileSync(p,'utf8'));
+const scene=load('scenes/cases/nwpu-nsa-report.niji-scene.json');const inventory=load('scenes/sources/nwpu/topology-inventory.json');
+const dir=mkdtempSync(join(tmpdir(),'nwpu-test-'));buildSync({entryPoints:['src/features/simulation/model.ts'],bundle:true,platform:'node',format:'cjs',outfile:join(dir,'model.cjs'),logLevel:'silent'});const{parseScene,removeObjects}=createRequire(import.meta.url)(join(dir,'model.cjs'));process.on('exit',()=>rmSync(dir,{recursive:true,force:true}));
+test('NWPU report scene round-trips including source provenance, views, paths and labels',()=>{assert.deepEqual(parseScene(scene),scene);assert.equal(inventory.items.length,scene.nodes.length+scene.edges.length);assert.equal(new Set(inventory.items.map(i=>i.id)).size,inventory.items.length);for(const item of [...scene.nodes,...scene.edges]){assert.ok(item.provenance?.length,item.id);assert.ok(inventory.items.some(i=>i.id===item.id));}for(const edge of scene.edges)assert.equal(edge.anchorMode,'manual');});
+test('source diagram groups, seven relays, departments and six office users are retained',()=>{assert.equal(scene.nodes.filter(n=>n.kind==='department').length,11);assert.equal(scene.nodes.filter(n=>n.parentId==='zone-relays').length,7);assert.equal(scene.nodes.filter(n=>n.parentId==='zone-office').length,6);assert.equal(scene.nodes.filter(n=>n.kind==='softwareTool'&&n.name==='“二次约会”').length,3);for(const id of ['a1','a2','a3','b1','b2','b3'])assert.ok(scene.edges.find(e=>e.id===id));assert.equal(scene.edges.find(e=>e.id==='a1').color,'#cf443b');assert.equal(scene.edges.find(e=>e.id==='b1').color,'#159ebb');assert.ok(scene.edges.some(e=>e.pathGroup==='mail'&&e.lineStyle==='dashed'));});
+test('anonymous labels and uncertain statements are not silently promoted to facts',()=>{assert.equal(scene.nodes.find(n=>n.id==='domain').name,'www.xxx.com');assert.equal(scene.nodes.find(n=>n.id==='cert').subtitle,'ID：e42d***（原图脱敏）');assert.match(scene.nodes.find(n=>n.id==='jp-one').attributes['原图时间标记'],/^20xx/);assert.equal(scene.nodes.find(n=>n.id==='heretic').provenance[0].basis,'analysis');assert.ok(scene.bindings.every(b=>b.basis==='inference'));assert.ok(!scene.bindings.some(b=>b.matrixRef==='NJT-0116'));});
+test('all original images, article and matrix references are available',()=>{const manifest=load('scenes/sources/nwpu/manifest.json');assert.equal(manifest.images.length,10);for(const image of manifest.images){assert.ok(existsSync('public'+image.assetPath));assert.equal(createHash('sha256').update(readFileSync('public'+image.assetPath)).digest('hex'),image.sha256);}for(const source of scene.sources)assert.ok(existsSync('public'+source.assetPath));const status=load('public/data/status.json'),index=load(`public/data/${status.revision}/index.json`);for(const b of scene.bindings)assert.ok(index.objects[b.matrixRef],b.matrixRef);});
+test('deleting a case region updates view references and preserves a valid document',()=>{const edited=removeObjects(scene,{kind:'node',id:'zone-office'});assert.doesNotThrow(()=>parseScene(edited));assert.ok(!edited.views.flatMap(v=>v.nodeIds).includes('zone-office'));const bad=structuredClone(scene);bad.nodes[0].provenance[0].sourceRef='missing';assert.throws(()=>parseScene(bad),/来源不存在/);const unsafe=structuredClone(scene);unsafe.sources[0].assetPath='/case-assets/../../secret.txt';assert.throws(()=>parseScene(unsafe),/格式/);});
+
+test('approved mapping expansion covers nodes, composite actions and all drawn relay paths without parent duplication',()=>{
+ const bindings=scene.bindings;assert.equal(bindings.length,48);
+ const refs=new Set(bindings.map(b=>b.matrixRef));assert.equal([...refs].filter(id=>id.startsWith('NJT-')).length,9);assert.equal([...refs].filter(id=>id.startsWith('NJS-')).length,4);
+ assert.equal(bindings.filter(b=>b.target.kind==='node').length,11);
+ assert.equal(new Set(bindings.map(b=>`${b.target.kind}:${b.target.id}:${b.matrixRef}`)).size,bindings.length);
+ const has=(id,ref,kind='edge')=>bindings.some(b=>b.target.id===id&&b.target.kind===kind&&b.matrixRef===ref);
+ for(const relay of ['jp-one','jp-two','jp-three','de','kr-one','kr-two','kr-three']){assert.ok(has('razor-'+relay,'NJT-0044'));assert.ok(has('relay-'+relay,'NJS-0206-001'));assert.ok(has(relay,'NJS-0206-001','node'));assert.ok(!has('relay-'+relay,'NJT-0206'));}
+ for(const device of ['gateway','border-router','border-other']){assert.ok(has('island-'+device,'NJT-0054'));assert.ok(has('island-'+device,'NJT-0130'));assert.ok(has('deploy-second-'+device,'NJT-0130'));}
+ assert.ok(has('a2','NJS-0053-002'));assert.ok(has('a2','NJT-0069'));assert.ok(has('foxacid','NJS-0053-002','node'));
+ assert.ok(has('phishing-mail','NJT-0057','node'));assert.ok(has('mail-user-deliver','NJT-0057'));
+ assert.ok(has('surgeon-nopen','NJS-0111-001'));assert.ok(!has('surgeon-nopen','NJT-0111'));
+ assert.ok(has('toast-data','NJS-0112-001'));assert.ok(!has('toast-data','NJT-0112'));
+ for(const b of bindings){assert.equal(b.basis,'inference');assert.ok(b.applicationNote.trim());assert.ok(b.evidenceRefs.includes('nwpu-report'));}
+});

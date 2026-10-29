@@ -1,0 +1,62 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000065
+strategy_ref: DET-000088
+name: {zh: 无服务器版本、事件与服务身份结果分析, en: Serverless Version Event and Service-Identity Outcome Analytic}
+summary: {zh: 按函数或流程版本聚合短驻调用，并从正常事件追踪到服务身份执行的敏感 API、数据和网络结果, en: Aggregate ephemeral invocations by function or flow version and trace normal events to sensitive API data and network outcomes executed by service identities}
+domains: [enterprise]
+platforms: [IaaS, Office Suite, SaaS]
+logic:
+  paragraphs:
+    - zh: 分析先为每个 function/flow 版本建立定义快照，记录 creator/updater、code or definition digest、handler/actions、execution role 或 connector、权限、event source/trigger、network 与 approved change。短驻分支把同一版本的所有 invocation 按 request ID、region、role 和时间聚合，比较 API、network、duration、concurrency、error 与 cost 基线，重点识别新版本或新 role 在无客户主机遥测条件下产生首次敏感结果。
+      en: The analytic first snapshots each function or flow version recording creator or updater code or definition digest handler or actions execution role or connector permissions event source or trigger network and approved change. The ephemeral branch aggregates all invocations of one version by request ID region role and time and compares API network duration concurrency error and cost baselines focusing on new versions or roles producing first-seen sensitive outcomes without customer host telemetry.
+    - zh: 事件耦合分支把 mail/file/user/storage/queue/business event 连接到 invocation/flow run，再连接 service identity 的具体 API、共享、转发、搜索、凭据、数据传输或外部网络。高风险至少要求定义/owner/permission 异常之一与结果异常之一共享 function/flow version 和 run；若只有正常事件或 service principal API 保持低风险。对 CreateFunction 未记录代码/环境和 Invoke data event 未启用的租户标记 coverage gap，不假造缺失字段。
+      en: The event-coupled branch joins mail file user storage queue or business events to invocations or flow runs and then to concrete API sharing forwarding search credential data-transfer or external-network actions by the service identity. High risk requires at least one definition owner or permission anomaly and one outcome anomaly sharing function or flow version and run. Normal events or service-principal API alone remain low risk. Tenants where CreateFunction omits code or environment or Invoke data events are disabled receive a coverage-gap marker rather than fabricated fields.
+data_requirements:
+  - source_type: serverless-control-plane
+    name: {zh: 函数与流程控制面审计, en: Function and flow control-plane audit}
+    channel: null
+    required_fields: [timestamp, tenant_or_account_id, actor_id, service, function_or_flow_id, action, request_id, version, code_or_definition_digest, owner_id, result]
+  - source_type: serverless-role-connector
+    name: {zh: 执行角色、连接器与权限历史, en: Execution-role connector and permission history}
+    channel: null
+    required_fields: [timestamp, tenant_or_account_id, function_or_flow_id, version, role_or_service_principal_id, connector_id, permission, passrole_or_consent_actor, change_id]
+  - source_type: serverless-trigger-definition
+    name: {zh: Trigger 与事件源映射, en: Trigger and event-source mapping}
+    channel: null
+    required_fields: [timestamp, function_or_flow_id, version, trigger_id, event_source, event_filter, source_resource_id, destination_action, enabled_state]
+  - source_type: serverless-invocation-run
+    name: {zh: 函数调用与流程运行记录, en: Function invocation and flow-run records}
+    channel: null
+    required_fields: [timestamp, function_or_flow_id, version, invocation_or_run_id, trigger_id, event_id, region, duration, concurrency, status, error_code]
+  - source_type: serverless-application-network
+    name: {zh: 函数应用、网络和成本遥测, en: Function application network and cost telemetry}
+    channel: null
+    required_fields: [timestamp, function_or_flow_id, version, invocation_or_run_id, log_event, network_destination, bytes_out, metric_name, metric_value, cost]
+  - source_type: cloud-saas-resource-audit
+    name: {zh: 云与 SaaS 资源操作审计, en: Cloud and SaaS resource-operation audit}
+    channel: null
+    required_fields: [timestamp, role_or_service_principal_id, invocation_or_run_id, resource_id, action, data_classification, target_tenant, result]
+observables:
+  - {zh: 新建或更新函数在首次调用中通过新 execution role 访问敏感资源、外部地址或产生异常并发/成本, en: A new or updated function uses a new execution role on first invocation to access sensitive resources or external destinations or produce anomalous concurrency or cost}
+  - {zh: 已停用或很少使用的 flow 被新 owner/connector 启用，随后由正常业务事件触发搜索、转发、匿名共享或跨租户传输, en: A disabled or rarely used flow is enabled by a new owner or connector and normal business events then trigger search forwarding anonymous sharing or cross-tenant transfer}
+  - {zh: 同一 function version 跨短驻实例反复产生相同非基线 API/网络序列，而没有对应批准发布, en: The same function version produces repeated off-baseline API or network sequences across ephemeral instances without an approved release}
+correlation:
+  window: {zh: 从定义、角色或 trigger 变化前一小时延伸到最后相关调用或资源操作后二十四小时；对稀有事件流程保留九十天版本与 owner 索引。, en: Begin one hour before a definition role or trigger change and extend through twenty-four hours after the final related invocation or resource action while retaining version and owner indexes for rare-event flows for ninety days.}
+  dimensions: [tenant_or_account, service, function_or_flow, version, actor, role_or_service_principal, connector, trigger, event, invocation_or_run, resource, region, time]
+false_positives:
+  - {zh: 新应用发布、自动修复、灾难恢复和季节性业务会改变函数版本、角色、并发和 API 序列, en: New application releases automated remediation disaster recovery and seasonal business change function versions roles concurrency and API sequences}
+  - {zh: 业务用户合法启用 dormant flow、添加 connector 或批量搜索/共享数据可能类似 DART 案例, en: Business users legitimately enabling dormant flows adding connectors or performing bulk search or sharing may resemble the DART case}
+  - {zh: 冷启动、重试和上游事件洪峰会产生 duration、error、invocation 与成本异常, en: Cold starts retries and upstream event spikes produce duration error invocation and cost anomalies}
+blind_spots:
+  - {zh: Invoke/data events 未启用、CreateFunction 省略代码与环境、函数不写应用日志时，短驻运行缺少关键证据, en: Ephemeral runtime lacks critical evidence when Invoke or data events are disabled CreateFunction omits code and environment and functions do not emit application logs}
+  - {zh: SaaS connector 不传递 run ID 或下游服务日志保留短时，正常事件到敏感动作无法可靠连接, en: Normal events cannot be joined reliably to sensitive actions when SaaS connectors omit run IDs or downstream service logs have short retention}
+  - {zh: 提供商不公开宿主网络/进程且攻击代码使用允许的 API 与目的地，结果可能完全贴合服务身份基线, en: Results may fully conform to service-identity baselines when providers hide host network or processes and attack code uses allowed APIs and destinations}
+tuning_guidance:
+  paragraphs:
+    - zh: 按 function/flow version、业务 owner、trigger、role/connector 和资源类别建立基线，并把部署审批绑定到 digest 与权限集合。新服务身份、PassRole/consent、跨租户目的地和数据高敏感度作为乘数；短 duration 或 serverless 名称不单独加罪。业务流程例外必须绑定 owner、定义版本、目标资源和有效期，不能永久白名单 service principal。
+      en: Baseline by function or flow version business owner trigger role or connector and resource class and bind release approval to digest and permission set. New service identities PassRole or consent cross-tenant destinations and high data sensitivity are multipliers while short duration or serverless naming is not incriminating alone. Business-flow exceptions bind owner definition version target resource and expiry and never permanently allowlist service principals.
+    - zh: 在每个租户记录 CloudTrail/平台 data-event 覆盖状态，并把缺失数据反映在置信度；高价值函数强制结构化 correlation ID 和应用审计。对大量短调用使用按版本聚合而非每 invocation 告警，对稀有 Flow 使用完整事件—动作链。成本告警用于补充而不能替代 API 和定义证据。
+      en: Record CloudTrail or platform data-event coverage per tenant and reflect missing data in confidence while high-value functions require structured correlation IDs and application audit. Aggregate high-volume short calls by version rather than alert per invocation and use complete event-to-action lineage for rare flows. Cost alerts supplement rather than replace API and definition evidence.
+evidence_refs: [REF-000267, REF-000268, REF-000269, REF-000270, REF-000271, REF-000272]
+lifecycle: {status: review, version: 1.0.0, created: '2026-09-12', modified: '2026-09-12', contributors: [Niji Matrix Research], reviewers: []}

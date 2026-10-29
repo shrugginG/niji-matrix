@@ -1,0 +1,1134 @@
+handoff_schema_version: '2.0.0'
+type: technique-research-handoff
+batch_ref: BATCH-TA0011-005
+work_item_ref: WORK-TA0011-T1572
+temporary_key_prefix: B5-T1572
+candidate:
+  source_type: attack
+  source_attack_id: T1572
+  name:
+    zh: 嵌套协议会话隧道
+    en: Nested-Protocol Session Tunneling
+recommendation:
+  decision: retain
+  confidence: high
+  original_attack_subtechniques_imported: false
+  rationale:
+    paragraphs:
+      - zh: >-
+          ATT&CK Enterprise 19.1 的 T1572 以“显式把一种协议封装在另一协议中”为父行为，并要求其用于绕过网络过滤、穿越不可达边界或隐藏通信。Mandiant 现场观察 APT29 通过 meek 把 Tor 流量编码进 HTTP、再包入 TLS，并由 Tor hidden service 把 Terminal Services、NetBIOS 和 SMB 转发至受害主机本地端口；FortiGuard 对 TrickBot 样本的逆向分析恢复了跨多个 DNS 查询/应答分片的会话 ID、片序、重组缓冲区及与 HTTP 版本相同的内层命令结构；NVISO 对 BRICKSTORM 的逆向分析恢复了 WebSocket、嵌套 TLS、Yamux 多路复用和并发内层会话。这些来源分别证明服务端点封装、事务化重组和多流汇聚，足以 retain 父行为。
+        en: >-
+          ATT&CK Enterprise 19.1 anchors T1572 in explicitly encapsulating one protocol within another to bypass network filtering, cross an otherwise unreachable boundary, or conceal communication. Mandiant observed APT29 using meek to encode Tor traffic into HTTP, wrap it in TLS, and forward Terminal Services, NetBIOS, and SMB through a Tor hidden service to local victim ports. FortiGuard reverse engineering of a TrickBot sample recovers session identifiers, fragment ordering, reassembly buffers across DNS queries and answers, and an inner command structure identical to its HTTP variant. NVISO reverse engineering of BRICKSTORM recovers WebSocket, nested TLS, Yamux multiplexing, and concurrent inner sessions. These sources independently establish service-endpoint encapsulation, transactionized reassembly, and multi-stream convergence, supporting retention.
+      - zh: >-
+          Niji 准入需把范围收紧为可证明的内外层关系。必须识别完整或可重建的内层会话语义、承载它的外层协议/会话、封装或重组边界，以及由内层会话产生的 C2、远程访问或跨边界结果。只发现隧道工具、TLS、VPN、SSH 连接、SOCKS 能力、异常 DNS 或 Web 流量不够；不能从产品名、端口或加密外观推定封装。父级语义与 ATT&CK 一致，因此保留而非 adapt，但正式内容明确写入结果门和正常隧道反例。
+        en: >-
+          Niji admission requires a proven inner-to-outer relationship. Evidence must identify an intact or reconstructable inner session semantic, the outer protocol or session carrying it, the encapsulation or reassembly boundary, and a C2, remote-access, or cross-boundary outcome produced by the inner session. Discovery of a tunneling tool, TLS, VPN, SSH connection, SOCKS capability, anomalous DNS, or web traffic alone is insufficient; product name, port, or encrypted appearance cannot establish encapsulation. The parent remains semantically faithful to ATT&CK and is therefore retained rather than adapted, while canonical prose should state the outcome gate and legitimate-tunnel counterexamples explicitly.
+proposed_content:
+  summary:
+    zh: 攻击者把完整或可识别的内层控制/访问会话封装进另一外层协议或连接，使边界设备只按外层解析，从而穿越过滤并隐藏真实服务关系。
+    en: An adversary encapsulates an intact or recognizable inner control or access session in another outer protocol or connection so boundary devices parse only the outer layer, enabling filter traversal and concealing the real service relationship.
+  definition_and_concept:
+    paragraphs:
+      - zh: >-
+          嵌套协议会话隧道是攻击者让一条具有自身端点、状态、消息顺序或服务语义的内层通信，经隧道客户端封装、分片或多路复用后由另一外层协议/连接传输，并在隧道另一端解封装或重组的行为。直接目的是让原本不可路由、会被过滤或会触发专用解析器的 SMB、RDP、Tor、自定义 C2 或其他内层会话，在允许的 HTTPS、SSH、DNS、WebSocket 或等价外层路径上继续工作。
+        en: >-
+          Nested-Protocol Session Tunneling is adversary behavior in which an inner communication with its own endpoints, state, message order, or service semantics is encapsulated, fragmented, or multiplexed by a tunnel client, carried by another outer protocol or connection, and decapsulated or reassembled at the far end. Its direct purpose is to keep SMB, RDP, Tor, a custom C2 protocol, or another inner session operating across an allowed HTTPS, SSH, DNS, WebSocket, or equivalent outer path when the inner session would otherwise be unroutable, filtered, or subject to a dedicated parser.
+      - zh: >-
+          概念锚是两层可分离语义：外层满足承载、路由或事务要求，内层在解封装后仍保持可识别的会话结构或目标服务关系。外层协议、隧道工具、加密算法、端口和厂商只是实现；若命令直接按 DNS、HTTP 或 MQTT 应用事务表达而没有独立内层会话，应研究 NJT-0160。若自定义 C2 直接运行在 TCP、UDP 或 ICMP 字节上而没有外层封装，应研究 NJT-0208。
+        en: >-
+          The conceptual anchor is two separable semantics. The outer layer satisfies carriage, routing, or transaction requirements, while the inner layer retains a recognizable session structure or target-service relationship after decapsulation. Outer protocol, tunneling tool, encryption algorithm, port, and vendor are implementations. Commands expressed directly as DNS, HTTP, or MQTT transactions without an independent inner session belong under NJT-0160, while custom C2 running directly in TCP, UDP, or ICMP bytes without outer encapsulation belongs under NJT-0208.
+  stealth_characteristics:
+    paragraphs:
+      - zh: >-
+          隧道改变防守方可见的协议栈和端点关系。网络边界可能只看到一个到允许 Web、SSH、DNS 或云端点的外层连接，内层的服务端口、目标主机、会话数量和命令结果不再对应外层五元组。事务化隧道把一个内层会话拆为许多合法形态的查询/响应，多路复用隧道又把多个内层流压入一个长期外层连接；只按端口、单事务、单五元组或外层协议分类的检测因此丢失真实控制图。
+        en: >-
+          Tunneling changes the protocol stack and endpoint relationship visible to defenders. A boundary sensor may see only one outer connection to an allowed web, SSH, DNS, or cloud endpoint, while inner service ports, destination hosts, session count, commands, and results no longer correspond to the outer five-tuple. A transactionized tunnel splits one inner session across many legitimate-looking queries and responses, while a multiplexed tunnel compresses several inner streams into one long-lived outer connection. Detection keyed only to port, one transaction, one five-tuple, or the outer protocol therefore loses the real control graph.
+      - zh: >-
+          隧道仍留有内外层关联残迹：隧道进程或配置、监听/转发规则、同一进程或 tunnel ID 的本地与外部 socket、外层长连接、字节与方向关系、WebSocket/SSH/VPN 控制面、多路流 ID、DNS 分片序号，以及解封装后的服务登录、命令、文件访问或远程桌面结果。能取得端点 socket 归属、隧道控制日志或原始报文并执行解封装的防守方可以恢复内层；若外层和内层都加密、隧道位于无 EDR 设备、提供方日志不可得或只保留聚合 flow，则结论只能降为隧道候选。
+        en: >-
+          Tunnels leave inner-to-outer linkage residue: tunnel process or configuration, listener and forwarding rules, local and external sockets owned by one process or tunnel ID, a long-lived outer connection, byte and direction relationships, WebSocket, SSH, or VPN control state, multiplexed stream IDs, DNS fragment sequence, and post-decapsulation service login, command, file access, or remote-desktop outcome. Defenders with endpoint socket ownership, tunnel-control logs, or raw packets and a decapsulator can recover the inner layer. If outer and inner layers are both encrypted, the tunnel resides on an agentless appliance, provider logs are unavailable, or only aggregated flow is retained, classification must remain a tunnel candidate.
+  scope_boundary_definition:
+    paragraphs:
+      - zh: >-
+          纳入至少需要四项证据：可识别的内层会话或服务语义、外层承载事务或连接、封装/解封装或分片/重组关系、以及后继 C2 或访问结果。APT29 的 Tor→HTTP→TLS→本地 SMB/RDP 链、TrickBot 的 DNS 片段→重组→HTTP 版同构命令、BRICKSTORM 的外层 WebSocket/TLS→Yamux 流→文件管理/网络隧道，均满足该门。仅看到外层异常、工具落地、监听器、VPN 登录或大流量只构成 exposure。
+        en: >-
+          Inclusion requires at least four evidence elements: a recognizable inner session or service semantic, an outer carrier transaction or connection, an encapsulation-decapsulation or fragmentation-reassembly relationship, and a successor C2 or access outcome. APT29's Tor-to-HTTP-to-TLS-to-local-SMB-or-RDP chain, TrickBot's DNS-fragments-to-reassembly-to-HTTP-isomorphic-command chain, and BRICKSTORM's outer-WebSocket-or-TLS-to-Yamux-stream-to-file-manager-or-network-tunnel chain satisfy this gate. An anomalous outer flow, installed tool, listener, VPN login, or large transfer alone is exposure.
+      - zh: >-
+          `NJT-0206`/T1090 的直接对象是中介节点接收一段连接并转发另一段，负载可以没有协议嵌套；本技术拥有内层语义被外层承载的关系。一个 meek/CDN、SOCKS-over-Yamux 或 SSH 跳板可同时是代理与隧道，但必须分别证明两段转发和内外层封装。`NJT-0160` 拥有真实应用事务本身承担任务/结果，`NJT-0208` 拥有无外层应用的直接低层 C2；简单 DNS C2 或 raw TCP 不因名称成为隧道。
+        en: >-
+          `NJT-0206` and T1090 directly concern an intermediary receiving one connection leg and forwarding another, and the payload need not be nested. This technique owns the relationship in which outer carriage contains inner semantics. A meek or CDN path, SOCKS over Yamux, or an SSH jump host can be both proxy and tunnel, but the two-leg relay and inner-to-outer encapsulation require separate evidence. `NJT-0160` owns real application transactions directly carrying tasking and results, while `NJT-0208` owns direct lower-layer C2 without an outer application. Simple DNS C2 or raw TCP does not become tunneling by name.
+      - zh: >-
+          T1573 只负责攻击者额外施加密码变换造成的无密钥不可恢复性；SSH、TLS 或 VPN 外层可能同时加密隧道，但加密不证明内层协议，解封装也不等同解密。`NJT-0212`/T1219 负责合法 IDE、RMM 或硬件远控工作流成为交互控制能力；其产品 session 只有在确实承载另一完整会话时才并列 T1572。合法企业 VPN、服务网格 sidecar、远程管理端口转发、开发隧道、灾备和监控 overlay 是强反例，需按批准 owner、identity、peer、inner service、domain pair、工单和期限排除。
+        en: >-
+          T1573 owns attacker-added cryptographic transformation that is unrecoverable without a key. An SSH, TLS, or VPN outer layer may encrypt a tunnel, but encryption does not prove an inner protocol and decapsulation is distinct from decryption. `NJT-0212` and T1219 own legitimate IDE, RMM, or hardware remote-control workflows becoming interactive control capabilities; their product session co-classifies with T1572 only when it carries another intact session. Approved enterprise VPN, service-mesh sidecar, administrative forwarding, development tunnel, disaster recovery, and monitoring overlay are strong counterexamples and require exclusion by approved owner, identity, peer, inner service, domain pair, ticket, and expiry.
+  application_scenarios_and_threat_model:
+    application_scenarios:
+      paragraphs:
+        - zh: >-
+            在禁止直接 RDP、SMB 或 Tor 的企业中，攻击者可在受害主机或边缘设备运行隧道端点，让本地服务或 Tor hidden service 的内层连接进入一个允许的 HTTPS/TLS 外层；远端解封装后继续路由到操作者。APT29 的 meek 链让边界看见 Google 相关 TLS/HTTP，而内层提供本地 139、445 和 3389 端口访问。若还经 CDN 中介转发，则 T1090 与本技术并列。
+          en: >-
+            In an enterprise that blocks direct RDP, SMB, or Tor, an adversary can run a tunnel endpoint on a victim or edge appliance and place the inner connection from a local service or Tor hidden service inside an allowed HTTPS or TLS outer layer for remote decapsulation and routing to the operator. APT29's meek chain left the boundary observing Google-related TLS and HTTP while the inner relationship exposed local ports 139, 445, and 3389. Where a CDN intermediary also forwards the path, T1090 co-classifies.
+        - zh: >-
+            另一类场景把一个内层 C2 协议拆入许多外层事务，或把多个并发内层会话汇聚到一个外层 socket。TrickBot 用 DNS 查询/响应传输带 session ID、片号和总片数的命令协议并在内存重组；BRICKSTORM 在 WebSocket 与嵌套 TLS 内使用 Yamux 为网络隧道和多个文件管理用户建立并发流。两者分别改变事务关联范围和外层连接计数。
+          en: >-
+            Another scenario places one inner C2 protocol across many outer transactions or converges multiple concurrent inner sessions into one outer socket. TrickBot transports a command protocol with session ID, fragment index, and fragment count in DNS queries and responses and reassembles it in memory. BRICKSTORM uses Yamux inside WebSocket and nested TLS to establish concurrent streams for network tunneling and multiple file-manager users. These respectively change transaction correlation scope and the number of visible outer connections.
+    threat_model:
+      attacker_model:
+        paragraphs:
+          - zh: >-
+              攻击者需要控制隧道两端或控制一个端点和可用的解封装服务，理解内外层的 framing、错误、顺序和流控，并在目标处取得足够权限创建 socket、监听、转发配置或加载组件。事务化隧道还需处理递归器缓存、重排、大小和字符限制；多路复用需管理 stream ID、并发、背压和重连；服务端点封装需能接触本地或内部服务。复杂嵌套增加延迟、带宽开销、故障点和可识别状态机。
+            en: >-
+              The adversary needs control of both tunnel endpoints, or one endpoint plus an available decapsulation service, knowledge of inner and outer framing, errors, ordering, and flow control, and sufficient target privileges to create sockets, listeners, forwarding configuration, or loaded components. Transactionized tunnels must handle resolver caching, reordering, size, and character constraints. Multiplexing requires stream IDs, concurrency, backpressure, and reconnect behavior. Service-endpoint encapsulation requires access to local or internal services. Complex nesting adds delay, bandwidth overhead, failure modes, and recognizable state machines.
+      defender_model:
+        paragraphs:
+          - zh: >-
+              防守方需要同时观察端点进程/服务与 socket、外层连接/事务、隧道或代理控制面、内层目标服务，以及批准路径目录。稳定键包括 device、process start key、listener、local/remote socket、outer uid/flow、tunnel/session/stream ID、transaction ID、inner destination/service、identity 和 time。对 IP/GRE 等可识别封装，Zeek tunnel_parents 可把 conn.log 内层连接连到 tunnel.log 外层；对 SSH、TLS、WebSocket、DNS 等应用隧道，通常需端点或专用解封装器补足。
+            en: >-
+              Defenders need concurrent visibility into endpoint processes or services and sockets, outer connections or transactions, tunnel or proxy control state, inner destination service, and an approved-path inventory. Stable keys include device, process-start key, listener, local and remote socket, outer uid or flow, tunnel, session, or stream ID, transaction ID, inner destination or service, identity, and time. For recognizable IP or GRE encapsulation, Zeek tunnel_parents can join an inner conn.log relationship to an outer tunnel.log record. SSH, TLS, WebSocket, and DNS application tunnels usually require endpoint telemetry or a purpose-built decapsulator.
+          - zh: >-
+              只有外层 flow 时，长连接、字节比、DNS 标签长度或 WebSocket 使用只能生成形态候选；不能声称看到 RDP、SMB、Tor 或命令。外层加密、内层再次加密、无 EDR 边缘设备、NAT/代理、内核隧道和第三方服务会破坏归因。防守模型还必须包含合法 VPN、服务网格、SSH 运维、IDE tunnel 与远控平台的 owner、workload、peer、inner service 和变更期限，否则正常隧道会成为主要误报。
+            en: >-
+              With outer flow alone, a long connection, byte ratio, DNS-label length, or WebSocket use produces only a shape candidate and cannot claim observed RDP, SMB, Tor, or commands. Outer encryption, inner re-encryption, an agentless edge appliance, NAT or proxying, kernel tunnels, and third-party services break attribution. The defender model must also inventory owner, workload, peer, inner service, and change validity for legitimate VPNs, service meshes, SSH administration, IDE tunnels, and remote-control platforms, or normal tunnels dominate false positives.
+  stealth_mechanisms:
+    - mechanism_ref: NM-BT
+      role: primary
+      summary:
+        zh: 外层解析边界使内层会话落出现有检测视野
+        en: The outer parse boundary moves the inner session outside existing detection visibility
+      analysis:
+        paragraphs:
+          - zh: >-
+              攻击者把内层服务或控制会话封装进允许的外层，使边界传感器记录外层协议、端点和事务，而针对内层协议的解析器、端口策略或服务审计不被调用。关键行为实际发生，但没有进入对应分析视野，形成行为透明。APT29 的本地 SMB/RDP 经 Tor/meek/HTTPS 暴露、TrickBot 的 HTTP 同构命令经 DNS 分片重组和 BRICKSTORM 的多层 WebSocket/TLS/Yamux 均直接支持行为—痕迹差；具体组织是否漏报仍需本地传感器验证。
+            en: >-
+              The adversary encapsulates an inner service or control session in an allowed outer layer, causing boundary sensors to record the outer protocol, endpoints, and transactions while parsers, port policies, or service audit for the inner protocol are not invoked. Critical behavior occurs without entering its corresponding analytic view, producing Behavioral Transparency. APT29 exposure of local SMB and RDP through Tor, meek, and HTTPS, TrickBot reassembly of HTTP-isomorphic commands from DNS fragments, and BRICKSTORM layering of WebSocket, TLS, and Yamux directly support the behavior-to-trace difference. Whether a particular organization misses it still requires local sensor validation.
+      evidence_keys:
+        - REF-000625
+        - REF-001024
+        - B5-T1572-REF-TRICKBOT-DNS
+        - B5-T1572-REF-BRICKSTORM
+      confidence: high
+  subtechnique_taxonomy:
+    narrative:
+      paragraphs:
+        - zh: >-
+            建议建立三个 Niji 原生子项。内层服务端点解耦控制内层服务 socket 与外层出口 socket 是否由隧道端点分开，需端点 socket/服务结果关联；外层会话多流汇聚控制多个并发内层逻辑流是否合并进一个外层连接，需 stream demux 或连接 fan-in 图；内层流事务化重组控制一个有状态内层会话是否被拆成多个外层请求/响应，需跨事务按 session、fragment 和 offset 重组。三者分别改变端点关系、连接基数和事务连续性，防御不互换。
+          en: >-
+            Three Niji-native children are proposed. Inner-Service Endpoint Decoupling controls whether a tunnel endpoint separates the inner service socket from the outer egress socket and requires endpoint socket and service-outcome joins. Outer-Session Multi-Stream Convergence controls whether several concurrent inner logical streams merge into one outer connection and requires stream demultiplexing or a connection fan-in graph. Transactionized Inner-Stream Reassembly controls whether one stateful inner session is divided across outer requests and responses and requires cross-transaction reconstruction by session, fragment, and offset. They change endpoint relationships, connection cardinality, and transaction continuity respectively and need different defenses.
+        - zh: >-
+            DNS、HTTP、SSH、VPN、Tor、Yamux、SOCKS 和具体工具都只是实现。一个样本可同时满足多个变量，例如 BRICKSTORM 在一个外层连接中汇聚多个网络隧道，并可能把内部服务经 SOCKS 暴露；分类可并列，但不能按每种协议建 NJS。普通单流隧道留在父级；只有代理两段关系而无内层语义归 NJT-0206，只有应用事务直接承载命令归 NJT-0160，只有外层密码保护归 T1573。
+          en: >-
+            DNS, HTTP, SSH, VPN, Tor, Yamux, SOCKS, and specific tools are implementations. One sample may satisfy several variables: BRICKSTORM converges multiple network tunnels in one outer connection and may expose internal services through SOCKS. Co-classification is allowed, but protocols do not receive separate NJS. Ordinary single-stream tunneling remains parent-level. A two-leg relay without inner semantics belongs to NJT-0206, direct command carriage by application transactions belongs to NJT-0160, and outer cryptographic protection alone belongs to T1573.
+    coverage: established
+    proposed_subtechnique_keys:
+      - B5-T1572-SUB-ENDPOINT
+      - B5-T1572-SUB-MULTIPLEX
+      - B5-T1572-SUB-TRANSACTION
+proposed_subtechniques:
+  - temporary_key: B5-T1572-SUB-ENDPOINT
+    proposed_status: formal-candidate
+    name:
+      zh: 内层服务端点解耦
+      en: Inner-Service Endpoint Decoupling
+    stable_switch_variable:
+      zh: 隧道是否把目标本地/内部服务的 socket 与外部可见出口 socket 分开，使外层对端不再等于内层服务对端
+      en: Whether the tunnel separates a local or internal target-service socket from the externally visible egress socket so the outer peer no longer equals the inner service peer
+    trace_change:
+      zh: 内层 RDP、SMB、Tor 或其他服务连接终止于本地/中继隧道进程，边界只见该进程的外层连接；内层端口和外层五元组不一致
+      en: Inner RDP, SMB, Tor, or another service terminates at a local or relay tunnel process while the boundary sees only that process's outer connection; inner ports and the outer five-tuple diverge
+    defender_observation_effect:
+      zh: 边界侧无法从外层流识别目标服务，端点侧若不记录 socket ownership 又无法连接本地服务与外联；检测必须重建 tunnel process 的内外两端及后继登录/访问
+      en: The boundary cannot identify the target service from the outer flow, while an endpoint without socket ownership cannot join the local service to egress; detection must reconstruct both sides of the tunnel process and successor login or access
+    sibling_boundary:
+      zh: 本项由内外端点关系拥有；若多个内层流合并为一个外层连接，还并列多流汇聚；若一个内层流跨多个外层事务重组，还并列事务化重组
+      en: This child owns the inner-to-outer endpoint relationship; multi-stream convergence co-applies when several inner flows merge into one outer connection, and transactionized reassembly co-applies when one inner flow spans many outer transactions
+    adjacent_boundaries:
+      zh: 普通代理只证明两段转发而不证明内层协议完整性，归 NJT-0206；IDE/RMM 产品交互控制归 NJT-0212，只有产品通道继续承载另一服务会话时并列
+      en: An ordinary proxy proves two-leg forwarding without an intact inner protocol and belongs to NJT-0206; IDE or RMM interactive control belongs to NJT-0212 and co-classifies only when its channel carries another service session
+    prerequisites:
+      zh: 攻击者能在受害端或边缘节点创建监听/转发 socket，访问内层服务，并控制远端解封装端
+      en: The adversary can create listener or forwarding sockets on a victim or edge node, reach the inner service, and control the remote decapsulation endpoint
+    application_scenario:
+      zh: APT29 的 Tor hidden service 经 meek HTTP/TLS 通道把流量转到受害主机 139、445、3389 端口，使外层看似 Google HTTPS 而内层提供 NetBIOS、SMB 和 Terminal Services
+      en: APT29's Tor hidden service used meek HTTP and TLS to forward traffic to victim ports 139, 445, and 3389, leaving a Google-like HTTPS outer flow while the inner relationship provided NetBIOS, SMB, and Terminal Services
+    causal_chain:
+      zh: 内层服务 socket 绑定到隧道端点 → 服务端口和真正目标从边界五元组消失 → 针对 RDP/SMB 等的边界策略不触发 → 外层允许连接承载未授权服务访问
+      en: Inner service socket binds to a tunnel endpoint -> service port and true target disappear from the boundary five-tuple -> RDP or SMB boundary policy does not trigger -> an allowed outer connection carries unauthorized service access
+    evidence_keys:
+      - REF-001024
+    confidence: high
+    direct_defense_keys:
+      - B5-T1572-DET-CROSSLAYER
+      - B5-T1572-NJA-ENDPOINT
+      - MIT-000172
+  - temporary_key: B5-T1572-SUB-MULTIPLEX
+    proposed_status: formal-candidate
+    name:
+      zh: 外层会话多流汇聚
+      en: Outer-Session Multi-Stream Convergence
+    stable_switch_variable:
+      zh: 攻击者是否把多个并发内层逻辑会话按 stream ID 汇聚到一个或少量外层连接
+      en: Whether the adversary converges multiple concurrent inner logical sessions identified by stream IDs into one or a few outer connections
+    trace_change:
+      zh: 外层连接数和对端保持低基数，但同一连接内部存在多个独立流的打开、关闭、方向和内容，端点可出现多个本地 socket 汇入一个 egress socket
+      en: Outer connection and peer cardinality remain low while independent inner streams open, close, and carry different directions and content; multiple local sockets may fan into one egress socket at the endpoint
+    defender_observation_effect:
+      zh: 单五元组基线把并发文件管理、网络隧道或操作者会话合并为一条正常长连接，必须取得多路流 ID 或 endpoint fan-in 才能恢复真实会话数
+      en: A single-five-tuple baseline merges concurrent file management, network tunnels, or operator sessions into one apparently normal long connection; stream IDs or endpoint fan-in are required to recover real session count
+    sibling_boundary:
+      zh: 本项控制连接基数，不要求内层目标为本地服务，也不要求内层流跨多个外层事务；没有多流汇聚的普通单流隧道留在父级
+      en: This child controls connection cardinality and does not require a local-service target or division of one inner flow across outer transactions; an ordinary single-stream tunnel remains at the parent
+    adjacent_boundaries:
+      zh: 多跳代理把路径分给多个节点，归 NJT-0206-002；本项相反，是多个逻辑流收敛到同一外层会话。HTTP/2 或 QUIC 正常多路复用是反例，需内层恶意结果
+      en: Multi-hop proxying distributes a path across nodes and belongs to NJT-0206-002; this child instead converges logical flows into one outer session. Normal HTTP/2 or QUIC multiplexing is a counterexample and requires a malicious inner outcome for classification
+    prerequisites:
+      zh: 两端实现共享的多路复用 framing、stream 生命周期和流控，并能把每条内层流交给不同服务或任务处理器
+      en: Both endpoints implement shared multiplexing framing, stream lifecycle, and flow control and can deliver each inner stream to a different service or task handler
+    application_scenario:
+      zh: BRICKSTORM 在 WebSocket 与嵌套 TLS 内建立 Yamux，会为网络隧道和并发文件管理用户创建新流，并在后续层再次多路复用多个会话
+      en: BRICKSTORM establishes Yamux inside WebSocket and nested TLS, opens new streams for network tunnels and concurrent file-manager users, and multiplexes multiple sessions again in a later layer
+    causal_chain:
+      zh: 内层流按 stream ID 汇聚 → 多个服务/任务只留下一个外层 peer 和长连接 → 基于连接数或单会话解释的告警低估活动 → 并发控制隐藏在允许连接内部
+      en: Inner flows converge by stream ID -> multiple services or tasks leave one outer peer and long connection -> alerts based on connection count or one-session interpretation underestimate activity -> concurrent control hides within an allowed connection
+    evidence_keys:
+      - B5-T1572-REF-BRICKSTORM
+    confidence: high
+    direct_defense_keys:
+      - B5-T1572-DET-CROSSLAYER
+      - B5-T1572-NJA-MULTIPLEX
+      - MIT-000172
+  - temporary_key: B5-T1572-SUB-TRANSACTION
+    proposed_status: formal-candidate
+    name:
+      zh: 内层流事务化重组
+      en: Transactionized Inner-Stream Reassembly
+    stable_switch_variable:
+      zh: 攻击者是否把一个有状态内层会话切成带 session、fragment 或 offset 的多个外层请求/响应，并在远端重组
+      en: Whether the adversary splits one stateful inner session into multiple outer requests and responses carrying session, fragment, or offset state and reassembles it at the far end
+    trace_change:
+      zh: 内层连续消息变成许多 DNS/HTTP 等离散事务，单事务只含片段、大小查询或偏移，必须跨 uid/transaction 重排才能出现完整命令
+      en: Continuous inner messages become many discrete DNS, HTTP, or equivalent transactions; one transaction carries only a fragment, size query, or offset and the complete command appears only after cross-transaction reordering
+    defender_observation_effect:
+      zh: 按单查询、单响应或短窗口检查只看到合法语法片段，无法调用内层状态机；检测需恢复 session ID、总片数、片号、offset 和方向
+      en: Inspection by one query, response, or short window sees only syntactically valid fragments and cannot invoke the inner state machine; detection must recover session ID, fragment count, index, offset, and direction
+    sibling_boundary:
+      zh: 本项控制一个内层流如何跨外层事务连续；若多个内层流共用一个外层连接则归多流汇聚，若只把一个完整消息放在一个应用事务中则归 NJT-0160 父级
+      en: This child controls continuity of one inner stream across outer transactions; several inner streams sharing one outer connection belong to multi-stream convergence, while one complete command in one application transaction belongs to NJT-0160 parent scope
+    adjacent_boundaries:
+      zh: 编码/加密片段分别可并列 T1132/T1573，但不证明隧道；必须恢复内层 session 或与另一承载版本同构的命令语义
+      en: Encoded or encrypted fragments may co-classify with T1132 or T1573 but do not prove tunneling; an inner session or command semantics isomorphic to another carrier version must be recovered
+    prerequisites:
+      zh: 隧道两端实现会话 ID、分片/重传、顺序或偏移重组，并控制能传输双向数据的外层事务
+      en: Tunnel endpoints implement session identifiers, fragmentation or retransmission, ordering or offset reassembly, and control outer transactions able to carry data bidirectionally
+    application_scenario:
+      zh: TrickBot 把与 HTTP 版本相同的命令结构放入 DNS，0x30 请求带 session ID 与分片头，0x31 查询响应长度，0x32 按 offset 取得应答数据并对被递归器重排的 IP 记录排序重组
+      en: >-
+        TrickBot places the same command structure as its HTTP variant in DNS: 0x30 requests carry session IDs and fragment headers, 0x31 requests query response size, and 0x32 retrieves response data by offset and sorts IP records reordered by resolvers before reassembly
+    causal_chain:
+      zh: 内层会话分片进入外层事务 → 每个查询/响应仅暴露局部状态 → 单事务规则不能恢复命令和结果 → 跨事务重组前控制语义保持在检测视野之外
+      en: Inner session fragments enter outer transactions -> each query or response exposes only local state -> single-transaction rules cannot recover commands and results -> control semantics stays outside detection visibility until cross-transaction reassembly
+    evidence_keys:
+      - B5-T1572-REF-TRICKBOT-DNS
+      - B5-T1572-REF-DNSCAT2
+    confidence: high
+    direct_defense_keys:
+      - B5-T1572-DET-CROSSLAYER
+      - B5-T1572-NJA-TRANSACTION
+      - MIT-000200
+taxonomy_candidates_examined:
+  - axis: outer_encryption
+    result: adjacent-technique
+    owner: T1573
+    reason: Encryption changes content recovery and key boundary but does not establish an inner protocol
+  - axis: outer_protocol_name
+    result: not-stealth-distinct
+    reason: DNS, HTTP, SSH, VPN, and WebSocket are carrier implementations and can support multiple proposed variables
+  - axis: tunnel_product_or_tool
+    result: not-stealth-distinct
+    reason: Tool identity does not define inner-to-outer relationship or defender observation
+  - axis: proxy_hop_count
+    result: adjacent-technique
+    owner_ref: NJT-0206
+    reason: Hop count changes relay path rather than protocol nesting
+  - axis: approved_workflow_identity
+    result: adjacent-technique
+    owner_ref: NJT-0212
+    reason: Abuse of a trusted IDE or remote-control workflow is distinct from the nested session it may carry
+  - axis: single_stream_encapsulation
+    result: parent-core
+    reason: Ordinary one-inner-to-one-outer tunneling defines the parent but lacks a further stable observation differential
+defense_candidates:
+  detection_strategies:
+    - temporary_key: B5-T1572-DET-CROSSLAYER
+      resolution_recommendation: create
+      name:
+        zh: 内外层会话解封装与结果关联
+        en: Inner-to-Outer Session Decapsulation and Outcome Correlation
+      objective:
+        zh: 从端点 socket、隧道控制状态和外层事务中恢复内层端点、流或消息，并把它连接到未授权 C2、服务访问或跨边界结果。
+        en: Recover inner endpoints, streams, or messages from endpoint sockets, tunnel-control state, and outer transactions and join them to unauthorized C2, service access, or cross-boundary outcomes.
+      targets:
+        - B5-T1572-PARENT
+        - B5-T1572-SUB-ENDPOINT
+        - B5-T1572-SUB-MULTIPLEX
+        - B5-T1572-SUB-TRANSACTION
+      domains:
+        - enterprise
+      analytic_keys:
+        - B5-T1572-NJA-ENDPOINT
+        - B5-T1572-NJA-MULTIPLEX
+        - B5-T1572-NJA-TRANSACTION
+      evidence_keys:
+        - REF-001024
+        - B5-T1572-REF-BRICKSTORM
+        - B5-T1572-REF-TRICKBOT-DNS
+        - B5-T1572-REF-DNSCAT2
+        - B5-T1572-REF-ZEEK-TUNNEL
+        - REF-000230
+        - REF-000632
+        - REF-000634
+        - REF-000635
+  detection_analytics:
+    - temporary_key: B5-T1572-NJA-ENDPOINT
+      strategy_key: B5-T1572-DET-CROSSLAYER
+      resolution_recommendation: create
+      name:
+        zh: 内层服务 socket—隧道进程—外层流关联
+        en: Inner-Service Socket–Tunnel Process–Outer Flow Correlation
+      platforms:
+        - Windows
+        - Linux
+        - macOS
+        - Network Devices
+      logic:
+        paragraphs:
+          - zh: >-
+              以 endpoint_id 和 process_start_key 为隧道实例建立 socket 图：记录隧道进程/服务、启动参数或配置、监听端点、接受的本地/内部连接及外部连接。把 RDP、SMB、数据库、Tor 或其他已批准/禁止的内层服务会话，以 source/destination socket、时间、字节方向和可得协议指纹连接到同一进程或 tunnel_id 的外层流；再连接服务端登录、远程桌面、文件访问、命令或载荷结果。内层服务、隧道绑定、外层连接和后继结果四门齐全才输出 confirmed_inner_service_tunnel。
+            en: >-
+              Build a socket graph for each tunnel instance using endpoint_id and process_start_key. Record the tunnel process or service, launch arguments or configuration, listeners, accepted local or internal connections, and external connections. Join RDP, SMB, database, Tor, or another approved or prohibited inner service session to an outer flow owned by the same process or tunnel_id through source and destination sockets, time, byte direction, and available protocol fingerprints. Then join service login, remote desktop, file access, command, or payload outcome. Emit confirmed_inner_service_tunnel only when inner service, tunnel binding, outer connection, and successor outcome all pass.
+          - zh: >-
+              若只有转发配置和双侧 flow 而无法证明内层协议，降级为 overlay relay 并交给 DET-000191/NJA-000214；若只有外层 SSH/TLS/VPN 或命令行工具，保留 tunnel_exposure。合法路径必须同时匹配批准 owner、identity、binary/config hash、inner service、outer peer、domain pair、工单和有效期；只按 ssh/plink/ngrok 进程名或端口告警不合格。
+            en: >-
+              If forwarding configuration and bilateral flows exist without proof of inner protocol, downgrade to overlay relay and hand off to DET-000191 and NJA-000214. If only outer SSH, TLS, VPN, or a command-line tool exists, retain tunnel_exposure. A legitimate path must match approved owner, identity, binary or configuration hash, inner service, outer peer, domain pair, ticket, and validity. Alerts based only on an ssh, plink, or ngrok process name or port are insufficient.
+      data_requirements:
+        - source_type: endpoint-process-and-service
+          name:
+            zh: 隧道进程、服务与配置
+            en: Tunnel Process, Service, and Configuration
+          channel: EDR, Sysmon Event 1, auditd or equivalent
+          required_fields:
+            - event_time
+            - endpoint_id
+            - process_start_key
+            - process_id
+            - image
+            - binary_hash
+            - signer
+            - parent_process_key
+            - command_line
+            - service_or_unit_name
+            - tunnel_config_hash_or_arguments
+            - principal_id
+        - source_type: endpoint-socket-ownership
+          name:
+            zh: 监听、接受与外联 socket 归属
+            en: Listener, Accepted, and Outbound Socket Ownership
+          channel: EDR or eBPF socket telemetry, Sysmon Event 3 where applicable, network-device process telemetry
+          required_fields:
+            - event_time
+            - endpoint_id
+            - process_start_key_or_tunnel_id
+            - direction
+            - local_ip
+            - local_port
+            - remote_ip
+            - remote_port
+            - protocol
+            - socket_or_flow_id
+            - bytes_in
+            - bytes_out
+            - interface_or_namespace
+        - source_type: network-connection
+          name:
+            zh: 外层连接与协议元数据
+            en: Outer Connection and Protocol Metadata
+          channel: Zeek conn.log, TLS/HTTP log, firewall or flow telemetry
+          required_fields:
+            - ts
+            - uid
+            - id.orig_h
+            - id.orig_p
+            - id.resp_h
+            - id.resp_p
+            - proto
+            - service
+            - duration
+            - orig_bytes
+            - resp_bytes
+            - conn_state
+        - source_type: inner-service-outcome
+          name:
+            zh: 内层服务会话与结果
+            en: Inner Service Session and Outcome
+          channel: RDP, SMB, authentication, application, file, and endpoint action logs
+          required_fields:
+            - event_time
+            - endpoint_or_service_id
+            - session_or_request_id
+            - principal
+            - source
+            - destination
+            - service
+            - action
+            - result
+        - source_type: approved-tunnel-inventory
+          name:
+            zh: 批准隧道与服务映射
+            en: Approved Tunnel and Service Mapping
+          channel: asset, change, VPN, service-mesh, and remote-administration inventory
+          required_fields:
+            - owner
+            - identity
+            - endpoint_id
+            - binary_or_config_hash
+            - inner_service
+            - inner_destination
+            - outer_peer
+            - domain_pair
+            - ticket
+            - valid_from
+            - valid_to
+      raw_to_normalized_fields:
+        - raw: Sysmon Event 1 UtcTime, ProcessGuid, Image, CommandLine, ParentProcessGuid
+          normalized: event_time, process_start_key, image, command_line, parent_process_key
+        - raw: Sysmon Event 3 UtcTime, ProcessGuid, SourceIp, SourcePort, DestinationIp, DestinationPort, Protocol
+          normalized: event_time, process_start_key, local_socket, remote_socket, protocol
+        - raw: eBPF or EDR bind, listen, accept, connect identifiers
+          normalized: direction, socket_or_flow_id and listener_to_accepted_socket
+        - raw: Zeek conn.log uid and id tuple
+          normalized: outer_flow_id and outer_five_tuple
+        - raw: tunnel command or config local/remote forwards
+          normalized: tunnel_id, inner_listener, inner_destination and outer_peer
+        - raw: service audit session and action
+          normalized: inner_session_id and successor_outcome
+      observables:
+        - zh: 同一隧道实例一侧接受本地/内部服务连接，另一侧建立允许外层流，并在内层服务产生成功会话或动作
+          en: One tunnel instance accepts a local or internal service connection on one side, establishes an allowed outer flow on the other, and produces a successful inner-service session or action
+        - zh: 边界没有内层服务端口，但端点 socket 图显示该服务字节与外层流存在稳定方向和寿命关系
+          en: The boundary lacks the inner service port while the endpoint socket graph shows stable direction and lifetime relationships between that service's bytes and the outer flow
+      correlation:
+        window:
+          zh: 从隧道进程/服务创建前十五分钟覆盖外层连接全寿命及终止后四十八小时；长连接按滚动五分钟配对内外 socket，配置 ID 可跨完整生命周期。
+          en: Start fifteen minutes before tunnel process or service creation and span the outer connection lifetime plus forty-eight hours after termination; pair inner and outer sockets in rolling five-minute windows while configuration IDs join the full lifecycle.
+        dimensions:
+          - endpoint_id
+          - tunnel_id
+          - process_start_key
+          - listener
+          - inner_socket_or_session
+          - outer_flow_id
+          - inner_service
+          - outer_peer
+          - principal
+          - ticket
+          - time
+      false_positives:
+        - zh: 获批堡垒机、SSH 端口转发、企业 VPN、服务网格 sidecar、数据库代理、IDE 开发隧道和灾备管理路径
+          en: Approved bastions, SSH forwarding, enterprise VPNs, service-mesh sidecars, database proxies, IDE development tunnels, and disaster-recovery paths
+      blind_spots:
+        - zh: 内核或设备级隧道无进程归属，边缘设备无 EDR，外层代理改写对端，第三方平台不共享 session，或内外层均加密
+          en: Kernel or device tunnels lack process ownership, edge devices lack EDR, an outer proxy rewrites the peer, third-party platforms do not share sessions, or both layers are encrypted
+        - zh: Sysmon Event 3 默认关闭且不记录所有监听/接受事件，单独依赖它无法构建完整 socket 图
+          en: Sysmon Event 3 is disabled by default and does not record every listen or accept event, so it cannot build the complete socket graph alone
+      tuning_guidance:
+        paragraphs:
+          - zh: >-
+              按工作负载登记精确 inner service、outer peer、identity、binary/config 和期限；高置信以四门闭合及未批准路径为条件。合法工具不能按进程名永久放行，异常进程也不能在缺少 inner outcome 时直接定性。对 NAT、代理和容器 namespace 保存映射，并对边缘设备使用独立 flow 与服务日志补偿。
+            en: >-
+              Register exact inner service, outer peer, identity, binary or configuration, and validity by workload. Require all four gates plus an unapproved path for high confidence. Do not permanently allow a legitimate tool by process name, and do not classify an anomalous process without an inner outcome. Retain NAT, proxy, and container-namespace mappings and compensate for edge appliances with independent flows and service logs.
+      evidence_keys:
+        - REF-001024
+        - REF-000230
+        - REF-000634
+        - B5-T1572-REF-OPENSSH-FORWARD
+      logic_status: implementable_design_not_validated_on_local_data
+    - temporary_key: B5-T1572-NJA-MULTIPLEX
+      strategy_key: B5-T1572-DET-CROSSLAYER
+      resolution_recommendation: create
+      name:
+        zh: 外层连接多流 fan-in 与内层结果分析
+        en: Outer-Connection Multi-Stream Fan-In and Inner-Outcome Analytic
+      platforms:
+        - Windows
+        - Linux
+        - macOS
+        - ESXi
+      logic:
+        paragraphs:
+          - zh: >-
+              为每个长期外层连接生成 outer_session_id，并从合法隧道控制日志、内存/样本解析、端点 socket 或可见 framing 中取得 stream_id、open/close、direction、inner destination 和 byte count。计算同时活动流数、每流寿命、流到本地 socket/任务的映射及一个外层连接的 fan_in_count。若一个未批准 outer session 在重叠时间内承载两个以上独立内层服务/任务，并产生文件管理、网络访问、shell 或 C2 结果，则输出 multiplexed_inner_sessions。
+            en: >-
+              Generate outer_session_id for every long-lived outer connection and obtain stream_id, open or close state, direction, inner destination, and byte count from legitimate tunnel-control logs, memory or sample parsing, endpoint sockets, or visible framing. Calculate concurrent stream count, per-stream lifetime, stream-to-local-socket or task mapping, and fan_in_count for one outer connection. Emit multiplexed_inner_sessions when an unapproved outer session carries at least two independent inner services or tasks during overlapping time and produces file-management, network-access, shell, or C2 outcomes.
+          - zh: >-
+              没有 stream ID 时，可用多个本地 socket 同时映射到同一 tunnel process 与 outer_flow_id 作为中置信 fan-in；只有长连接、流量突发或高字节数不能证明多路复用。HTTP/2、QUIC、企业 VPN、服务网格和远管平台本来会多路复用，必须与批准 controller/workload/peer 及内层结果对照。
+            en: >-
+              Without stream IDs, concurrent mapping of multiple local sockets to one tunnel process and outer_flow_id provides medium-confidence fan-in. A long connection, burst, or high byte count alone does not prove multiplexing. HTTP/2, QUIC, enterprise VPNs, service meshes, and remote-management platforms legitimately multiplex and require comparison with approved controller, workload, peer, and inner outcomes.
+      data_requirements:
+        - source_type: tunnel-stream-control
+          name:
+            zh: 多路流控制与解复用字段
+            en: Multiplexed Stream Control and Demultiplexing Fields
+          channel: tunnel server/client audit, decapsulator, memory capture, or validated sample parser
+          required_fields:
+            - event_time
+            - endpoint_id
+            - tunnel_id
+            - outer_session_id
+            - stream_id
+            - stream_event
+            - direction
+            - inner_destination_or_service
+            - byte_count
+            - result
+        - source_type: endpoint-socket-ownership
+          name:
+            zh: 本地 socket 至外层连接映射
+            en: Local Socket to Outer Connection Mapping
+          channel: EDR or eBPF socket telemetry
+          required_fields:
+            - event_time
+            - endpoint_id
+            - process_start_key_or_tunnel_id
+            - local_socket_id
+            - local_peer
+            - outer_flow_id
+            - bytes_in
+            - bytes_out
+            - duration
+        - source_type: outer-network-flow
+          name:
+            zh: 外层长连接流量
+            en: Outer Long-Lived Connection Flow
+          channel: Zeek conn.log, firewall or flow telemetry
+          required_fields:
+            - ts
+            - uid
+            - source
+            - destination
+            - protocol
+            - service
+            - duration
+            - orig_bytes
+            - resp_bytes
+            - packets
+        - source_type: inner-task-or-service-outcome
+          name:
+            zh: 每流内层任务或服务结果
+            en: Per-Stream Inner Task or Service Outcome
+          channel: endpoint, application, file, shell, and remote-service audit
+          required_fields:
+            - event_time
+            - endpoint_id
+            - stream_or_session_id_when_available
+            - action
+            - target
+            - result
+        - source_type: approved-multiplexed-session-inventory
+          name:
+            zh: 批准多路会话清单
+            en: Approved Multiplexed Session Inventory
+          channel: VPN, service mesh, HTTP2 or QUIC, IDE, and remote-management governance
+          required_fields:
+            - owner
+            - workload
+            - controller_or_peer
+            - outer_protocol
+            - permitted_inner_services
+            - max_streams
+            - ticket
+            - valid_from
+            - valid_to
+      raw_to_normalized_fields:
+        - raw: tunnel library or decoder connection identifier
+          normalized: outer_session_id
+        - raw: Yamux, smux, HTTP2, QUIC, or equivalent stream identifier
+          normalized: stream_id
+        - raw: stream open, data, close, reset and window-update events
+          normalized: stream_event and stream_lifetime
+        - raw: process socket ID and Zeek uid
+          normalized: local_socket_id and outer_flow_id
+        - raw: concurrent active stream count
+          normalized: fan_in_count
+        - raw: file-manager call, network-tunnel destination, shell, or service audit
+          normalized: inner_destination_or_service and inner_outcome
+      observables:
+        - zh: 一个外层会话在重叠时间内承载多个可分别打开/关闭的内层流并连接不同服务或任务
+          en: One outer session carries several independently opened and closed inner streams during overlapping time and maps them to different services or tasks
+        - zh: 多个本地 socket 的字节与寿命汇入同一 process/outer uid，后继结果证明不是独立无关连接
+          en: Bytes and lifetimes from multiple local sockets fan into one process and outer uid, with successor outcomes proving they are not unrelated connections
+      correlation:
+        window:
+          zh: 覆盖外层连接全寿命；流并发在滚动一分钟内计算，外层终止后保留四十八小时连接后继结果。
+          en: Cover the full outer-connection lifetime, calculate stream concurrency in rolling one-minute windows, and retain successor outcomes for forty-eight hours after termination.
+        dimensions:
+          - endpoint_id
+          - tunnel_id
+          - outer_session_id
+          - outer_flow_id
+          - stream_id
+          - local_socket_id
+          - inner_destination_or_service
+          - controller_or_peer
+          - time
+      false_positives:
+        - zh: 正常 HTTP/2、QUIC、企业 VPN、服务网格、远控平台、数据库连接池和应用网关会在单连接中承载多流
+          en: Normal HTTP/2, QUIC, enterprise VPNs, service meshes, remote-control platforms, database pools, and application gateways carry multiple streams in one connection
+      blind_spots:
+        - zh: 多路 framing 在加密内层且无端点 stream telemetry，只能用 socket fan-in 推断
+          en: Multiplex framing inside encryption without endpoint stream telemetry leaves only socket-fan-in inference
+        - zh: 内核或设备实现不暴露 per-stream ID，连接迁移或重连改变 outer flow 标识
+          en: Kernel or device implementations do not expose per-stream IDs, and connection migration or reconnect changes outer-flow identity
+      tuning_guidance:
+        paragraphs:
+          - zh: >-
+              为每类批准多路协议记录 owner、workload、peer、允许 inner service 和预期流数，不用固定“两个流”作为恶意阈值。高置信要求未批准关系、可分辨的独立内层流及至少一个恶意结果；加密场景保留 fan-in 证据但标注推断级别。
+            en: >-
+              Record owner, workload, peer, permitted inner services, and expected stream count for every approved multiplexed protocol rather than using a fixed two-stream malicious threshold. High confidence requires an unapproved relationship, distinguishable independent inner streams, and at least one malicious outcome. Preserve fan-in evidence in encrypted cases but label it inferential.
+      evidence_keys:
+        - B5-T1572-REF-BRICKSTORM
+        - REF-000634
+      logic_status: implementable_design_not_validated_on_local_data
+    - temporary_key: B5-T1572-NJA-TRANSACTION
+      strategy_key: B5-T1572-DET-CROSSLAYER
+      resolution_recommendation: create
+      name:
+        zh: 外层事务分片—内层会话重组分析
+        en: Outer-Transaction Fragment–Inner-Session Reassembly Analytic
+      platforms:
+        - Windows
+        - Linux
+        - macOS
+        - ESXi
+      logic:
+        paragraphs:
+          - zh: >-
+              按 endpoint/process、外层目的域或服务、协议 transaction ID 和时间收集 DNS/HTTP 等请求响应原件。在合法授权的解析环境中，从候选字段提取 session ID、packet type、fragment index/total、offset、declared size 和 payload，按 session 与方向去重、排序、重组并记录每步输入输出摘要。只有重组结果呈现可识别内层状态机、与已知另一承载版本同构的命令结构或可重复 SYN/MSG/FIN 会话，并连接端点命令/文件/C2 结果时，才输出 transactionized_inner_tunnel。
+            en: >-
+              Collect original DNS, HTTP, or equivalent requests and responses by endpoint or process, outer destination domain or service, protocol transaction ID, and time. In an authorized analysis environment, extract session ID, packet type, fragment index and total, offset, declared size, and payload from candidate fields; deduplicate, order, and reassemble by session and direction while recording input and output digests for every step. Emit transactionized_inner_tunnel only when the reassembled result exposes a recognizable inner state machine, a command structure isomorphic to a known alternate-carrier version, or a repeatable SYN, MSG, and FIN session, and it joins to endpoint command, file, or C2 outcome.
+          - zh: >-
+              仅长 DNS 标签、高熵、TXT/AAAA 频率、HTTP polling 或 NXDOMAIN 不足以证明隧道。解析器无法恢复 session/fragment 关系时输出 tunnel_shape_candidate；DoH 只能看到 HTTPS 时需端点 DNS API、受管 resolver 或客户端配置补足。TrickBot 的 C2 已下线且研究者用模拟服务端生成响应，因此正式案例把请求结构与客户端重组逻辑列为直接证据，把服务端现场行为标为实验复现。
+            en: >-
+              Long DNS labels, high entropy, TXT or AAAA frequency, HTTP polling, or NXDOMAIN alone do not prove a tunnel. Emit tunnel_shape_candidate when the parser cannot recover session or fragment relationships. Where DoH exposes only HTTPS, use endpoint DNS API, a managed resolver, or client configuration as compensation. TrickBot's C2 was offline and the researcher generated responses with a simulated server, so its request structure and client reassembly logic are direct evidence while server-side field behavior is experimental reproduction.
+      data_requirements:
+        - source_type: outer-protocol-transactions
+          name:
+            zh: DNS、HTTP 或其他外层事务
+            en: DNS, HTTP, or Other Outer Transactions
+          channel: Zeek dns.log/http.log, managed resolver or proxy, full packet capture where authorized
+          required_fields:
+            - event_time
+            - endpoint_or_source
+            - process_key_when_available
+            - transaction_or_uid
+            - direction
+            - query_or_uri_or_field
+            - qtype_or_method
+            - rcode_or_status
+            - answers_or_response_field
+            - raw_object_hash
+        - source_type: tunnel-fragment-parser
+          name:
+            zh: 隧道字段提取与重组记录
+            en: Tunnel Field Extraction and Reassembly Record
+          channel: sandbox, network decapsulator, protocol parser, or forensic script
+          required_fields:
+            - event_time
+            - parser_id_and_version
+            - input_object_hash
+            - outer_transaction_id
+            - tunnel_session_id
+            - packet_type
+            - fragment_index
+            - fragment_total
+            - offset
+            - declared_size
+            - direction
+            - payload_hash
+            - reassembled_object_hash
+            - parse_result
+        - source_type: endpoint-network-and-outcome
+          name:
+            zh: 进程网络、DNS API 与后继结果
+            en: Process Network, DNS API, and Successor Outcome
+          channel: EDR, Sysmon Events 3 and 22, process/file/action audit
+          required_fields:
+            - event_time
+            - endpoint_id
+            - process_start_key
+            - image
+            - destination
+            - protocol
+            - query_name_when_available
+            - action
+            - result
+        - source_type: approved-transaction-tunnel-inventory
+          name:
+            zh: 批准事务隧道与 DoH 清单
+            en: Approved Transaction Tunnel and DoH Inventory
+          channel: network, endpoint, application, and privacy governance
+          required_fields:
+            - owner
+            - workload
+            - process_or_client
+            - outer_service
+            - tunnel_purpose
+            - permitted_inner_semantics
+            - parser_or_inspection_point
+            - ticket
+            - valid_from
+            - valid_to
+      raw_to_normalized_fields:
+        - raw: Zeek dns.log ts, uid, query, qtype_name, rcode_name, answers
+          normalized: event_time, outer_transaction_id, request_field, outer_type, response_status and response_field
+        - raw: Zeek http.log ts, uid, method, host, uri, status_code, body object
+          normalized: event_time, outer_transaction_id, outer_service, request_field, response_status and raw_object_hash
+        - raw: malware or tunnel parser packet UUID/session ID
+          normalized: tunnel_session_id
+        - raw: fragment index, total fragments, byte offset and declared length
+          normalized: fragment_index, fragment_total, offset and declared_size
+        - raw: sorted or decoded fragment bytes
+          normalized: payload_hash and reassembled_object_hash
+        - raw: recovered command header, SYN/MSG/FIN or alternate-carrier command structure
+          normalized: inner_protocol_or_state_machine
+        - raw: process execution, file operation, result upload or persistent callback
+          normalized: successor_outcome
+      observables:
+        - zh: 多个外层事务共享隧道 session ID 和互补片号/offset，重组后出现可执行命令或稳定内层状态机
+          en: Multiple outer transactions share a tunnel session ID and complementary fragment indexes or offsets, reconstructing an executable command or stable inner state machine
+        - zh: 请求与响应方向分别携带内层任务和结果，且端点同一进程消费重组对象并产生后继动作
+          en: Request and response directions carry inner tasking and results, and the same endpoint process consumes the reassembled object and produces a successor action
+      correlation:
+        window:
+          zh: 依据合法 resolver/proxy 保留与隧道重传设置，默认每 session 两小时，低速隧道可扩展至二十四小时；严格保留 direction、index 和 offset 顺序。
+          en: Set by resolver or proxy retention and tunnel retransmission behavior, two hours per session by default and up to twenty-four hours for low-rate tunnels; preserve direction, index, and offset ordering strictly.
+        dimensions:
+          - endpoint_id
+          - process_start_key
+          - outer_service_or_domain
+          - outer_transaction_id
+          - tunnel_session_id
+          - direction
+          - fragment_index
+          - offset
+          - reassembled_object_hash
+          - inner_protocol_or_state_machine
+          - time
+      false_positives:
+        - zh: 合法 DoH、DNSSEC、CDN/遥测、邮件或 Web 分块上传、企业 DNS 隧道、监控代理和低带宽设备协议
+          en: Legitimate DoH, DNSSEC, CDN or telemetry, chunked mail or web upload, enterprise DNS tunnels, monitoring agents, and low-bandwidth device protocols
+      blind_spots:
+        - zh: DoH/DoT 内容不可见、递归器缓存与重排、采样 flow 无原始字段、未知加密/编码、session ID 随包变化或低速周期超过保留期
+          en: Opaque DoH or DoT, resolver caching and reordering, sampled flow without raw fields, unknown encryption or encoding, per-packet-changing session IDs, or low-rate cycles beyond retention
+      tuning_guidance:
+        paragraphs:
+          - zh: >-
+              先按批准 resolver、应用和域基线排除合法编码，再以可复核 session/fragment/offset 和重组结果作为硬门。查询长度、熵、记录类型和频率只用于候选排序。解析器需限制 session 数、内存、总重组字节和超时，并保存失败片段，不对未知内容强行解码或按域名永久白名单。
+            en: >-
+              Baseline approved resolvers, applications, and domains before treating encoding as suspicious, then use reproducible session, fragment, offset, and reassembled outcome as hard gates. Query length, entropy, record type, and frequency only prioritize candidates. Bound parser session count, memory, total reassembled bytes, and timeout while preserving failed fragments; do not force unknown content through a decoder or permanently allowlist a domain.
+      evidence_keys:
+        - B5-T1572-REF-TRICKBOT-DNS
+        - B5-T1572-REF-DNSCAT2
+        - REF-000635
+        - REF-000632
+        - REF-000230
+      logic_status: implementable_design_not_validated_on_local_data
+  mitigations:
+    - temporary_key: B5-T1572-MIT-EXTEND-MIT000172
+      resolution_recommendation: extend
+      existing_ref: MIT-000172
+      name:
+        zh: 扩展独立网络分段与中继路径治理以覆盖隧道
+        en: Extend Independent Network Segmentation and Relay-Path Governance for Tunnels
+      rationale:
+        zh: MIT-000172 已拥有批准 path graph、隧道/port forward/VPN 最小权限、双侧 flow 和独立分段控制，同义于 T1572 的路径准入与端点治理。保持 measures 不变，增加逐目标 applications。
+        en: MIT-000172 already owns approved path graphs, least authority for tunnels, port forwards, and VPNs, bilateral flows, and independent segmentation controls, matching T1572 path admission and endpoint governance. Keep measures unchanged and add target applications.
+      applications:
+        - target_key: B5-T1572-PARENT
+          use:
+            zh: 为每条批准隧道登记 owner、identity、binary/config hash、两端、inner protocol/service、outer protocol/peer、domain pair、用途和到期；默认阻断未批准 listener、port forward、VPN、服务网格和隧道客户端，并在独立边界重复限制。发现异常时同时撤销两端身份/配置并验证内外 flow 终止。
+            en: Register owner, identity, binary or configuration hash, both endpoints, inner protocol or service, outer protocol or peer, domain pair, purpose, and expiry for every approved tunnel. Deny unapproved listeners, forwards, VPNs, service meshes, and tunnel clients by default and repeat restrictions at an independent boundary. On anomaly revoke identity and configuration at both endpoints and verify termination of inner and outer flows.
+          expected_effect:
+            zh: 攻击者不能仅选择一个允许外层协议就获得任意内层路径，未登记内外映射和双侧流量会显著暴露。
+            en: Selecting an allowed outer protocol no longer grants arbitrary inner paths, and unregistered inner-to-outer mappings plus bilateral flows become conspicuous.
+          limitations:
+            zh: 自定义用户态隧道可改名，内核/设备隧道可能无进程，动态服务网格和 MSP 路径维护复杂；严格默认拒绝会影响远程运维和业务连续性。
+            en: Custom user-space tunnels can be renamed, kernel or device tunnels may lack processes, and dynamic service-mesh or MSP paths are difficult to inventory. Strict default denial can disrupt remote administration and business continuity.
+        - target_key: B5-T1572-SUB-ENDPOINT
+          use:
+            zh: 对 SSH 等受管入口使用 DisableForwarding、AllowTcpForwarding、PermitOpen/PermitListen 或等效策略限制转发方向与目标；对其他隧道限制监听权限、可访问内层服务和 outer peer，并把本地 socket—outer flow 映射外送审计。
+            en: On managed SSH entry points use DisableForwarding, AllowTcpForwarding, PermitOpen or PermitListen, or equivalent policy to constrain forwarding direction and destination. For other tunnels restrict listener authority, reachable inner services, and outer peers and export local-socket-to-outer-flow mapping for audit.
+          expected_effect:
+            zh: 未批准本地服务无法被任意绑定进允许隧道，内层服务目标和外层出口必须同时符合策略。
+            en: Unauthorized local services cannot be arbitrarily bound into an allowed tunnel, and inner service destination plus outer egress must both satisfy policy.
+          limitations:
+            zh: OpenSSH 官方说明仅禁用 forwarding 对仍有 shell 的用户并非完整安全边界；攻击者可上传自定义 forwarder，因此还需应用控制、网络分段和端点 socket 检测。
+            en: OpenSSH documentation notes that disabling forwarding alone is not a complete boundary for users who retain a shell because they can install another forwarder; application control, segmentation, and endpoint socket detection remain necessary.
+        - target_key: B5-T1572-SUB-MULTIPLEX
+          use:
+            zh: 对批准多路协议限定 controller/peer、允许 inner service、最大并发流和 session 生命周期，并在网关或端点输出 per-stream ID 与目标；未知加密多路连接不能仅因外层协议获准而整体放行。
+            en: For approved multiplexed protocols constrain controller or peer, permitted inner services, maximum concurrent streams, and session lifetime and export per-stream IDs and destinations at gateway or endpoint. Do not allow an unknown encrypted multiplexed connection solely because its outer protocol is approved.
+          expected_effect:
+            zh: 单外层连接不能无限承载未登记的并发控制流，异常 fan-in 和内层目标可被审计或阻断。
+            en: One outer connection cannot carry unlimited unregistered concurrent control streams, and anomalous fan-in plus inner destinations become auditable or blockable.
+          limitations:
+            zh: HTTP/2、QUIC、VPN 和服务网格本身需要高并发，固定流数阈值会误报；没有 per-stream telemetry 时只能限制 peer/workload 并依赖 endpoint fan-in。
+            en: HTTP/2, QUIC, VPN, and service meshes legitimately need high concurrency, so fixed stream thresholds create false positives. Without per-stream telemetry controls are limited to peer and workload plus endpoint fan-in.
+      evidence_keys:
+        - REF-001024
+        - B5-T1572-REF-BRICKSTORM
+        - B5-T1572-REF-OPENSSH-FORWARD
+        - REF-000230
+    - temporary_key: B5-T1572-MIT-EXTEND-MIT000200
+      resolution_recommendation: extend
+      existing_ref: MIT-000200
+      name:
+        zh: 扩展角色绑定协议中介与跨面保留以覆盖事务化隧道
+        en: Extend Role-Bound Protocol Mediation and Cross-Surface Retention for Transactionized Tunnels
+      rationale:
+        zh: MIT-000200 已拥有受管 DNS/Web 中介、按角色限制协议和跨观察面字段保留；T1572 事务重组需要相同控制概念。保持 measures 不变，仅增加事务化子项 application。
+        en: MIT-000200 already owns managed DNS and web intermediaries, role-bound protocol restriction, and cross-surface field retention, the same control concept needed for transactionized T1572. Keep measures unchanged and add one child application.
+      applications:
+        - target_key: B5-T1572-SUB-TRANSACTION
+          use:
+            zh: 强制终端只使用受管 DNS resolver 和 Web proxy，阻断直接外部 DNS/DoT/未经批准 DoH 与不登记 polling 服务；在隐私和权限允许范围内保留原始 query/answer、HTTP 字段、uid、进程键和方向，使专用解析器能按 session/fragment/offset 重组。对合法事务隧道绑定应用、域、inner semantic、用途和到期。
+            en: Force endpoints through managed DNS resolvers and web proxies and block direct external DNS, DoT, unapproved DoH, and unregistered polling services. Within privacy and authorization limits retain raw query and answer, HTTP fields, uid, process key, and direction so a purpose-built parser can reassemble by session, fragment, and offset. Bind legitimate transaction tunnels to application, domain, inner semantic, purpose, and expiry.
+          expected_effect:
+            zh: 攻击者可用的外层事务路径收窄，跨事务关联字段保留，内层会话不再因单查询/响应观察而永久丢失。
+            en: Available outer transaction paths narrow, cross-transaction join fields are retained, and inner sessions are no longer permanently lost to single-query or response observation.
+          limitations:
+            zh: 外部网络、移动设备、证书固定和隐私要求可能阻止中介检查；受管 resolver 被控、域名获准或未知加密 framing 时仍需端点解析与结果检测。
+            en: External networks, mobile devices, certificate pinning, and privacy requirements may prevent intermediary inspection. A compromised managed resolver, approved domain, or unknown encrypted framing still requires endpoint parsing and outcome detection.
+      evidence_keys:
+        - B5-T1572-REF-TRICKBOT-DNS
+        - B5-T1572-REF-DNSCAT2
+        - REF-000635
+        - REF-000632
+existing_library_reuse:
+  reference_refs:
+    - REF-000625
+    - REF-001024
+    - REF-000230
+    - REF-000632
+    - REF-000634
+    - REF-000635
+  claim_refs: []
+  case_refs:
+    - CASE-000298
+  strategy_refs: []
+  analytic_refs: []
+  mitigation_refs:
+    - MIT-000172
+    - MIT-000200
+  relationship_refs: []
+  notes:
+    zh: >-
+      REF-000625 应扩展 locator 到 T1572 父行为、TA0011 映射和零子项广度。REF-001024 与 CASE-000298 可直接复用，并把新父级和内层服务端点解耦子项加入 CASE subject_refs；中央事实不变。DET-000191/NJA-000214 只证明 overlay relay 的双侧会话与禁止路径，不要求内层/外层协议语义，因此不能 extend 为 T1572；新 DET/NJA 应 split/create，并在缺少内层证据时降级交接给 NJA-000214。MIT-000172 与 MIT-000200 的措施语义分别覆盖隧道准入/双侧治理和受管事务中介/跨面保留，应 extend applications，不创建同义 MIT。
+    en: >-
+      Extend REF-000625's locator to T1572 parent behavior, TA0011 mapping, and zero-child breadth. REF-001024 and CASE-000298 are direct reuse candidates; add the new parent and Inner-Service Endpoint Decoupling child to CASE subject_refs without changing its central fact. DET-000191 and NJA-000214 establish bilateral overlay relay and prohibited paths but do not require inner and outer protocol semantics, so they cannot be extended to T1572. Split and create the new DET and NJAs, downgrading and handing off to NJA-000214 when inner evidence is absent. MIT-000172 and MIT-000200 already own tunnel admission or bilateral governance and managed transaction mediation or cross-surface retention respectively, so extend applications rather than create synonymous mitigations.
+library_candidates:
+  references:
+    - key: B5-T1572-REF-BRICKSTORM
+      title:
+        zh: NVISO BRICKSTORM 后门详细分析
+        en: NVISO BRICKSTORM Backdoor Detailed Analysis
+      source_type: incident-and-sample-analysis
+      publisher: NVISO Incident Response
+      published: '2025-04-01'
+      url: https://blog.nviso.eu/wp-content/uploads/2025/04/NVISO-BRICKSTORM-Report.pdf
+      locator: pages 9 to 13 WebSocket, nested TLS, authentication, Yamux or smux multiplexing, concurrent network-tunnel and file-manager sessions
+      credibility: high
+      evidence_limit:
+        zh: 报告逆向多个 BRICKSTORM 样本并重建 framing，但部分基础设施层终止位置不明；多层 TLS 的检测规避结论来自传感器模型，未提供统一生产漏报率。
+        en: The report reverse engineers multiple BRICKSTORM samples and reconstructs framing, but termination location for some infrastructure layers remains unknown. Detection-evasion conclusions for layered TLS follow a sensor model and no universal production miss rate is provided.
+    - key: B5-T1572-REF-TRICKBOT-DNS
+      title:
+        zh: FortiGuard TrickBot DNS 隧道 C2 逆向分析
+        en: FortiGuard Inside a TrickBot Variant Using DNS Tunneling for C2
+      source_type: sample-analysis-and-lab-reproduction
+      publisher: FortiGuard Labs
+      author: Xiaopeng Zhang
+      published: '2026-07-22'
+      url: https://www.fortinet.com/blog/threat-research/inside-a-trickbot-variant-using-dns-tunneling-for-c2
+      locator: DNS tunneling model; packet session ID and fragmentation header; request/size/response types; IP sorting and reassembly; HTTP-isomorphic command structure
+      credibility: high
+      evidence_limit:
+        zh: 样本、客户端代码和请求结构为直接逆向证据；原 C2 已下线，研究者用 Python 服务端模拟响应，服务端应答与吞吐为实验复现，不能写成现场观察。
+        en: The sample, client code, and request structure are direct reverse-engineering evidence. The original C2 was offline and the researcher simulated responses with a Python server, so server response behavior and throughput are experimental reproduction rather than field observation.
+    - key: B5-T1572-REF-DNSCAT2
+      title:
+        zh: dnscat2 内层会话与 DNS 传输协议说明
+        en: dnscat2 Inner Session and DNS Transport Protocol
+      source_type: primary-tool-documentation
+      publisher: dnscat2 project
+      url: https://github.com/iagox86/dnscat2/blob/master/doc/protocol.md
+      locator: logical connections over multiple lower-level datagrams; 16-bit session IDs; DNS encoding, sequencing, SYN/MSG/FIN and simultaneous sessions
+      credibility: medium
+      evidence_limit:
+        zh: 项目文档证明可实施协议设计和解封装字段，不是攻击事件证据，也不证明部署中的流量一定恶意。
+        en: Project documentation establishes an implementable protocol design and decapsulation fields. It is not incident evidence and does not establish that deployed traffic is malicious.
+    - key: B5-T1572-REF-ZEEK-TUNNEL
+      title:
+        zh: Zeek tunnel.log 封装关联字段
+        en: Zeek tunnel.log Encapsulation Correlation Fields
+      source_type: official-documentation
+      publisher: Zeek
+      url: https://docs.zeek.org/en/v7.0.11/logs/tunnel.html
+      locator: uid, outer endpoint tuple, tunnel_type, DISCOVER/CLOSE action, and conn.log tunnel_parents relationship
+      credibility: high
+      evidence_limit:
+        zh: 文档证明 Zeek 对支持的 IP/GRE/Teredo 等封装可输出内外关联；不能自动解析任意 SSH、TLS、WebSocket、Yamux 或自定义 DNS 隧道。
+        en: The documentation establishes inner-to-outer linkage for supported IP, GRE, Teredo, and similar encapsulation. It does not automatically parse arbitrary SSH, TLS, WebSocket, Yamux, or custom DNS tunnels.
+    - key: B5-T1572-REF-OPENSSH-FORWARD
+      title:
+        zh: OpenSSH sshd_config 转发控制
+        en: OpenSSH sshd_config Forwarding Controls
+      source_type: official-documentation
+      publisher: OpenBSD
+      url: https://man.openbsd.org/sshd_config
+      locator: DisableForwarding, AllowTcpForwarding, AllowStreamLocalForwarding, PermitOpen, PermitListen, GatewayPorts and documented limitations
+      credibility: high
+      evidence_limit:
+        zh: 文档证明受管 sshd 可限制转发目标和方向，也明确指出保留 shell 的用户可安装自有 forwarder；它不证明所有隧道可由 SSH 配置控制。
+        en: The documentation establishes that managed sshd can restrict forwarding targets and directions and explicitly notes that users retaining a shell can install their own forwarder. It does not establish control over every tunneling implementation.
+  claims:
+    - key: B5-T1572-CLM-PARENT
+      statement:
+        zh: T1572 要求完整或可重建的内层会话语义由另一外层协议/连接承载，并在解封装后产生 C2、远程访问或跨边界结果。
+        en: T1572 requires an intact or reconstructable inner session semantic carried by another outer protocol or connection and a C2, remote-access, or cross-boundary outcome after decapsulation.
+      evidence_keys:
+        - REF-000625
+        - REF-001024
+        - B5-T1572-REF-BRICKSTORM
+        - B5-T1572-REF-TRICKBOT-DNS
+      evidence_mode: direct-parent-and-incident-or-sample-analysis
+    - key: B5-T1572-CLM-ENDPOINT
+      statement:
+        zh: APT29 的 meek/Tor 链把外层 Google 形态 HTTPS 与受害主机本地 NetBIOS、SMB 和 Terminal Services 端点分离，支持内层服务端点解耦为独立变量。
+        en: APT29's meek and Tor chain separates a Google-like HTTPS outer flow from local victim NetBIOS, SMB, and Terminal Services endpoints, supporting inner-service endpoint decoupling as an independent variable.
+      evidence_keys:
+        - REF-001024
+      evidence_mode: field-observation
+    - key: B5-T1572-CLM-MULTIPLEX
+      statement:
+        zh: BRICKSTORM 使用 Yamux/smux 在一个嵌套外层连接中创建多个并发 C2 与网络隧道流，并再次多路复用，支持外层会话多流汇聚变量。
+        en: BRICKSTORM uses Yamux or smux to create multiple concurrent C2 and network-tunnel streams inside one nested outer connection and multiplexes again, supporting outer-session multi-stream convergence.
+      evidence_keys:
+        - B5-T1572-REF-BRICKSTORM
+      evidence_mode: direct-sample-analysis
+    - key: B5-T1572-CLM-TRANSACTION
+      statement:
+        zh: TrickBot 以 session ID、分片序号、总片数、大小与 offset 跨 DNS 请求/响应重组与 HTTP 版本同构的命令结构，支持事务化内层流重组变量。
+        en: TrickBot uses session IDs, fragment index and count, size, and offsets to reconstruct an HTTP-isomorphic command structure across DNS requests and responses, supporting transactionized inner-stream reassembly.
+      evidence_keys:
+        - B5-T1572-REF-TRICKBOT-DNS
+      evidence_mode: direct-client-analysis-plus-lab-response-reproduction
+    - key: B5-T1572-CLM-BOUNDARY
+      statement:
+        zh: 两段中介转发、应用事务直接 C2、直接低层 C2、加密和合法远控工作流均不能替代内外层封装证据；可并列但各自结果门独立。
+        en: Two-leg intermediary relaying, direct application-transaction C2, direct lower-layer C2, encryption, and legitimate remote-control workflows cannot substitute for inner-to-outer encapsulation evidence; they can co-classify but retain independent outcome gates.
+      evidence_keys:
+        - REF-001024
+        - B5-T1572-REF-TRICKBOT-DNS
+        - B5-T1572-REF-BRICKSTORM
+      evidence_mode: cross-technique-boundary-inference
+    - key: B5-T1572-CLM-DEFENSE
+      statement:
+        zh: 高置信检测需从端点 socket、隧道控制字段或支持的解封装日志恢复内层关系，并与后继结果连接；外层长连接、DNS 形态或工具名只可生成候选。
+        en: High-confidence detection must recover an inner relationship from endpoint sockets, tunnel-control fields, or supported decapsulation logs and join it to a successor outcome; an outer long connection, DNS shape, or tool name creates a candidate only.
+      evidence_keys:
+        - B5-T1572-REF-ZEEK-TUNNEL
+        - REF-000230
+        - B5-T1572-REF-TRICKBOT-DNS
+        - B5-T1572-REF-BRICKSTORM
+      evidence_mode: implementable-design-supported-by-field-and-protocol-documentation
+  cases:
+    - key: B5-T1572-CASE-BRICKSTORM
+      name:
+        zh: BRICKSTORM 嵌套连接与 Yamux 多流 C2
+        en: BRICKSTORM Nested Connection and Yamux Multi-Stream C2
+      actor_or_campaign: BRICKSTORM-related espionage activity
+      central_facts:
+        zh: NVISO 逆向样本恢复 HTTPS→WebSocket→嵌套 TLS→认证→Yamux 的层链，操作者为网络隧道和文件管理打开并发 multiplexed sessions，并在后续层再次汇聚多个会话。
+        en: NVISO reverse engineering recovers an HTTPS-to-WebSocket-to-nested-TLS-to-authentication-to-Yamux chain, with operators opening concurrent multiplexed sessions for network tunnels and file management and converging multiple sessions again in a later layer.
+      evidence_keys:
+        - B5-T1572-REF-BRICKSTORM
+      scope_limit:
+        zh: 报告未确定部分更深 TLS 在二级还是三级基础设施终止，也未提供每个受害者的生产流量完整解密；案例限于样本 framing 和报告所述活动能力。
+        en: The report does not establish where some deeper TLS layers terminate in second- or third-tier infrastructure and provides no complete production decryption for every victim. The case is limited to sample framing and reported operational capabilities.
+    - key: B5-T1572-CASE-TRICKBOT-DNS
+      name:
+        zh: TrickBot DNS 事务中的内层命令会话重组
+        en: TrickBot Inner Command-Session Reassembly across DNS Transactions
+      actor_or_campaign: TrickBot DNS-tunneling sample family
+      central_facts:
+        zh: FortiGuard 逆向客户端恢复 session ID、0x30 分片请求、0x31 大小查询、0x32 offset 应答和 IP 排序重组，最终命令结构与 HTTP 版本相同。
+        en: FortiGuard reverse engineering recovers client session IDs, fragmented 0x30 requests, 0x31 size queries, 0x32 offset responses, and IP sorting and reassembly, yielding the same command structure as the HTTP version.
+      evidence_keys:
+        - B5-T1572-REF-TRICKBOT-DNS
+      scope_limit:
+        zh: 服务端已下线，响应由研究者实验脚本模拟；客户端结构为直接证据，完整服务端交互与吞吐为实验复现。
+        en: The server was offline and responses were simulated by the researcher's lab script. Client structure is direct evidence, while full server interaction and throughput are experimental reproduction.
+  detection_strategies:
+    - B5-T1572-DET-CROSSLAYER
+  detection_analytics:
+    - B5-T1572-NJA-ENDPOINT
+    - B5-T1572-NJA-MULTIPLEX
+    - B5-T1572-NJA-TRANSACTION
+  mitigations:
+    - B5-T1572-MIT-EXTEND-MIT000172
+    - B5-T1572-MIT-EXTEND-MIT000200
+  relationships: []
+research:
+  taxonomy_breadth_review:
+    attack_subtechnique_count: 0
+    attack_subtechnique_ids: []
+    represented_dimensions: []
+    breadth_trigger: ordinary
+    coverage_resolutions: []
+    candidate_stealth_axes_examined:
+      - axis: inner_service_to_outer_endpoint_decoupling
+        result: formal-candidate
+        reason: APT29 field evidence and endpoint socket versus boundary five-tuple defense distinction
+      - axis: multiple_inner_streams_to_one_outer_session
+        result: formal-candidate
+        reason: BRICKSTORM sample-level Yamux and smux evidence with per-stream or endpoint fan-in defense
+      - axis: one_inner_stream_across_outer_transactions
+        result: formal-candidate
+        reason: TrickBot session, fragment, offset, and reassembly evidence with cross-transaction decoder defense
+      - axis: single_stream_encapsulation
+        result: parent-core
+        reason: defines T1572 but lacks an additional stable observation differential
+      - axis: outer_encryption
+        result: adjacent-technique
+        owner: T1573
+      - axis: intermediary_hop_count
+        result: adjacent-technique
+        owner_ref: NJT-0206
+      - axis: direct_application_transaction
+        result: adjacent-technique
+        owner_ref: NJT-0160
+      - axis: direct_lower_layer_carriage
+        result: adjacent-technique
+        owner_ref: NJT-0208
+      - axis: trusted_IDE_or_remote_tool_workflow
+        result: adjacent-technique
+        owner_ref: NJT-0212
+      - axis: protocol_or_tool_name
+        result: not-stealth-distinct
+    second_pass_required: false
+    second_pass_completed: false
+    proposed_niji_child_count: 3
+    breadth_gap_explained: true
+    reviewer_notes:
+      zh: 固定基线无 ATT&CK 子项，但开放检验了端点、连接基数、事务连续性、加密、路径跳数、承载层、远控工作流和协议/工具名。三个正式候选分别改变不同关联问题并具有独立一手证据与防御；其余归父级、相邻或非匿迹变量。
+      en: The fixed baseline has no ATT&CK children, but the open search tested endpoint relationship, connection cardinality, transaction continuity, encryption, path hops, carriage layer, remote-control workflow, and protocol or tool name. The three formal candidates change different correlation problems and have independent primary evidence and defenses; the rest are parent-core, adjacent, or non-stealth variables.
+  evidence_coverage:
+    parent_behavior_keys:
+      - REF-000625
+      - REF-001024
+      - B5-T1572-REF-BRICKSTORM
+      - B5-T1572-REF-TRICKBOT-DNS
+    boundary_keys:
+      - REF-001024
+      - B5-T1572-REF-BRICKSTORM
+      - B5-T1572-REF-TRICKBOT-DNS
+      - B5-T1572-REF-DNSCAT2
+      - B5-T1572-REF-OPENSSH-FORWARD
+    mechanism_support:
+      - mechanism: NM-BT
+        keys:
+          - REF-001024
+          - B5-T1572-REF-BRICKSTORM
+          - B5-T1572-REF-TRICKBOT-DNS
+        level: direct-inner-outer-sequence-plus-bounded-sensor-inference
+    child_existence_support:
+      - child_key: B5-T1572-SUB-ENDPOINT
+        keys:
+          - REF-001024
+      - child_key: B5-T1572-SUB-MULTIPLEX
+        keys:
+          - B5-T1572-REF-BRICKSTORM
+      - child_key: B5-T1572-SUB-TRANSACTION
+        keys:
+          - B5-T1572-REF-TRICKBOT-DNS
+          - B5-T1572-REF-DNSCAT2
+    defense_field_support:
+      - source: REF-000230
+        support: process GUID, process creation, command line, TCP or UDP network connection and endpoint fields; Event 3 disabled by default
+      - source: REF-000634
+        support: connection uid, endpoint tuple, protocol, service, duration, bytes, packets and tunnel_parents when populated
+      - source: REF-000635
+        support: DNS uid, query, type, response code and answers for transaction grouping
+      - source: REF-000632
+        support: HTTP uid, host, URI, method, status and lengths for outer transaction grouping
+      - source: B5-T1572-REF-ZEEK-TUNNEL
+        support: supported tunnel type, outer tuple, discover or close action and inner conn to outer tunnel parent join
+      - source: B5-T1572-REF-OPENSSH-FORWARD
+        support: forwarding restriction controls and their limits
+    unsupported_or_deferred:
+      - Outer TLS, SSH, VPN, WebSocket, DNS shape, long duration, or a tunneling tool alone does not establish an inner protocol.
+      - No source provides universal byte-ratio, stream-count, label-length, entropy, or duration thresholds for malicious tunnels.
+      - BRICKSTORM inner multiplexing may be opaque on production wire without keys or endpoint telemetry; NVISO sample analysis does not guarantee enterprise decapsulation.
+      - TrickBot server behavior and throughput were reproduced in a lab because the original server was offline.
+      - Legitimate VPNs, service meshes, development tunnels, and administration forwarding can reproduce every coarse outer-flow feature and need exact governance context.
+  content_depth_review:
+    compared_with_njt_0001: true
+    field_responsibilities_complete: true
+    candidate_specific_prose: true
+    repeated_prose_reviewed: true
+    notes:
+      zh: >-
+        父级提案覆盖内外层定义、残余痕迹、四门结果、五项相邻边界、两类实际场景、攻防能力和传感器限制。三个子项目前为分类与因果研究摘要；主 Agent 正式写入时仍需按 NJT-0001 为每个 NJS 独立补齐完整双语字段，不能把摘要直接当正式子项正文。
+      en: >-
+        The parent proposal covers inner and outer definitions, residual traces, the four-gate outcome, five adjacent boundaries, two operational scenarios, attacker and defender capabilities, and sensor limits. The three child records are taxonomy and causal research summaries. The primary agent must independently author every NJS's complete bilingual fields against NJT-0001 rather than use these summaries as canonical child prose.
+  automation_review:
+    canonical_prose_bulk_generated: false
+    mechanical_uses:
+      - staging YAML serialization
+      - YAML parse verification
+      - evidence-key consistency check
+      - shared-library URL and semantic lookup
+  limitations:
+    paragraphs:
+      - zh: >-
+          三项主证据处于不同层级。APT29/meek 是 Mandiant 现场观察，能证明外层 HTTPS/Tor 与本地服务关系，但同时含域前置、中介路由和双层加密，不能把所有匿迹效果只归因于隧道。BRICKSTORM 是多个样本和事件响应材料的逆向，可证明多路 framing，生产网络若无密钥仍可能不可解。TrickBot 是捕获样本与模拟服务端的实验链，应把客户端结构和实验响应严格区分。
+        en: >-
+          The three primary sources have different evidence levels. APT29 and meek are Mandiant field observations proving an outer HTTPS or Tor to local-service relationship, but the event also includes domain fronting, intermediary routing, and layered encryption, so stealth effect cannot be attributed solely to tunneling. BRICKSTORM combines multiple samples and incident-response material and establishes multiplex framing, while production traffic may remain undecodable without keys. TrickBot combines captured samples with a simulated server and requires strict separation between direct client structure and experimental responses.
+      - zh: >-
+          Zeek tunnel.log 只对支持的网络层封装提供可靠 tunnel_parent，不能普遍解出 SSH、TLS、WebSocket、Yamux 或自定义 DNS。Sysmon Event 3 默认关闭且只记录连接，不完整覆盖 listen/accept；端点 socket 图通常需要 EDR/eBPF 或平台专用审计。缺少这些字段时，长连接、fan-in、字节比和 DNS 形态只支持候选，不满足正式 T1572 结果门。
+        en: >-
+          Zeek tunnel.log supplies reliable tunnel_parent linkage only for supported network-layer encapsulation and does not generally decode SSH, TLS, WebSocket, Yamux, or custom DNS. Sysmon Event 3 is disabled by default and records connections without complete listen or accept coverage; endpoint socket graphs usually need EDR, eBPF, or platform-specific audit. Without those fields, a long connection, fan-in, byte ratio, or DNS shape supports a candidate only and does not pass the formal T1572 outcome gate.
+      - zh: >-
+          生产环境广泛使用合法 VPN、服务网格、SSH forwarding、IDE tunnels、远控 relay、数据库代理和 HTTP/2/QUIC 多路复用。缓解措施若仅按工具、端口、加密或并发数阻断会产生显著业务影响，也可被改名绕过。必须以批准 path graph、身份、inner service、outer peer、配置摘要和期限实施；OpenSSH 控制不能阻止有 shell 权限的用户安装另一 forwarder。
+        en: >-
+          Production environments widely use legitimate VPNs, service meshes, SSH forwarding, IDE tunnels, remote-control relays, database proxies, and HTTP/2 or QUIC multiplexing. Controls based only on tool, port, encryption, or concurrency cause significant business impact and are bypassed by renaming. Enforcement needs an approved path graph, identity, inner service, outer peer, configuration digest, and expiry. OpenSSH controls cannot stop a user retaining shell access from installing another forwarder.
+  rejected_mechanisms:
+    - mechanism_ref: NM-DO
+      reason:
+        zh: 封装改变解析层，但内层语义可经解封装恢复；内容是否因编码或加密不可理解分别由 T1132/T1573 处理，不能由隧道自动推出。
+        en: Encapsulation changes parse layers while inner semantics remain recoverable through decapsulation; encoding- or encryption-based unintelligibility belongs to T1132 or T1573 and cannot be inferred from tunneling.
+    - mechanism_ref: NM-FD
+      reason:
+        zh: 某些隧道模仿正常服务或借可信域，但服务外观由 NJT-0152 或 NJT-0206-003 拥有；普通隧道不必伪造外观。
+        en: Some tunnels imitate normal services or borrow trusted domains, but service appearance belongs to NJT-0152 or NJT-0206-003 and ordinary tunneling need not disguise appearance.
+    - mechanism_ref: NM-ST
+      reason:
+        zh: 事务分片和多流汇聚分别在子项中可形成时空关联差，但普通父级单流封装不必分散痕迹，故不作为父级机理。
+        en: Transaction fragmentation and stream convergence can create correlation differences in their children, but ordinary parent-level single-stream encapsulation need not disperse traces, so NM-ST is not a parent mechanism.
+  open_questions:
+    - Can production tooling expose per-stream Yamux or equivalent identifiers without decrypting sensitive payload content?
+    - Which endpoint products provide complete bind, listen, accept, connect, and socket-to-process lifecycle on Windows, Linux, macOS, ESXi, and network appliances?
+    - Should CASE-000298 extend to both the T1572 parent and endpoint-decoupling child, or only the parent because domain fronting and routing authority are co-dominant?
+    - Can managed DNS and proxy retention legally preserve the raw fields needed for transaction reassembly, and what limits apply by jurisdiction and workload?
+integration:
+  status: pending
+  resolutions: []

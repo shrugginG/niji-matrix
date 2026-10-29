@@ -1,0 +1,196 @@
+schema_version: 2.0.0
+type: evasion-subtechnique
+id: NJS-0099-001
+parent_ref: NJT-0099
+name:
+  zh: 进程驻留式有效身份替换
+  en: Process-Resident Effective-Identity Substitution
+summary:
+  zh: 攻击者给现有进程的受控线程绑定外来模拟令牌，在保留进程映像、PID、祖先和主令牌的同时，以另一有效身份完成敏感操作。
+  en: An adversary binds a foreign impersonation token to a controlled thread in an existing process, preserving image, PID,
+    ancestry, and primary token while performing a sensitive operation under another effective identity.
+aliases: []
+definition_and_concept:
+  paragraphs:
+  - zh: 本子技术的稳定变量是“进程承载体保持连续，但某一线程在操作时采用不同的有效身份”。攻击者取得或创建可模拟的外来令牌，把它赋给已控制进程中的目标线程；Windows 随后在该线程访问对象或执行敏感任务时使用模拟令牌，而进程主令牌继续描述原始账户。成立条件包括进程在赋值前已经存在、线程有效令牌与进程主令牌在身份或权限上存在实质差异，以及该差异被后续操作消费并改变权限结果或防守归因。
+    en: The stable variable is process-carrier continuity while one thread uses a different effective identity at operation
+      time. The adversary obtains or creates an impersonation-capable foreign token and assigns it to a target thread in an
+      already controlled process. Windows then uses the impersonation token when that thread accesses an object or performs
+      a sensitive task while the process primary token continues to describe the original account. The child requires a process
+      that existed before assignment, a material identity or authority difference between thread effective token and process
+      primary token, and successor consumption that changes an authority result or defender attribution.
+  - zh: 外来令牌可以从另一进程复制，也可以通过凭据登录创建；主/模拟 token type 与 impersonation level 决定操作能力，但都只是本变量的前提和来源分支。分类不以 DuplicateTokenEx、LogonUser、SetThreadToken、ImpersonateLoggedOnUser、named
+      pipe 或某个工具命名。跨实现不变量是同一个 PID/映像内，进程级身份叙述与线程实际用于访问检查的身份分离，且防守必须下钻到 TID 与 token object 才能解释结果。
+    en: The foreign token can be duplicated from another process or created through credential logon. Primary or impersonation
+      token type and impersonation level determine usable capability but remain prerequisites and provenance branches of this
+      variable. Classification does not turn on DuplicateTokenEx, LogonUser, SetThreadToken, ImpersonateLoggedOnUser, named
+      pipes, or a tool name. The invariant across implementations is separation inside one PID and image between process-level
+      identity narrative and the identity actually used by a thread for access checks, requiring defenders to resolve TID
+      and token object to explain the outcome.
+stealth_characteristics:
+  paragraphs:
+  - zh: 进程驻留式有效身份替换保留原进程名称、路径、签名、启动时间、祖先和主令牌，因此只按进程表、进程 owner 或父子树采集的数据不会显示一个新的高权限承载体。痕迹变化位于线程层：目标 TID 出现模拟令牌赋值，资源访问的 effective
+      SID/组/权限与 process primary token 不同，来源端另有 token duplication、process access 或新登录。若这些事件没有共同 token ID、AuthenticationId/LogonId
+      或时间因果，结果容易被归给熟悉进程及其普通身份。
+    en: Process-Resident Effective-Identity Substitution preserves process name, path, signing, start time, ancestry, and
+      primary token, so data collected only from process lists, process owner, or parent-child trees shows no new privileged
+      carrier. Trace change occurs at thread level—the target TID receives an impersonation token, resource access uses effective
+      SIDs, groups, or privileges that differ from the process primary token, and the source side separately records token
+      duplication, process access, or a new logon. Without a shared token ID, AuthenticationId or LogonId, or causal time
+      relationship, the outcome can be attributed to the familiar process and its ordinary identity.
+  - zh: 进程驻留并不会抹去身份变化。OpenThreadToken/内核 token assignment、线程级调用上下文、对象访问主体和远程认证仍可暴露 effective identity；显式 RevertToSelf 或线程结束还可界定窗口。匿迹收益取决于传感器是否只在进程启动时快照用户，以及分析是否把同
+      PID 等同于同身份。服务端代表客户端执行是 Windows 的正常设计，因而检测必须证明来源令牌、未批准 carrier 和高权限结果，而不是把任一模拟线程定性为攻击。
+    en: Process residency does not erase identity change. OpenThreadToken or kernel token assignment, thread-level call context,
+      object-access subject, and remote authentication can expose effective identity, while explicit RevertToSelf or thread
+      termination can bound the interval. The stealth advantage depends on sensors snapshotting user only at process start
+      and analytics equating one PID with one identity. Server-side action on behalf of a client is a normal Windows design,
+      so detection must establish source token, an unapproved carrier, and privileged outcome rather than label every impersonating
+      thread an attack.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 本项纳入外来模拟令牌被赋给已存在的受控线程，且敏感操作由该线程在不同或更高有效身份下完成。进程可以有多个线程，只有实际承担令牌的 TID 及其操作在范围内；同一进程后续由其他未模拟线程进行的普通活动不能自动继承标签。令牌来源的复制或凭据创建是必要上游证据，但不是两个
+      Niji 子技术。
+    en: This child includes assignment of a foreign impersonation token to an existing controlled thread when that thread
+      completes a sensitive operation under a different or higher effective identity. A process can have many threads, and
+      only the TID carrying the token and its operations are in scope; ordinary later activity by other non-impersonating
+      threads in the same process does not inherit the label. Duplication or credential creation of the source token is necessary
+      upstream evidence, not two Niji children.
+  - zh: 若外来令牌用于创建新的进程承载体，主要变量归 NJS-0099-002；若同一令牌只改变已有权限位而身份与 AuthenticationId 不变，归 NJS-0099-003。向另一进程写入代码归相邻进程注入对象，持久写入账户
+      SID-History、组或角色归 NJS-0083-002。正常 IIS、SQL、RPC、SMB 或运维服务依协议代表已认证客户端执行是反例，除非攻击者取得未获授权的有效身份，并使权限结果或防守归因发生实质变化。
+    en: If the foreign token creates a new process carrier, the primary variable belongs to NJS-0099-002. If the same token
+      changes only an existing privilege bit while identity and AuthenticationId remain stable, it belongs to NJS-0099-003.
+      Writing code into another process belongs to adjacent process injection, while durable account SID-History, group, or
+      role mutation belongs to NJS-0083-002. Normal IIS, SQL, RPC, SMB, or management-service execution on behalf of an authenticated
+      client is a counterexample unless the adversary obtains an unauthorized effective identity and materially changes an
+      authority result or defender attribution.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: 在本地提权场景中，攻击者从 SYSTEM 服务或管理员进程取得 token handle，复制为模拟令牌，并让现有 implant、服务线程或命令执行线程采用它。该线程随后访问受保护进程、注册表、服务控制管理器或文件，而外部进程清单仍把载体显示为攻击者原身份。若来源进程很常见或载体已经长期运行，基于新
+        SYSTEM 进程和异常父子链的规则会错过这个身份转折。
+      en: In a local-elevation scenario, an adversary obtains a token handle from a SYSTEM service or administrator process,
+        duplicates it as an impersonation token, and applies it to an existing implant, service, or command-execution thread.
+        That thread then accesses a protected process, registry, Service Control Manager, or file while external process inventory
+        still shows the carrier under the adversary's original identity. When the source process is common or the carrier
+        long-running, rules looking for a new SYSTEM process or anomalous parent-child chain miss the identity transition.
+    - zh: 在凭据驱动场景中，攻击者用已取得的另一用户凭据建立登录令牌，再在线程内模拟而不启动一个显眼的新进程。源侧可能出现 4624 或等价登录会话，但资源侧活动继续来自原 PID；如果两个数据源只以 process user 或账户名聚合，登录与操作不会自然连接。远程资源使用还要求区分本地
+        effective token、网络凭据和 delegation level，不能把一次成功登录直接视为线程模拟证明。
+      en: In a credential-driven scenario, the adversary creates a logon token from another user's acquired credential and
+        impersonates inside a thread without launching a conspicuous new process. The source side can show 4624 or an equivalent
+        logon session while resource-side activity continues from the original PID. If sources aggregate only by process user
+        or account name, logon and operation do not naturally join. Remote resource use also requires distinction among local
+        effective token, network credential, and delegation level; a successful logon alone does not prove thread impersonation.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者已控制一个可执行多线程代码的进程，能取得或创建具有目标身份的模拟令牌，并拥有 TOKEN_IMPERSONATE/TOKEN_DUPLICATE 等所需句柄访问或相应模拟用户权限。它知道哪个 TID 执行目标操作、令牌的
+          AuthenticationId、类型与 impersonation level，并能避免在线程切换、RevertToSelf 或异步任务转移时丢失 effective context。管理员到 SYSTEM 的令牌窃取通常要求较高初始权限，但使用有效凭据创建普通用户模拟令牌可能不要求管理员。
+        en: The adversary controls a process capable of multithreaded execution, can obtain or create an impersonation token
+          for the target identity, and has required handle access such as TOKEN_IMPERSONATE or TOKEN_DUPLICATE or a corresponding
+          impersonation user right. The adversary understands which TID performs the target action and the token AuthenticationId,
+          type, and impersonation level and preserves effective context across thread switches, RevertToSelf, or asynchronous
+          task transfer. Administrator-to-SYSTEM token theft commonly requires substantial initial privilege, whereas creating
+          an ordinary-user impersonation token from valid credentials may not require administrator rights.
+    defender_model:
+      paragraphs:
+      - zh: 防守方可能观察到进程与线程标识、主令牌和模拟令牌、登录会话、令牌赋值与撤销以及资源访问结果。关键盲区是许多传感器只保存进程级用户而不保存敏感操作发生时的线程有效身份；进程标识复用和短暂模拟也会进一步削弱关联。
+        en: Defenders may observe process and thread identifiers, primary and impersonation tokens, logon sessions, token
+          assignment and reversion, and resource-access outcomes. A key blind spot is that many sensors retain only the process-level
+          user rather than the thread-effective identity at the time of a sensitive operation. Process-identifier reuse and
+          brief impersonation further weaken correlation.
+      - zh: 合法 Web 或数据库服务、代理程序和远程管理工具会按请求模拟客户端。区分需要结合服务角色、允许的调用来源、目标身份、模拟级别、持续时间和后继资源，而不能把线程身份与进程身份不同本身视为恶意。
+        en: Legitimate web or database services, agents, and remote-administration tools impersonate clients for individual
+          requests. Distinction requires service role, allowed caller, target identity, impersonation level, duration, and
+          downstream resource context; a difference between thread and process identity is not malicious by itself.
+stealth_mechanisms:
+- mechanism_ref: NM-BT
+  role: primary
+  summary:
+    zh: 线程有效令牌让身份变化跨越进程级观察边界
+    en: A thread effective token moves identity change across the process-level observation boundary
+  analysis:
+    paragraphs:
+    - zh: 行为设计是把外来模拟令牌放到现有进程的特定线程，而不创建新的高权限进程。痕迹从“新身份—新进程”转为来源 token 取得、TID token assignment、同 PID 下的高权限资源访问和撤销；进程映像、祖先和主令牌保持稳定。只在
+        process start 采集 user 或按 PID 聚合的防守观察会把资源操作归给 carrier 主身份，线程边界切断真实来源，产生 Boundary Traversal。将资源访问的 TID/effective token
+        回连到 assignment、source token/process/logon 和 primary token 差异后，身份替换才可辨识。
+      en: The design places a foreign impersonation token on a specific thread of an existing process without creating a new
+        privileged process. The trace changes from new identity and new process into source-token acquisition, TID token assignment,
+        privileged resource access under the same PID, and removal while image, ancestry, and primary token remain stable.
+        Defender observation that samples user only at process start or aggregates by PID attributes the resource operation
+        to the carrier's primary identity; the thread boundary severs true provenance and creates Boundary Traversal. Joining
+        resource-access TID and effective token back to assignment, source token, process or logon, and primary-token difference
+        makes substitution distinguishable.
+  evidence_refs:
+  - REF-000326
+  - REF-000327
+  - REF-000328
+  - REF-000332
+  confidence: high
+- mechanism_ref: NM-FD
+  role: secondary
+  summary:
+    zh: 长驻进程的正常映像与主身份为线程级高权限操作提供良性特征
+    en: A resident process's normal image and primary identity give thread-level privileged activity benign features
+  analysis:
+    paragraphs:
+    - zh: 攻击者选择已经存在、签名正常或业务常见的 carrier，把高权限调用留在其 PID 内。痕迹中的 image、path、signer、parent 和 process owner 因而继续匹配基线，只有 thread effective
+        SID/token 与资源结果发生变化。依赖进程信誉或主身份分类的防守方会把 carrier 的良性特征传给恶意线程，降低优先级并形成 Feature Disguise。该机理只有在有效令牌差异确实改变检测或归因时成立；普通服务模拟本身不被视作伪装。
+      en: The adversary selects an existing, correctly signed, or operationally common carrier and keeps privileged calls
+        inside its PID. Image, path, signer, parent, and process owner therefore continue matching baseline while only thread
+        effective SID or token and resource outcome change. Defenders classifying by process reputation or primary identity
+        transfer the carrier's benign features to the malicious thread, lowering priority and producing Feature Disguise.
+        The mechanism applies only when effective-token divergence actually changes detection or attribution; ordinary service
+        impersonation is not itself disguise.
+  evidence_refs:
+  - REF-000327
+  - REF-000328
+  - REF-000326
+  confidence: medium
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000096
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000097
+evidence:
+  claim_refs:
+  - CLM-000535
+  - CLM-000538
+  - CLM-000539
+  case_refs: []
+  reference_refs:
+  - REF-000326
+  - REF-000327
+  - REF-000328
+  - REF-000332
+research:
+  limitations:
+    paragraphs:
+    - zh: Microsoft 文档直接证明进程主令牌、线程模拟令牌与 SetThreadToken 状态，但不会把合法 API 语义定性为攻击。ATT&CK 证明攻击者可把复制或新建令牌用于现有进程/线程；公开 Lotus Blossom
+        报告只说明取得另一进程令牌并调整启动权限，没有发布完整 TID/token sequence。因此子技术存在性为高置信，单个活动归因仍必须观察线程有效身份与高权限消费，CASE-000123 只挂父级。
+      en: Microsoft documentation directly establishes process primary token, thread impersonation token, and SetThreadToken
+        state without classifying legitimate API semantics as attack. ATT&CK establishes adversary use of duplicated or created
+        tokens on existing processes or threads. Public Lotus Blossom reporting states that another process token was retrieved
+        and launch privilege adjusted but does not publish a full TID and token sequence. Child existence is therefore high
+        confidence, while attribution of an event still requires thread effective identity and privileged consumption; CASE-000123
+        remains attached to the parent only.
+    - zh: 多数通用进程日志不记录 TID 的 effective token，部分 EDR 只在进程创建时记录用户；远程认证又可能采用网络凭据而非本地模拟级别。身份差异、句柄访问和敏感操作在缺少稳定 token ID 时只能按短窗口推断，PID
+        复用与异步线程池会产生错误连接。未来案例需要公开 assignment/removal、AuthenticationId、TID 和具体资源结果，才能验证不同服务模型下的实际匿迹强度。
+      en: Most generic process logs do not record TID effective token and some EDR products record user only at process creation,
+        while remote authentication can use network credentials rather than local impersonation level. Without stable token
+        ID, identity difference, handle access, and sensitive operation can be joined only by a short inference window, creating
+        errors under PID reuse and asynchronous thread pools. Future cases should expose assignment and removal, AuthenticationId,
+        TID, and concrete resource outcome to validate practical stealth across service models.
+lifecycle:
+  status: review
+  version: 0.3.0
+  created: '2026-09-13'
+  modified: '2026-09-19'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []
+lineage:
+  attck_subtechnique_inherited: false

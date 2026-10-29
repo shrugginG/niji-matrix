@@ -1,0 +1,172 @@
+schema_version: 2.0.0
+type: evasion-subtechnique
+id: NJS-0103-001
+parent_ref: NJT-0103
+name:
+  zh: 无背衬载荷内存嵌入
+  en: Unbacked Payload Memory Embedding
+summary:
+  zh: 攻击者使另一进程执行 private、手工映射或被改写的代码区域，却不建立与实际载荷一致的 file backing 或 loader module record，削弱文件和模块视角的可检查性。
+  en: Adversaries make another process execute private, manually mapped, or modified code without file backing or a loader-module
+    record consistent with the actual payload, weakening inspectability from file and module views.
+aliases: []
+lineage:
+  attck_subtechnique_inherited: false
+definition_and_concept:
+  paragraphs:
+  - zh: 无背衬载荷内存嵌入固定“target 实际执行代码与正常持久 backing 的关系”。source 把 raw shellcode、手工映射 image、decrypted region 或覆盖 bytes 放入独立运行 target，设置/继承
+      executable protection 并触发执行；在执行时找不到与 payload 内容一致的 on-disk image、section file 或 loader-registered module。变量是 backing
+      differential，不是 PE/DLL/shellcode 格式，也不要求整个攻击绝对 fileless。
+    en: Unbacked Payload Memory Embedding fixes the relationship between code actually executed by the target and normal persistent
+      backing. A source places raw shellcode, a manually mapped image, decrypted region, or replacement bytes into an independently
+      running target, sets or inherits executable protection, and dispatches execution. At execution time no on-disk image,
+      section file, or loader-registered module matches the payload content. The variable is the backing differential, not
+      PE, DLL, or shellcode format, and the entire attack need not be fileless.
+  - zh: 本项建立在源到目标写入与调度已经成立的基础上，并进一步要求目标中实际执行的内存与其文件或模块清单缺少正常对应关系。攻击者可以先把加密内容写到磁盘再由加载器解密；只要执行内容没有相应背衬仍可成立。正常加载器可枚举的恶意模块留在父级，创建期主映像与首段执行内容不一致则由创建期映像来源分离处理。
+    en: This child assumes the source-to-target write and dispatch chain is already established and additionally requires
+      executed memory in the target to lack a normal relationship with its file or module inventory. The adversary can first
+      place encrypted content on disk and have a loader decrypt it; the child can still apply when the executed content lacks
+      corresponding backing. A malicious module enumerable by the normal loader remains parent behavior, while inconsistency
+      between the process-birth main image and first executed content belongs to Birth-Time Image Provenance Divergence.
+stealth_characteristics:
+  paragraphs:
+  - zh: 无背衬载荷内存嵌入把恶意 payload 从文件、签名和 loader module 视图移到 short-lived virtual memory。target 的 executable 与已加载库仍可全部指向合法文件，恶意
+      bytes 只出现在 private/modified page；防守方若只扫落盘文件、image-load events 或当前 module list，会看到合法 target 而缺少待分类 payload。event-time
+      VAD、page protection transition、writer、region hash/content 与 executing IP 可恢复差异。
+    en: Unbacked Payload Memory Embedding moves the malicious payload from file, signature, and loader-module views into short-lived
+      virtual memory. The target executable and loaded libraries can all point to legitimate files while malicious bytes exist
+      only in private or modified pages. Defenders scanning only files, image-load events, or the current module list see
+      a legitimate target and lack a payload to classify. Event-time VAD, page-protection transition, writer, region hash
+      or content, and executing instruction pointer recover the difference.
+  - zh: RWX 或 private executable 本身不是结论：JIT、browser、runtime、packer、security product 与 hot patch 都可能创建。必须证明 cross-process source、未经批准的
+      content provenance、write/protect sequence、执行进入该 region 和后继结果。若 payload 在采样前 free/overwrite，仍可从 memory event、stack、thread
+      start、page-fault 或 target behavior 建降级链，但不能假装有 content-level 证明。
+    en: RWX or private executable memory is not a verdict. JIT, browsers, runtimes, packers, security products, and hot patches
+      can create it. Proof requires a cross-process source, unapproved content provenance, write and protection sequence,
+      execution entering the region, and follow-on result. If the payload is freed or overwritten before sampling, memory
+      events, stacks, thread starts, page faults, or target behavior can form a degraded chain, but content-level proof cannot
+      be claimed.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 必须存在 target executed region 与 expected file/module backing 的可复现差异，并能关联 source write/map/decrypt 或等价 controller。只看到
+      memory string、malware family hit、RWX page、缺 module name 或 target crash 不够。跨进程 reflective/manual mapping、raw PE/shellcode
+      与 existing image text overwrite 可成立；same-process reflective loading 归 NJT-0077，正常 plugin/JIT 依据批准 provenance 排除。
+    en: A reproducible difference between the target's executed region and expected file or module backing plus a joined source
+      write, map, decrypt, or equivalent controller is required. A memory string, malware-family hit, RWX page, absent module
+      name, or target crash alone is insufficient. Cross-process reflective or manual mapping, raw PE or shellcode, and existing-image
+      text overwrite can qualify. Same-process reflective loading belongs to NJT-0077 and approved plugin or JIT provenance
+      is excluded.
+  - zh: NJS-0103-003 负责 process birth 时 main image/file identity 的错位；本子项通常针对已存在 target 的 payload region。两者同时成立时可共映射，但 birth
+      子项不能由普通 private allocation 自动触发。payload encryption/packing 属相邻内容混淆，direct syscall 属 T1106；它们不替代 executed backing differential。
+    en: NJS-0103-003 owns misalignment of main-image and file identity at process birth, while this child normally concerns
+      a payload region in an existing target. They can co-map when both qualify, but ordinary private allocation never triggers
+      the birth child. Payload encryption or packing is adjacent content obfuscation and direct syscall belongs to T1106;
+      neither replaces the executed-backing differential.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: 加载器枚举兼容目标，分配并写入内存载荷，再通过新线程或既有执行流调度。载荷使用目标进程的身份和角色访问资源，而磁盘与模块清单中没有相应载荷背衬。若目标与源进程权限相同，该场景仍说明无背衬内存嵌入，但不产生额外权限。
+      en: A loader enumerates a compatible target, allocates and writes an in-memory payload, and dispatches it through a
+        new thread or existing execution flow. The payload uses the target process identity and role to access resources while
+        disk and module inventory contain no corresponding payload backing. If target and source have equivalent authority,
+        the scenario still establishes unbacked-memory embedding but does not add privilege.
+    - zh: 手工 mapper 把 PE-like sections、relocations 和 imports 写入 target 的多个 private regions，不调用标准 loader；或 source 改写 target
+        现有 executable page 的少量入口，使新 code 借原 image mapping 运行。二者的 content layout 和 writer chain 不同，但共享“executed bytes 与 backing
+        expected bytes 不一致”的检测对象，因此不按映像类型再拆。
+      en: A manual mapper writes PE-like sections, relocations, and imports into multiple private target regions without the
+        standard loader, or a source modifies a small entry in an existing executable page so new code runs under the original
+        image mapping. Their content layouts and writer chains differ but share the detection object of executed bytes disagreeing
+        with expected backing bytes and are not split by image type.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者需取得 remote VM write/map/protect 或等价 kernel/task 能力，处理 architecture、ASLR、imports/relocations 和 executable-memory
+          policy，并拥有可到达 payload region 的 dispatch。ACG/Hardened Runtime、W^X、code signing、protected process、Yama 或 memory integrity
+          会阻止或提高成本；先关闭这些控制是相邻行为。
+        en: The adversary needs remote VM write, map, protect, or equivalent kernel or task ability, handles architecture,
+          ASLR, imports or relocations, and executable-memory policy, and has a dispatch reaching the payload region. ACG
+          or Hardened Runtime, W^X, code signing, protected process, Yama, or memory integrity can prevent or raise cost.
+          Disabling those controls first is adjacent behavior.
+      - zh: 攻击者可以延迟解密、在执行后清零或释放内存，或只修改少量跳板代码以缩短内容可见时间；使用既有可执行区域还可能避免明显的内存保护变化。这些选择增加实现复杂度并可能留下写入、字节差异或异常调用栈。
+        en: The adversary can delay decryption, clear or free memory after execution, or alter only a small trampoline to
+          shorten content visibility. Reusing an existing executable region can also avoid an obvious memory-protection change.
+          These choices increase implementation complexity and can leave write events, byte differences, or anomalous call
+          stacks.
+    defender_model:
+      paragraphs:
+      - zh: 防守方在 write/protect/dispatch 时采集 target VAD or region ID、base/size/protection/type、mapped file/section、module record、original/current
+          bytes hash、writer process/thread 与 executing IP/stack。对 JIT/runtime/security product 建 exact signer/version/target
+          relationship 和 expected region policy；publisher-only allow 会让被攻陷 updater 或 EDR 成为盲点。
+        en: Defenders collect target VAD or region ID, base, size, protection, type, mapped file or section, module record,
+          original and current byte hash, writer process or thread, and executing IP or stack at write, protection, and dispatch
+          time. JIT, runtime, and security products need exact signer, version, target relationship, and expected-region policy.
+          Publisher-only allow makes compromised updaters or EDR blind spots.
+      - zh: 响应先保存 region content、page table/backing metadata、target threads 和 source handles，再终止执行；只杀 target 会丢失无背衬 payload。若
+          content 含 credential 或敏感业务数据，memory acquisition 应最小化范围、加密、限制访问并按案件到期销毁。
+        en: Response preserves region content, page-table or backing metadata, target threads, and source handles before stopping
+          execution. Killing the target alone loses the unbacked payload. If content contains credentials or sensitive business
+          data, memory acquisition is minimized, encrypted, access-controlled, and destroyed at case expiry.
+stealth_mechanisms:
+- mechanism_ref: NM-DO
+  role: primary
+  summary:
+    zh: 执行载荷缺少正常文件或模块背衬，使文件和 loader 视角没有可分类实体
+    en: Executed payload lacks normal file or module backing leaving file and loader views without a classifiable entity
+  analysis:
+    paragraphs:
+    - zh: 攻击者选择 private/manual-mapped 或 modified executable memory 并让 target instruction pointer 进入其中。可见痕迹从 file creation、image
+        load、signature 和 module record 变成短驻 allocation/write/protect 与无 backing 的 region；磁盘和 loader 数据不再包含实际 payload。依赖文件或模块清单的防守方无法检查、关联或留存载荷，形成
+        Data Obscuration。Microsoft 与 Mandiant 的跨进程/受控研究直接支持 high；event-time region content、backing differential、writer 与 dispatch
+        可揭示。
+      en: The adversary selects private or manually mapped or modified executable memory and directs a target instruction
+        pointer into it. Visible traces shift from file creation, image load, signature, and module record to transient allocation,
+        write, protection, and an unbacked region, leaving disk and loader data without the actual payload. Defenders dependent
+        on file or module inventory cannot inspect, correlate, or retain it, producing Data Obscuration. Microsoft and Mandiant
+        cross-process and controlled research directly support high confidence; event-time region content, backing differential,
+        writer, and dispatch expose it.
+  evidence_refs:
+  - REF-000363
+  - REF-000367
+  confidence: high
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000100
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000102
+evidence:
+  claim_refs:
+  - CLM-000566
+  - CLM-000570
+  - CLM-000571
+  case_refs:
+  - CASE-000134
+  reference_refs:
+  - REF-000243
+  - REF-000363
+  - REF-000367
+  - REF-000371
+research:
+  limitations:
+    paragraphs:
+    - zh: 结论材料集中在 Windows shellcode/manual mapping；Linux/macOS 只有在 executed region 与 backing 差、source mutation 和 dispatch
+        都可证时才能归入。RWX/private memory prevalence 会随 JIT、browser 和 security tooling 变化，不能用固定阈值跨组织外推。
+      en: Conclusion material concentrates on Windows shellcode and manual mapping. Linux or macOS qualifies only when executed-region
+        backing difference, source mutation, and dispatch are all proved. RWX and private-memory prevalence varies with JIT,
+        browsers, and security tooling and fixed thresholds do not transfer across organizations.
+    - zh: DueDLLigence 是授权研究，不是 prevalence 证据；Microsoft 也强调合法 API/内存用途。若 sensor 只采 event metadata 不采 content，最多确认 backing_anomaly
+        或 injection_probable；不能凭 region type 宣称 payload 或权限结果。
+      en: DueDLLigence is authorized research rather than prevalence evidence, and Microsoft also emphasizes legitimate API
+        and memory uses. A sensor collecting event metadata without content can establish at most backing_anomaly or injection_probable
+        and cannot claim payload or authority result from region type.
+lifecycle:
+  status: review
+  version: 0.2.0
+  created: '2026-09-13'
+  modified: '2026-09-19'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

@@ -1,0 +1,75 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000117
+strategy_ref: DET-000111
+name:
+  zh: Broker 请求—执行谱系恢复
+  en: Broker-Request–Execution-Lineage Recovery
+summary:
+  zh: 连接 WMI、服务或任务 broker 请求与其创建进程，恢复被正常系统父体替代的真实请求来源。
+  en: Join WMI, service, or task-broker requests to created processes and recover the real requester replaced by a normal system parent.
+domains:
+- enterprise
+platforms:
+- Windows
+- Linux
+- macOS
+logic:
+  paragraphs:
+  - zh: 按活动 ID、认证会话、客户端进程、请求内容和时间连接 WMI、服务控制、调度器或等价 broker 的客户端与服务端事件，再连接进程 start key、命令语义和后继结果。直接父体为正常 broker，但真实请求来自文档、脚本、远程会话或未批准工具且产生敏感结果时，输出 execution_lineage_camouflage。
+    en: Join client and server events for WMI, service control, schedulers, or equivalent brokers by activity identity, authentication session, client process, request content, and time, then connect process start key, command semantics, and successor outcome. Emit execution_lineage_camouflage when the direct parent is a normal broker but the real request originates from a document, script, remote session, or unapproved utility and produces a sensitive outcome.
+data_requirements:
+- source_type: broker-control-plane-and-process
+  name:
+    zh: Broker 控制面与进程创建
+    en: Broker control plane and process creation
+  channel: null
+  required_fields:
+  - event.timestamp
+  - asset.id
+  - activity.id
+  - authentication.session_id
+  - requester.process_start_key
+  - requester.user
+  - broker.process_start_key
+  - request.command_hash
+  - child.process_start_key
+  - child.command_line
+  - behavior.outcome
+observables:
+- zh: 文档或脚本向 WMI 发起请求，最终进程只显示 wmiprvse 等系统父体
+  en: A document or script submits a WMI request while the resulting process shows only a system parent such as wmiprvse
+- zh: 未批准远程会话经服务或任务 broker 启动敏感命令
+  en: An unapproved remote session starts a sensitive command through a service or task broker
+correlation:
+  window:
+    zh: 覆盖一次 broker 请求、服务端处理和产生进程；具体期限依据 broker 队列、活动 ID 生命周期和控制面审计保留设定。
+    en: Cover one broker request, server-side handling, and created process. Set the concrete limit from broker queueing, activity-identity lifetime, and control-plane audit retention.
+  dimensions:
+  - asset.id
+  - activity.id
+  - authentication.session_id
+  - requester.process_start_key
+  - broker.process_start_key
+  - child.process_start_key
+false_positives:
+- zh: 合法远程管理、软件部署、服务控制、计划任务和自动化编排
+  en: Legitimate remote administration, software deployment, service control, scheduled tasks, and automation orchestration
+blind_spots:
+- zh: Broker 客户端日志缺失、活动 ID 不传播、命令被截断或仅采集进程树
+  en: Broker client logs are missing, activity identities are not propagated, commands are truncated, or only process trees are collected
+tuning_guidance:
+  paragraphs:
+  - zh: 为批准管理工具绑定 owner、身份、来源、broker 接口和命令用途。严重度依赖真实请求者、敏感命令与后继结果，不把 wmiprvse、services 或任务宿主作为恶意指标。
+    en: Bind approved administration tools to owner, identity, origin, broker interface, and command purpose. Base severity on real requester, sensitive command, and successor outcome rather than treating wmiprvse, services, or a task host as malicious indicators.
+evidence_refs:
+- REF-000399
+- REF-000196
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-09-21'
+  modified: '2026-09-21'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

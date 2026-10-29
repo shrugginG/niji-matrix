@@ -1,0 +1,314 @@
+schema_version: 2.0.0
+type: technique
+id: NJT-0224
+name:
+  zh: 选择性 C2 基础设施暴露
+  en: Selective C2 Infrastructure Exposure
+summary:
+  zh: 攻击者让运行中的 C2 基础设施依据 implant 请求资格或观察者身份选择是否暴露真实服务，使受害端继续受控而扫描器和研究者只见拒绝、良性外观或关闭表面。
+  en: An adversary makes running C2 infrastructure decide whether to expose the real service from implant request qualification
+    or observer identity, allowing victim control to continue while scanners and researchers see denial, a benign facade,
+    or a closed surface.
+aliases:
+- Hide Infrastructure
+classification:
+  tactic_refs:
+  - TA0011
+  origin:
+    kind: attack-adapted
+    source_attack_id: T1665
+    source_attack_version: '19.1'
+  decision_ref: DEC-TA0011-T1665
+definition_and_concept:
+  paragraphs:
+  - zh: 选择性 C2 基础设施暴露是攻击者在 C2 已投入运行后，以 front/redirector/listener/origin 的规则或代码读取 request path、header、cookie/token、TLS/client
+      fingerprint、source IP/ASN/organization、geography 或已知 defender set，并据此决定 forward-to-origin、return-command、deny/reset、benign
+      redirect、decoy/404 或 listener availability。其直接对象是基础设施对不同观察上下文的可达和响应状态，不是 client 端消息内容、网络路径本身或域名怎样计算。攻击者的目标是让感染端保持可靠控制，同时让外部扫描、IR
+      和威胁研究错判 endpoint 为普通、空闲、失效或不存在。
+    en: Selective C2 Infrastructure Exposure is adversary behavior after C2 is operational in which rules or code at a front,
+      redirector, listener, or origin read a request path, header, cookie or token, TLS or client fingerprint, source IP,
+      ASN or organization, geography, or known defender set and decide whether to forward to origin, return commands, deny
+      or reset, benignly redirect, serve a decoy or 404, or make a listener available. Its direct object is infrastructure
+      reachability and response state across observation contexts, not client-side message content, the network path itself,
+      or how a domain is computed. The actor seeks to keep infected endpoints under reliable control while causing Internet
+      scans, incident responders, and threat researchers to classify the endpoint as ordinary, idle, inactive, or nonexistent.
+  - zh: 证据必须把 exposure differential 与 C2 结果连接。可接受的 C2 结果包括同一 destination 上由已确认恶意 process 形成的持续 callback、由 server 下发的 task/config/payload、由
+      endpoint 产生的 command/result lineage，或原始事件报告对受害组织持久 C2 的明确结论。比较记录应保存 endpoint、timestamp、request_variant、vantage class、TLS/session
+      fingerprint、response status/hash/length、redirect、reset/timeout、edge action、origin reached 和 listener state。只有外部 banner
+      差或 blocklist 命中不能完成技术。
+    en: Evidence must join the exposure differential to a C2 result. Acceptable C2 results include continuing callbacks from
+      a confirmed malicious process to the same destination, a task, configuration, or payload returned by the server, endpoint
+      command or result lineage, or an explicit original incident finding of persistent C2 with victim organizations. Comparative
+      records should retain endpoint, timestamp, request variant, vantage class, TLS or session fingerprint, response status,
+      hash, and length, redirect, reset or timeout, edge action, origin-reached state, and listener state. An external banner
+      difference or block-list hit alone does not complete the technique.
+stealth_characteristics:
+  paragraphs:
+  - zh: 单视点扫描通常发送 generic TLS/HTTP probe、空 cookie、已知 crawler User-Agent 或来自数据中心/安全厂商地址。正向门只把与 implant profile 一致的 path/header/token/handshake
+      转到 C2 origin；负向门则识别已知 defender/scanner 来源并阻止或伪装。未满足规则的观察者会得到与普通站点相似的 200/404、良性 redirect、honeypot banner、TCP reset/timeout
+      或 closed port，因而不会获得真实 server fingerprint、stager、command response 或 origin address。普通 web/CDN 噪声进一步降低单个差分的判别力。
+    en: Single-vantage scans commonly send generic TLS or HTTP probes, empty cookies, known crawler user agents, or traffic
+      from data-center and security-vendor addresses. A positive gate forwards only paths, headers, tokens, or handshakes
+      congruent with the implant profile to the C2 origin. A negative gate recognizes known defender or scanner sources and
+      blocks or disguises them. An observer failing the rule receives an ordinary-looking 200 or 404, a benign redirect, a
+      honeypot banner, TCP reset or timeout, or a closed port and therefore cannot recover the real server fingerprint, stager,
+      command response, or origin address. Ordinary web and CDN noise further reduces the value of any single differential.
+  - zh: 残余痕迹来自受害端成功 C2 与外部观察失败之间的矛盾、同一 endpoint 在 request/vantage/time 变化下的稳定响应簇、edge/WAF matched rule 和 action、edge-to-origin
+      route、origin access、规则变更审计、listener open/closed 时序，以及恶意 process 的 downstream command/result。Unit 42 的材料直接证明 security-company
+      address blocking、C2 victim communication 与 activity-window port state；IronNet 和 Mandiant 证明 redirector/profile 可按请求只转发
+      Beacon 流量。来源不公开完整 edge rule，因此具体 rule expression 和当地采集能力仍须由 provider、被接管 server 或受害部署证据补足。
+    en: Residue appears in the contradiction between successful victim C2 and failed external observation, stable response
+      clusters when request, vantage, or time changes at one endpoint, edge or WAF matched rules and actions, edge-to-origin
+      routing, origin access, rule-change audit, listener open or closed timing, and downstream commands or results from the
+      malicious process. Unit 42 directly establishes security-company address blocking, victim C2 communications, and activity-window
+      port state. IronNet and Mandiant establish that redirectors and profiles can forward only Beacon-congruent requests.
+      The sources do not disclose complete edge rules, so exact rule expressions and local collection capability still require
+      provider, seized-server, or victim-deployment evidence.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 纳入运行中的 C2 front/listener/origin 依据请求资格或观察者类别改变真实服务暴露，并有后继 C2 结果的行为。请求资格可以是多字段 profile、secret path、cookie/token、valid
+      checksum、client fingerprint 或协议序列；观察者类别可以是 known scanner/security IP/ASN、organization、geography 或相同功能的 defender set。端口只在活动窗口开放可作为父级
+      supporting axis，但当前仅一个直接事件来源，暂不单列 NJS。产品、云厂商、域名、端口、封锁名单、HTTP status 与攻入/租用方式均不是分类轴。
+    en: Scope includes behavior in which a running C2 front, listener, or origin changes exposure of the real service according
+      to request qualification or observer class and a successor C2 result exists. Request qualification can be a multi-field
+      profile, secret path, cookie or token, valid checksum, client fingerprint, or protocol sequence. Observer class can
+      be a known scanner or security IP or ASN, organization, geography, or an equivalent defender set. A port exposed only
+      during activity windows remains a supporting parent axis, but presently has only one direct incident source and is not
+      proposed as a separate NJS. Product, cloud provider, domain, port, block list, HTTP status, and whether infrastructure
+      was bought or compromised are not classification axes.
+  - zh: 普通 CDN cache/routing、WAF/anti-bot/DDoS、rate limit、geo compliance、search crawler handling、mTLS/API allowlist、blue-green
+      release、maintenance window 与批准的 admin interface 会产生相同 differential。除非存在 attacker control、C2 linkage 和 qualified-victim
+      success，不准入。client 在本地检测 VM/sandbox 后停止执行属于 T1497/Niji 环境门控；server 根据来源/请求隐藏 C2 才属于本技术。信号序列打开隐藏 listener 的 activation
+      归 T1205，后续 runtime exposure policy 有独立证据时才并列。
+    en: Ordinary CDN caching or routing, WAF, anti-bot and DDoS controls, rate limits, geographic compliance, search-crawler
+      handling, mTLS or API allowlists, blue-green releases, maintenance windows, and approved administration interfaces create
+      the same differential. Do not admit them without attacker control, C2 linkage, and qualified-victim success. A client
+      that detects a VM or sandbox locally and stops belongs to T1497 or Niji environment gating. A server that hides C2 according
+      to source or request belongs here. Activation of a hidden listener by a signal sequence belongs to T1205 and co-classifies
+      only when separate evidence establishes a later runtime exposure policy.
+  - zh: TA0042 NJT-0051/NJT-0044 拥有取得、老化、预置或攻陷资源并继承 reputation/provenance 的准备对象；本技术从 infrastructure serving C2 后的每次暴露决策开始。NJT-0206/T1090
+      拥有 relay、last hop、origin concealment 与 domain-fronting routing authority；仅有 CDN/redirector/path 不足，本技术要求该 front 对不同请求/观察者选择
+      forward/deny/decoy。NJT-0213/T1568 拥有 endpoint locator 的生成、解析与轮换；本技术要求请求已到达候选 endpoint 后仍出现 exposure differential。NJT-0209/T1102
+      拥有合法 service account/resource 的 task-state 或 namespace；使用 service/CDN 名称不自动构成本技术。
+    en: TA0042 NJT-0051 and NJT-0044 own preparation objects that acquire, age, preposition, or compromise resources and inherit
+      reputation or provenance. This technique begins with each exposure decision after infrastructure starts serving C2.
+      NJT-0206 and T1090 own relaying, last hops, origin concealment, and domain-fronting routing authority. A CDN, redirector,
+      or path alone is insufficient here; the front must choose forward, deny, or decoy across requests or observers. NJT-0213
+      and T1568 own generation, resolution, and rotation of endpoint locators. This technique requires an exposure differential
+      after a request reaches a candidate endpoint. NJT-0209 and T1102 own task state or namespaces in legitimate service
+      accounts and resources. A service or CDN name does not automatically constitute this technique.
+  - zh: T1659/NJT-0052 的直接对象是在线流中插入/替换受害者接收的内容，NJS-0052-001 的 request gate 决定是否注入；本技术的正向 gate 决定请求是否被转到真实 C2 origin 或暴露控制服务，不要求向无关
+      victim flow 注入内容。一次 gate 可同时过滤和注入时按两个直接对象并列。NJT-0152/T1001 拥有已发生 C2 事务内的 message/carrier/service camouflage；error page
+      中承载命令可并列，但没有跨观察者 exposure differential 时只属于 message camouflage。Web 主机画像与选择性内容的直接对象是被画像的访问者或页面；这里的直接对象是基础设施是否对不同观察者隐藏真实
+      C2，并要求受害端控制结果。
+    en: T1659 and NJT-0052 directly own content inserted into or substituted within an online flow received by a victim, and
+      NJS-0052-001 uses a request gate to decide whether to inject. The positive gate here decides whether a request is forwarded
+      to the real C2 origin or exposes the control service and does not require content injection into an unrelated victim
+      flow. If one gate both filters and injects, classify both direct objects. NJT-0152 and T1001 own message, carrier, or
+      service camouflage inside an established C2 transaction. Commands carried in an error page may coexist, but without
+      a cross-observer exposure differential they remain message camouflage. Web host profiling and selective content concern
+      the profiled visitor or page. The direct object here is infrastructure hiding real C2 from different observers, with
+      a victim control outcome required.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: 在 Cobalt Strike 场景，攻击者把 Nginx 或其他 front 放在 Beacon 和 team server 之间，只把符合 malleable profile 的 URI/header/User-Agent/sequence
+        转到 origin，其余请求转到合法站点。IronNet 在与 CERT-UA Ukraine 指标相关的 C2 servers 中观察 `/apiv8/getStatus` profile，判断其意图是位于 Nginx redirector
+        后避免 fingerprint；该报告说明 redirector 通常只转发特定 Beacon 流量。Mandiant 进一步记录 valid checksum stager request、blacklisted curl/wget、allowlisted
+        user agents 和 team-server web log，为可实施字段和机制提供 capability 证据，但不单独证明某次攻击使用每项设置。
+      en: In a Cobalt Strike scenario, the actor places Nginx or another front between Beacon and the team server and forwards
+        only URI, header, user-agent, or sequence values congruent with the malleable profile while directing all other requests
+        to a legitimate site. IronNet observed an `/apiv8/getStatus` profile on C2 servers related to CERT-UA Ukraine indicators,
+        assessed it was intended to sit behind an Nginx redirector to resist fingerprinting, and explains that redirectors
+        commonly forward only specific Beacon traffic. Mandiant additionally documents valid-checksum stager requests, blacklisted
+        curl or wget, allowlisted user agents, and team-server web logs. This supports implementable fields and capability
+        but does not independently prove that every setting appeared in one intrusion.
+    - zh: 在 defender-suppression 场景，攻击者按 known security ranges、cloud/VPS 或 researcher infrastructure 拒绝连接，而受害机构继续 C2。Unit
+        42 对六个 target-facing IP 的研究明确观察 Palo Alto、部分 VPS/cloud、Big Tech 与其他安全公司地址被屏蔽，并在 24 个柬埔寨政府组织看到持续通信；同一基础设施只在 actor activity
+        time 打开 C2 ports。该现场材料把 observer exclusion、listener time 和 hidden C2 successor 连起来，但未公开 filter configuration、每次探测
+        payload 或 provider audit，所以不能反推具体 rule syntax。
+      en: In a defender-suppression scenario, the actor rejects known security ranges, cloud or VPS sources, or researcher
+        infrastructure while victim organizations continue C2. Unit 42 explicitly observed six target-facing IPs blocking
+        Palo Alto Networks, some VPS or cloud, Big Tech, and other security-company ranges while 24 Cambodian government organizations
+        maintained communications. The same infrastructure opened C2 ports only during actor activity times. This field evidence
+        joins observer exclusion, listener time, and a hidden C2 successor, but does not publish filter configuration, every
+        probe payload, or provider audit and therefore cannot establish exact rule syntax.
+    - zh: XLoader 展示边缘案例：真实 C2 check-in 通常表现为普通 404，只有 server 准备下发 bot command 时返回 200/encrypted command；panel 对错误 account
+        也生成伪 404，研究者必须用 campaign/account 和长时运行恢复基础设施。它支持 response facade 和残余差分，但 decoy domain 选择、延迟与 error-page message camouflage
+        分别与 NJT-0213、时间规避和 NJT-0152 相邻，不能用该案例单独建立 observer-suppression 子项。
+      en: XLoader illustrates an edge case. A real C2 check-in usually looks like an ordinary 404 and returns 200 with an
+        encrypted command only when the server is ready to task a bot. The panel also emits a fake 404 for an incorrect account,
+        so researchers needed campaign and account knowledge plus longer execution to recover the infrastructure. It supports
+        response facades and residual differentials, but decoy-domain selection, delay, and error-page message camouflage
+        are adjacent to NJT-0213, timing evasion, and NJT-0152 and cannot establish the observer-suppression child by themselves.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者须控制或配置 front/listener/origin 的 exposure decision，知道 implant 会携带的 profile/token/sequence，或维护 defender/scanner
+          classification。正向门增加 implant/front 同步、token 泄露与误拒合法 bot 的成本；负向门需要持续更新研究地址并可能被 residential/mobile/distributed probes
+          绕过。关闭端口或短窗口降低发现面但也损害 C2 reliability。CDN/WAF/provider 可保留 rule、request 和 origin route，使过度复杂的 gate 反而形成稳定 cluster。
+        en: The actor must control or configure the exposure decision at a front, listener, or origin, know the profile, token,
+          or sequence carried by the implant, or maintain a defender and scanner classification. Positive gating adds implant-to-front
+          synchronization, token-leakage, and accidental-rejection costs. Negative gating requires continual updates to research
+          addresses and may be bypassed by residential, mobile, or distributed probes. Closing ports or using short windows
+          reduces discovery but harms C2 reliability. A CDN, WAF, or provider can retain rules, requests, and origin routes,
+          causing an elaborate gate to become a stable cluster.
+    defender_model:
+      paragraphs:
+      - zh: 防守方优先从 victim endpoint/proxy/DNS 得到 candidate C2 与 process/outcome，再在已授权、provider-coordinated、owned、sinkholed
+          或 seized 环境中进行多视角/多变体比较。单视点 public scanner 不足；应固定 endpoint/protocol/time，一次只改变 request profile、source ASN/organization/geography
+          或 time，并记录 edge action 与 origin reach。若无法主动测试，可由多个受害者、第三方被动观测和 provider logs 建立同样 differential。不得把感染端 token、cookie
+          或组织秘密发送到未受控第三方。
+        en: Defenders should first derive a candidate C2 and process or outcome from victim endpoint, proxy, and DNS telemetry,
+          then perform multi-vantage and multi-variant comparison in authorized, provider-coordinated, owned, sinkholed, or
+          seized environments. One public-scanner view is insufficient. Hold endpoint, protocol, and time stable, vary only
+          request profile, source ASN, organization, geography, or time, and record edge action and origin reach. When active
+          testing is unavailable, multiple victims, third-party passive observation, and provider logs can establish the same
+          differential. Never transmit infected-endpoint tokens, cookies, or organizational secrets to an uncontrolled third
+          party.
+      - zh: provider/hosting defender 能看到 strongest evidence：request ID、client identity、matched rule/version/action、edge response、origin
+          IP/status、listener/config change 和 tenant/account。victim defender 通常只有 successful side，必须把 malicious process、destination、repeated
+          bidirectionality 与 downstream command/result 连接后才请求 provider 协助。没有 origin/provider access 时结论保持 probabilistic；TLS/ECH、one-time
+          token、cache、GeoDNS、NAT 和合法 personalization 会造成盲区。
+        en: 'A provider or hosting defender sees the strongest evidence: request ID, client identity, matched rule, version
+          and action, edge response, origin IP and status, listener or configuration change, and tenant or account. A victim
+          defender usually sees only the successful side and should join the malicious process, destination, repeated bidirectionality,
+          and downstream command or result before requesting provider assistance. Without origin or provider access the conclusion
+          remains probabilistic. TLS or ECH, one-time tokens, caching, GeoDNS, NAT, and legitimate personalization create
+          blind spots.'
+stealth_mechanisms:
+- mechanism_ref: NM-BT
+  role: primary
+  summary:
+    zh: 未合格或被识别为防守者的观察者看不到真实 C2 行为
+    en: Unqualified or defender-classified observers do not see real C2 behavior
+  analysis:
+    paragraphs:
+    - zh: Request gate 或 observer deny policy 在 front/listener 处分支，合格 implant 到达 origin 并取得 task/config/result，而 scanner/researcher
+        得到 deny/reset/timeout/closed 或 benign redirect。对后者而言同一基础设施的核心控制行为透明消失，形成 Behavioral Transparency。Unit 42 直接连接被屏蔽 security
+        ranges、仅活动时开放端口与 persistent victim C2；IronNet/Mandiant 连接 specific Beacon forwarding 与 scanner-incongruent requests。多视角与
+        edge-origin join 可恢复，置信度 high。
+      en: A request gate or observer-deny policy branches at the front or listener. A qualified implant reaches the origin
+        and obtains a task, configuration, or result, while a scanner or researcher receives deny, reset, timeout, closed
+        service, or benign redirect. Core control behavior becomes absent to the latter observer, producing Behavioral Transparency.
+        Unit 42 directly joins blocked security ranges and activity-only open ports to persistent victim C2. IronNet and Mandiant
+        connect specific Beacon forwarding to scanner-incongruent requests. Multi-vantage comparison and edge-to-origin joins
+        recover it, supporting high confidence.
+  evidence_refs:
+  - REF-001154
+  - REF-001155
+  - REF-001156
+  confidence: high
+- mechanism_ref: NM-FD
+  role: secondary
+  summary:
+    zh: 良性站点错误页或 honeypot 外观替代真实 C2 服务身份
+    en: A benign site error page or honeypot facade substitutes for the real C2 service identity
+  analysis:
+    paragraphs:
+    - zh: 未合格请求可被导向 legitimate server、普通 404 或 honeypot，令 banner/status/body 看起来属于正常 Web 错误或公开诱捕服务，真实 C2 origin/function 被替代表征。IronNet
+        说明非 Beacon 流量被导向 legitimate server；Unit 42 观察 Cowrie honeypot cover；Check Point 区分 XLoader script 404、server 404 和有
+        task 时 200/encrypted command。Facade 单独不能证明攻击，必须与跨观察者差及 C2 outcome 结合，置信度 medium-high。
+      en: An unqualified request can be directed to a legitimate server, ordinary 404, or honeypot, making banner, status,
+        and body resemble a normal Web error or public decoy service while substituting for the real C2 origin and function.
+        IronNet explains that non-Beacon traffic is directed to a legitimate server. Unit 42 observed a Cowrie honeypot cover.
+        Check Point distinguishes XLoader script-generated 404, server-generated 404, and 200 with an encrypted command when
+        a task exists. A facade alone does not establish attack and must be joined to a cross-observer difference and C2 outcome,
+        supporting medium-high confidence.
+  evidence_refs:
+  - REF-001155
+  - REF-001154
+  - REF-001157
+  confidence: medium
+subtechnique_taxonomy:
+  narrative:
+    paragraphs:
+    - zh: 已完成固定零子项的开放搜索，保留两条正式轴。第一条稳定变量是 positive request qualification：front 判断请求是否与 implant secret/profile/protocol congruent，合格才
+        forward/expose；第二条是 negative observer classification：front/listener 判断来源是否属于 defender/scanner set，命中才 suppress/decoy。二者虽然都产生
+        differential，但 trace 和防守不同：前者要从 sample/victim traffic 恢复有效请求并连接 edge-origin route，后者要用相同请求跨 neutral/defender vantages
+        比较并审计 deny rule。两者有各自直接证据和独立 defense value。
+      en: 'The open search required for a fixed zero-child candidate is complete and retains two formal axes. The first stable
+        variable is positive request qualification: the front decides whether a request is congruent with an implant secret,
+        profile, or protocol and forwards or exposes only on a match. The second is negative observer classification: the
+        front or listener decides whether a source belongs to a defender or scanner set and suppresses or decoys only on a
+        match. Although both produce a differential, traces and defense differ. The former requires recovery of a valid request
+        from a sample or victim traffic and an edge-to-origin route join. The latter requires comparison of the same request
+        across neutral and defender vantages and audit of deny rules. Each has direct evidence and independent defensive value.'
+    - zh: time-window listener exposure 是稳定且有防守价值的第三候选变量，Unit 42 直接观察 actor activity 时开放、其他时间关闭；其检测需要 longitudinal availability
+        与 victim activity join，而非 request/vantage A/B。然而当前只有一个公开事件来源同时证明隐藏目的和后继 C2，无法排除维护/运营窗口并建立足够独立 evidence breadth，因此父级保留、标记
+        defer，不立即分配 NJS。source geography、IP/ASN/user-agent/cookie/path/token、HTTP status、CDN/WAF 产品、端口、honeypot 类型都只是 predicate
+        fields/response actions，不单独成子项。
+      en: Time-window listener exposure is a stable third candidate variable with distinct defensive value. Unit 42 directly
+        observed ports open during actor activity and closed otherwise, and its detection would require longitudinal availability
+        joined to victim activity rather than request or vantage A/B testing. Presently, however, only one public incident
+        source establishes both concealment purpose and successor C2, which is insufficient to exclude maintenance or operating
+        windows and establish independent evidence breadth. Retain it at the parent and defer a separate NJS. Source geography,
+        IP, ASN, user agent, cookie, path, token, HTTP status, CDN or WAF product, port, and honeypot type are predicate fields
+        or response actions and do not form children by themselves.
+  coverage: established
+  subtechnique_refs:
+  - NJS-0224-001
+  - NJS-0224-002
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000262
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000231
+evidence:
+  claim_refs:
+  - CLM-001117
+  - CLM-001118
+  - CLM-001119
+  - CLM-001120
+  - CLM-001121
+  case_refs:
+  - CASE-000343
+  - CASE-000344
+  - CASE-000345
+  reference_refs:
+  - REF-001154
+  - REF-001155
+  - REF-001156
+  - REF-001157
+  - REF-001158
+  - REF-000625
+  - REF-000975
+research:
+  limitations:
+    paragraphs:
+    - zh: 固定 ATT&CK 19.1 的父描述比本文准入宽，且 procedure examples 大多证明代理/ORB/公共云/命名伪装而非 selective runtime exposure；它们用于 boundary，不用于强行扩展
+        formal Niji parent。ATT&CK 引用的 TA571、SocGholish、fake browser update 等主要是 initial delivery/filtering，不满足本文要求的 hidden
+        C2 successor，因而未作为两个 NJS 的独立主证据。
+      en: The fixed ATT&CK 19.1 parent is broader than this admission and most procedure examples establish proxies, ORBs,
+        public cloud, or naming camouflage rather than selective runtime exposure. They inform boundaries and do not force
+        expansion of the formal Niji parent. ATT&CK-cited TA571, SocGholish, and fake-browser-update material primarily concerns
+        initial delivery and filtering and does not meet this handoff's hidden-C2 successor requirement, so it is not primary
+        independent evidence for the two NJS proposals.
+    - zh: 公开 incident reports 很少披露 production WAF/reverse-proxy rule、完整 probe corpus、request IDs 或 origin logs。Unit 42 对 source
+        filtering/time window 的观察最强；IronNet 对 incident-linked profile 最强，但 request gate 细节部分由公开 profile 与技术行为解释。正式对象应分别标记
+        field observation、sample/capability、controlled experiment 和 sensor-model inference，不能把 proposed raw fields 写成已经采集的事件事实。
+      en: Public incident reports rarely disclose production WAF or reverse-proxy rules, complete probe corpora, request IDs,
+        or origin logs. Unit 42 provides the strongest field observation of source filtering and time windows. IronNet provides
+        the strongest incident-linked profile evidence, while request-gate details partly rely on the public profile and supported
+        technical behavior. Formal objects should distinguish field observation, sample or capability, controlled experiment,
+        and sensor-model inference and must not describe proposed raw fields as already collected incident facts.
+    - zh: 合法 WAF/CDN/anti-bot 与 malicious exposure gate 使用相同字段和 actions，任何自动检测都必须先有 victim C2/process/outcome 或 provider abuse
+        context。active probing 涉及授权、隐私、速率和对手告警风险，不能把本 analytic 视为允许扫描任意第三方。时间子项因证据广度不足 defer；若后续出现第二宗 original incident 或
+        provider rule seizure，可重新评审。
+      en: Legitimate WAF, CDN, and anti-bot systems use the same fields and actions as a malicious exposure gate. Any automated
+        detection must begin with victim C2, process and outcome or provider abuse context. Active probing raises authorization,
+        privacy, rate, and adversary-notification risks and this analytic does not authorize scanning arbitrary third parties.
+        The temporal child is deferred for evidence breadth; reassess if a second original incident or seized provider rule
+        becomes available.
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-10-05'
+  modified: '2026-10-05'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

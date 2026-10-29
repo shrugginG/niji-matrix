@@ -1,0 +1,49 @@
+schema_version: "2.0.0"
+type: detection-analytic
+id: NJA-000227
+strategy_ref: DET-000198
+name: {zh: 域控制器注册生命周期差分分析, en: Domain-Controller Registration Lifecycle Differential Analytic}
+summary: {zh: 识别未批准主机上不符合正常 promotion 拓扑和生命周期的 server、nTDSDSA 与复制 SPN 注册。, en: "Identify server, nTDSDSA, and replication-SPN registration on an unapproved host that does not match normal promotion topology and lifecycle."}
+domains: [enterprise]
+platforms: [Windows]
+logic:
+  paragraphs:
+    - zh: 建立版本化 approved_dc_inventory，包含 forest/domain/site、computer SID/GUID、DNS/host/IP、server DN、nTDSDSA DN/GUID、NTDS settings、复制 SPN、promotion/demotion 工单、时间窗和 owner。连续采集 Configuration partition、Domain partition computer 对象及 SPN 的 old-new-delete，保留 LDAP/RPC writer principal、source host/IP、authentication session、USN、whenCreated/whenChanged、originating DSA、replication time 和 tombstone。把同一主机/DSA 的对象串联为 controller_registration_id。
+      en: Build a versioned approved_dc_inventory containing forest, domain, site, computer SID or GUID, DNS, host, IP, server DN, nTDSDSA DN or GUID, NTDS settings, replication SPNs, promotion or demotion ticket, time window, and owner. Continuously collect old, new, and delete state for Configuration-partition objects, Domain-partition computer objects, and SPNs while retaining LDAP or RPC writer principal, source host or IP, authentication session, USN, whenCreated or whenChanged, originating DSA, replication time, and tombstone. Link objects for the same host or DSA into a controller_registration_id.
+    - zh: 将注册与批准 inventory 和正常 promotion 状态机比较：正确 site/container、连续 promotion 服务安装/重启、DNS/SRV、长期 nTDSDSA、复制邻居及工单应一致。若非 DC/非批准主机新增或重写 GC/DRS SPN、server/nTDSDSA，缺少正常 promotion 前后态，或对象在数秒/分钟内创建后删除/回滚，则输出 rogue_registration_exposure；同时保留行为发生在另一 DC 后由复制可见造成 writer 缺失的可能。
+      en: Compare registration to approved inventory and a normal-promotion state machine in which the correct site and container, continuous promotion service installation or restart, DNS or SRV, long-lived nTDSDSA, replication neighbors, and ticket align. Emit rogue_registration_exposure when a non-DC or unapproved host adds or rewrites GC or DRS SPNs or server or nTDSDSA objects without normal promotion state, or when those objects are created and deleted or reverted within seconds or minutes. Preserve the possibility that the behavior occurred on another DC and became visible through replication, leaving the local writer absent.
+    - zh: 正常 promotion/demotion、灾备演练、克隆 DC、站点移动、失败回滚和目录恢复按批准对象、时间、owner 与完整状态机降噪。若只有产品 rogue-promotion 告警而无目录状态，输出 sensor_signal；若注册存在但尚无 DRS/对象结果，不确认 NJT-0171，交由 NJA-000228 后续关联。
+      en: Suppress normal promotion or demotion, disaster-recovery drills, cloned DCs, site moves, failed rollback, and directory recovery through approved objects, time, owner, and a complete state machine. A product rogue-promotion alert without directory state produces sensor_signal. Registration without DRS or an object outcome does not confirm NJT-0171 and is passed to NJA-000228 for later correlation.
+data_requirements:
+  - source_type: approved-domain-controller-inventory
+    name: {zh: 批准 DC、拓扑与变更工单清单, en: Approved DC Topology and Change-Ticket Inventory}
+    channel: CMDB Active Directory Sites and Services change management
+    required_fields: [inventory_version, forest_id, domain_id, site_id, host_id, host_ip, computer_sid, computer_guid, server_dn, ntdsdsa_dn, ntdsdsa_guid, approved_spns, owner_id, approval_id, valid_from, valid_until]
+  - source_type: active-directory-object-change
+    name: {zh: Configuration/Domain 分区对象与 SPN 版本, en: Configuration and Domain Partition Object and SPN Versions}
+    channel: LDAP change audit directory snapshots or replication metadata
+    required_fields: [timestamp, forest_id, domain_id, partition_dn, object_dn, object_guid, object_class, attribute_name, old_value, new_value, change_type, usn, originating_dsa_guid, originating_time, writer_principal, writer_host, writer_ip, authentication_session_id]
+  - source_type: domain-controller-promotion-state
+    name: {zh: DC Promotion/Demotion、服务与 DNS 状态, en: DC Promotion or Demotion Service and DNS State}
+    channel: Windows System Directory Service DNS and deployment logs
+    required_fields: [timestamp, host_id, promotion_or_demotion_id, operation, service_name, service_state, dns_record, site_id, replication_neighbor_id, status, reboot_id, approval_id]
+observables:
+  - {zh: 非批准成员主机获得 GC/DRS SPN 与 server/nTDSDSA 对象, en: An unapproved member host gains GC or DRS SPNs plus server and nTDSDSA objects}
+  - {zh: 注册对象在极短时间内创建并删除，且没有正常 promotion 服务、DNS 与复制邻居链, en: Registration objects are created and deleted in a very short interval without the normal promotion service DNS and replication-neighbor chain}
+  - {zh: writer、originating DSA、主机清单和对象容器彼此不一致, en: Writer originating DSA host inventory and object container do not agree}
+correlation:
+  window: {zh: 从对象首次变化前一小时到最后删除或回滚后七日，并长期保留批准 DC 与 DSA 历史。, en: "Correlate one hour before the first object change through seven days after final deletion or rollback and retain approved DC and DSA history long term."}
+  dimensions: [forest_id, domain_id, site_id, host_id, host_ip, computer_guid, object_guid, server_dn, ntdsdsa_guid, originating_dsa_guid, writer_principal, authentication_session_id, controller_registration_id, approval_id, time]
+false_positives:
+  - {zh: 批准的 DC promotion/demotion、克隆、站点迁移或灾备演练, en: Approved DC promotion or demotion cloning site migration or disaster-recovery drill}
+  - {zh: Promotion 失败后自动/人工回滚留下短生命周期对象, en: Automatic or manual rollback after a failed promotion leaves short-lived objects}
+  - {zh: 目录复制延迟导致 writer 和本地观察时间不一致, en: Directory-replication delay makes writer and local observation time disagree}
+blind_spots:
+  - {zh: Configuration partition 和 SPN old-new 未集中保留，短对象生命周期落在快照间隔内, en: Configuration-partition and SPN old and new state is not centrally retained and the short object lifecycle falls between snapshots}
+  - {zh: 攻击者复用仍在 inventory 中的陈旧 DC 身份且没有可见注册变化, en: The adversary reuses a stale DC identity still present in inventory without a visible registration change}
+tuning_guidance:
+  paragraphs:
+    - zh: 先在每个 forest 记录正常 promotion/demotion 的对象顺序与持续时间，不使用固定一秒阈值。高置信要求非批准 host、至少两类 controller object/SPN、缺少正常服务/DNS 状态并与后续复制关联。灾备与克隆例外绑定准确 host/GUID/site/窗口，不能把 Domain Admin 身份本身当白名单。
+      en: Record the normal promotion or demotion object order and duration in each forest before choosing thresholds rather than using a fixed one-second rule. High confidence requires an unapproved host, at least two controller-object or SPN classes, absence of normal service or DNS state, and linkage to subsequent replication. Recovery and cloning exceptions bind the exact host, GUID, site, and window; Domain Admin identity itself is not an allowlist.
+evidence_refs: [REF-000748, REF-000750, REF-000751, REF-000753]
+lifecycle: {status: review, version: "1.0.0", created: "2026-09-23", modified: "2026-09-23", contributors: [Niji Matrix Research], reviewers: []}

@@ -1,0 +1,128 @@
+schema_version: 2.0.0
+type: evasion-subtechnique
+id: NJS-0210-002
+parent_ref: NJT-0210
+name:
+  zh: 任务—结果通道功能分离
+  en: Task–Result Functional Channel Separation
+summary:
+  zh: 攻击者从一个通道取得任务或执行组件，再通过另一通道回传由该任务产生的结果，使任一通道只呈现控制链的一侧。
+  en: Adversaries obtain tasking or execution components through one channel and return the resulting data through another,
+    leaving each channel with only one side of the control chain.
+aliases: []
+lineage:
+  attck_subtechnique_inherited: false
+definition_and_concept:
+  paragraphs:
+  - zh: 任务—结果通道功能分离是攻击者让植入通过第一通道取得脚本、枚举逻辑或命令，再把执行生成的信息通过不同端点、资源或会话发送出去。直接目标是使任务来源和结果去向不共享一个可观察请求—响应链；只看任务通道可能只见组件下载，只看结果通道可能只见单向数据。
+    en: Task–Result Functional Channel Separation means an actor has an implant obtain a script, enumeration logic, or
+      command through one channel and send information produced by execution through a different endpoint, resource,
+      or session. The direct goal is preventing task source and result destination from sharing one observable request-response
+      chain. The task channel may show only a component download, while the result channel may show only one-way data.
+  - zh: BlackWater 的 PowerShell stager 从一台攻击者服务器取得 FruityC2 枚举组件，执行后把数据通过另一 C2 的 URL 字段发送；LunarWeb 的命令包可以指定 output URL，表明任务与结果目的地是显式可控字段，但
+      ESET 在有限观测包中看到 output URL 与 command URL 相同。因此 BlackWater 是正式存在性的直接证据，LunarWeb 仅支持变量的实现能力与边界。
+    en: BlackWater's PowerShell stager retrieves a FruityC2 enumeration component from one actor server and, after execution,
+      sends data in the URL field to a different C2. LunarWeb command packages can specify an output URL, showing destination
+      is an explicitly controllable task field, but ESET's limited observed packages used the same output and command
+      URL. BlackWater therefore provides direct existence evidence, while LunarWeb supports implementation capability
+      and its boundary only.
+stealth_characteristics:
+  paragraphs:
+  - zh: 任务—结果通道功能分离破坏了单会话内的因果完整性。下载端点可能表现为短小文本/脚本取得且没有明显回传，结果端点可能只接收编码后的系统信息且没有可见命令；按目的地或单一代理事务判断时，两者都低于完整 RAT 会话的可疑度。残余桥接痕迹是同一
+      DeviceId/ProcessUniqueId、组件摘要、脚本块/WMI 枚举、任务 ID/victim ID、执行时间与随后结果请求长度。
+    en: Task–Result Functional Channel Separation breaks causal completeness within one session. The download endpoint
+      may show a short text or script retrieval with no obvious return traffic, while the result endpoint only receives
+      encoded system information without a visible command. Destination- or transaction-local analysis therefore sees
+      less suspicion than a complete RAT session. Residual bridges include the same DeviceId or ProcessUniqueId, component
+      digest, script block or WMI enumeration, task or victim ID, execution time, and the length of the later result
+      request.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 纳入必须证明第一通道内容导致本地执行/收集，第二通道承载该执行结果，并由共同进程、任务/victim ID、数据内容或紧密时序连接。普通 REST 请求后响应、同一 URL 的 POST 回传、浏览器下载后用户另行上传、微服务控制/遥测分离和备份代理均为反例。不同目的地和相反流向只是线索，不是结论。
+    en: Inclusion requires evidence that first-channel content causes local execution or collection and a second channel
+      carries the resulting output, joined by process, task or victim ID, data content, or tight timing. An ordinary
+      REST request and response, POST return to the same URL, a user uploading after a browser download, microservice
+      control and telemetry separation, and backup agents are counterexamples. Different destinations and opposite directions
+      are leads rather than conclusions.
+  - zh: T1102 可描述任务或结果通道使用的合法 Web 资源，NJT-0160 描述实际 HTTP/邮件等事务；本项描述二者之间的功能因果。若第二目的地只是在第一目的地失效后接替相同任务，归 NJT-0153；若两个目标是代理链上的相邻跳点，归
+      T1090。
+    en: T1102 can describe a legitimate Web resource used by either task or result channel, while NJT-0160 describes
+      actual HTTP, mail, or other transactions. This child describes functional causality between channels. A second
+      destination that assumes the same role only after the first fails belongs to NJT-0153. Two destinations that are
+      adjacent hops in a proxy chain belong to T1090.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: 轻量 PowerShell stager 可从只提供枚举模块的服务器取得脚本并执行 WMI/系统查询，再把编码结果放入另一服务器的 URL 或 POST 正文。防守若只封下载端点，已加载脚本仍可向结果端点工作；只发现结果端点时，又难从该流量直接恢复任务来源。
+      en: A lightweight PowerShell stager can retrieve an enumeration module from a server dedicated to supplying it,
+        execute WMI or system queries, and place encoded results in another server's URL or POST body. Blocking only
+        the download endpoint leaves a loaded script able to use the result endpoint, while discovering only the result
+        endpoint makes the task source difficult to recover from that traffic alone.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者需让第一通道提供可执行任务/组件，并在第二通道中携带足以归属受害者或任务的标识，同时协调密钥、字段与重试。功能分离增加基础设施和状态管理成本，且本地执行会产生 WMI、PowerShell、子进程或文件痕迹。若结果通道被
+          DLP/代理严格审计，分离本身不能隐藏结果内容。
+        en: The actor needs executable task or component delivery on the first channel and enough victim or task identity
+          on the second, with coordinated keys, fields, and retries. Functional separation increases infrastructure and
+          state-management cost, while local execution leaves WMI, PowerShell, child-process, or file traces. If DLP
+          or proxy inspection closely monitors the result channel, separation alone does not hide output content.
+    defender_model:
+      paragraphs:
+      - zh: 防守方假定有 DeviceNetworkEvents/代理连接、DeviceProcessEvents、DeviceFileEvents 和需要时的 PowerShell 4104，并可用 DeviceId、ProcessUniqueId/InitiatingProcessUniqueId、文件
+          SHA1、RemoteUrl/IP、脚本时间与任务后结果关联。没有内容或脚本日志时，跨目的地序列只能形成中等/低置信候选。
+        en: The defender is assumed to have DeviceNetworkEvents or proxy connections, DeviceProcessEvents, DeviceFileEvents,
+          and PowerShell 4104 where needed, joinable by DeviceId, ProcessUniqueId or InitiatingProcessUniqueId, file
+          SHA1, RemoteUrl or IP, script time, and post-task result. Without content or script logs, a cross-destination
+          sequence supports only medium- or low-confidence candidacy.
+stealth_mechanisms:
+- mechanism_ref: NM-ST
+  role: primary
+  summary:
+    zh: 任务取得与结果回传分置使单通道因果不完整
+    en: Separating task acquisition and result return leaves each channel causally incomplete
+  analysis:
+    paragraphs:
+    - zh: 攻击者把任务或组件的入站痕迹放在第一目的地，把任务结果的出站痕迹放在第二目的地；局部规则看不到命令与结果闭环，跨目的地/进程重构成本提高。BlackWater 的组件取得—本地枚举—不同 C2 回传直接支持该因果链。以同一设备/进程和执行结果联接可恢复闭环。
+      en: The actor places inbound task or component traces at one destination and outbound task results at another.
+        Local rules cannot see a closed command-result loop and cross-destination or process reconstruction becomes harder.
+        BlackWater's component retrieval, local enumeration, and return to a different C2 directly support this causal
+        chain. Joining on the same device or process and execution outcome restores the loop.
+  evidence_refs:
+  - REF-001054
+  confidence: medium
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000244
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000216
+evidence:
+  claim_refs:
+  - CLM-001041
+  - CLM-001044
+  case_refs:
+  - CASE-000311
+  reference_refs:
+  - REF-001054
+  - REF-000639
+research:
+  limitations:
+    paragraphs:
+    - zh: Talos 直接描述 BlackWater 从一个服务器取得组件并向不同 C2 回传枚举数据，同时对 MuddyWater 归因只给出中等置信。报告没有测量具体产品漏报率。LunarWeb 的 output URL
+        是可控能力，但有限观察的命令包使用同一 command/output URL，故不能把它写成已观察的功能分离案例。
+      en: Talos directly describes BlackWater retrieving a component from one server and returning enumeration data to
+        a different C2, while attributing the campaign to MuddyWater only with moderate confidence. The report does not
+        measure a product miss rate. LunarWeb has a controllable output URL capability, but the limited observed command
+        packages used the same command and output URL, so it cannot be written as an observed functional-separation case.
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-10-04'
+  modified: '2026-10-04'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

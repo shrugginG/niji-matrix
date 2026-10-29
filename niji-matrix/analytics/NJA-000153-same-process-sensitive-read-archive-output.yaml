@@ -1,0 +1,128 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000153
+strategy_ref: DET-000146
+name:
+  zh: 同进程敏感读取与归档输出关联
+  en: Same-Process Sensitive Reads and Archive Output Correlation
+summary:
+  zh: 识别读取敏感输入并自行形成归档输出的进程，以正向输入输出链替代工具名告警。
+  en: Identify processes that read sensitive inputs and package output themselves, using a positive input-to-output chain
+    instead of utility names.
+domains:
+- enterprise
+platforms:
+- Windows
+logic:
+  paragraphs:
+  - zh: 将读取多项敏感源文件的同一进程与其新建压缩/加密产物、同进程外联或归档格式输出关联，核查该窗口不存在由该进程启动的独立归档工具，同时要求正向的源到产物证据。使用模块加载或 API 跟踪（若已启用）增强对内置压缩的判断；没有子进程只是分支条件，不能作为单独告警。按受管备份、同步和应用内导出基线比较进程角色、输入范围及目的地，输出
+      in_process_archival_lineage。
+    en: Join a process that reads multiple sensitive source files to its new compressed or encrypted output, same-process
+      egress, or archive-format stream. Check that it launched no separate archive utility in the window while requiring positive
+      source-to-output evidence. Module-load or API tracing, where enabled, strengthens attribution to integrated compression;
+      missing child process is a branch condition, never a standalone alert. Compare process role, input scope, and destination
+      against managed backup, sync, and application export baselines before emitting in_process_archival_lineage.
+data_requirements:
+- source_type: windows-file-read-audit
+  name:
+    zh: Windows 敏感文件读取审计
+    en: Windows sensitive-file read audit
+  channel: Security/4663
+  required_fields:
+  - timestamp
+  - device_id
+  - object_path
+  - access_mask
+  - process_id
+  - process_name
+- source_type: endpoint-file-create
+  name:
+    zh: 端点归档产物创建
+    en: Endpoint archive-output creation
+  channel: Sysmon/11 or DeviceFileEvents
+  required_fields:
+  - timestamp
+  - device_id
+  - file_path
+  - writer_process_id
+  - file_size
+- source_type: process-lineage
+  name:
+    zh: 进程启动与父子谱系
+    en: Process launch and parent-child lineage
+  channel: Sysmon/1
+  required_fields:
+  - timestamp
+  - device_id
+  - process_id
+  - parent_process_id
+  - image
+  - command_line
+- source_type: archive-output-classifier
+  name:
+    zh: 归档输出格式判定
+    en: Archive output-format classifier
+  channel: null
+  required_fields:
+  - timestamp
+  - artifact_id
+  - true_format
+  - producer_process_id
+- source_type: process-network
+  name:
+    zh: 进程网络连接
+    en: Process network connection
+  channel: Sysmon/3
+  required_fields:
+  - timestamp
+  - device_id
+  - process_id
+  - destination_ip
+  - destination_port
+observables:
+- zh: 单个既有进程读取多个敏感源并形成可证归档产物
+  en: One existing process reads several sensitive sources and produces a verifiable archive
+- zh: 同一进程随后外联，且进程树中没有独立归档工具
+  en: The same process later connects outward without a separate archiver in its process tree
+correlation:
+  window:
+    zh: 覆盖敏感源读取前后各 30 分钟，并保留完整进程生存期以排除更早启动的外部工具。
+    en: Cover thirty minutes before and after sensitive reads and retain the full process lifetime to rule out an earlier
+      utility launch.
+  dimensions:
+  - device_id
+  - process_id
+  - parent_process_id
+  - source_path
+  - artifact_id
+  - destination_ip
+  - time
+false_positives:
+- zh: 正常备份代理、同步客户端、邮件程序、数据库导出和软件构建也可能在自身进程内压缩。
+  en: Legitimate backup agents, sync clients, mail programs, database exports, and software builds may compress inside their
+    own process.
+blind_spots:
+- zh: 仅有文件创建而无读取或流遥测时无法证明输入集合；静态链接代码不产生独立模块加载；进程遥测丢失会把工具路径误判为内置路径。
+  en: File creation without read or stream telemetry cannot prove the input set; statically linked code creates no separate
+    module-load event; dropped process telemetry can misclassify a utility path as integrated.
+tuning_guidance:
+  paragraphs:
+  - zh: 先在具备读取审计和进程完整性的资产试运行，按应用签名、角色、受控任务与批准输入目录建基线；缺少正向源到产物链时保持未判定，不因缺失 7z/rar 进程而提高风险分数。
+    en: Pilot on assets with read audit and reliable process telemetry, baselining application signature, role, managed task,
+      and approved input paths. Keep cases without positive source-to-output linkage indeterminate; do not raise risk simply
+      because no 7z or rar process appeared.
+evidence_refs:
+- REF-000506
+- REF-000379
+- REF-000230
+- REF-000366
+- REF-000475
+- REF-000512
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-09-22'
+  modified: '2026-09-22'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

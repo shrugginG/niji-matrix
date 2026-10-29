@@ -1,0 +1,95 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000189
+strategy_ref: DET-000173
+name:
+  zh: Windows 删除句柄与业务对象损失分析
+  en: Windows Delete-Handle and Business-Object Loss Analytic
+summary:
+  zh: 将 4663 的对象名和删除权限与 4660 的删除完成事件按句柄关联，并相对业务基线聚合损失。
+  en: Correlate object names and delete rights in 4663 with completion in 4660 by handle, then aggregate loss against
+    a business baseline.
+domains:
+- enterprise
+platforms:
+- Windows
+logic:
+  paragraphs:
+  - zh: 对受保护业务目录配置对象访问 SACL，采集 Security 4663 的 ObjectName、AccessMask、ProcessId、HandleId、SubjectUserSid 与时间；在同主机同句柄和进程的短间隔内关联
+      4660，确认对象被删除。4663 的 DELETE 权限也可能对应重命名，未关联完成或对象状态时只标记删除企图。
+    en: Configure object-access SACLs for protected business directories and ingest Security 4663 ObjectName, AccessMask,
+      ProcessId, HandleId, SubjectUserSid, and time. Join 4660 on the same host, handle, and process within a short
+      interval to confirm deletion. DELETE access in 4663 may also accompany rename; without completion or object
+      state, mark an attempt only.
+  - zh: 按资产、账户、进程与关键根目录在可调的 10 至 30 分钟窗口计数不同对象，比较批准清理任务、变更单和正常维护覆盖率。多个业务目录快速损失或与应用读失败相交时升级；保留原事件 ID、路径和主体供还原。此逻辑不从删除数量推断攻击者的匿迹意图。
+    en: Count distinct objects by asset, account, process, and critical root over a tunable 10 to 30 minute window
+      and compare approved cleanup jobs, change tickets, and normal maintenance coverage. Escalate loss across business
+      directories or intersecting application-read failures; preserve source event IDs, paths, and principals. The
+      logic does not infer stealth intent from deletion count.
+data_requirements:
+- source_type: windows-security-object-access
+  name:
+    zh: Windows 安全对象访问事件
+    en: Windows Security object-access events
+  channel: Security 4663 and 4660
+  required_fields:
+  - event.timestamp
+  - host.id
+  - event.id
+  - object.name
+  - access.mask
+  - process.id
+  - handle.id
+  - subject.user.sid
+- source_type: protected-file-inventory
+  name:
+    zh: 受保护业务文件清单
+    en: Protected business-file inventory
+  channel: null
+  required_fields:
+  - asset.id
+  - object.path
+  - business.owner
+  - criticality
+  - approved.change.id
+observables:
+- zh: 同一进程在多个关键目录上出现已确认删除
+  en: Confirmed deletions by one process across multiple critical directories
+- zh: 相对批准维护基线的不同业务文件损失突增
+  en: A rise in distinct business-file losses relative to approved maintenance
+correlation:
+  window:
+    zh: 对 4663 与 4660 先用秒级句柄关联；对业务损失使用按资产调优的 10 至 30 分钟窗口。
+    en: First join 4663 and 4660 by handle over seconds; aggregate business loss in an asset-tuned 10 to 30 minute
+      window.
+  dimensions:
+  - host.id
+  - handle.id
+  - process.id
+  - subject.user.sid
+  - object.path
+  - event.timestamp
+false_positives:
+- zh: 获批批量清理、迁移或部署回滚会删除多个文件
+  en: Approved cleanup, migration, or deployment rollback can delete many files
+blind_spots:
+- zh: 未配置 SACL、4660 未采集、重命名歧义或存储控制器外部删除会破坏确认链
+  en: Missing SACLs or 4660, rename ambiguity, or deletion outside host audit breaks confirmation
+tuning_guidance:
+  paragraphs:
+  - zh: 按文件服务器、目录与维护任务建立删除覆盖基线；只对多个关键目录、异常主体或后续读取失败的组合升高严重度。对 4663 未确认事件保留低置信分类，不能为消除误报而全局放行有权服务账户。
+    en: Baseline deletion coverage by server, directory, and maintenance job; raise severity on combinations of
+      multiple critical roots, unusual principal, or subsequent read failure. Keep unconfirmed 4663 events at lower
+      confidence rather than globally allowing privileged service accounts to avoid false positives.
+evidence_refs:
+- REF-000379
+- REF-000656
+- REF-000647
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-09-22'
+  modified: '2026-09-22'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

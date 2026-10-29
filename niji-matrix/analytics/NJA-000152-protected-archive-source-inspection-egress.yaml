@@ -1,0 +1,127 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000152
+strategy_ref: DET-000146
+name:
+  zh: 受保护归档源侧证据与出口关联
+  en: Protected Archive Source Evidence and Egress Correlation
+summary:
+  zh: 对不可解析的受保护归档保留明确状态，并要求敏感源读取或后续出口关系形成。
+  en: Preserve an explicit uninspectable state for protected archives and require sensitive-source or downstream-egress linkage.
+domains:
+- enterprise
+platforms:
+- Windows
+logic:
+  paragraphs:
+  - zh: 在受管端点或出口提取新产物的实际格式与解析状态，区分可展开、需要口令、加密但仅元数据可见、格式不支持。对需要口令或加密产物，按设备、写入进程唯一 ID、账户和 30 分钟窗口连接既有敏感文件读取或 DLP 活动，再接同一文件哈希或路径的上传、共享复制或外联。只有源到容器或容器到出口的关系成立并且超出已批准备份/交付流程时，输出
+      protected_archive_content_blindness；解析失败单独输出待核查状态。
+    en: Extract the true format and parser state of a newly created artifact at a managed endpoint or egress point, distinguishing
+      unpackable, password-required, encrypted with metadata only, and unsupported. For password-required or encrypted output,
+      join prior sensitive-file reads or DLP activity by device, writer process-unique ID, account, and a 30-minute window,
+      then join upload, share copy, or egress for the same file hash or path. Emit protected_archive_content_blindness only
+      when source-to-container or container-to-egress linkage exists outside an approved backup or delivery workflow; report
+      parser failure alone as an investigation state.
+data_requirements:
+- source_type: windows-file-read-audit
+  name:
+    zh: Windows 敏感文件读取审计
+    en: Windows sensitive-file read audit
+  channel: Security/4663
+  required_fields:
+  - timestamp
+  - device_id
+  - subject_logon_id
+  - object_path
+  - access_mask
+  - process_id
+  - process_name
+- source_type: endpoint-file-create
+  name:
+    zh: 端点文件创建与写入
+    en: Endpoint file creation and write
+  channel: Sysmon/11 or DeviceFileEvents
+  required_fields:
+  - timestamp
+  - device_id
+  - file_path
+  - file_hash
+  - file_size
+  - writer_process_id
+- source_type: archive-parse-result
+  name:
+    zh: 归档格式与解析结果
+    en: Archive format and parse result
+  channel: null
+  required_fields:
+  - timestamp
+  - artifact_id
+  - true_format
+  - password_required
+  - member_parse_state
+- source_type: sensitive-source-inventory
+  name:
+    zh: 敏感源对象清单
+    en: Sensitive source-object inventory
+  channel: null
+  required_fields:
+  - device_id
+  - file_path
+  - sensitivity_label
+- source_type: outbound-object-transfer
+  name:
+    zh: 对象外传或共享复制
+    en: Outbound object transfer or share copy
+  channel: null
+  required_fields:
+  - timestamp
+  - device_id
+  - artifact_id
+  - destination
+  - transfer_result
+observables:
+- zh: 敏感源读取后出现需要口令且无法展开的归档
+  en: A password-required, unexpandable archive follows sensitive-source reads
+- zh: 同一产物随后被上传或复制到非批准出口
+  en: The same artifact is later uploaded or copied to an unapproved destination
+correlation:
+  window:
+    zh: 从首个敏感源读取前 30 分钟至归档最后一次传出后 30 分钟关联，并按环境实际任务长度调整。
+    en: Correlate from thirty minutes before the first sensitive-source read through thirty minutes after the last archive
+      transfer, adjusted to local job duration.
+  dimensions:
+  - device_id
+  - subject_logon_id
+  - writer_process_id
+  - artifact_id
+  - file_hash
+  - destination
+  - time
+false_positives:
+- zh: 授权备份、财务或法务交付、软件发布和受控加密附件会形成相同链条。
+  en: Authorized backup, finance or legal delivery, software release, and controlled encrypted attachments can form the same
+    chain.
+blind_spots:
+- zh: 没有读取审计或稳定对象 ID 时难把来源与容器对应；自定义格式和内存直传可能没有可检查文件；文件哈希在重写后会变化。
+  en: Without read audit or stable object IDs, source-to-container linkage is weak; custom formats and direct memory transfer
+    may lack an inspectable file, and hashes change after rewriting.
+tuning_guidance:
+  paragraphs:
+  - zh: 按业务工作流白名单化具体身份、目录、目的地和有效期，绝不把所有 ZIP/RAR、所有加密归档或所有备份进程全局排除。阈值基于源敏感性和链条异常调优，解析失败保留单独计数。
+    en: Allowlist specific identities, paths, destinations, and validity periods by business workflow; do not globally exclude
+      ZIP/RAR, protected archives, or backup processes. Tune on source sensitivity and anomalous linkage, while retaining
+      separate counts of parse failures.
+evidence_refs:
+- REF-000505
+- REF-000507
+- REF-000379
+- REF-000230
+- REF-000475
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-09-22'
+  modified: '2026-09-22'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

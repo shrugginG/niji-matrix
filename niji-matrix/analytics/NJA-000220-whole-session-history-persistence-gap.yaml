@@ -1,0 +1,49 @@
+schema_version: "2.0.0"
+type: detection-analytic
+id: NJA-000220
+strategy_ref: DET-000195
+name: {zh: 会话历史整体持久化缺口分析, en: Whole-Session History Persistence Gap Analytic}
+summary: {zh: 识别交互 session 中存在独立命令活动、全局 history 抑制状态和正常持久化边界，但预期 store 没有对应区间。, en: "Identify an interactive session with independent command activity, a global history-suppression state, and a normal persistence boundary whose expected store lacks the corresponding interval."}
+domains: [enterprise]
+platforms: [Linux, Windows, Network Devices]
+logic:
+  paragraphs:
+    - zh: 维护 history_expectation 表，按 host/device、user/role、shell/CLI family、version、interactive flag 和 session type 定义 expected_store、write_mode（每条、周期、退出、显式）、normalization、minimum expected entries 与批准例外。为每个登录或终端创建 session_id，采集认证来源、TTY/channel、parent process、开始/结束/崩溃状态和独立 command_event/process_event；command_text 默认转换为 session-scoped hash、leading-space flag 与 command class。
+      en: Maintain a history_expectation table by host or device, user or role, shell or CLI family, version, interactive flag, and session type, defining expected_store, write_mode such as per-command, periodic, exit, or explicit, normalization, minimum expected entries, and approved exceptions. Create a session ID for each login or terminal and collect authentication source, TTY or channel, parent process, start, end, and crash state, and independent command or process events. Command text is converted by default to a session-scoped hash, leading-space flag, and command class.
+    - zh: 版本化 session 生效期间的 HISTFILE、HISTSIZE/HISTFILESIZE、HISTCONTROL/HISTIGNORE、PSReadLine HistorySaveStyle/HistorySavePath 或设备 CLI 等价状态，解析 sink canonical path、device/inode、mount persistence、ACL、quota 与 free space。记录 history open/write/fsync/close 或平台 flush、正常 exit 和最终 entry count/mtime。若全局 no-save/null/zero 状态未经批准且在 command_event 前生效，session 有至少两条独立命令，正常写入边界已过，而 expected_store 没有该 interval，则输出 whole_session_suppression。
+      en: Version HISTFILE, HISTSIZE or HISTFILESIZE, HISTCONTROL or HISTIGNORE, PSReadLine HistorySaveStyle or HistorySavePath, or device-CLI equivalent state during the session and resolve sink canonical path, device or inode, mount persistence, ACL, quota, and free space. Record history open, write, fsync, and close or platform flush, normal exit, and final entry count and modification time. Emit whole_session_suppression when an unapproved global no-save, null, or zero state takes effect before command events, the session has at least two independent commands, the normal write boundary has passed, and the expected store lacks the interval.
+    - zh: 若只有危险状态但尚无命令/持久化边界，输出 suppression_exposure；若有命令与缺口但没有全局状态，输出 unexplained_history_gap。crash/kill、noninteractive、只读或满盘、合法 ephemeral session、远程 home 延迟、history 写入另一批准路径和并发 flush 冲突进入 benign_failure 或低置信队列，不提升为已确认。
+      en: Emit suppression_exposure when only dangerous state exists before commands or a persistence boundary and unexplained_history_gap when commands and a gap exist without global state. Crash or kill, noninteractive operation, read-only or full disk, approved ephemeral sessions, delayed remote homes, history written to another approved path, and concurrent-flush conflicts enter benign_failure or a low-confidence queue and are not promoted to confirmed.
+data_requirements:
+  - source_type: interactive-session-audit
+    name: {zh: 登录、TTY 与独立命令/进程序列, en: Login TTY and Independent Command or Process Sequence}
+    channel: Session broker TTY audit shell hook process telemetry
+    required_fields: [timestamp, host_or_device_id, session_id, user_id, source, tty_or_channel, interactive_flag, shell_or_cli_family, version, parent_process_id, command_event_id, command_hash, leading_space_flag, process_id, exit_status, session_end_reason]
+  - source_type: history-state-audit
+    name: {zh: History 配置、环境和 Predicate 版本, en: History Configuration Environment and Predicate Versions}
+    channel: Environment snapshot profile audit PowerShell or CLI option audit
+    required_fields: [timestamp, host_or_device_id, session_id, state_name, old_value, new_value, effective_scope, actor_id, source_file_or_api, approval_id, predicate_version]
+  - source_type: history-store-telemetry
+    name: {zh: History Sink、写入边界与最终 Store 结果, en: History Sink Persistence Boundary and Final Store Outcome}
+    channel: File audit syscall telemetry PSReadLine or device CLI export
+    required_fields: [timestamp, host_or_device_id, session_id, expected_store, canonical_path, sink_type, device_or_inode, mount_persistence, acl_result, quota_state, free_space, operation, bytes_written, entry_count, mtime, flush_or_exit_status]
+observables:
+  - {zh: 交互 session 在首个命令前将 history sink 设为 null/unset 或 SaveNothing，并持续产生进程结果, en: An interactive session sets a null or unset history sink or SaveNothing before its first command and continues producing process outcomes}
+  - {zh: 正常 flush/退出后 history store 的 size、mtime 和 entry count 没有覆盖 session 区间, en: After normal flush or exit the history store size modification time and entry count do not cover the session interval}
+  - {zh: 同一 session 的独立命令数大于零而 history write 数为零，且磁盘/权限/崩溃反例不成立, en: The same session has independent commands but zero history writes after disk permission and crash counterexamples are excluded}
+correlation:
+  window: {zh: 从 session 开始前十分钟到其写入模式规定的 flush/退出后两小时；远程 home 延迟按基线扩展。, en: "Correlate from ten minutes before session start through two hours after its expected flush or exit, extending for baselined remote-home delay."}
+  dimensions: [host_or_device_id, session_id, user_id, tty_or_channel, shell_or_cli_family, version, expected_store, device_or_inode, state_name, predicate_version, command_event_id, process_id, time]
+false_positives:
+  - {zh: 经批准的敏感运维或隐私 session 明确禁用本地 history 且由外部录制覆盖, en: An approved sensitive-administration or privacy session disables local history and is covered by external recording}
+  - {zh: 容器、自动化或非交互 shell 的平台基线本就不保存历史, en: A container automation or noninteractive shell whose platform baseline does not save history}
+  - {zh: 崩溃、只读 home、磁盘/配额耗尽、远程文件系统延迟或并发 history 合并, en: Crash read-only home exhausted disk or quota remote-filesystem delay or concurrent history merge}
+blind_spots:
+  - {zh: 攻击者同时控制 shell/CLI、独立命令采集器和远程 history 存储, en: The adversary controls the shell or CLI independent command collector and remote history storage together}
+  - {zh: 平台不暴露 session ID 或 history write 边界，进程与条目无法可靠归属, en: The platform exposes no session ID or history-write boundary so processes and entries cannot be attributed reliably}
+tuning_guidance:
+  paragraphs:
+    - zh: 先为每个 shell/version/session type 运行 canary，测量何时写入、如何处理多行/去重/共享历史，再启用闭环告警。高置信要求 interactive、未批准全局状态、至少两条独立命令、正常 persistence boundary 和 store gap 同时成立。不要把 /dev/null 字符串或空文件单独设为高危；命令内容使用短期受控层，普通检测保留 hash 与结构特征。
+      en: Run a canary for each shell, version, and session type to measure write timing and multiline, deduplication, and shared-history behavior before enabling closure alerts. High confidence requires interactive operation, unapproved global state, at least two independent commands, a normal persistence boundary, and a store gap together. Do not make the /dev/null string or an empty file high severity alone. Keep plaintext commands in a short-lived controlled tier and retain hashes plus structural features for routine detection.
+evidence_refs: [REF-000453, REF-000737, REF-000738, REF-000739]
+lifecycle: {status: review, version: "1.0.0", created: "2026-09-23", modified: "2026-09-23", contributors: [Niji Matrix Research], reviewers: []}

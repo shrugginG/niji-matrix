@@ -1,0 +1,158 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000346
+strategy_ref: DET-000258
+name:
+  zh: 外层事务分片—内层会话重组分析
+  en: Outer-Transaction Fragment–Inner-Session Reassembly Analytic
+summary:
+  zh: 按会话 方向与片序跨外层事务重建内层命令流，并核对端点结果。
+  en: Reassemble an inner command stream across outer transactions by session, direction, and fragment order and verify endpoint
+    outcomes.
+domains:
+- enterprise
+platforms:
+- Windows
+- Linux
+- macOS
+- ESXi
+logic:
+  paragraphs:
+  - zh: 按 endpoint/process、外层目的域或服务、协议 transaction ID 和时间收集 DNS/HTTP 等请求响应原件。在合法授权的解析环境中，从候选字段提取 session ID、packet type、fragment
+      index/total、offset、declared size 和 payload，按 session 与方向去重、排序、重组并记录每步输入输出摘要。只有重组结果呈现可识别内层状态机、与已知另一承载版本同构的命令结构或可重复 SYN/MSG/FIN
+      会话，并连接端点命令/文件/C2 结果时，才输出 transactionized_inner_tunnel。
+    en: Collect original DNS, HTTP, or equivalent requests and responses by endpoint or process, outer destination domain
+      or service, protocol transaction ID, and time. In an authorized analysis environment, extract session ID, packet type,
+      fragment index and total, offset, declared size, and payload from candidate fields; deduplicate, order, and reassemble
+      by session and direction while recording input and output digests for every step. Emit transactionized_inner_tunnel
+      only when the reassembled result exposes a recognizable inner state machine, a command structure isomorphic to a known
+      alternate-carrier version, or a repeatable SYN, MSG, and FIN session, and it joins to endpoint command, file, or C2
+      outcome.
+  - zh: 仅长 DNS 标签、高熵、TXT/AAAA 频率、HTTP polling 或 NXDOMAIN 不足以证明隧道。解析器无法恢复 session/fragment 关系时输出 tunnel_shape_candidate；DoH
+      只能看到 HTTPS 时需端点 DNS API、受管 resolver 或客户端配置补足。TrickBot 的 C2 已下线且研究者用模拟服务端生成响应，因此正式案例把请求结构与客户端重组逻辑列为直接证据，把服务端现场行为标为实验复现。
+    en: Long DNS labels, high entropy, TXT or AAAA frequency, HTTP polling, or NXDOMAIN alone do not prove a tunnel. Emit
+      tunnel_shape_candidate when the parser cannot recover session or fragment relationships. Where DoH exposes only HTTPS,
+      use endpoint DNS API, a managed resolver, or client configuration as compensation. TrickBot's C2 was offline and the
+      researcher generated responses with a simulated server, so its request structure and client reassembly logic are direct
+      evidence while server-side field behavior is experimental reproduction.
+data_requirements:
+- source_type: outer-protocol-transactions
+  name:
+    zh: DNS、HTTP 或其他外层事务
+    en: DNS, HTTP, or Other Outer Transactions
+  channel: Zeek dns.log/http.log, managed resolver or proxy, full packet capture where authorized
+  required_fields:
+  - event_time
+  - endpoint_or_source
+  - process_key_when_available
+  - transaction_or_uid
+  - direction
+  - query_or_uri_or_field
+  - qtype_or_method
+  - rcode_or_status
+  - answers_or_response_field
+  - raw_object_hash
+- source_type: tunnel-fragment-parser
+  name:
+    zh: 隧道字段提取与重组记录
+    en: Tunnel Field Extraction and Reassembly Record
+  channel: sandbox, network decapsulator, protocol parser, or forensic script
+  required_fields:
+  - event_time
+  - parser_id_and_version
+  - input_object_hash
+  - outer_transaction_id
+  - tunnel_session_id
+  - packet_type
+  - fragment_index
+  - fragment_total
+  - offset
+  - declared_size
+  - direction
+  - payload_hash
+  - reassembled_object_hash
+  - parse_result
+- source_type: endpoint-network-and-outcome
+  name:
+    zh: 进程网络、DNS API 与后继结果
+    en: Process Network, DNS API, and Successor Outcome
+  channel: EDR, Sysmon Events 3 and 22, process/file/action audit
+  required_fields:
+  - event_time
+  - endpoint_id
+  - process_start_key
+  - image
+  - destination
+  - protocol
+  - query_name_when_available
+  - action
+  - result
+- source_type: approved-transaction-tunnel-inventory
+  name:
+    zh: 批准事务隧道与 DoH 清单
+    en: Approved Transaction Tunnel and DoH Inventory
+  channel: network, endpoint, application, and privacy governance
+  required_fields:
+  - owner
+  - workload
+  - process_or_client
+  - outer_service
+  - tunnel_purpose
+  - permitted_inner_semantics
+  - parser_or_inspection_point
+  - ticket
+  - valid_from
+  - valid_to
+observables:
+- zh: 多个外层事务共享隧道 session ID 和互补片号/offset，重组后出现可执行命令或稳定内层状态机
+  en: Multiple outer transactions share a tunnel session ID and complementary fragment indexes or offsets, reconstructing
+    an executable command or stable inner state machine
+- zh: 请求与响应方向分别携带内层任务和结果，且端点同一进程消费重组对象并产生后继动作
+  en: Request and response directions carry inner tasking and results, and the same endpoint process consumes the reassembled
+    object and produces a successor action
+correlation:
+  window:
+    zh: 依据合法 resolver/proxy 保留与隧道重传设置，默认每 session 两小时，低速隧道可扩展至二十四小时；严格保留 direction、index 和 offset 顺序。
+    en: Set by resolver or proxy retention and tunnel retransmission behavior, two hours per session by default and up to
+      twenty-four hours for low-rate tunnels; preserve direction, index, and offset ordering strictly.
+  dimensions:
+  - endpoint_id
+  - process_start_key
+  - outer_service_or_domain
+  - outer_transaction_id
+  - tunnel_session_id
+  - direction
+  - fragment_index
+  - offset
+  - reassembled_object_hash
+  - inner_protocol_or_state_machine
+  - time
+false_positives:
+- zh: 合法 DoH、DNSSEC、CDN/遥测、邮件或 Web 分块上传、企业 DNS 隧道、监控代理和低带宽设备协议
+  en: Legitimate DoH, DNSSEC, CDN or telemetry, chunked mail or web upload, enterprise DNS tunnels, monitoring agents, and
+    low-bandwidth device protocols
+blind_spots:
+- zh: DoH/DoT 内容不可见、递归器缓存与重排、采样 flow 无原始字段、未知加密/编码、session ID 随包变化或低速周期超过保留期
+  en: Opaque DoH or DoT, resolver caching and reordering, sampled flow without raw fields, unknown encryption or encoding,
+    per-packet-changing session IDs, or low-rate cycles beyond retention
+tuning_guidance:
+  paragraphs:
+  - zh: 先按批准 resolver、应用和域基线排除合法编码，再以可复核 session/fragment/offset 和重组结果作为硬门。查询长度、熵、记录类型和频率只用于候选排序。解析器需限制 session 数、内存、总重组字节和超时，并保存失败片段，不对未知内容强行解码或按域名永久白名单。
+    en: Baseline approved resolvers, applications, and domains before treating encoding as suspicious, then use reproducible
+      session, fragment, offset, and reassembled outcome as hard gates. Query length, entropy, record type, and frequency
+      only prioritize candidates. Bound parser session count, memory, total reassembled bytes, and timeout while preserving
+      failed fragments; do not force unknown content through a decoder or permanently allowlist a domain.
+evidence_refs:
+- REF-001142
+- REF-001143
+- REF-000635
+- REF-000632
+- REF-000230
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-10-05'
+  modified: '2026-10-05'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

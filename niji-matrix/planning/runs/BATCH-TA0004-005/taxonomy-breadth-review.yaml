@@ -1,0 +1,99 @@
+review_schema_version: 1.0.0
+type: taxonomy-breadth-review
+batch_ref: BATCH-TA0004-005
+work_item_ref: WORK-TA0004-T1037
+attack_baseline: {domain: enterprise-attack, version: '19.1'}
+attack_subtechnique_count: 5
+attack_subtechnique_ids: [T1037.001, T1037.002, T1037.003, T1037.004, T1037.005]
+represented_dimensions:
+- {attack_ref: T1037.001, implementation_or_behavior: Windows local or directory-configured logon-script content executed for a user or group}
+- {attack_ref: T1037.002, implementation_or_behavior: macOS login-hook descriptor and referenced script executed at user logon}
+- {attack_ref: T1037.003, implementation_or_behavior: Active Directory or GPO assigned network logon script consumed by one or many users or systems}
+- {attack_ref: T1037.004, implementation_or_behavior: Unix-like RC script content interpreted during system startup and commonly protected for root modification}
+- {attack_ref: T1037.005, implementation_or_behavior: macOS StartupItems script content and ordering metadata consumed late in boot}
+breadth_trigger: five-child-open-axis-search
+coverage_resolutions:
+- attack_refs: [T1037.001]
+  resolution: parent-core
+  rationale_zh: Windows 登录脚本是按用户或组消费的脚本实现。若攻击者只改变 HKCU 脚本并以同一用户权限执行，只有 Persistence 而无 TA0004 结果；若保留既有正文并局部插入则可落入 NJS-0085-001，但 ATT&CK 项本身不拥有该匿迹变量。
+  rationale_en: A Windows logon script is a script implementation consumed for a user or group. An attacker who changes an HKCU script that executes with the same user authority establishes Persistence but not a TA0004 outcome. Preserving the established body while adding local commands can qualify for NJS-0085-001, but the ATT&CK child does not own that evasion variable.
+- attack_refs: [T1037.002]
+  resolution: parent-core
+  rationale_zh: Login Hook 以 plist 指向登录时运行的脚本；root consumer 与创建 hook 所需管理员权限并不自动证明权限提升。hook/脚本载体和平台是父级参数，只有 line-level 身份连续或中央多主体扇出另有证据时才进入已有 Niji 轴。
+  rationale_en: A Login Hook uses a plist to identify a script run at logon. A root consumer and the administrator authority required to create the hook do not automatically prove elevation. Hook or script carrier and platform remain parent parameters; only separately evidenced line-level identity continuity or central multi-principal fan-out enters an existing Niji axis.
+- attack_refs: [T1037.003]
+  resolution: niji-variable-candidate
+  final_resolution: formal
+  child_ref: NJS-0085-002
+  rationale_zh: 一份中央脚本版本经 AD/GPO/共享源向多个主体扇出，减少逐端点写入并割裂中央 writer 与客户端执行，形成独立的版本—范围—传播—执行图。该子项不自动满足 TA0004，因为网络登录脚本通常按被分配用户权限运行；每个客户端必须另证 consumer/result 高于 writer 或 pre-state。
+  rationale_en: One central script version fans out through AD, GPO, or shared storage to multiple principals, reducing per-endpoint writes and separating the central writer from client execution. This creates a distinct version-to-scope-to-propagation-to-execution graph. The child does not automatically satisfy TA0004 because network logon scripts commonly run with the assigned user's authority; every client needs separate proof that consumer or result authority exceeds writer or pre-state.
+- attack_refs: [T1037.004]
+  resolution: niji-variable-candidate
+  final_resolution: formal-when-inline-otherwise-parent-core
+  child_ref: NJS-0085-001
+  rationale_zh: RC Scripts 直接支持既有正文中局部增加命令的案例与逐行恢复需求；全新或整体替换脚本仍在父级。ATT&CK 同时说明 RC 文件通常需 root 修改且启动时以 root 执行，所以正常权限边界下未产生权限增量；只有错误授权、受控部署链或较低权限 pre-state 能影响正文时才进入 TA0004。
+  rationale_en: RC Scripts directly support cases of local command insertion into an established body and the need for line-level recovery; a new or wholly replaced script remains parent scope. ATT&CK also states that RC files commonly require root modification and execute as root at startup, so normal permissions provide no authority gain. TA0004 applies only when mispermission, a controlled deployment chain, or a lower-authority pre-state can influence the body.
+- attack_refs: [T1037.005]
+  resolution: parent-core
+  rationale_zh: Startup Items 是脚本、可执行文件与排序元数据的 macOS 启动实现。目录、plist、执行阶段与平台不构成稳定匿迹边界；TA0004 仍取决于谁能修改内容、实际 consumer 权限和首个新获准结果。
+  rationale_en: Startup Items are a macOS boot implementation combining scripts, executables, and ordering metadata. Directory, plist, execution phase, and platform do not create a stable evasion boundary; TA0004 still depends on who can change content, actual consumer authority, and the first newly authorized outcome.
+candidate_stealth_axes_examined:
+- axis: existing-initialization-script-inline-implantation
+  discovery_source: ATT&CK-T1037.004-and-field-incidents
+  final_resolution: formal
+  child_ref: NJS-0085-001
+  reason_zh: 攻击者保留路径与大部分批准正文，只控制局部命令差异；这改变新对象可见性与 trusted-path 区分，并需要 old/new 内容、writer 与实际执行行的专门关联和逐行恢复。
+  reason_en: The attacker preserves path and most approved body while controlling a local command difference. This changes new-object visibility and trusted-path discrimination and requires dedicated correlation of old and new content, writer, and actually executed line plus line-level recovery.
+- axis: centralized-initialization-script-fanout
+  discovery_source: ATT&CK-T1037.003-and-cross-system-distribution
+  final_resolution: formal
+  child_ref: NJS-0085-002
+  reason_zh: 攻击者用一次上游修改驱动多个下游生命周期执行，改变写入数量、来源位置和影响范围观察；防守需要 policy version、target scope、复制/缓存与客户端结果，并从中央回滚。
+  reason_en: One upstream mutation drives multiple downstream lifecycle executions, changing mutation count, provenance location, and impact-scope observation. Defense needs policy version, target scope, replication or cache, and client outcomes, followed by central rollback.
+- axis: whole-script-replacement-or-new-script
+  discovery_source: ATT&CK-internal-and-content-identity
+  final_resolution: parent-core
+  reason_zh: 整体替换或新建仍改变父级脚本内容，但不保留内联身份，也不必形成一对多拓扑；它需要一般完整性与执行关联而无第三套稳定匿迹 key。
+  reason_en: Whole replacement or creation still mutates parent-level script content but preserves neither inline identity nor necessarily a one-to-many topology. It needs general integrity and execution correlation without a third stable evasion key.
+- axis: writer-to-interpreter-authority-transition
+  discovery_source: cross-tactic-TA0003-to-TA0004
+  final_resolution: parent-core
+  reason_zh: writer/pre-state 与生命周期 interpreter/result 的有效权限差是所有 T1037 实现进入 TA0004 的统一结果门。它可以与两项 sibling 同时出现，不改变脚本 stable key，单列会把战术结果误作子技术。
+  reason_en: Effective-authority difference between writer or pre-state and lifecycle interpreter or result is the shared outcome gate for every T1037 implementation entering TA0004. It can coexist with either sibling and does not change the script stable key, so a child would mistake a tactic result for taxonomy.
+- axis: script-signing-or-policy-bypass
+  discovery_source: cross-category-integrity-control
+  final_resolution: adjacent
+  reason_zh: 绕过签名、修改 ACL 或控制受信部署包是取得写入/执行能力的并行行为，分别属于相应控制绕过、权限修改或供应链对象；它们不改变初始化脚本内容本身的 Niji 分类。
+  reason_en: Bypassing signing, changing ACLs, or controlling a trusted deployment package are parallel means of obtaining mutation or execution authority and belong to the corresponding control-bypass, permission-modification, or supply-chain object. They do not change the Niji classification of initialization-script content itself.
+- axis: early-boot-pre-sensor-execution
+  discovery_source: cross-category-temporal-observation
+  final_resolution: deferred
+  reason_zh: 启动脚本可能先于端点传感器执行并造成 blind spot，但现有来源没有结论级证明攻击者可稳定选择相对 sensor 的顺序，或该选择形成独立于脚本类型的检测/缓解 owner。
+  reason_en: A startup script can execute before the endpoint sensor and create a blind spot, but current sources do not conclusively establish stable attacker control over relative sensor order or a detection and mitigation owner independent of script type.
+- axis: conditional-host-or-user-branches
+  discovery_source: outside-ATT&CK-taxonomy
+  final_resolution: deferred
+  reason_zh: 条件分支可减少部分执行并改变命令路径，但当前证据不足以证明它是稳定、可复现且相对 sibling 有独立防御的匿迹变量，保持 hypothesis/deferred。
+  reason_en: Conditional branches can reduce some executions and change command path, but evidence does not yet establish a stable, repeatable evasion variable with defense independent from the siblings, so it remains a deferred hypothesis.
+- axis: script-path-or-name-mimicry
+  discovery_source: outside-ATT&CK-taxonomy
+  final_resolution: deferred
+  reason_zh: 路径或名称借用可能影响粗粒度清单，但缺少 T1037 特定的结论级行为证据和独立恢复差异；若只保留既有路径则已由内联轴覆盖。
+  reason_en: Path or name borrowing may affect coarse inventories, but T1037-specific conclusion-level behavioral evidence and independent recovery differences are missing. Preservation of an established path is already covered by the inline axis.
+- axis: platform-language-medium
+  discovery_source: ATT&CK-internal
+  final_resolution: rejected
+  reason_zh: 按 Windows/macOS/Unix、shell 语言、文件/注册表/plist/GPO 或日志字段拆分只会翻译 ATT&CK 实现，不能证明可控且防御独立的匿迹变量。
+  reason_en: Splitting by Windows, macOS, Unix, shell language, file, registry, plist, GPO, or log field only translates ATT&CK implementations and does not establish a controllable, defense-independent evasion variable.
+second_pass_required: false
+second_pass_completed: true
+second_pass_dimensions: [whole versus inline content identity, centralized versus endpoint mutation topology, authority transition, signing and policy bypass, pre-sensor timing, conditional branches, path mimicry]
+final_formal_niji_child_count: 2
+new_formal_niji_child_count: 0
+breadth_gap_explained: true
+why_not_more:
+  zh: 五项 ATT&CK 实现均已覆盖；除内联身份连续和中央扇出外，整体替换/新建与权限差属于父级，签名或策略绕过 adjacent，early-boot、条件分支与路径借用 deferred，平台/语言/介质 rejected。没有第三个同时具备攻击者稳定控制、独立 trace effect、观察结果和防御 owner 的变量。
+  en: All five ATT&CK implementations are covered. Beyond inline identity continuity and central fan-out, whole replacement or creation and authority delta are parent-level, signing or policy bypass is adjacent, early boot, conditional branches, and path borrowing are deferred, and platform, language, or medium splits are rejected. No third variable combines stable attacker control, independent trace effect, observation outcome, and defense ownership.
+why_not_fewer:
+  zh: 内联轴的 stable key 是同一路径与大部分正文的 old/new 行级差异，中央扇出轴的 stable key 是上游 policy/script version 到多客户端 applied version 与执行集合。两者改变不同痕迹、反例、关联与恢复动作，合并会分别丢失局部内容身份或跨主体传播因果。
+  en: The inline axis uses old and new line-level difference under the same path and mostly preserved body as stable keys; the fan-out axis uses upstream policy or script version through multiple client-applied versions and execution sets. They change different traces, counterexamples, joins, and recovery actions. Merging would lose local content identity or cross-principal propagation causality.

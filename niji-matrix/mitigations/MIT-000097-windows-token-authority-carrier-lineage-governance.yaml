@@ -1,0 +1,240 @@
+schema_version: 2.0.0
+type: mitigation
+id: MIT-000097
+name:
+  zh: Windows 令牌权威、承载体与谱系治理
+  en: Windows Token Authority, Carrier, and Lineage Governance
+summary:
+  zh: 通过最小化令牌相关用户权限与高危句柄访问、隔离合法模拟 broker、约束带令牌/选定父体创建，并保留线程、进程和权限前后态谱系，减少安全上下文置换并提高可区分性。
+  en: Reduce security-context substitution and improve discrimination by minimizing token-related user rights and high-risk
+    handle access, isolating legitimate impersonation brokers, constraining token-based or selected-parent creation, and retaining
+    thread, process, and privilege before-and-after lineage.
+description:
+  paragraphs:
+  - zh: 本缓解把 Windows token 视为可变授权对象，而不是登录时生成后永远不变的用户标签。组织应盘点哪些账户/服务拥有 Create a token object、Replace a process level token、Impersonate
+      a client after authentication、Debug programs、Load and unload device drivers、Backup/Restore 等用户权限，哪些进程允许被打开 TOKEN_DUPLICATE/TOKEN_IMPERSONATE/TOKEN_ASSIGN_PRIMARY/TOKEN_ADJUST_PRIVILEGES
+      或 PROCESS_CREATE_PROCESS，以及哪些服务按设计代表客户执行。默认移除无业务需要的权威，并把必要能力分配给隔离、固定用途、受保护的服务身份。
+    en: This mitigation treats a Windows token as a mutable authorization object rather than a user label fixed at logon.
+      Organizations inventory which accounts or services hold Create a token object, Replace a process level token, Impersonate
+      a client after authentication, Debug programs, Load and unload device drivers, Backup or Restore, and related user rights;
+      which processes can be opened for TOKEN_DUPLICATE, TOKEN_IMPERSONATE, TOKEN_ASSIGN_PRIMARY, TOKEN_ADJUST_PRIVILEGES,
+      or PROCESS_CREATE_PROCESS; and which services legitimately act for clients. Default policy removes authority without
+      a business need and assigns necessary capability only to isolated, fixed-purpose, protected service identities.
+  - zh: 预防和检测必须同时覆盖 token 来源、承载体与消费。保护 LSASS、服务与高权限进程，限制低权限进程取得其句柄；对模拟 broker 绑定允许 client、协议、impersonation level 和 target；对带
+      token 或显式 parent 的进程创建限制调用者与可选父体。传感器保留 process start key、TID、primary/effective token ID、AuthenticationId、Creator/Target
+      Subject、actual/displayed parent 与 privilege previous/new state，并将这些键带到资源操作。allowlist 必须是有 owner 和到期的完整组合，不能只信任签名、SYSTEM、父进程或
+      API。
+    en: Prevention and detection cover token origin, carrier, and consumption together. Protect LSASS, services, and privileged
+      processes and restrict lower-privilege handle access. Bind imperson brokers to allowed clients, protocols, impersonation
+      levels, and targets, and constrain callers and candidate parents for token-based or explicit-parent creation. Sensors
+      retain process start key, TID, primary and effective token ID, AuthenticationId, Creator and Target Subject, actual
+      and displayed parent, and privilege previous and new state through resource operations. Allowlists are complete combinations
+      with owners and expiry rather than trust in signing, SYSTEM, parent, or API alone.
+  - zh: 响应不能只终止可见 child 或重置账户密码。先保全 source/target token、句柄访问、登录、线程赋值、创建视角、权限状态与资源结果；随后终止被置换线程/进程，关闭或重启被滥用 broker，撤销相关登录/凭据，移除不必要用户权限，修复服务
+      ACL/进程保护并验证 token 已重新签发且权限状态恢复。内核篡改或传感器破坏需要可信介质、隔离与更广泛恢复，令牌层控制本身不能证明系统完整。
+    en: Response cannot stop at terminating the visible child or resetting an account password. First preserve source and
+      target tokens, handle access, logon, thread assignment, creation viewpoints, privilege state, and resource outcomes.
+      Then terminate substituted threads or processes, close or restart an abused broker, revoke related logons or credentials,
+      remove unnecessary user rights, repair service ACLs or process protection, and verify tokens were reissued with restored
+      privilege state. Kernel tampering or sensor impairment requires trusted-media recovery and isolation because token-layer
+      controls alone cannot prove system integrity.
+domains:
+- enterprise
+measures:
+- key: token-user-rights-and-handle-least-authority
+  name:
+    zh: 令牌用户权限与句柄访问最小化
+    en: Least Token User Rights and Handle Authority
+  description:
+    paragraphs:
+    - zh: 通过本地/域安全策略将创建 token、替换进程级 token、客户端模拟、调试、加载驱动、备份/恢复等权限只授予确有需要的隔离服务；日常管理员与应用池不默认持有。保护 LSASS、SYSTEM 服务、管理代理和高权限进程
+        ACL/PPL，阻止普通进程取得可复制、模拟、赋值、调整或选择父体所需的 token/process handle，并持续审计失败与成功访问。
+      en: Through local or domain security policy, grant token creation, process-level token replacement, client impersonation,
+        debugging, driver load, backup or restore, and related rights only to isolated services with a documented need; daily
+        administrators and application pools do not hold them by default. Protect LSASS, SYSTEM services, management agents,
+        and privileged-process ACLs or PPL, block ordinary processes from token or process handles needed to duplicate, impersonate,
+        assign, adjust, or select a parent, and audit failed and successful access continuously.
+  control_type: preventive
+- key: impersonation-broker-and-client-binding
+  name:
+    zh: 模拟 Broker 与 Client 绑定隔离
+    en: Impersonation Broker and Client Binding Isolation
+  description:
+    paragraphs:
+    - zh: 为必须代表客户执行的 IIS/SQL/RPC/SMB/COM 与运维 broker 定义允许的 client identity、认证方式、impersonation/delegation level、目标资源和进程映像；服务使用独立低权限账户、固定二进制/hash、受保护配置和最小网络/对象访问。异步线程池保留
+        request/client 到 TID/effective token 的稳定事务键，并在请求结束强制 RevertToSelf 或等价状态清理。
+      en: For IIS, SQL, RPC, SMB, COM, and management brokers that must act for clients, define permitted client identity,
+        authentication method, impersonation or delegation level, target resource, and process image. Services use separate
+        low-privilege accounts, fixed binaries or hashes, protected configuration, and minimum network and object access.
+        Asynchronous thread pools retain stable transaction keys from request and client to TID and effective token and enforce
+        RevertToSelf or equivalent state cleanup at request completion.
+  control_type: exposure-reduction
+- key: token-process-creation-and-parent-integrity
+  name:
+    zh: 带令牌进程创建与父体完整性
+    en: Token-Based Process Creation and Parent Integrity
+  description:
+    paragraphs:
+    - zh: 限 CreateProcessAsUser/CreateProcessWithToken、runas、任务/服务代理和显式 parent attribute 的允许调用者、目标身份、parent process、child
+        image、session、integrity 与用途。限制 PROCESS_CREATE_PROCESS 与相关 handle access，应用控制阻止用户可写或未批准 child；同时从 Security、ETW/内核与
+        EDR 保存不可合并的 actual creator、Creator/Target Subject 和 displayed parent 视图。
+      en: Define permitted caller, target identity, parent process, child image, session, integrity, and purpose for CreateProcessAsUser
+        or CreateProcessWithToken, runas, task or service brokers, and explicit parent attributes. Restrict PROCESS_CREATE_PROCESS
+        and related handle access, use application control to block user-writable or unapproved children, and preserve non-collapsed
+        actual creator, Creator and Target Subject, and displayed-parent views from Security, ETW or kernel, and EDR.
+  control_type: preventive
+- key: privilege-state-minimization-and-consumption-audit
+  name:
+    zh: 权限状态最小化与消费审计
+    en: Privilege-State Minimization and Consumption Audit
+  description:
+    paragraphs:
+    - zh: 从服务/用户 token 中移除无业务需要的 SeDebug、SeLoadDriver、SeBackup/Restore 等高危权限；需要时由隔离服务在最短操作区间启用，并记录 token ID、previous/new attributes、adjuster、return/GetLastError、target
+        与结果。为 privilege-to-operation 建立版本化映射，检测启用无消费、消费无前态和恢复缺失；不要把登录时 4672 或权限名称当作完整状态证明。
+      en: Remove dangerous privileges such as SeDebug, SeLoadDriver, and SeBackup or Restore from service or user tokens when
+        unnecessary. Where required, an isolated service enables them for the shortest operation interval and records token
+        ID, previous and new attributes, adjuster, return or GetLastError, target, and result. Maintain versioned privilege-to-operation
+        mappings and detect enablement without consumption, consumption without prior state, and missing restoration rather
+        than treating logon-time 4672 or a privilege name as complete state proof.
+  control_type: exposure-reduction
+- key: immutable-token-carrier-outcome-lineage
+  name:
+    zh: 不可变 Token—承载体—结果谱系
+    en: Immutable Token–Carrier–Outcome Lineage
+  description:
+    paragraphs:
+    - zh: 集中保留 token 创建/复制/handle access、登录 AuthenticationId、TID assignment/removal、process start key、actual/displayed parent、Creator/Target
+        Subject、privilege delta、拒绝结果和资源消费，使用稳定键而非裸 PID。日志由不同于服务管理员的权限写入并覆盖长驻进程与延迟使用窗口；隐私敏感的 command/target 字段可哈希或分级访问，但不能删除用于身份与因果连接的键。
+      en: Centrally retain token creation, duplication, and handle access, logon AuthenticationId, TID assignment and removal,
+        process start key, actual and displayed parent, Creator and Target Subject, privilege delta, denial outcomes, and
+        resource consumption using stable keys rather than bare PID. Write logs under authority separate from service administrators
+        and retain them across long-running processes and delayed-use windows. Privacy-sensitive command or target fields
+        can be hashed or access-controlled but cannot remove identity and causality join keys.
+  control_type: detective-support
+applications:
+- target_ref: NJT-0099
+  use:
+    paragraphs:
+    - zh: 对访问令牌安全上下文置换，组织建立 token authority register：每个持有令牌相关用户权限或能打开高权限 token/process handle 的主体，都记录 owner、用途、允许来源/目标、token
+        type/impersonation level、最大寿命、调用二进制、审批和遥测责任。先移除无必要权威，再隔离合法 broker 与进程创建路径，最后用不可变键把 token 来源、线程/进程承载体、权限前后态和高权限资源结果连接。
+      en: For Access-Token Security-Context Substitution, maintain a token authority register. Every principal holding token-related
+        user rights or able to open privileged token or process handles has an owner, purpose, permitted source and target,
+        token type or impersonation level, maximum lifetime, calling binary, approval, and telemetry responsibility. Remove
+        unnecessary authority first, isolate legitimate brokers and creation paths next, and finally join token origin, thread
+        or process carrier, privilege before and after state, and privileged resource outcome with immutable keys.
+  expected_effect:
+    paragraphs:
+    - zh: 攻击者可取得和重新承载的高权限 token 数量下降，常见服务/进程不再因签名或 SYSTEM 自动获得信任。剩余令牌变化必须穿过受限句柄、固定 broker 或批准创建路径，并留下可连接的状态与消费证据，使进程外观、父体或静态身份难以单独隐藏高权限因果。
+      en: Fewer privileged tokens can be acquired and re-carried, and common services or processes no longer receive automatic
+        trust from signing or SYSTEM. Remaining token transitions pass through restricted handles, fixed brokers, or approved
+        creation paths and leave joinable state and consumption evidence, making process appearance, parent, or static identity
+        insufficient to hide privileged causality.
+  limitations:
+    paragraphs:
+    - zh: Windows 与企业应用大量依赖 token、服务模拟和代理创建，过度收紧会破坏身份委派、备份、部署、远程管理和可用性；旧传感器可能没有 TID/token ID 或 previous state。内核攻击者、被攻陷的 PPL/EDR、驱动或日志管理员可篡改多层证据；仍需补丁、Credential
+        Guard/系统完整性、职责分离和 T1068/T1055 等相邻控制。
+      en: Windows and enterprise applications depend heavily on tokens, service impersonation, and brokered creation, so overrestriction
+        can break identity delegation, backup, deployment, remote administration, and availability. Legacy sensors can lack
+        TID, token ID, or previous state. A kernel adversary or compromised PPL, EDR, driver, or log administrator can alter
+        multiple evidence layers; patching, Credential Guard or system integrity, separation of duties, and adjacent T1068
+        and T1055 controls remain necessary.
+- target_ref: NJS-0099-001
+  use:
+    paragraphs:
+    - zh: 对进程驻留式有效身份替换，只允许登记 broker 在经过认证的 client request 内给指定 TID 赋模拟令牌，绑定 client SID、协议、token source、impersonation level、目标对象和
+        transaction ID。服务进程采用固定受保护映像，禁止低权限插件/脚本任意调用 SetThreadToken；请求结束显式清除线程 token。检测验证每个敏感操作的 effective token 与 request/client
+        匹配，响应时终止相应 TID/进程并撤销来源登录或凭据。
+      en: For Process-Resident Effective-Identity Substitution, allow only registered brokers to assign an impersonation token
+        to a designated TID inside an authenticated client request, binding client SID, protocol, token source, impersonation
+        level, target object, and transaction ID. Service processes use fixed protected images and prevent low-privilege plug-ins
+        or scripts from arbitrary SetThreadToken use; request completion explicitly clears the thread token. Detection validates
+        that each sensitive operation's effective token matches request and client, while response terminates the relevant
+        TID or process and revokes the source logon or credential.
+  expected_effect:
+    paragraphs:
+    - zh: 攻击者不能仅把外来 token 放进一个长驻/签名进程就继承 carrier 的正常身份外观；未经登记的 assignment 被阻止或形成 source—TID—outcome 链。线程结束或 request cleanup
+        限制 token 残留，资源操作能归因到真实 effective identity 与 client，而不是只归给进程主令牌。
+      en: An adversary cannot inherit a resident or signed carrier's normal identity appearance merely by placing a foreign
+        token inside it. Unregistered assignment is blocked or forms a source-to-TID-to-outcome chain. Thread or request cleanup
+        limits token residue, and resource operations attribute to the true effective identity and client rather than only
+        the process primary token.
+  limitations:
+    paragraphs:
+    - zh: 异步线程池、COM/RPC hop、双跳认证和旧服务可能无法传播 transaction ID，过严 client binding 会中断合法 delegation。被攻陷 broker 仍能使用允许 client 组合执行恶意目标，远程资源可能使用网络凭据而非本地模拟
+        token；必须结合目标/结果基线，并对缺失 TID telemetry 降低置信。
+      en: Asynchronous thread pools, COM or RPC hops, double-hop authentication, and legacy services can fail to propagate
+        transaction IDs, while strict client binding can interrupt legitimate delegation. A compromised broker can still use
+        an allowed client combination against a malicious target, and remote resources can use network credentials rather
+        than the local impersonation token. Target and outcome baselines remain necessary and missing TID telemetry lowers
+        confidence.
+- target_ref: NJS-0099-002
+  use:
+    paragraphs:
+    - zh: 对新进程权威谱系解耦，限制谁能复制/赋值主令牌、调用带 token 的创建 API 和以 PROCESS_CREATE_PROCESS 打开候选父体；批准路径绑定 caller、source token/identity、actual/selected
+        parent、child image、session、integrity 与结果。启用 4688 适当字段、ETW/kernel 与 EDR process GUID，分别保留 Creator/Target Subject 和
+        actual/displayed parent；应用控制阻止用户可写 child 或未登记父体组合。
+      en: For New-Process Authority-Lineage Decoupling, restrict who can duplicate or assign primary tokens, invoke token-based
+        creation, and open candidate parents with PROCESS_CREATE_PROCESS. Approved paths bind caller, source token or identity,
+        actual and selected parent, child image, session, integrity, and outcome. Enable appropriate 4688 fields, ETW or kernel
+        data, and EDR process GUID while preserving Creator and Target Subject and actual and displayed parent separately.
+        Application control blocks user-writable children or unregistered parent combinations.
+  expected_effect:
+    paragraphs:
+    - zh: 攻击者更难取得合适 token 或父体句柄；即使成功，显示父体或合法 Target Subject 也不能覆盖 actual creator 与来源 token。跨源不一致会与高权限 child 的首个操作连接，父子 allowlist
+        不再把选择的正常谱系自动当作良性，纯 PPID 断树与真实 TA0004 提权也能分开处置。
+      en: The adversary has greater difficulty obtaining a suitable token or parent handle. Even after success, a displayed
+        parent or legitimate Target Subject cannot overwrite actual creator and source token. Cross-source inconsistency joins
+        to the privileged child's first operation, parent-child allowlists no longer treat a selected normal lineage as automatically
+        benign, and PPID-only tree breaking is separated from actual TA0004 elevation.
+  limitations:
+    paragraphs:
+    - zh: UAC、runas、服务/任务、终端服务、软件部署和 EDR 沙箱会合法产生视角差异，Windows build 与产品对“parent”定义也不一致。阻止所有显式 parent 或带 token 创建不可行；PID 复用、父体提前退出与时钟差要求
+        start key/GUID。若攻击者控制内核或所有传感器，多个视图可能一致地被伪造。
+      en: UAC, runas, services or tasks, Terminal Services, software deployment, and EDR sandboxes legitimately create viewpoint
+        differences, while Windows builds and products differ in parent definitions. Blocking all explicit-parent or token-based
+        creation is impractical. PID reuse, early parent exit, and clock skew require start keys or GUIDs. An adversary controlling
+        the kernel or every sensor can falsify multiple views consistently.
+- target_ref: NJS-0099-003
+  use:
+    paragraphs:
+    - zh: 对休眠令牌权限选择性激活，从用户/服务 token 移除无业务需要的高危权限；必须保留时，让隔离进程在明确 target 与工单内短时启用，记录 previous/new state、GetLastError、调用 TID
+        与首次消费，并在结束恢复或销毁 token。对 SeDebug、SeLoadDriver、SeBackup/Restore 等分别验证权限语义与实际对象，禁止用 4672 或管理员身份替代状态证明。
+      en: For Dormant-Token Privilege Selective Activation, remove dangerous privileges from user or service tokens when not
+        required. Where retained, an isolated process enables them briefly for a defined target and work record, records previous
+        and new state, GetLastError, calling TID, and first consumption, and restores or destroys the token afterward. For
+        SeDebug, SeLoadDriver, SeBackup or Restore, and other privileges, validate privilege semantics against the actual
+        object rather than substituting 4672 or administrator identity for state proof.
+  expected_effect:
+    paragraphs:
+    - zh: 多数攻击进程不再拥有可激活的休眠高危权限；合法激活被限制到固定工具、目标和短区间，并留下前后态/消费链。攻击者即使接管签名工具，也必须偏离允许 target、时段或调用链，或破坏独立 telemetry；操作后的状态恢复不再让中间能力完全消失于审计。
+      en: Most adversary processes no longer hold dormant dangerous privileges available for activation. Legitimate activation
+        is bounded to fixed tooling, target, and short intervals and leaves a before-and-after and consumption chain. Even
+        after compromising signed tooling, an adversary must deviate from the allowed target, time, or call chain or impair
+        independent telemetry; post-operation state restoration no longer removes the intermediate capability from audit.
+  limitations:
+    paragraphs:
+    - zh: 某些备份、调试、反病毒、驱动和系统服务持续需要这些权限，移除会破坏功能；标准安全日志也可能没有每次 token attribute delta。启用成功不保证操作成功，权限可能不存在或被 PPL/驱动策略阻止；处置和检测必须保留
+        ERROR_NOT_ALL_ASSIGNED、实际结果和版本化保护策略，不能仅阻断 AdjustTokenPrivileges。
+      en: Some backup, debugging, antivirus, driver, and system services continuously require these privileges and removal
+        can break function, while standard Security logs may lack every token-attribute delta. Successful enablement does
+        not guarantee successful operation; the privilege can be absent or PPL and driver policy can block the result. Detection
+        and response retain ERROR_NOT_ALL_ASSIGNED, actual outcome, and versioned protection policy rather than merely blocking
+        AdjustTokenPrivileges.
+evidence_refs:
+- REF-000326
+- REF-000327
+- REF-000328
+- REF-000329
+- REF-000330
+- REF-000331
+- REF-000334
+- REF-000252
+- REF-000281
+lifecycle:
+  status: review
+  version: 0.2.0
+  created: '2026-09-13'
+  modified: '2026-09-19'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

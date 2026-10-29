@@ -1,0 +1,128 @@
+schema_version: 2.0.0
+type: evasion-subtechnique
+id: NJS-0195-001
+parent_ref: NJT-0195
+name:
+  zh: 共享服务接收者归因遮蔽
+  en: Shared-Service Receiver Attribution Obscuration
+summary:
+  zh: 攻击者把接收账号、聊天、仓库或 Webhook 置于多租户服务后，使网络只显示可信提供方身份而不显示真实接收者。
+  en: An adversary places a receiving account, chat, repository, or webhook behind a multi-tenant service so the
+    network shows a trusted provider identity rather than the real receiver.
+aliases: []
+lineage:
+  attck_subtechnique_inherited: false
+definition_and_concept:
+  paragraphs:
+  - zh: 共享服务接收者归因遮蔽是经 Web 服务渗出的一种实现：攻击者选择由多租户合法服务托管的接收命名空间，并使用账号、bot token、仓库、频道、对象路径或 Webhook ID 把数据送到攻击者可访问的位置。稳定变量是“网络提供方身份与服务内接收者身份分离”，而不是
+      Telegram、GitHub、MEGA 或其他产品名称。
+    en: Shared-Service Receiver Attribution Obscuration is an implementation of Exfiltration Over Web Service in
+      which the adversary selects a receiving namespace hosted by a legitimate multi-tenant service and uses an
+      account, bot token, repository, channel, object path, or webhook ID to deliver data to a location the adversary
+      can access. The stable variable is separation between network-visible provider identity and service-internal
+      receiver identity, not Telegram, GitHub, MEGA, or another product name.
+stealth_characteristics:
+  paragraphs:
+  - zh: 共享服务接收者归因遮蔽使 DNS、TLS 和防火墙记录只呈现常见服务域、共享地址和有效证书；同一外层身份服务大量合法租户。若代理未记录 API 路径/账号，或组织无权访问攻击者租户审计，防守方难以从连接判断数据送给谁。bot
+      token、chat/repo/object ID、应用身份、上传者进程、请求体积和服务审计仍是残余，允许清单细化到命名空间会显著降低效果。
+    en: Shared-Service Receiver Attribution Obscuration leaves DNS, TLS, and firewall records showing only a common
+      service domain, shared address, and valid certificate serving many legitimate tenants. If a proxy lacks API
+      path or account detail, or the organization cannot access an attacker tenant's audit, a connection does not
+      reveal who received the data. Bot token, chat, repository or object ID, application identity, uploader process,
+      request size, and service audit remain residuals, and namespace-level allowlisting sharply reduces the effect.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 纳入要求合法共享服务、可区分但未批准的服务内接收命名空间、实际数据上传和接收者归因差异。只有连接到知名 SaaS、官方客户端或有效 OAuth token 不足；批准的团队聊天、开发仓库、备份账号和支持门户是正常反例。若同一服务关系同时承担
+      C2 与回传，归 T1041；若源数据已在同一服务并转移到账户/租户，归 T1537。
+    en: Inclusion requires a legitimate shared service, a distinguishable but unapproved service-internal receiver
+      namespace, actual data upload, and a receiver-attribution difference. Connection to well-known SaaS, an official
+      client, or a valid OAuth token alone is insufficient. Approved team chat, development repositories, backup
+      accounts, and support portals are normal counterexamples. The same service relationship carrying C2 and return
+      belongs to T1041, while data already in the service moved into another account or tenant belongs to T1537.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: InvisibleFerret 的主要 HTTP/TCP C2 位于自建基础设施；更新的 ssh_zcp 命令另外收集浏览器扩展、密码管理器和钱包数据，形成归档后以 Telegram API 和 bot
+        token 上传到聊天，同时还送往 FTP。该事件直接证明多租户服务接收命名空间与既有 C2 分离，网络提供方身份不能表示真实聊天接收者。
+      en: InvisibleFerret's primary HTTP and TCP C2 used dedicated infrastructure. Its updated ssh_zcp command separately
+        gathered browser-extension, password-manager, and wallet data, archived it, and uploaded it to a Telegram
+        chat through the Telegram API and bot token, as well as to FTP. The incident directly establishes a multi-tenant
+        service receiver namespace separate from existing C2, while the network provider identity does not identify
+        the receiving chat.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者需要创建、窃取或取得一个服务账号、bot、频道、仓库、远端或 Webhook，并获得可从受害环境使用的凭据或 URL。其必须处理 API 限额、文件大小、服务内容扫描和账号冻结；令牌泄露、公开对象和平台滥用检测可能暴露接收者。共享服务降低基础设施建设成本，但使行动受提供方控制。
+        en: The attacker needs to create, steal, or obtain a service account, bot, channel, repository, remote,
+          or webhook and credentials or a URL usable from the victim environment. API quotas, file-size limits,
+          provider content scanning, and account suspension constrain the operation. Token exposure, public objects,
+          and provider abuse detection can reveal the receiver. Shared service lowers infrastructure cost while
+          placing the operation under provider control.
+    defender_model:
+      paragraphs:
+      - zh: 防守方能看到端点进程与文件、代理/CASB 请求以及自身租户的服务审计，并维护批准服务接收者清单。若 API URI 和授权首部被 TLS 遮蔽、bot token 不记录、个人账号位于外部租户或服务不返回接收对象
+          ID，只能在域名层判断。调查需把 provider 与 receiver 分开保存，避免把整个服务全局放行或全局封禁。
+        en: The defender can see endpoint process and file events, proxy or CASB requests, and service audit for
+          owned tenants and maintains an approved receiver registry. If TLS hides API URI and authorization, bot
+          tokens are not recorded, personal accounts reside outside the tenant, or the service does not return receiver
+          object IDs, analysis remains at domain level. Investigation must store provider and receiver separately
+          rather than globally allowing or blocking the whole service.
+stealth_mechanisms:
+- mechanism_ref: NM-FD
+  role: primary
+  summary:
+    zh: 让恶意接收者继承多租户服务的可信网络身份和业务外观
+    en: Give a malicious receiver the trusted network identity and business appearance of a multi-tenant service
+  analysis:
+    paragraphs:
+    - zh: 攻击者通过服务内命名空间接收数据，外层流量与合法用户共享域名、证书、地址和 API。网络规则看见提供方而非 bot/chat/repo/account，恶意接收者与正常业务难以仅凭目的信誉区分。InvisibleFerret
+        的独立自建 C2 与 Telegram bot-token 上传建立了这种身份借用；服务命名空间、端点源数据和令牌仍能推翻伪装。
+      en: The adversary receives data through a service-internal namespace whose outer traffic shares domain, certificate,
+        address, and API with legitimate users. Network rules see the provider rather than the bot, chat, repository,
+        or account and cannot distinguish the malicious receiver from business use using destination reputation
+        alone. InvisibleFerret's dedicated C2 and separate Telegram bot-token upload establish this borrowed identity,
+        while service namespace, endpoint source data, and token evidence can disprove the disguise.
+  evidence_refs:
+  - REF-000939
+  - REF-000923
+  confidence: high
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000226
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000203
+    - MIT-000156
+    - MIT-000200
+evidence:
+  claim_refs:
+  - CLM-000956
+  - CLM-000961
+  case_refs:
+  - CASE-000279
+  reference_refs:
+  - REF-000939
+  - REF-000923
+  - REF-000924
+  - REF-000604
+research:
+  limitations:
+    paragraphs:
+    - zh: InvisibleFerret 来源给出 bot token、Telegram chat、归档与独立 C2，足以证明行为和归因分层，但没有公开服务端 chat ID、完整请求日志或告警对照。共享域名产生的匿迹效果依赖组织是否具备
+        CASB、TLS 检查或服务审计；如果代理已解析接收命名空间，置信度应下降。正式规则不能把所有 Telegram/GitHub/云盘访问视为恶意。
+      en: InvisibleFerret reporting gives a bot token, Telegram chat, archive, and distinct C2, sufficient to establish
+        behavior and attribution layers but not the server-side chat ID, complete request logs, or alert comparison.
+        The stealth effect of a shared domain depends on CASB, TLS inspection, and service audit. Confidence should
+        fall when a proxy already resolves the receiver namespace. Production rules cannot treat every Telegram,
+        GitHub, or drive access as malicious.
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-10-04'
+  modified: '2026-10-04'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

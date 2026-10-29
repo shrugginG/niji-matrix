@@ -1,0 +1,63 @@
+schema_version: "2.0.0"
+type: evasion-subtechnique
+id: NJS-0124-002
+parent_ref: NJT-0124
+name: {zh: 精确规则例外开口, en: Scoped Rule-Exception Opening}
+summary: {zh: 只为攻击者选择的来源、目标、服务或短窗口建立放行，使整体防火墙继续看似正常却允许所需会话。, en: "Create an allow path only for an adversary-selected source, target, service, or short window so the firewall appears generally normal while the needed session passes."}
+aliases: []
+lineage: {attck_subtechnique_inherited: false}
+definition_and_concept:
+  paragraphs:
+    - zh: 精确规则例外开口是攻击者新增、放宽、重排或短暂绑定一条防火墙规则，使原本受限的一个明确来源—目标—服务集合被允许，而其余过滤维持原状。直接目的在于为后门、远程管理或横向会话建立足够窄的通路，避免整体停用带来的显著配置与健康异常。
+      en: Scoped Rule-Exception Opening is adversary addition, relaxation, reordering, or brief attachment of a firewall rule that allows one defined source-target-service set previously restricted while other filtering remains intact. Its immediate purpose is to create a narrow path for a backdoor, remote administration, or lateral session without the conspicuous configuration and health anomalies of whole shutdown.
+    - zh: 子项由有效允许集合的局部增加定义，不由云安全组、设备 ACL、Windows 规则、协议或端口号定义。规则提交但没有绑定目标资源、被更高优先级阻断或从未命中，不等于已形成可用暗门；需要区分潜在暴露与实际经过该规则的会话。
+      en: The child is defined by a local increase in the effective allowed set, not by cloud security group, device ACL, Windows rule, protocol, or port number. A committed rule that is unattached, overridden by a higher-priority deny, or never hit does not equal a usable hidden opening. Potential exposure must be distinguished from a session that actually traverses the rule.
+stealth_characteristics:
+  paragraphs:
+    - zh: 精确规则例外开口保留防火墙服务、profile 和大多数拒绝事件，只有匹配攻击者选择器的会话不再被阻断。粗粒度策略健康看板因此可能始终为绿，流量总量也未显著改变；若规则仅在使用前创建、使用后回滚，当前配置审查还会错过曾经存在的开口。
+      en: Scoped Rule-Exception Opening preserves firewall service, profile, and most deny events while only sessions matching the adversary's selector cease to be blocked. Coarse policy-health dashboards can stay green and aggregate traffic volume may barely change. A rule created just before use and rolled back afterward can also disappear from current-state review.
+    - zh: 残余痕迹在规则前后版本、writer、选择器范围、优先级、资源绑定、rule-hit、首个成功握手与回滚时间中。精确性增加了伪装效果，却也迫使攻击者掌握来源地址与目标服务；独立 VPC/边界 flow、策略模拟和不可变审计能把看似正常的局部允许变化转化为可核查事件。
+      en: Residue resides in rule versions before and after, writer, selector scope, precedence, resource attachment, rule hit, first successful handshake, and rollback time. Precision strengthens concealment but requires the adversary to know origin address and target service. Independent VPC or boundary flow, policy simulation, and immutable audit can turn the seemingly ordinary local allow change into a verifiable event.
+scope_boundary_definition:
+  paragraphs:
+    - zh: 纳入攻击者控制且生效的来源、目的、端口、协议、进程、用户或资源选择器例外，并要求至少一个匹配会话在旧版本应被拒绝、新版本被放行。例外可短时存在，但短寿命不是额外子技术；没有规则命中时只属于待验证暴露。
+      en: Scope includes an effective adversary-controlled exception using source, destination, port, protocol, process, user, or resource selectors and requires at least one matching session expected to be denied under the old version and allowed under the new one. The exception may be brief, but short lifetime is not another child. Without a rule hit, only exposure awaiting validation is supported.
+    - zh: 大范围默认动作退化归 NJS-0124-001；允许之后又把可见目的地转到隐藏进程，可同时研究 NJS-0124-003，但必须另证 NAT 路径。负载均衡器、自动伸缩、供应商短时维护和隔离响应可能创建相似例外，需用 owner、受控来源、目的、时间、业务理由和期望会话逐项核对。
+      en: Broad default-action degradation belongs to NJS-0124-001. Traffic allowed and then redirected from a visible destination to a hidden process may also be examined as NJS-0124-003, but NAT path needs separate proof. Load balancers, autoscaling, short vendor maintenance, and isolation response can create similar exceptions and require exact checks of owner, controlled origin, destination, time, business purpose, and expected session.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+      - zh: 攻击者可在目标已有管理或代码执行权限后，为控制端地址打开特定入站路径，让原被阻断的后门监听、远程桌面或管理会话可达。BPFDoor 的 iptables 规则只放行攻击者来源，其他客户端仍按原规则进入正常服务，直接说明“局部开口保留正常背景”的效果。
+        en: After gaining administration or code execution on a target, an adversary can open a specific inbound path for its controller so a formerly blocked backdoor listener, remote desktop, or management session becomes reachable. BPFDoor's iptables rules allow only the adversary source while other clients still reach the ordinary service under the old behavior, directly illustrating a local opening with normal background preserved.
+  threat_model:
+    attacker_model:
+      paragraphs:
+        - zh: 攻击者需要规则写入权、来源与服务知识及满足既有优先级的配置位置，可能通过云 API、主机管理员或设备会话实施。若来源地址变化、服务迁移或规则被中心策略覆盖，精确开口会失效；不同权规则审批、短期到期与规则命中留存会增加暴露风险。
+          en: The adversary needs rule-write authority, knowledge of origin and service, and a configuration point that survives existing precedence, perhaps through a cloud API, host administrator, or device session. Changes in origin address, service migration, or centralized policy override can break the precise opening. Differently authorized rule approval, short expiry, and rule-hit retention increase exposure risk.
+    defender_model:
+      paragraphs:
+        - zh: 防守方能够保留旧/新完整规则集、资源绑定、规则优先级与精确生效时间，并把 rule-hit 连到独立完整握手和实际服务。Windows 4946 可提供本地新增规则线索，却不覆盖 GPO 写入；云控制面 API 也只证明配置动作，必须结合有效绑定与 flow。
+          en: Defenders retain complete old and new rule sets, resource attachment, precedence, and exact effective interval and join a rule hit to an independent completed handshake and real service. Windows 4946 offers a clue for local rule addition but omits Group Policy writes. Cloud control-plane APIs likewise establish a configuration action only and need effective attachment and flow.
+stealth_mechanisms:
+  - mechanism_ref: NM-BT
+    role: primary
+    summary: {zh: 保持总体过滤正常，仅让被选中的攻击者会话避开拒绝, en: Preserve general filtering while selected adversary sessions avoid denial}
+    analysis:
+      paragraphs:
+        - zh: 攻击者只增添覆盖其来源或服务的允许边，其他流量继续产生正常拒绝事件，防火墙整体状态未变化。被选中会话从应拒绝变为成功，行为与原有边界阻断信号脱钩；只看服务在线或总拒绝量的防守方会把它视作正常允许路径，形成局部行为透明。规则版本和首个命中会话是恢复这一差分的关键。
+          en: The adversary adds an allow edge only for its origin or service while other traffic continues producing normal denials and the firewall's overall state remains unchanged. The selected session changes from expected deny to success and decouples behavior from the former boundary-block signal. Defenders watching only service-online state or aggregate deny volume can interpret it as an ordinary allowed path, producing local Behavioral Transparency. Rule version and first matched session are key to recovering the difference.
+    evidence_refs: [REF-000453, REF-000451]
+    confidence: medium
+defense:
+  detections: {coverage: available, strategy_refs: [DET-000132]}
+  mitigations: {coverage: available, mitigation_refs: [MIT-000122]}
+evidence:
+  claim_refs: [CLM-000667, CLM-000669, CLM-000670]
+  case_refs: [CASE-000170]
+  reference_refs: [REF-000451, REF-000453, REF-000454, REF-000455]
+research:
+  limitations:
+    paragraphs:
+      - zh: BPFDoor 的来源限定规则直接证明局部开口，但同一实验还包含 NAT 重定向，不能把每个精确规则例外都解释为同样的后门路径。云与 Windows 官方资料说明可见的配置审计，不提供攻击者实际会话结果。若规则没有生效、没有命中或旧策略本就允许该流量，最多是异常变更而非已确认边界削弱；此子项因此把一般化置信度保持为中等。
+        en: BPFDoor directly establishes a source-limited opening, but the same experiment also uses NAT redirection, so not every precise exception can be assumed to have the same backdoor path. Cloud and Windows official material establish visible configuration audit, not a real adversary session outcome. If the rule does not take effect, is not hit, or the old policy already allowed the traffic, the result is at most an anomalous change rather than confirmed boundary impairment. Generalized confidence for this child is therefore medium.
+lifecycle: {status: review, version: "0.1.0", created: "2026-09-22", modified: "2026-09-22", contributors: [Niji Matrix Research], reviewers: []}

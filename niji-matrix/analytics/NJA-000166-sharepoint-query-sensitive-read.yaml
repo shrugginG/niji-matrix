@@ -1,0 +1,98 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000166
+strategy_ref: DET-000156
+name:
+  zh: SharePoint 查询与敏感文件读取关联
+  en: SharePoint Query and Sensitive-File Read Correlation
+summary:
+  zh: 在已验证审计覆盖的租户中连接查询上下文与高敏对象访问，保留无法同对象关联的状态。
+  en: In a tenant with verified audit coverage, join query context to sensitive object access and preserve an unresolved state
+    when object linkage is absent.
+domains:
+- enterprise
+platforms:
+- Office Suite
+logic:
+  paragraphs:
+  - zh: 在已启用审计的租户中，按 UserId、会话/ClientIP 和时间关联 SharepointSearchQueryInitiated 或 SearchQueryPerformed 与后续 FileAccessed/FileDownloaded；对有敏感标签的
+      ObjectId/Site 计算该主体过去 30 日是否常用、是否属于职责站点，以及是否有批准调查工单。仅在能解析到实际文件读取且敏感性/职责偏离成立时输出；若日志没有查询词，只表述“搜索后敏感访问”，不声称关键词命中或因果。
+    en: In an audited tenant, join SharepointSearchQueryInitiated or SearchQueryPerformed to later FileAccessed/FileDownloaded
+      by UserId, session or ClientIP, and time. For labeled ObjectId/Site, compare the principal's preceding 30-day usage,
+      role-owned sites, and approved investigation tickets. Emit only when actual file access and sensitivity or duty deviation
+      are established; if terms are absent, report search followed by sensitive access without claiming a keyword hit or causal
+      match.
+data_requirements:
+- source_type: m365-sharepoint-search-audit
+  name:
+    zh: Microsoft 365 SharePoint 搜索审计
+    en: Microsoft 365 SharePoint search audit
+  channel: Microsoft Purview Audit / OfficeActivity
+  required_fields:
+  - creation_time
+  - operation
+  - user_id
+  - workload
+- source_type: m365-sharepoint-file-audit
+  name:
+    zh: Microsoft 365 SharePoint 文件审计
+    en: Microsoft 365 SharePoint file audit
+  channel: Microsoft Purview Audit / OfficeActivity
+  required_fields:
+  - creation_time
+  - operation
+  - user_id
+  - workload
+  - object_id
+- source_type: object-sensitivity-and-duty
+  name:
+    zh: 对象敏感度与职责映射
+    en: Object sensitivity and duty map
+  channel: null
+  required_fields:
+  - object_id
+  - sensitivity
+  - authorized_roles
+  - owner
+  - approval_window
+observables:
+- zh: 敏感词查询后同身份访问少量高敏文件
+  en: A principal accesses a small high-sensitivity set after a sensitive-term query
+- zh: 搜索对象与访问对象无法对应时保留未解析链
+  en: An unresolved chain is retained when search and accessed object cannot be joined
+correlation:
+  window:
+    zh: 查询到访问初始取六十分钟，另保留三十天身份与站点基线；窗口按业务流程调整。
+    en: Start with sixty minutes from query to access and retain a thirty-day principal-and-site baseline, adjusting to the
+      workflow.
+  dimensions:
+  - user_id
+  - site_id
+  - object_id
+  - query_time
+  - access_time
+false_positives:
+- zh: 合法 eDiscovery、事件响应、分类服务与员工研究也会产生相同的搜索和读取。
+  en: Legal eDiscovery, incident response, classification services, and employee research can create the same search-read
+    shape.
+blind_spots:
+- zh: 搜索词可能不可得，重复文件访问可能被抑制，许可和保留期还会影响可见性。
+  en: Terms may be unavailable, repeat file access can be suppressed, and license or retention changes visibility.
+tuning_guidance:
+  paragraphs:
+  - zh: 按职责、站点、对象敏感度和批准案件建立基线，不用全局小文件数阈值；只有同对象键闭合时升级确认。
+    en: Baseline duty, site, object sensitivity, and approved case rather than a global small-count threshold; confirm only
+      with a same-object join.
+evidence_refs:
+- REF-000561
+- REF-000562
+- REF-000563
+- REF-000560
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-09-22'
+  modified: '2026-09-22'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

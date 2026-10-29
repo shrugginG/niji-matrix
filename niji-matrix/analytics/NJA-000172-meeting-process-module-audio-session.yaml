@@ -1,0 +1,102 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000172
+strategy_ref: DET-000161
+name:
+  zh: 会议进程模块与麦克风会话关联
+  en: Meeting-Process Module and Microphone-Session Correlation
+summary:
+  zh: 将会议进程内新模块、麦克风会话和音频产物闭合，识别借用正常进程身份的录音。
+  en: Close the chain from a new meeting-process module to microphone session and audio artifact, exposing recording under
+    a normal process identity.
+domains:
+- enterprise
+platforms:
+- Windows
+logic:
+  paragraphs:
+  - zh: 在试点中先确认 EDR 能导出音频输入会话的 process_id、session_start 和 session_end。按 endpoint_id 与 process_id 连接会议进程的模块加载及跨进程访问记录，比较模块签名、哈希和加载路径与受批准版本；在可见的新非批准模块或异常注入之后十五分钟内出现麦克风会话，且同一进程或其控制的文件写入方生成非批准录音产物时提高风险。若无文件写入但录音会话与模块边成立，报告为可疑设备访问而非已证实录音。会议时段与用户授权是排除条件的证据，不是按进程名的一键白名单。
+    en: First validate in a pilot that the EDR exports process_id, session_start, and session_end for audio-input sessions.
+      Join module loads and cross-process access for meeting processes on endpoint_id and process_id, then compare module
+      signer, hash, and load path with approved versions. Raise risk when a newly observed unapproved module or injection
+      precedes a microphone session within fifteen minutes and the process or its controlled writer creates an unapproved
+      audio artifact. Without a file artifact, report suspicious device access rather than proven recording. Meeting times
+      and user approval are contextual evidence, not a blanket process-name allowlist.
+data_requirements:
+- source_type: endpoint-audio-session
+  name:
+    zh: 端点音频设备会话
+    en: Endpoint audio-device session
+  channel: validated EDR audio-device session telemetry; not guaranteed by native Windows process logs
+  required_fields:
+  - endpoint_id
+  - process_id
+  - session_start
+  - session_end
+  - device_kind
+- source_type: module-and-process-lineage
+  name:
+    zh: 模块加载与进程谱系
+    en: Module load and process lineage
+  channel: EDR module load and cross-process access; Sysmon Event ID 7 and 10 only where explicitly configured
+  required_fields:
+  - endpoint_id
+  - process_id
+  - event_time
+  - module_path
+  - module_hash
+  - module_signer
+  - source_process_id
+- source_type: file-creation
+  name:
+    zh: 录音产物文件创建
+    en: Recorded-audio file creation
+  channel: EDR file telemetry or Sysmon Event ID 11
+  required_fields:
+  - endpoint_id
+  - process_id
+  - event_time
+  - file_path
+  - file_size
+observables:
+- zh: 会议进程出现未批准模块并启动麦克风会话
+  en: A meeting process gains an unapproved module and starts a microphone session
+- zh: 该会话后同进程形成非批准音频产物
+  en: The same process produces an unapproved audio artifact after the session
+correlation:
+  window:
+    zh: 从音频激活前十五分钟到结束后三十分钟关联。
+    en: Correlate from fifteen minutes before audio activation through thirty minutes after it ends.
+  dimensions:
+  - endpoint_id
+  - process_id
+  - user_id
+  - module_hash
+  - audio_session_id
+false_positives:
+- zh: 经批准的会议插件、语音增强、虚拟音频驱动、辅助功能、客服质检和会议录制可能同时产生模块及录音文件；经批准更新会改变哈希。
+  en: Approved meeting plugins, voice enhancement, virtual audio drivers, accessibility tools, contact-center quality assurance,
+    and authorized recording can create modules and audio files; approved updates change hashes.
+blind_spots:
+- zh: 标准进程创建日志不提供音频会话；未启用模块审计、内存中映射代码、跨进程 PID 重用或无文件输出会降低结论。Sysmon Event ID 10 只代表配置范围内的进程访问，不能直接当作麦克风 API 调用。
+  en: Standard process-creation logs do not provide audio sessions. Absent module auditing, memory-only mapped code, PID reuse,
+    or no file output weakens conclusions. Sysmon Event ID 10 records configured process access and must not be treated as
+    microphone API execution.
+tuning_guidance:
+  paragraphs:
+  - zh: 先按企业批准的插件签名、安装来源、会议录制角色和更新时间建立版本化基线；豁免绑定模块身份与具体工作流程，而非豁免整个会议进程。试点需验证设备事件时间戳与 PID 的准确性，并针对常规会议和非会议时段分别评估误报。
+    en: Baseline approved plugin signers, install sources, recording roles, and update times with versioning. Bind exceptions
+      to module identity and a specific workflow, never to the entire meeting process. The pilot must validate device-event
+      timestamps and PID fidelity and evaluate false positives separately during and outside scheduled meetings.
+evidence_refs:
+- REF-000583
+- REF-000585
+- REF-000586
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-09-22'
+  modified: '2026-09-22'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

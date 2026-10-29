@@ -1,0 +1,49 @@
+schema_version: "2.0.0"
+type: detection-analytic
+id: NJA-000233
+strategy_ref: DET-000200
+name: {zh: 验证策略/Provider 有效裁决分析, en: Verifier Policy or Provider Effective-Decision Analytic}
+summary: {zh: 识别 enforcement policy、SIP/trust provider 或验证 callback 被改写后，原本应拒绝的对象由实际 consumer 返回允许的结果。, en: "Identify an actual consumer allowing an object that should have been rejected after enforcement policy, a SIP or trust provider, or a verification callback is rewritten."}
+domains: [enterprise]
+platforms: [Windows, macOS]
+logic:
+  paragraphs:
+    - zh: 建立 verifier_baseline，按 host role、OS build、consumer_id/version、policy/provider/action GUID 保存 expected enforcement mode、signed/sealed policy digest、SIP/trust-provider Registry mapping、DLL/function、module hash/signer/path、Gatekeeper/SIP/DSE/HVCI state、boot/recovery requirement、owner 与 approval。版本化 file/Registry/BCD/NVRAM/kernel/effective state old-new 和 writer principal/process/session/source，生成 verifier_state_change_id。
+      en: Build a verifier baseline by host role, OS build, consumer ID and version, and policy, provider, or action GUID, retaining expected enforcement mode, signed or sealed policy digest, SIP or trust-provider Registry mappings, DLL and function, module hash, signer, and path, Gatekeeper, SIP, DSE, or HVCI state, boot or recovery requirement, owner, and approval. Version file, Registry, BCD, NVRAM, kernel, and effective-state old and new plus writer principal, process, session, and source and create verifier_state_change_id.
+    - zh: 确认 state 是否真正生效：policy refresh/reboot/consumer reload、实际 provider module load/callback、effective enforcement query 与 decision log 必须匹配。以同一 test/input artifact 在 baseline 和 effective state 下的 decision 或受信 canary 比较；若未经批准 state change 生效，原本 unsigned/invalid/untrusted input 由 named consumer 从 block/warn 变 allow/trusted/no-warning，并产生 process/module/driver outcome，则输出 verifier_override。
+      en: Confirm that state actually became effective through matching policy refresh, reboot, or consumer reload, actual provider module load or callback, an effective-enforcement query, and a decision log. Compare the same test or input artifact under baseline and effective state or use a trusted canary. Emit verifier_override when an unapproved state change becomes effective, a named consumer changes an unsigned, invalid, or untrusted input from block or warn to allow, trusted, or no-warning, and a process, module, or driver outcome follows.
+    - zh: 只有 Registry/policy/command 变化输出 verifier_exposure；state 未生效输出 pending_or_failed；consumer 仍拒绝输出 blocked_attempt。批准开发/test mode、break-glass recovery、兼容性 audit policy、MDM/GPO rollout 和厂商 provider 更新按签名 policy、工单、窗口、canary 与恢复动作排除。利用漏洞临时改 kernel variable 时需内存/attestation evidence。
+      en: Registry, policy, or command change alone produces verifier_exposure. State not yet effective produces pending_or_failed, and continued consumer rejection produces blocked_attempt. Approved development or test mode, break-glass recovery, compatibility audit policy, MDM or GPO rollout, and vendor-provider updates are excluded through signed policy, ticket, window, canary, and recovery action. Vulnerability-based temporary kernel-variable changes require memory or attestation evidence.
+data_requirements:
+  - source_type: verifier-policy-provider-version
+    name: {zh: Verifier Policy、Provider Mapping 与 Effective State, en: Verifier Policy Provider Mapping and Effective State}
+    channel: Registry BCD NVRAM policy inventory configuration management memory attestation
+    required_fields: [timestamp, host_id, consumer_id, consumer_version, policy_id, policy_version, policy_digest, policy_signature_status, enforcement_mode, provider_guid, action_guid, registry_path, dll_path, function_name, module_hash, module_signer, boot_id, effective_state, old_value, new_value, change_type, writer_principal, writer_process_id, source_host, session_id, approval_id, verifier_state_change_id]
+  - source_type: verifier-consumption-decision
+    name: {zh: Provider/Policy 消费、Module Load 与裁决, en: Provider or Policy Consumption Module Load and Decision}
+    channel: WinVerifyTrust Code Integrity App Control Gatekeeper unified log module and driver telemetry
+    required_fields: [timestamp, host_id, consumer_id, consumer_version, policy_id, provider_guid, action_guid, loaded_module, loaded_module_hash, callback_name, input_object_id, input_digest, input_signature_status, baseline_decision, effective_decision, decision_code, prompt_result, process_id, parent_process_id, boot_id, first_outcome_id, outcome]
+  - source_type: verifier-change-approval-and-canary
+    name: {zh: 验证器变更审批、刷新与 Canary, en: Verifier Change Approval Refresh and Canary}
+    channel: MDM GPO policy deployment change management and trust canary
+    required_fields: [timestamp, host_id, policy_id, deployment_id, approval_id, owner_id, purpose, valid_from, valid_until, refresh_status, reboot_required, canary_input_id, canary_expected_decision, canary_observed_decision, rollback_id]
+observables:
+  - {zh: SIP/trust-provider Registry mapping 指向非批准 DLL/function，并被 trust consumer 实际加载调用, en: A SIP or trust-provider Registry mapping points to an unapproved DLL or function that a trust consumer actually loads and calls}
+  - {zh: DSE/SIP/Gatekeeper/App Control 从 enforcement 变 test/audit/disabled 后，unsigned/invalid canary 由 block 变 allow, en: DSE SIP Gatekeeper or App Control changes from enforcement to test audit or disabled and an unsigned or invalid canary changes from block to allow}
+  - {zh: Policy/provider change 与后继恶意 module/driver/process 共享 consumer、boot 和 decision 谱系, en: Policy or provider change and a later malicious module driver or process share consumer boot and decision lineage}
+correlation:
+  window: {zh: 从 verifier state 首次变化前七日到恢复 enforcement 后九十日，并跨 reboot/policy refresh 保留有效状态历史。, en: "Correlate seven days before the first verifier-state change through ninety days after enforcement restoration and retain effective-state history across reboot and policy refresh."}
+  dimensions: [host_id, consumer_id, consumer_version, policy_id, policy_version, provider_guid, action_guid, verifier_state_change_id, loaded_module_hash, input_object_id, input_digest, boot_id, writer_principal, session_id, decision_code, first_outcome_id, approval_id, time]
+false_positives:
+  - {zh: 经批准的开发/test signing、兼容性 audit mode、driver 调试或 break-glass recovery, en: Approved development or test signing compatibility audit mode driver debugging or break-glass recovery}
+  - {zh: MDM/GPO/App Control policy 正常发布、provider/OS 更新或 policy merge, en: Normal MDM GPO or App Control policy deployment provider or OS update or policy merge}
+  - {zh: Consumer/version 更新改变 decision code 或 cache，但 effective enforcement 未削弱, en: Consumer or version update changes decision codes or caches without weakening effective enforcement}
+blind_spots:
+  - {zh: Kernel-memory policy variable 被短暂改写但没有内存/attestation，磁盘/Registry 状态保持正常, en: A kernel-memory policy variable is temporarily changed without memory or attestation while disk and Registry remain normal}
+  - {zh: Provider 通过 DLL search order、内存 patch 或受信 module 劫持而 mapping 不变, en: The provider is hijacked through DLL search order memory patch or a trusted module while mappings remain unchanged}
+tuning_guidance:
+  paragraphs:
+    - zh: 以 effective policy/provider digest 和 canary decision 而不是命令名/Registry 写入作为主判定；所有合法 audit/test 例外必须绑定 host、input class、owner、窗口与自动恢复。高置信要求 state change、生效/消费、baseline-different decision 和恶意 outcome 四者闭合。签名 policy 应与 Secure Boot/HVCI 组合并保留独立 attestation。
+      en: Use effective policy or provider digest and canary decision rather than command name or Registry write as the primary decision. Every legitimate audit or test exception binds host, input class, owner, window, and automatic recovery. High confidence requires closure across state change, effectiveness or consumption, a baseline-different decision, and malicious outcome. Signed policy is combined with Secure Boot or HVCI and independent attestation is retained.
+evidence_refs: [REF-000762, REF-000764, REF-000767, REF-000768, REF-000771, REF-000772, REF-000773]
+lifecycle: {status: review, version: "1.0.0", created: "2026-09-23", modified: "2026-09-23", contributors: [Niji Matrix Research], reviewers: []}

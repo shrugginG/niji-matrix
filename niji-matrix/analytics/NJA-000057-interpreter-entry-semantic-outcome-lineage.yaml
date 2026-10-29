@@ -1,0 +1,51 @@
+schema_version: "2.0.0"
+type: detection-analytic
+id: NJA-000057
+strategy_ref: DET-000078
+name: {zh: 解释器入口上下文与短驻语义关联分析, en: Interpreter Entry-Context and Transient-Semantics Correlation Analytic}
+summary: {zh: 将解释器的真实入口和运行时语义与后继结果关联，并按资产角色区分合法自动化、谱系借用和短驻指令。, en: Correlate actual interpreter entry and runtime semantics with successor outcomes and distinguish legitimate automation lineage borrowing and transient instructions by asset role.}
+domains: [enterprise]
+platforms: [Windows, Linux, macOS, Network Devices, IaaS, Containers]
+logic:
+  paragraphs:
+  - zh: 规范化 PowerShell/cmd、Unix shell、Python、JavaScript/VBA/Lua 与设备/云 CLI 的进程或运行时事件，但保留原始语言字段。为每个实例保存 execution_id、用户/服务主体、登录与令牌来源、完整祖先、父级、命令行、stdin/管道生产者、工作目录、脚本/模块来源和时间；与同资产角色、同入口主体和同父级的批准工作流比较，不按解释器名称设置永久允许。
+    en: Normalize process or runtime events for PowerShell and cmd, Unix shells, Python, JavaScript, VBA, Lua, and device or cloud CLIs while retaining raw language fields. For each instance preserve execution ID, user or service principal, sign-in and token origin, full ancestry, parent, command line, standard-input or pipeline producer, working directory, script or module origin, and time. Compare with approved workflows for the same asset role, entry principal, and parent; never permanently allow by interpreter name.
+  - zh: 同时拼接 Script Block/AMSI、runtime audit、execve、网络代理响应、模块加载、文件写入和首个子进程。若命令行只有 `-`、`-Command` 占位、被截断参数或没有脚本文件，而运行时内容或结果显示更丰富语义，则标记短驻差异；若祖先/主体看似合法但输入来源、目录、模块、目标或结果偏离，则标记谱系借用。两者共现并有恶意结果时升为高置信。
+    en: Join Script Block or AMSI, runtime audit, execve, proxy response, module load, file write, and first child process. When a command line contains only `-`, a command placeholder, truncated arguments, or no script file while runtime content or outcome shows richer semantics, mark a transient differential. When ancestry or principal appears legitimate but input origin, directory, module, target, or outcome diverges, mark lineage borrowing. Raise to high confidence when both coexist with a malicious outcome.
+data_requirements:
+- source_type: identity-and-process-lineage
+  name: {zh: 身份、会话与完整进程祖先, en: Identity session and complete process ancestry}
+  channel: null
+  required_fields: [timestamp, host_or_device_id, process_id, process_start_key, executable, command_line, parent_process_id, ancestor_chain, principal_id, logon_or_session_id, token_origin, working_directory]
+- source_type: interpreter-runtime-content
+  name: {zh: 脚本块、AMSI、运行时审计与标准输入来源, en: Script block AMSI runtime audit and standard-input origin}
+  channel: null
+  required_fields: [timestamp, host_or_device_id, process_start_key, interpreter_family, content_or_hash, content_source, stdin_or_pipeline_producer, module_or_script_origin, audit_event, outcome]
+- source_type: execution-outcome
+  name: {zh: 模块、网络、文件与后继进程, en: Module network file and successor process outcomes}
+  channel: null
+  required_fields: [timestamp, host_or_device_id, process_start_key, child_process, loaded_module, network_destination, response_hash, file_path, file_hash, outcome]
+- source_type: approved-workflow-context
+  name: {zh: 解释器批准工作流与资产职责基线, en: Approved interpreter workflow and asset-role baseline}
+  channel: null
+  required_fields: [asset_role, interpreter_family, expected_principal, expected_ancestor, expected_directory, expected_module_or_script, expected_destination, change_or_approval_id, validity_window]
+observables:
+- {zh: Office、WMI、服务或管理代理谱系中的解释器调用与该入口批准脚本、目录或结果不匹配, en: An interpreter under Office WMI service or management-agent lineage does not match that entry's approved script directory or outcome}
+- {zh: 命令行只含 stdin/占位符或被截断，但同 execution ID 的脚本块、网络响应或子进程显示完整执行语义, en: Command line contains only standard-input or placeholder or is truncated while script block network response or child process under the same execution ID shows complete semantics}
+- {zh: 同一内容指纹跨罕见祖先、主体或资产出现，并产生相同下载、模块加载或子进程结果, en: The same content fingerprint appears across rare ancestors principals or assets and produces the same download module load or child outcome}
+correlation:
+  window: {zh: 从入口事件前五分钟到解释器退出后一小时；构建和长任务按 execution ID 延长至二十四小时。, en: From five minutes before entry through one hour after interpreter exit with build and long-running jobs extended to twenty-four hours by execution ID.}
+  dimensions: [host_or_device, execution_id, process_start_key, principal, session, ancestor_chain, interpreter_family, content_hash, module, destination, file, child_process, asset_role, approval, time]
+false_positives:
+- {zh: 合法构建与部署、登录脚本、软件安装器、应急运维、IDE/Notebook、应用插件和自动化测试, en: Legitimate builds and deployments logon scripts installers emergency administration IDEs notebooks application plug-ins and automated tests}
+blind_spots:
+- {zh: 参数截断且没有 Script Block、AMSI、runtime audit 或 stdin 采集, en: Truncated arguments without Script Block AMSI runtime audit or standard-input collection}
+- {zh: 进程内嵌解释器没有独立进程，或被攻陷管理代理与批准脚本产生完全一致元数据, en: Embedded interpreter has no distinct process or a compromised management agent and approved script produce internally consistent metadata}
+tuning_guidance:
+  paragraphs:
+  - zh: 先按资产职责、入口应用、主体、祖先、目录、模块和目的地学习批准组合，再评估命令或内容；允许项绑定具体脚本/模块哈希、审批与有效期，而不是 powershell、python 或 shell 名称。将“上下文异常”“短驻语义差异”“异常结果”分级输出。
+    en: Learn approved combinations by asset role, entry application, principal, ancestry, directory, module, and destination before evaluating command or content. Bind allowances to a concrete script or module hash, approval, and validity period rather than powershell, python, or shell names. Tier output as context anomaly, transient-semantic differential, and anomalous outcome.
+  - zh: 对完整脚本内容实行加密、字段级访问与有限保留，必要时同时保留规范化 token、哈希和风险特征。使用本地良性 stdin、构建和管理代理测试验证 execution ID 拼接；跨语言只共享等价字段，不把某一 PowerShell 开关硬编码为全部平台规则。
+    en: Encrypt full script content, apply field-level access and bounded retention, and preserve normalized tokens, hashes, and risk features where necessary. Validate execution-ID joins using local benign standard-input, build, and management-agent tests. Share equivalent fields across languages without hard-coding one PowerShell switch as a universal rule.
+evidence_refs: [REF-000196, REF-000197, REF-000198, REF-000199, REF-000201]
+lifecycle: {status: review, version: 0.1.0, created: '2026-09-12', modified: '2026-09-12', contributors: [Niji Matrix Research], reviewers: []}

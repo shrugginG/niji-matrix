@@ -1,0 +1,51 @@
+schema_version: "2.0.0"
+type: detection-analytic
+id: NJA-000058
+strategy_ref: DET-000079
+name: {zh: 云管理命令跨层因果与维护差分分析, en: Cloud Management Command Cross-Plane Causality and Maintenance Differential Analytic}
+summary: {zh: 以请求、实例和脚本身份拼接云管理与来宾执行，并同时检查谱系完整性和维护上下文。, en: Join cloud management to guest execution by request instance and script identity while checking lineage integrity and maintenance context.}
+domains: [enterprise]
+platforms: [IaaS, Windows, Linux]
+logic:
+  paragraphs:
+  - zh: 规范化 Azure Run Command/VM Extension、AWS Systems Manager SendCommand/Automation 与等价服务。生成 command_execution_id，保存 tenant/account、principal、role/session、source IP/service、operation、request/correlation ID、document/extension、version、parameters 或 hash、resolved targets、approval 和状态；把每个目标连接到 agent task、agent process、interpreter、script/content hash、output、child process、file 与 network outcome。
+    en: Normalize Azure Run Command or VM Extension, AWS Systems Manager SendCommand or Automation, and equivalent services. Generate a command execution ID and retain tenant or account, principal, role or session, source IP or service, operation, request or correlation ID, document or extension, version, parameters or hash, resolved targets, approval, and status. Join each target to agent task, agent process, interpreter, script or content hash, output, child process, file, and network outcome.
+  - zh: 产生三个分级结果：请求与来宾记录无法一一对应的谱系不完整；对应成功但主体、文档、仓库、目标集合、时段或审批偏离的维护上下文异常；以及上述异常伴随未知脚本、账户/服务变化、载荷取得或可疑进程的确认执行。将控制成功、代理失败、输出截断与真正无记录分开，不用“缺事件”自动推断恶意。
+    en: "Produce three tiers: lineage incomplete when request and guest records do not map one-to-one; maintenance-context anomalous when a successful pair deviates in principal, document, repository, target set, window, or approval; and confirmed execution when either anomaly accompanies unknown script, account or service change, payload retrieval, or suspicious process. Separate control success, agent failure, output truncation, and true absence rather than inferring maliciousness from a missing event."
+data_requirements:
+- source_type: cloud-identity-and-command-audit
+  name: {zh: 云身份、授权与命令服务事件, en: Cloud identity authorization and command-service events}
+  channel: null
+  required_fields: [timestamp, tenant_or_account_id, principal_id, role_or_session_id, source, operation, request_or_correlation_id, resource_or_target_expression, status]
+- source_type: command-content-and-history
+  name: {zh: 命令文档、脚本、参数与输出历史, en: Command document script parameter and output history}
+  channel: null
+  required_fields: [command_execution_id, document_or_extension, version, script_uri, content_or_hash, parameters_or_hash, output_location, output_hash, retention_state]
+- source_type: guest-agent-and-endpoint
+  name: {zh: 来宾代理任务与端点结果, en: Guest agent task and endpoint outcome}
+  channel: null
+  required_fields: [timestamp, instance_id, agent_id, agent_task_id, process_start_key, agent_process, interpreter_or_program, command_line_or_hash, child_process, file_or_network_outcome, execution_status]
+- source_type: cloud-maintenance-baseline
+  name: {zh: 维护审批、身份、目标与时间基线, en: Maintenance approval identity target and time baseline}
+  channel: null
+  required_fields: [approval_id, principal_id, allowed_operation, allowed_document_or_hash, target_scope, maintenance_window, expected_outcome, validity]
+observables:
+- {zh: 云命令成功且目标实例出现代理派生进程，但两端 request/agent task 无法连接或输出位置为空, en: A cloud command succeeds and the target has an agent-descended process but request and agent task do not join or output location is empty}
+- {zh: 委托或服务主体在异常登录窗口调用罕见脚本，目标集合与其历史资产职责不符, en: A delegated or service principal invokes a rare script in an anomalous sign-in window against targets outside its historical asset role}
+- {zh: 常见文档/扩展或批准仓库产生新内容哈希，多个目标随后出现相同未知进程、账户或网络结果, en: A common document extension or approved repository yields a new content hash followed by the same unknown process account or network outcome on multiple targets}
+correlation:
+  window: {zh: 从控制请求前十五分钟到最后目标代理完成后二十四小时；批量和离线节点按 command execution ID 延长七日。, en: From fifteen minutes before control request through twenty-four hours after the final target agent completes with fleet and offline-node joins extended seven days by command execution ID.}
+  dimensions: [tenant_or_account, principal, role_session, request_correlation, command_execution, document_extension, script_hash, target_expression, instance, agent_task, process, approval, time]
+false_positives:
+- {zh: 批量补丁、配置管理、应急修复、故障诊断、自动扩缩容初始化和安全响应, en: Fleet patching configuration management emergency repair diagnostics autoscaling initialization and security response}
+blind_spots:
+- {zh: 命令参数或输出被截断、脚本 URI 内容可变、代理日志仅本地保存或目标离线, en: Truncated command parameters or output mutable script URI agent logs retained only locally or offline targets}
+- {zh: 被攻陷的批准服务主体、脚本仓库和变更流程产生内部一致记录, en: Compromised approved service principal script repository and change process produce internally consistent records}
+tuning_guidance:
+  paragraphs:
+  - zh: 按云账号、资产职责、主体、文档/扩展版本、脚本哈希、目标标签和维护窗口建立基线；允许项绑定不可变内容与具体审批，不永久放行服务名、代理或仓库域名。区分单实例诊断和跨账号/跨区域 fan-out 的正常基数。
+    en: Baseline cloud account, asset role, principal, document or extension version, script hash, target tag, and maintenance window. Bind allowances to immutable content and concrete approval rather than permanently allowing a service name, agent, or repository domain. Distinguish single-instance diagnostics from normal cross-account or cross-region fan-out cardinality.
+  - zh: 在受控命令中验证 request/correlation ID 能否传到代理日志；不能时，以实例、脚本哈希和时间建立可解释的降级连接。对参数与输出中的秘密使用脱敏、哈希和受限访问，但必须保存足以区分文档版本和结果的身份。
+    en: Validate with controlled commands whether request or correlation IDs propagate to agent logs. When they do not, use an explainable degraded join by instance, script hash, and time. Redact, hash, and restrict secrets in parameters and output while preserving enough identity to distinguish document version and outcome.
+evidence_refs: [REF-000110, REF-000203, REF-000204, REF-000205, REF-000206, REF-000207]
+lifecycle: {status: review, version: 0.1.0, created: '2026-09-12', modified: '2026-09-12', contributors: [Niji Matrix Research], reviewers: []}

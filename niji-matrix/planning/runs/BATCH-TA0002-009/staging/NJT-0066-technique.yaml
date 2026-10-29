@@ -1,0 +1,81 @@
+schema_version: "2.0.0"
+type: technique
+id: NJT-0066
+name: {zh: 匿迹化容器管理命令执行, en: Stealth-Conforming Container Administration Command Execution}
+summary: {zh: 攻击者通过 Kubernetes、kubelet 或 Docker 的 exec 管理路径在既有容器内运行命令，借用已有 workload 上下文或预期自动化身份并利用 API—runtime 观察断点降低识别。, en: Adversaries run commands in existing containers through Kubernetes kubelet or Docker exec paths borrowing workload context or expected automation identity and exploiting the API-to-runtime observation break.}
+aliases: [Container Administration Command]
+classification:
+  tactic_refs: [TA0002]
+  origin: {kind: attack-adapted, source_attack_id: T1609, source_attack_version: '19.1'}
+  decision_ref: DEC-TA0002-T1609
+definition_and_concept:
+  paragraphs:
+  - zh: 匿迹化容器管理命令执行是攻击者调用 Kubernetes `pods/exec`、kubelet exec、Docker exec 或等价管理接口，在已经创建并运行的容器命名空间中启动 shell、程序或命令的技术。直接目标是在不修改 workload 模板、镜像或容器部署身份的情况下取得容器内执行；对象从经认证/授权或错误放行的 exec 请求开始，到目标容器内出现首个 runtime 进程结果为止。
+    en: Stealth-Conforming Container Administration Command Execution invokes Kubernetes `pods/exec`, kubelet exec, Docker exec, or an equivalent management interface to start a shell, program, or command inside an already created and running container namespace. Its direct objective is in-container execution without changing the workload template, image, or deployment identity. The object begins with an authenticated, authorized, or mispermitted exec request and ends at the first runtime process outcome in the target container.
+  - zh: 概念锚是“请求主体/入口—cluster/namespace/pod/container—exec session—runtime 进程/结果”，不是 kubectl、TTY、shell 名称或容器平台。创建新 Pod、Deployment 或 Docker container 归 NJT-0067；利用应用漏洞直接在容器进程内执行而未使用管理 exec 接口归相应利用技术；容器内 shell 解析可同时标记 NJT-0065，但不能替代本技术的 API 到 runtime 因果。
+    en: The anchor is principal or entry, cluster namespace pod and container, exec session, and runtime process or outcome, not kubectl, TTY, shell name, or platform. Creating a new Pod Deployment or Docker container belongs to NJT-0067. Direct execution through an application exploit without a management exec interface belongs to the relevant exploitation technique. An in-container shell parse may also instantiate NJT-0065 but cannot replace this API-to-runtime causal object.
+stealth_characteristics:
+  paragraphs:
+  - zh: 核心匿迹矛盾是攻击者必须产生管理请求和容器内进程，却希望部署审查只看到未改变的合法 workload、runtime 只看到该 workload 身份下的进程。AKS 狩猎资料指出 exec 命令通常不写入 Pod 定义且很少被记录；Kubernetes audit 保存主体、verb、subresource 与目标，runtime 则保存 shell/命令、文件和网络。两层若不按 pod UID、container ID、session 和时间连接，API 成功与容器结果会各自成为不完整片段。
+    en: The central stealth tension is that a management request and in-container process must exist while deployment review sees an unchanged legitimate workload and runtime sees a process under that workload identity. AKS hunting guidance states exec commands are absent from Pod definitions and often poorly logged. Kubernetes audit retains principal, verb, subresource, and target, while runtime retains shell or command, file, and network. Without joins by pod UID, container ID, session, and time, API success and container outcome remain incomplete fragments.
+  - zh: 既有 Pod 的 image、namespace、labels、service account 与 owner 没有变化，攻击者因而借用应用上下文；若进一步使用该 workload 本来允许的服务账户、kubelet 或自动化身份，身份/verb 规则也可能把请求视为诊断。TeamTNT 和外部蜜罐直接证明既有容器可被 exec 后下载和执行载荷。Docker `exec_create/start/die`、Kubernetes audit、runtime 进程、下载文件与网络仍是残余，短事件历史、Metadata-only 审计和容器销毁会放大缺口。
+    en: Image namespace labels service account and owner of the existing Pod do not change, so the adversary borrows application context. Use of a service account kubelet or automation identity already allowed for the workload can also make identity or verb rules treat the request as diagnostics. TeamTNT and an external honeypot directly establish exec into existing containers followed by payload retrieval and execution. Docker `exec_create`, `exec_start`, and `exec_die`, Kubernetes audit, runtime processes, downloaded files, and network remain residuals; short event history Metadata-only audit and container destruction widen the gap.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 纳入对已运行容器的 exec/attach 类管理动作导致新进程或命令结果的行为，要求识别目标容器和至少一个 runtime 结果。仅获得 exec 权限、列出 Pod、打开未使用会话或看到容器内 shell 都不足以确认。交互 TTY 与非交互命令是参数差异；经 API server、kubelet 或 Docker daemon 是入口差异。
+    en: Scope includes exec or attach-like management action against a running container that produces a new process or command outcome and requires identification of the target container plus at least one runtime result. Having exec permission, listing Pods, opening an unused session, or seeing an in-container shell alone is insufficient. Interactive TTY versus noninteractive command is a parameter, while API server kubelet and Docker daemon are entry variants.
+  - zh: 新部署容器归 NJT-0067；容器启动 entrypoint 是部署结果而非本对象；应用 RCE 不经过管理接口则排除。合法诊断、SRE 响应、健康检查和开发调试可产生同形，必须用请求主体、来源、工单、目标、命令语义与结果共同区分。攻击者使用匿名 kubelet 通常显著异常，可属于父级但不满足自动化身份伪装子项。
+    en: Newly deployed containers belong to NJT-0067, container-start entrypoints are deployment outcomes rather than this object, and application RCE without a management interface is excluded. Legitimate diagnostics SRE response health operations and developer debugging share the shape and require principal source ticket target command semantics and outcome together. Anonymous kubelet use is usually overtly anomalous and can instantiate the parent without qualifying for automation-identity camouflage.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: 攻击者获得 kubeconfig、service-account token、Docker socket、kubelet 访问或过宽 RBAC 后，可进入承载业务流量、已获网络许可或挂载秘密的现有 Pod，执行发现、凭据读取、下载器、挖矿或横向移动命令。无需创建新 workload 可避免 admission、镜像扫描和部署变更告警，并继承原容器的网络、卷和云身份。
+      en: After obtaining kubeconfig, a service-account token, Docker socket, kubelet access, or broad RBAC, an adversary can enter an existing Pod carrying business traffic, network allowances, or mounted secrets and run discovery credential access downloader mining or lateral movement commands. Avoiding a new workload bypasses admission image scanning and deployment-change alerts and inherits the container's network volumes and cloud identity.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者需要目标容器运行、exec 接口可达且身份获得相应 subresource 权限，或利用匿名/错误配置入口；容器镜像必须包含可执行工具，亦可通过 shell/包管理器下载补齐。最小 RBAC、禁用匿名 kubelet、短期调试令牌、不可交互镜像、只读文件系统和 egress 控制会限制效果。目标重启或 runtime 审计可暴露。
+        en: The adversary needs a running target, reachable exec interface, and identity with subresource permission or an anonymous or misconfigured path. The image must contain usable tools or allow a shell or package manager to retrieve them. Least RBAC, disabled anonymous kubelet, short-lived debug tokens, noninteractive images, read-only filesystems, and egress controls constrain the effect. Target restarts and runtime audit can expose it.
+    defender_model:
+      paragraphs:
+      - zh: 防守方需收集 Kubernetes audit 的 user/groups/extra、verb、resource/subresource、namespace、pod 与 request URI，Docker exec events、kubelet 日志，以及 runtime container ID、process start、TTY、command、file 和 network。审计至少应覆盖 exec Metadata，内容需要 Request 或独立 runtime 采集；容器销毁后仍按 pod UID/container ID 保留。只看 Pod YAML 或镜像 digest 会漏掉全部后置命令。
+        en: Defenders need Kubernetes audit user groups and extra, verb, resource or subresource, namespace, pod, and request URI; Docker exec events and kubelet logs; plus runtime container ID, process start, TTY, command, file, and network. Audit should cover exec metadata at minimum, with Request level or independent runtime collection for content, retained by pod UID and container ID after destruction. Pod YAML or image digest alone misses all post-deployment commands.
+stealth_mechanisms:
+- mechanism_ref: NM-BT
+  role: primary
+  summary: {zh: exec 请求与既有 workload 内运行时结果分处控制与进程观察面, en: Exec request and runtime outcome inside an existing workload reside in control and process vantages}
+  analysis:
+    paragraphs:
+    - zh: exec 不改变 Pod 定义，控制面只记录子资源请求，runtime 只记录继承既有容器身份的进程；关键因果落在两层之间，形成行为透明。TeamTNT 与外部攻击案例直接支持 high，Microsoft 狩猎资料明确说明命令不在 Pod 定义且常少记录。pod UID、exec event、container ID、进程和网络联合可恢复链条。
+      en: Exec does not change the Pod definition; control plane records only a subresource request while runtime records a process inheriting existing container identity. Causality falls between layers, producing Behavioral Transparency. TeamTNT and external-attacker cases directly support high confidence and Microsoft hunting guidance states commands are absent from Pod definitions and often poorly logged. Joining pod UID exec event container ID process and network restores the chain.
+  evidence_refs: [REF-000214, REF-000217, REF-000218, REF-000219]
+  confidence: high
+- mechanism_ref: NM-FD
+  role: secondary
+  summary: {zh: exec 请求借用预期自动化或工作负载身份特征, en: Exec requests borrow expected automation or workload identity features}
+  analysis:
+    paragraphs:
+    - zh: 服务账户、kubelet 和运维自动化可能合法执行诊断；攻击者若控制其中身份并针对其历史 Pod/namespace 调用相同 subresource，恶意与合法事件共享主体、verb 与目标特征，形成特征伪装。Kubernetes 授权模型和 Microsoft 资料支持能力与观察假设，但本批未找到攻击者明确有意匹配自动化身份的现场案例，因此保持 medium；内容、源、时间、工单和 runtime 结果仍可反证。
+      en: Service accounts kubelets and operations automation may legitimately execute diagnostics. If an adversary controls such an identity and invokes the same subresource against its historical Pods or namespaces malicious and legitimate events share principal verb and target features, producing Feature Disguise. Kubernetes authorization and Microsoft material support capability and observation, but this batch found no field case explicitly showing intent to match automation identity, so confidence remains medium. Content source time ticket and runtime outcome remain disconfirming.
+  evidence_refs: [REF-000212, REF-000216, REF-000217]
+  confidence: medium
+subtechnique_taxonomy:
+  narrative:
+    paragraphs:
+    - zh: NJS-0066-001 固定“既有 workload 不变”：无论请求身份是否异常，命令继承当前 Pod 的 image、namespace、labels 与网络/卷，检测核心是 API—runtime 关联。NJS-0066-002 固定“请求身份/目标关系正常”：即使 runtime 结果完整可见，主体、verb 和目标接近批准自动化，检测核心是身份上下文差分。异常匿名 kubelet可满足前者而不满足后者；批准服务账户对新建调试容器可满足后者但不属于既有 exec，故边界互不替代。
+      en: "NJS-0066-001 fixes unchanged existing workload: regardless of anomalous request identity, commands inherit current Pod image namespace labels network and volumes, and detection centers on API-to-runtime joins. NJS-0066-002 fixes normal principal-to-target relation: even with complete runtime outcomes, principal verb and target resemble approved automation, and detection centers on identity-context difference. Anonymous kubelet can satisfy the former but not the latter; an approved service account creating a new debug container can resemble the latter context but is not existing-container exec, so boundaries do not substitute."
+    - zh: ATT&CK 无子项；TTY、shell、API server/kubelet/Docker 入口和命令目的均为实现维度。自动化身份子项保持 medium，若后续仍无现场意图证据应考虑合并；当前不以对称性强行提升。
+      en: ATT&CK has no children. TTY shell API server kubelet or Docker entry and command purpose are implementation dimensions. The automation-identity child remains medium and should be considered for merger if future field intent evidence does not emerge; symmetry does not justify raising it.
+  coverage: established
+  subtechnique_refs: [NJS-0066-001, NJS-0066-002]
+defense: {detections: {coverage: available, strategy_refs: [DET-000081]}, mitigations: {coverage: available, mitigation_refs: [MIT-000081]}}
+evidence:
+  claim_refs: [CLM-000257, CLM-000258, CLM-000259, CLM-000406, CLM-000407, CLM-000408, CLM-000409, CLM-000410, CLM-000411]
+  case_refs: [CASE-000073, CASE-000074]
+  reference_refs: [REF-000118, REF-000211, REF-000212, REF-000214, REF-000216, REF-000217, REF-000218, REF-000219]
+research:
+  limitations:
+    paragraphs:
+    - zh: TeamTNT 与外部攻击证据来自蜜罐/受控暴露环境，直接证明行为但不能代表企业基线频率；自动化身份轴只有权限模型与狩猎推断，保持 medium。Kubernetes 与 Docker 的事件和内容字段随 audit policy、版本和 runtime 变化，部署前必须以良性 exec 验证 request、session 与 process 关联。高频合法调试仍是主要误报来源。
+      en: TeamTNT and external-attacker evidence comes from honeypot or deliberately exposed environments and directly establishes behavior without representing enterprise baseline frequency. The automation-identity axis rests on permission models and hunting inference and remains medium. Kubernetes and Docker event and content fields vary by audit policy version and runtime, requiring benign exec tests of request session and process joins. High-volume legitimate debugging remains the main false-positive source.
+lifecycle: {status: review, version: 1.1.0, created: '2026-09-10', modified: '2026-09-12', contributors: [Niji Matrix Research], reviewers: []}

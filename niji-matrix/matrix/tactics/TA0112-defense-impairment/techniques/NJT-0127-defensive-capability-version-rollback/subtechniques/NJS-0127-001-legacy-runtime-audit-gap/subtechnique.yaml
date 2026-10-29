@@ -1,0 +1,63 @@
+schema_version: "2.0.0"
+type: evasion-subtechnique
+id: NJS-0127-001
+name: {zh: 旧运行时审计缺口, en: Legacy-Runtime Audit Gap}
+summary: {zh: 恶意脚本在缺少预期内容审计的旧引擎中真实执行，保留进程痕迹却失去脚本内容事件。, en: "A malicious script actually executes in a legacy engine without expected content auditing, retaining process traces while losing script-content events."}
+aliases: []
+parent_ref: NJT-0127
+lineage: {attck_subtechnique_inherited: false}
+definition_and_concept:
+  paragraphs:
+    - zh: 旧运行时审计缺口是攻击者让脚本或命令由已不具备批准内容审计能力的旧引擎处理，以在仍有合法进程和基本引擎事件的情况下减少细粒度行为内容。直接对象是同一脚本执行的审计存在性，而不是旧解释器的文件名或命令行参数；只有实际加载旧引擎并执行内容，才有完成的结果。
+      en: Legacy-Runtime Audit Gap occurs when an adversary has a script or command processed by an older engine lacking approved content-audit capability, reducing fine-grained behavior content while legitimate process and basic engine events remain. The direct object is whether the same script execution is audited, not the interpreter filename or a command-line argument. Completion requires actual loading of the old engine and execution of content.
+    - zh: 此变量与父级的启动信任回退不同，它在进程生命周期内发生，无需重启或改写引导链。旧 PowerShell 是已有公开例证，但若另一运行时表现出相同的实际版本—内容事件差，也由本子项覆盖；产品标签不能单独建立新分类。
+      en: Unlike the parent's boot-trust rollback, this variable occurs inside a process lifetime without a reboot or boot-chain write. Legacy PowerShell is a documented example, but another runtime with the same actual-version to content-event differential also belongs here. A product label alone cannot establish a new class.
+stealth_characteristics:
+  paragraphs:
+    - zh: 旧运行时审计缺口保留可见的进程树、映像 hash、用户和大致启动时间，却把防守方用于解释脚本意图的内容事件移出预期日志。若基线只检查脚本引擎名称或进程是否存在，而不区分实际版本和内容通道，恶意脚本会混在正常解释器使用中；与全机日志故障相比，缺口可能只出现在旧引擎的执行窗口。
+      en: Legacy-Runtime Audit Gap retains the visible process tree, image hash, user, and approximate start time while removing content events defenders expect for interpreting script intent. A baseline that checks only interpreter name or process existence, not actual version and content channel, can blend malicious execution into ordinary interpreter use. Unlike a host-wide logging outage, the gap may be confined to the legacy engine's execution interval.
+    - zh: 残余仍可来自进程、模块加载、引擎生命周期与其他产品遥测；若独立 AMSI 或命令行记录已经捕获内容，匿迹收益会降低。单次 4104 缺席不能证明本子项，防守方需先确认脚本实际执行、策略要求该事件且通道健康。
+      en: Process, module-load, engine-lifecycle, and other product telemetry remains; independent AMSI or command-line capture can reduce the stealth benefit. One missing 4104 event does not prove this child. Defenders must first establish real script execution, a policy requiring that event, and a healthy channel.
+scope_boundary_definition:
+  paragraphs:
+    - zh: 纳入攻击者有意调用低于批准审计能力的引擎，且同设备的当前引擎能产生内容事件而本次旧引擎执行不能的差分。只安装旧组件、命令行请求旧版本但新版本实际运行、没有脚本内容的空进程，均不构成成功。经批准的兼容脚本若有等效替代审计，需要记录为正常例外并验证范围与期限。
+      en: Include intentional invocation of an engine below approved audit capability where the current engine on the same device can produce content events but this legacy execution cannot. Merely installing an old component, requesting a legacy version while a current version runs, or an empty process without script content is not success. Approved compatibility scripts with equivalent alternate audit require a bounded, time-limited normal exception.
+    - zh: 直接修改日志策略归中心策略或本地 Registry/工具对象，已生成事件后删除归证据擦除对象；本子项的关键是旧引擎在记录前不产生同等内容事件。启动链保护退化归 NJS-0127-002，不按 Windows 与其他操作系统拆兄弟项。
+      en: Directly editing logging policy belongs to central-policy, local Registry, or tool objects; deleting an event after creation belongs to evidence-erasure objects. This child is the pre-recording absence of equivalent content events in the old engine. Boot-chain protection regression belongs to NJS-0127-002, not a sibling split by Windows versus another operating system.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+      - zh: 攻击者在已有远程会话或本地执行权后，计划运行会暴露 payload、下载逻辑或管理命令的脚本，于是在目标仍允许旧引擎的短窗口内先选择旧版本，再执行恶意内容。该路径最适用于已要求脚本块审计、但兼容需求仍留有旧运行时的 Windows 设备；后继行为仍可能在网络和进程层可见。
+        en: After obtaining a remote session or local execution, an adversary intending to run a script that would reveal payload, download logic, or administrative commands selects the legacy engine during a short window while the target still permits it. The path matters most on Windows devices requiring script-block audit but retaining a legacy runtime for compatibility. Follow-on activity can remain visible in network and process telemetry.
+  threat_model:
+    attacker_model:
+      paragraphs:
+        - zh: 攻击者需可启动旧引擎、有脚本内容和对目标审计差异的了解，且不能假设旧引擎未被应用控制拦截。它可避免直接改写安全策略，但必须接受进程启动、版本参数、模块加载和独立 EDR 仍可被观测。
+          en: The adversary needs authority to start the legacy engine, script content, and knowledge of the target audit difference, while not assuming application control will allow the engine. The route avoids directly editing security policy but still exposes process start, version arguments, module loads, and independent EDR observations.
+    defender_model:
+      paragraphs:
+        - zh: 防守方保留进程与实际引擎版本、启用的脚本块策略、PowerShell Operational 4104、采集健康和可验证脚本执行证据。日志通道失效与旧引擎缺口会产生同样的“无事件”表面，因此关联必须限制到单进程、单窗口并用同设备新引擎或 canary 对照。
+          en: Defenders retain process and actual engine version, enabled script-block policy, PowerShell Operational 4104, collector health, and verifiable script-execution evidence. Channel failure and a legacy-engine gap share the same no-event surface, so correlation must be constrained to one process and interval with same-device current-engine or canary comparison.
+stealth_mechanisms:
+  - mechanism_ref: NM-BT
+    role: primary
+    summary: {zh: 旧引擎合法执行而脚本内容不进入预期审计, en: Legacy engine executes legitimately while script content misses expected audit}
+    analysis:
+      paragraphs:
+        - zh: 攻击者让旧引擎而非批准的新引擎消费同一脚本，正常进程事件保留，预期的细粒度内容事件却从记录前就不存在。防守方若将“进程已被监控”误认为“脚本内容已被监控”，会失去对真实动作的解释能力；实际版本、策略与通道健康的差分能恢复这一盲点。
+          en: The adversary has an older rather than the approved current engine consume the same script. Normal process events remain, but expected fine-grained content events never exist before storage. Defenders equating a monitored process with monitored script content lose the ability to interpret its actions. Actual-version, policy, and channel-health differentials recover the blind spot.
+    evidence_refs: [REF-000462, REF-000463, REF-000198]
+    confidence: medium
+defense:
+  detections: {coverage: available, strategy_refs: [DET-000136]}
+  mitigations: {coverage: available, mitigation_refs: [MIT-000125]}
+evidence:
+  claim_refs: [CLM-000681]
+  case_refs: []
+  reference_refs: [REF-000462, REF-000463, REF-000198]
+research:
+  limitations:
+    paragraphs:
+      - zh: ATT&CK 说明旧 PowerShell 可能规避脚本块日志，Microsoft 文档说明当前日志通道，但公开材料并未证明每个已安装旧引擎在每个配置下都不产生日志。某些设备有 EDR、AMSI 或集中代理的等效内容覆盖；若没有实际引擎版本与脚本执行证明，应将结果降为可能性而非已完成匿迹。
+        en: ATT&CK explains that legacy PowerShell may evade script-block logging, and Microsoft documents the current log channel, but public sources do not establish that every installed old engine lacks logging under every configuration. Some devices retain equivalent EDR, AMSI, or central-agent content coverage. Without actual engine version and script-execution proof, the result is a possibility rather than completed evasion.
+lifecycle: {status: review, version: "0.1.0", created: "2026-09-22", modified: "2026-09-22", contributors: [Niji Matrix Research], reviewers: []}

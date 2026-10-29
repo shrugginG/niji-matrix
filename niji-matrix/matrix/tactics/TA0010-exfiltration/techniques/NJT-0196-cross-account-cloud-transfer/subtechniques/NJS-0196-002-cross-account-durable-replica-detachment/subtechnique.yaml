@@ -1,0 +1,135 @@
+schema_version: 2.0.0
+type: evasion-subtechnique
+id: NJS-0196-002
+parent_ref: NJT-0196
+name:
+  zh: 跨账户持久副本脱离
+  en: Cross-Account Durable Replica Detachment
+summary:
+  zh: 把 snapshot、backup 或云对象复制到另一账户并形成新对象身份，使副本脱离源账户撤销和删除控制。
+  en: Copy a snapshot, backup, or cloud object into another account under a new object identity, detaching the replica
+    from source-account revocation and deletion.
+aliases: []
+lineage:
+  attck_subtechnique_inherited: false
+definition_and_concept:
+  paragraphs:
+  - zh: 跨账户持久副本脱离是攻击者先让同服务目标账户获得复制/恢复权，再在目标账户 materialize 新 snapshot、image、volume、backup 或等价对象。稳定变量是新对象 ID 和独立 owner/control
+      domain；源对象可以保持不变，也可以随后删除，但不能回收已完成的目标副本。
+    en: Cross-Account Durable Replica Detachment first gives a destination account on the same service copy or restore
+      authority and then materializes a new snapshot, image, volume, backup, or equivalent object in that account.
+      The stable variable is a new object ID and independent owner or control domain. The source may remain unchanged
+      or later be deleted, but the completed destination replica cannot be recalled.
+  - zh: 仅创建源 snapshot、backup 或 export job 属于 capability；必须有 SharedSnapshotCopyInitiated、目标 copy/volume、provider
+      completion 或等价接收结果。若 copy 仍在受害账户内部，不构成跨账户外传；如果内容先下载到主机再上传，不属于本子项。
+    en: A source snapshot, backup, or export job alone is capability. SharedSnapshotCopyInitiated, a destination
+      copy or volume, provider completion, or equivalent receipt outcome is required. A copy remaining inside the
+      victim account is not cross-account exfiltration, and content downloaded to a host before upload does not
+      belong to this child.
+stealth_characteristics:
+  paragraphs:
+  - zh: 跨账户持久副本脱离使云提供商内部复制不一定产生企业外部网络流，source snapshot 的数据可在内部存储平面成为目标账户新资源。源账户可能只看到 share/permission 和 provider
+      共享资源事件，目标账户的 new object、attach/read 和后继使用则位于另一审计域。copy ID、owner、KMS key 与 tag 变化是残余；AWS 明确说明 copy 有唯一资源 ID。
+    en: Cross-Account Durable Replica Detachment makes provider-internal copying need not create enterprise external
+      network flow; source snapshot data can become a new resource in the destination account within the storage
+      plane. The source account may see only share or permission and provider shared-resource events, while the
+      destination account holds the new object, attach or read, and successor use in another audit domain. Copy
+      ID, owner, KMS key, and tag changes remain; AWS explicitly states that the copy has a unique resource ID.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 纳入要求源对象/快照、未批准目标账户、cross-account permission、复制或恢复结果以及数据敏感度可连接。合法隔离备份、灾备、多账户安全架构、并购迁移和取证副本必须按 account registry、owner、KMS、工单和保留目的排除。源
+      share 被撤销但目标 copy 仍存在时，本子项持续成立；只共享未复制的 snapshot 仍停留在授权暴露层。
+    en: Inclusion requires joinable source object or snapshot, unapproved destination account, cross-account permission,
+      copy or restore outcome, and data sensitivity. Legitimate isolated backup, disaster recovery, multi-account
+      security architecture, merger migration, and forensic copies require exclusion by account registry, owner,
+      KMS, ticket, and retention purpose. The child remains after source sharing is revoked if the destination copy
+      persists. A shared but uncopied snapshot remains entitlement exposure.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: DNC 法院文件描述 CrowdStrike 取证发现未授权用户制作云虚拟服务器精确 snapshots，并在 2016 年 9 月把多个副本移动到其控制的同服务账户。AWS 的现行语义允许 owner
+        把 createVolumePermission 加给特定 account，目标账户复制 shared snapshot 或创建 volume；SharedSnapshotCopyInitiated/VolumeCreated
+        为源侧提供部分后继证据。
+      en: The DNC court filing describes CrowdStrike forensic findings that unauthorized users made exact snapshots
+        of cloud virtual servers and moved multiple replicas in September 2016 to accounts they controlled on the
+        same service. Current AWS semantics let an owner add createVolumePermission for a specific account, after
+        which the destination account can copy the shared snapshot or create a volume. SharedSnapshotCopyInitiated
+        and SharedSnapshotVolumeCreated provide the source account partial successor evidence.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者需要创建或读取源 snapshot/backup、修改跨账户 permission、使用必要 KMS key/grant，并在目标账户执行 copy/restore 的权限。加密默认 key、block
+          public access、组织策略、copy quota、region 限制和服务事件监控会提高成本；为抵抗撤销，目标账户需在源 grant 有效期内完成独立 copy。
+        en: The adversary needs authority to create or read the source snapshot or backup, modify cross-account
+          permission, use required KMS keys or grants, and copy or restore in the destination account. Default encryption
+          keys, block-public-access, organization policies, copy quotas, Region constraints, and provider-event
+          monitoring raise cost. To resist revocation, the destination account must finish an independent copy while
+          the source grant remains valid.
+    defender_model:
+      paragraphs:
+      - zh: 防守方保存 create/share/copy/restore/delete、source and destination account、source snapshot/object ID、new
+          copy/volume ID、KMS grant/key、request ID、completion、tags 和批准记录。若 provider 只向源账户返回 copy initiated 而不返回目标
+          new ID，应保留 destination account 和时间并请求组织级/提供方协查；未确认 copy 时只能报告 exposure。
+        en: Defenders retain create, share, copy, restore, and delete; source and destination account; source snapshot
+          or object ID; new copy or volume ID; KMS grant or key; request ID; completion; tags; and approval. When
+          the provider returns only copy initiated to the source without the destination new ID, preserve destination
+          account and time for organization-wide or provider investigation. Without confirmed copy, report exposure
+          only.
+stealth_mechanisms:
+- mechanism_ref: NM-ST
+  role: primary
+  summary:
+    zh: 源授权与目标副本分散在不同账户并切断单租户对象谱系
+    en: Source authorization and destination replica split across accounts and break single-tenant object lineage
+  analysis:
+    paragraphs:
+    - zh: 源账户执行 snapshot share/permission，目标账户执行 copy/restore 并获得新 ID；网络出口没有文件流，单租户日志无法看到完整因果和副本后继。DNC 事件证明真实跨账户
+        snapshot 窃取，AWS 文档证明 share→copy、新 ID 与 shared-resource events 的可实现关联。需要组织/提供方层的 source ID—destination account—copy
+        outcome 连接才能恢复完整链。
+      en: The source account performs snapshot sharing or permission, while the destination account copies or restores
+        and receives a new ID. No file flow appears at enterprise egress, and one tenant's logs cannot see the complete
+        causality and successor replica. The DNC event establishes real cross-account snapshot theft, while AWS
+        documentation establishes implementable share-to-copy, new-ID, and shared-resource event joins. Organization
+        or provider-level source-ID-to-destination-account-to-copy-outcome correlation is required to reconstruct
+        the chain.
+  evidence_refs:
+  - REF-000947
+  - REF-000948
+  - REF-000949
+  confidence: high
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000228
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000204
+evidence:
+  claim_refs:
+  - CLM-000964
+  - CLM-000966
+  case_refs:
+  - CASE-000282
+  reference_refs:
+  - REF-000947
+  - REF-000948
+  - REF-000949
+research:
+  limitations:
+    paragraphs:
+    - zh: DNC 文件是诉讼陈述并总结取证结论，不公开原始 CloudTrail、snapshot IDs 或 API 顺序；正式 Case 必须保留此证据性质。AWS 语义不能自动推广到所有提供商，某些平台不会把目标
+        copy ID 或后继访问返回源租户。加密 snapshot 的 KMS grant 与 copy 完成需分别验证。
+      en: The DNC filing is a litigation statement summarizing forensic conclusions and does not publish raw CloudTrail,
+        snapshot IDs, or API order; a formal Case must preserve that evidence character. AWS semantics cannot be
+        projected automatically to every provider, and some platforms do not return destination copy IDs or successor
+        access to the source tenant. KMS grant and completed copy for encrypted snapshots require separate verification.
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-10-04'
+  modified: '2026-10-04'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

@@ -1,0 +1,107 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000146
+strategy_ref: DET-000141
+name:
+  zh: 窗口条件门控后继活动分析
+  en: Window-Gated Follow-On Activity Analytic
+summary:
+  zh: 在可验证的 GUI 遥测下比较目标窗口出现前后同一主体的后继通信或收集。
+  en: With verified GUI telemetry, compare an actor’s communication or collection before and after a target window appears.
+domains:
+- enterprise
+platforms:
+- Windows
+logic:
+  paragraphs:
+  - zh: 先在高价值交互终端部署经试验验证的 GUI 调用与前台窗口传感器，记录调用进程、会话、操作和脱敏的目标标题类别。对同一进程谱系比较目标类别出现前后的窗口读取和网络或截图结果；重复读取、稳定条件与命中后结果同时存在时提出门控嫌疑。若传感器不能证明调用者或窗口状态，只能报异常网络链，不能报“观察到
+      EnumWindows”。
+    en: Deploy a GUI-call and foreground-window sensor validated in a pilot on high-value interactive endpoints, recording
+      caller process, session, operation, and a privacy-preserving target-title category. For one process lineage, compare
+      window reads and network or capture outcomes before and after a target category appears. Repeated reads, a stable condition,
+      and post-match outcomes together support a gating suspicion. If the sensor cannot establish caller or window state,
+      report only the anomalous network lineage, never an observed EnumWindows call.
+data_requirements:
+- source_type: validated-gui-call-sensor
+  name:
+    zh: 经验证的 GUI 调用与窗口状态传感器
+    en: Validated GUI-call and window-state sensor
+  channel: null
+  required_fields:
+  - timestamp
+  - host_id
+  - actor_process_guid
+  - user_sid
+  - session_id
+  - operation
+  - target_window_key
+  - title_category
+  - result_status
+- source_type: endpoint-process-lineage
+  name:
+    zh: 终端进程谱系
+    en: Endpoint process lineage
+  channel: Sysmon Event 1 or verified EDR equivalent
+  required_fields:
+  - utc_time
+  - computer
+  - processguid
+  - parentprocessguid
+  - image
+  - user
+- source_type: endpoint-network-or-capture
+  name:
+    zh: 终端网络或截图结果
+    en: Endpoint network or capture outcomes
+  channel: null
+  required_fields:
+  - timestamp
+  - host_id
+  - process_guid
+  - event_kind
+  - destination_or_artifact
+observables:
+- zh: 同一进程反复读取前台窗口并等待特定标题类别
+  en: A process repeatedly reads foreground-window state while awaiting a particular title category
+- zh: 匹配窗口出现后才出现持续通信或定向截图
+  en: Sustained communication or targeted capture begins only after a matching window appears
+correlation:
+  window:
+    zh: 以同一主机、用户、会话和进程为键，试点比较目标出现前后各 5 分钟，并为长驻样本保留 24 小时摘要；窗口值是待校准起点。
+    en: Key on host, user, session, and process; pilot a comparison spanning five minutes on each side of target appearance
+      and retain 24-hour summaries for resident samples. These windows are starting assumptions requiring calibration.
+  dimensions:
+  - host_id
+  - user_sid
+  - session_id
+  - process_guid
+  - title_category
+  - time
+false_positives:
+- zh: 屏幕阅读器、RPA、远程协助和自动化测试也会依据窗口状态执行后继动作
+  en: Screen readers, RPA, remote support, and automated tests also take follow-on actions based on window state
+blind_spots:
+- zh: 标准 Sysmon 10 不记录普通 GUI 查询；未验证的 GUI 传感器、受保护桌面、进程注入和标题变化会破坏因果归属
+  en: Standard Sysmon 10 does not record ordinary GUI queries; an unvalidated GUI sensor, protected desktop, process injection,
+    and changing titles defeat causal attribution
+tuning_guidance:
+  paragraphs:
+  - zh: 按应用发布者、业务 owner、会话类型、批准目标和工单建立可审计基线，并对标题只保存分类或受控哈希。不可按 user32 调用或合法签名一律放行；在传感器缺失时把输出降为间接网络异常，不借事件 10 补造窗口读取事实。
+    en: Build an auditable baseline by publisher, business owner, session type, approved target, and work order, storing only
+      a title category or controlled hash. Do not globally allow user32 use or a valid signature. When the GUI sensor is absent,
+      downgrade output to indirect network anomaly rather than inventing a window read from Event 10.
+evidence_refs:
+- REF-000483
+- REF-000484
+- REF-000485
+- REF-000486
+- REF-000487
+- REF-000366
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-09-22'
+  modified: '2026-09-22'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

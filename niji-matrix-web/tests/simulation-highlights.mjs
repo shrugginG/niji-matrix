@@ -1,0 +1,10 @@
+import {chromium,expect} from '@playwright/test';import assert from 'node:assert/strict';import{readFile}from'node:fs/promises';
+const b=await chromium.launch({channel:'chromium'});
+try{
+ const p=await b.newPage({viewport:{width:1626,height:1000}});
+ await p.goto('http://127.0.0.1:18091/simulation');await p.getByRole('button',{name:'添加PC',exact:true}).click();await expect(p.locator('.sim-entity.has-techniques')).toHaveCount(0);await p.getByRole('button',{name:'添加技术 / 子技术',exact:true}).click();await p.getByLabel('搜索技术或子技术').fill('NJT-0001');await p.locator('.sim-tech-parent .sim-tech-option').filter({hasText:'NJT-0001'}).getByRole('checkbox').check();await p.getByRole('button',{name:'应用所选'}).click();await expect(p.locator('.sim-entity.has-techniques')).toHaveCount(1);await expect(p.locator('.sim-binding-badge')).toContainText('1');await p.getByRole('button',{name:'移除关联 NJT-0001',exact:true}).click();await expect(p.locator('.sim-entity.has-techniques')).toHaveCount(0);
+ await p.goto('http://127.0.0.1:18091/simulation/preset/nwpu-nsa-report');await expect(p.locator('.sim-entity.has-techniques')).toHaveCount(11);await expect(p.locator('.sim-edge-technique-halo')).toHaveCount(33);await expect(p.locator('.sim-edge-label.has-techniques')).toHaveCount(33);
+ const scene=JSON.parse(await readFile('scenes/cases/nwpu-nsa-report.niji-scene.json','utf8'));for(const id of ['a2','b2','mail-user-deliver']){const original=scene.edges.find(e=>e.id===id).color;const stroke=await p.locator(`.react-flow__edge[data-id="${id}"] .react-flow__edge-path`).evaluate(el=>el.style.stroke);assert.equal(stroke,`rgb(${[1,3,5].map(i=>parseInt(original.slice(i,i+2),16)).join(', ')})`);}
+ await p.getByLabel('场景视图',{exact:true}).selectOption('relays');await p.mouse.move(100,100);await p.screenshot({path:'.playwright/technique-highlights.png'});
+ console.log('PASS: live node highlight on add/remove, 11 bound nodes/33 bound edges highlighted, original red/cyan/green colors retained');
+}finally{await b.close();}

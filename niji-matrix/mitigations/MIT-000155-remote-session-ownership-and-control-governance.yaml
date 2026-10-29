@@ -1,0 +1,121 @@
+schema_version: 2.0.0
+type: mitigation
+id: MIT-000155
+name:
+  zh: 远程会话所有权与控制端治理
+  en: Remote Session Ownership and Controller Governance
+summary:
+  zh: 限制已认证连接的额外控制者，并记录 SSH 通道或 RDS 会话控制端变化。
+  en: Restrict extra controllers on authenticated connections and record SSH channel or RDS session controller changes.
+description:
+  paragraphs:
+  - zh: 该控制固定远程传输和交互会话的原所有者、合法复用主体、授权窗口与目标范围。对 SSH，保护 ControlPath 套接字和运行中客户端，必要时关闭持久复用并验证通道级遥测；对 RDS，限制 tscon 与 shadow 控制权限、要求可核查同意并及时结束不再需要的会话。安全审计需要从附着动作继续看到目标结果，而不把无新登录事件误当成安全状态。
+    en: This control fixes the original owner, allowed sharing principals, authorization window, and target scope of remote
+      transports and interactive sessions. For SSH, protect ControlPath sockets and running clients, disable persistent sharing
+      where unnecessary, and validate channel-level telemetry. For RDS, restrict tscon and shadow-control rights, require
+      verifiable consent, and end sessions no longer needed. Audit must continue from an attachment action to destination
+      outcome instead of treating no new logon event as a safe state.
+measures:
+- key: protect-ssh-controller-boundary
+  name:
+    zh: 保护 SSH 控制套接字与客户端
+    en: Protect SSH Control Sockets and Clients
+  description:
+    paragraphs:
+    - zh: 把控制套接字置于仅原所有者可访问的目录，限制跨用户 ptrace 与调试；跳板上按角色缩短 ControlPersist，并在不需多路复用的服务关闭该功能。
+      en: Keep control sockets in directories accessible only to their original owner, restrict cross-user ptrace and debugging,
+        shorten ControlPersist by jump-host role, and disable multiplexing where service duties do not need it.
+  control_type: preventive
+- key: bound-rds-session-transfer
+  name:
+    zh: 限定 RDS 会话转移与影子控制
+    en: Bound RDS Session Transfer and Shadow Control
+  description:
+    paragraphs:
+    - zh: 最小化可运行 tscon 或修改 shadow 策略的身份，要求帮助台会话接管有目标、工单、时限及原用户可核查的同意；对高权限断开会话实施短期终止策略。
+      en: Minimize identities able to run tscon or change shadow policy. Require target, ticket, expiry, and verifiable original-user
+        consent for support takeover, and end disconnected high-privilege sessions promptly.
+  control_type: preventive
+- key: retain-controller-transition-evidence
+  name:
+    zh: 保留控制者转换证据
+    en: Retain Controller-Transition Evidence
+  description:
+    paragraphs:
+    - zh: 在可部署环境保留 SSH 连接/通道标识和本地 socket 访问，Windows 保留 4778/4779、进程命令行、shadow 操作及策略旧新值，并连接目标资源结果。
+      en: Where deployable, retain SSH connection and channel IDs with local socket access; on Windows retain 4778 and 4779,
+        process command lines, shadow operations, and old and new policy values, joining them to target resource outcomes.
+  control_type: detective-support
+applications:
+- target_ref: NJT-0151
+  use:
+    paragraphs:
+    - zh: 为高价值远程会话登记原所有者、可附着主体和失效时间，并将任何新控制者与目标动作核对；不允许一个成功登录记录长期代表所有后来操作。
+      en: Register original owner, allowed attaching principals, and expiry for high-value remote sessions, and compare every
+        later controller with target actions rather than letting one successful logon stand for all future operations.
+  expected_effect:
+    paragraphs:
+    - zh: 旧会话在被他人复用时产生可审计的身份差异，未批准附着的机会和存活时间下降。
+      en: Reuse of an old session by another person yields an auditable identity difference, while opportunities and lifetime
+        for unauthorized attachment decline.
+  limitations:
+    paragraphs:
+    - zh: 授权帮助台与自动化也会复用会话；缺少通道级或影子控制遥测时只能降低信心、不能宣称没有接管。
+      en: Authorized support and automation also reuse sessions. Without channel-level or shadow-control telemetry, confidence
+        falls and absence of takeover cannot be asserted.
+- target_ref: NJS-0151-001
+  use:
+    paragraphs:
+    - zh: 对同一认证 SSH 传输上的增附通道限制 ControlPath 访问者与跨用户调试，并按连接 ID、通道 ID 与本地发起进程记录批准复用关系。
+      en: For added channels on one authenticated SSH transport, constrain ControlPath access and cross-user debugging, recording
+        approved sharing by connection ID, channel ID, and local initiating process.
+  expected_effect:
+    paragraphs:
+    - zh: 攻击者难以借用原管理员连接悄然增加新 shell/exec 通道；不符原所有者的本地发起者仍可被定位。
+      en: An adversary finds it harder to add a shell or exec channel through the original administrator's connection without
+        detection, and a local initiator outside the owner's lineage can be located.
+  limitations:
+    paragraphs:
+    - zh: 标准 sshd 不保证可查询通道 ID，root 或已控跳板传感器可绕过本机记录；需要在具体部署上验证日志能力。
+      en: Stock sshd does not guarantee queryable channel IDs, and root or a compromised jump-host sensor may defeat local
+        logging; verify capabilities in each deployment.
+- target_ref: NJS-0151-002
+  use:
+    paragraphs:
+    - zh: 对已有 RDS 交互会话的独占迁移或 shadow 共控，按原 LogonID 保留旧新客户端、tscon 或 mstsc 控制请求、策略和原用户同意，并对高权限会话单独审批。
+      en: For exclusive transfer or shadow co-control of an existing RDS session, retain old and new clients, tscon or mstsc
+        control requests, policy, and original-user consent under one LogonID, requiring separate approval for privileged
+        sessions.
+  expected_effect:
+    paragraphs:
+    - zh: 接管不能仅凭原账户已登录而失去归因，未经批准的控制端和会话结果可被关联并阻断。
+      en: Takeover no longer loses attribution merely because the original account was logged on; an unapproved controller
+        can be joined to session outcomes and blocked.
+  limitations:
+    paragraphs:
+    - zh: 网络断线重连与合法支持接管可同形，部分平台不产生所有 4778/4779 或 shadow 事件；受阻 tscon 也不能当作成功迁移。
+      en: Network reconnects and legitimate support handoffs can look similar; some platforms do not emit all 4778, 4779,
+        or shadow events, and a blocked tscon cannot be counted as successful transfer.
+evidence_refs:
+- REF-000614
+- REF-000615
+- REF-000616
+- REF-000617
+- REF-000618
+- REF-000619
+- REF-000620
+- REF-000621
+- REF-000622
+- REF-000623
+- REF-000624
+- REF-000370
+domains:
+- enterprise
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-09-22'
+  modified: '2026-09-22'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

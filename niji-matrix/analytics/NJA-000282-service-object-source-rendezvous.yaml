@@ -1,0 +1,128 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000282
+strategy_ref: DET-000226
+name:
+  zh: 服务对象创建—可见性—读取生命周期关联
+  en: Service Object Creation Visibility and Read Lifecycle Correlation
+summary:
+  zh: 连接本地敏感数据与外部服务中新建的持久对象及后续可访问状态。
+  en: Join local sensitive data to a newly created persistent service object and its later accessible state.
+domains:
+- enterprise
+platforms: []
+logic:
+  paragraphs:
+  - zh: 规范 service audit 中的 create/upload/write、visibility/share/link、read/download 和 delete 事件，保留 actor、app/token、tenant/org、repo/object/message、visibility、request_id、source_ip、bytes
+      和时间。以 SHA1/内容指纹、文件名/大小、对象 ID、创建进程和短时顺序把端点 source_set_id 连接到服务对象；再在一小时至三十日内寻找外部身份、匿名访问或不同来源读取。输出 object_written、object_exposed、retrieval_observed
+      与 rendezvous_exfiltration_confirmed；确认级要求敏感源、未批准对象/可见性和可取回或实际读取。对 CreateEvent 紧接 PublicEvent、公开 data.json、秘密扫描命中等提高置信度，但不硬编码
+      Shai-Hulud 名称。
+    en: Normalize create, upload, or write; visibility, share, or link; read or download; and delete events from
+      service audit, retaining actor, application or token, tenant or organization, repository or object or message,
+      visibility, request_id, source_ip, bytes, and time. Join endpoint source_set_id to the service object through
+      SHA1 or content fingerprint, filename and size, object ID, creating process, and short sequence. Over one
+      hour to thirty days, seek reads by an outside identity, anonymous access, or another origin. Emit object_written,
+      object_exposed, retrieval_observed, and rendezvous_exfiltration_confirmed. Confirmation requires sensitive
+      source, unapproved object or visibility, and retrievability or actual read. CreateEvent followed by PublicEvent,
+      public data.json, and secret-scanning hits raise confidence without hardcoding Shai-Hulud names.
+data_requirements:
+- source_type: endpoint-file
+  name:
+    zh: 端点源数据与上传产物
+    en: Endpoint source data and upload artifacts
+  channel: DeviceFileEvents, EDR or DLP
+  required_fields:
+  - timestamp
+  - deviceid
+  - folderpath
+  - filename
+  - filesize
+  - sha1
+  - sensitivitylabel
+  - initiatingprocessuniqueid
+  - initiatingprocessaccountname
+- source_type: service-object-audit
+  name:
+    zh: Web 服务对象生命周期审计
+    en: Web-service object lifecycle audit
+  channel: provider audit API or streamed audit log
+  required_fields:
+  - event-time
+  - provider
+  - action
+  - actor
+  - actor-id
+  - app-or-token-id
+  - tenant-or-org-id
+  - object-type
+  - object-id
+  - repository-or-container-id
+  - visibility
+  - request-id
+  - source-ip
+  - bytes
+- source_type: object-policy-inventory
+  name:
+    zh: 对象可见性与共享政策
+    en: Object visibility and sharing policy inventory
+  channel: SaaS configuration management
+  required_fields:
+  - provider
+  - tenant-or-org-id
+  - object-type
+  - allowed-visibility
+  - allowed-external-sharing
+  - approved-creator
+  - retention
+  - policy-version
+observables:
+- zh: 读取秘密或批量文件后创建新仓库、云对象或文本对象
+  en: A new repository, cloud object, or text object is created after secret or bulk-file access
+- zh: 对象路径、大小、摘要或序列与源数据一致并对异常主体可读
+  en: Object path, size, digest, or sequence matches source data and is readable by an unusual principal
+correlation:
+  window:
+    zh: 在二十四小时内连接源读取和对象创建，并保留七日供后续访问或公开状态变化。
+    en: Join source access and object creation within twenty-four hours and retain seven days for later access or
+      visibility change.
+  dimensions:
+  - source-set-id
+  - provider
+  - tenant-or-org-id
+  - object-id
+  - repository-or-container-id
+  - actor-or-app-id
+  - visibility
+  - request-id
+  - reader-identity
+  - time
+false_positives:
+- zh: 批准软件发布、制品上传、备份、数据科学和公开文档工作流
+  en: Approved software release, artifact upload, backup, data science, and public documentation workflows
+blind_spots:
+- zh: 对象快速删除且审计无内容摘要
+  en: The object is quickly deleted and audit lacks a content digest
+- zh: 私有服务只记录账户而不记录对象字段
+  en: A private service records the account without object-level fields
+tuning_guidance:
+  paragraphs:
+  - zh: 按对象类型、组织、创建者和可见性建立正向政策；对公开仓库、粘贴和共享链接要求业务理由及到期。结合敏感标签和秘密扫描，但不把任何公开对象当成外传。将 T1537 的 same-service transfer
+      另标：若既有云对象直接移动或共享到账户而非端点新建对象，本 NJA 只输出 adjacent_account_transfer。
+    en: 'Build positive policy by object type, organization, creator, and visibility and require business justification
+      and expiry for public repositories, pastes, and share links. Combine sensitivity labels and secret scanning
+      without treating every public object as exfiltration. Mark T1537 same-service transfer separately: when an
+      existing cloud object moves or is shared into another account rather than a new endpoint upload, emit adjacent_account_transfer
+      only.'
+evidence_refs:
+- REF-000940
+- REF-000942
+- REF-000943
+- REF-000924
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-10-04'
+  modified: '2026-10-04'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

@@ -1,0 +1,138 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000316
+strategy_ref: DET-000243
+name:
+  zh: 引导响应材料到新目的地/进程关联
+  en: Bootstrap Response Material to New Destination or Process Join
+summary:
+  zh: 把第一阶段返回材料连接到后继目的地、进程和操作结果。
+  en: Join first-stage returned material to a successor destination, process, and operational outcome.
+domains:
+- enterprise
+platforms:
+- Windows
+- Linux
+- Network Devices
+logic:
+  paragraphs:
+  - zh: 从代理/Zeek HTTP 记录识别低频自动化第一阶段响应，并在内容可见时提取返回的 IP/port、URL、victim selection、配置文件 ID 或载荷摘要；用 DeviceNetworkEvents 的
+      DeviceId/InitiatingProcessUniqueId、DeviceFileEvents 的 FileOriginUrl/SHA1、DeviceProcessEvents 的 ProcessUniqueId/InitiatingProcessUniqueId
+      构造谱系。在最初 0–60 分钟窗口内查找同进程或直接后继进程连接新目的地并出现命令解释器、文件操作或长双向会话；对于低频植入扩展至 7 天。内容不透明时只把“同进程/后继进程在第一响应后首次连接新端点”作为候选，不能声称恢复了
+      handoff artifact。
+    en: Identify low-frequency automated first-stage responses from proxy or Zeek HTTP data and, where content is visible,
+      extract returned IP and port, URL, victim selection, configuration file ID, or payload digest. Build lineage using
+      DeviceId and InitiatingProcessUniqueId from DeviceNetworkEvents, FileOriginUrl and SHA1 from DeviceFileEvents,
+      and ProcessUniqueId and InitiatingProcessUniqueId from DeviceProcessEvents. In an initial 0–60 minute window, look
+      for the same process or a direct successor connecting to a new destination and producing a command interpreter,
+      file operations, or a long bidirectional session; extend to seven days for low-frequency implants. With opaque
+      content, a first new endpoint after the response on the same or successor process is only a candidate and cannot
+      be described as recovered handoff material.
+data_requirements:
+- source_type: http-transaction
+  name:
+    zh: ('http_transaction', 'http_transaction')
+    en: ('http_transaction', 'http_transaction')
+  channel: Zeek http.log or secure web proxy
+  required_fields:
+  - ts
+  - uid
+  - host
+  - uri
+  - method
+  - status_code
+  - request_body_len
+  - response_body_len
+  - resp_fuids
+  - content_or_response_ref
+- source_type: endpoint-network
+  name:
+    zh: ('endpoint_network', 'endpoint_network')
+    en: ('endpoint_network', 'endpoint_network')
+  channel: Microsoft Defender XDR DeviceNetworkEvents or equivalent
+  required_fields:
+  - timestamp
+  - device_id
+  - remote_ip
+  - remote_port
+  - remote_url
+  - protocol
+  - initiating_process_unique_id
+  - action_type
+- source_type: endpoint-file
+  name:
+    zh: ('endpoint_file', 'endpoint_file')
+    en: ('endpoint_file', 'endpoint_file')
+  channel: Microsoft Defender XDR DeviceFileEvents or equivalent
+  required_fields:
+  - timestamp
+  - device_id
+  - action_type
+  - file_name
+  - folder_path
+  - sha1
+  - file_origin_url
+  - file_origin_ip
+  - initiating_process_unique_id
+- source_type: endpoint-process
+  name:
+    zh: ('endpoint_process', 'endpoint_process')
+    en: ('endpoint_process', 'endpoint_process')
+  channel: Microsoft Defender XDR DeviceProcessEvents or equivalent
+  required_fields:
+  - timestamp
+  - device_id
+  - process_unique_id
+  - initiating_process_unique_id
+  - file_name
+  - folder_path
+  - sha1
+  - process_command_line
+observables:
+- zh: 第一阶段返回地址/选择/配置或文件摘要后首次连接新目的地
+  en: A first-stage returned address, selection, configuration, or file digest precedes first contact with a new destination
+- zh: 同一进程谱系的新会话产生操作命令或文件结果
+  en: A new session in the same process lineage produces an operational command or file outcome
+correlation:
+  window:
+    zh: 初始零至六十分钟，延迟选择激活至少保留七日。
+    en: Initially zero to sixty minutes, retaining at least seven days for delayed selective activation.
+  dimensions:
+  - device_id
+  - initiating_process_unique_id
+  - process_unique_id
+  - sha1
+  - returned_endpoint
+  - remote_ip
+  - remote_url
+  - uid
+  - time
+false_positives:
+- zh: 更新器读取清单后使用 CDN、安装器、远程管理引导或云 agent 注册
+  en: Updater manifest followed by CDN use, installers, remote-management bootstrap, or cloud-agent registration
+blind_spots:
+- zh: TLS 响应不可见、内存配置/注入、谱系丢失或延迟超出保留期
+  en: Opaque TLS response, in-memory configuration or injection, lost lineage, or delay beyond retention
+tuning_guidance:
+  paragraphs:
+  - zh: 按签名发布者、软件产品、清单 URL、批准后继域和正常首次运行窗口建立谱系白名单，仍保留同一批准进程联系未登记新目的地的覆盖。把“下载后联网”与明确返回地址/选择、非正常子进程或操作结果组合，不使用固定 60 分钟作为跨环境事实。
+    en: Baseline lineage by signed publisher, software product, manifest URL, approved successor domain, and normal first-run
+      window while retaining coverage when an approved process contacts an unregistered new destination. Combine post-download
+      networking with an explicitly returned address or selection, abnormal child process, or operational outcome rather
+      than treating 60 minutes as a universal fact.
+evidence_refs:
+- REF-001052
+- REF-001053
+- REF-000639
+- REF-000632
+- REF-000604
+- REF-000598
+- REF-000475
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-10-04'
+  modified: '2026-10-04'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

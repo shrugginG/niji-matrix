@@ -1,0 +1,145 @@
+schema_version: 2.0.0
+type: evasion-subtechnique
+id: NJS-0214-002
+parent_ref: NJT-0214
+name:
+  zh: 粘贴消费者上下文截获
+  en: Paste-Consumer-Context Interception
+summary:
+  zh: 攻击者在正常粘贴应用的进程内截获剪贴板读取结果，使内容副本沿既有调用返回路径产生并首先归因于合法消费者。
+  en: An adversary intercepts clipboard results inside a normal paste-consuming process, creating the content copy on an existing
+    return path and initially attributing it to the legitimate consumer.
+aliases: []
+lineage:
+  attck_subtechnique_inherited: false
+definition_and_concept:
+  paragraphs:
+  - zh: 粘贴消费者上下文截获以内容副本的执行位置为稳定变量：攻击者把代码注入或加载到会正常读取剪贴板的应用，在 GetClipboardData、消息转换或平台等效粘贴路径上设置 hook，并在原调用者取得返回值时把同一内容复制到恶意记录链。Fortinet
+      的 QBot 实验显示注入模块早于 Notepad 接收粘贴内容，记录实际文本、进程路径和窗口标题，再 RC4 加密写入本地文件并由核心模块的传输线程处理。
+    en: Paste-Consumer-Context Interception uses the execution location of the content copy as its stable variable. The adversary
+      injects or loads code into an application that normally reads the clipboard, hooks GetClipboardData, message translation,
+      or a platform-equivalent paste path, and copies the same content into a malicious record chain as the original caller
+      receives the return value. Fortinet's QBot experiment shows an injected module capturing the text before Notepad receives
+      the paste, recording the actual text, process path, and window title, then RC4-encrypting it into a local file handled
+      by the core module's transmission thread.
+  - zh: 子项身份不是“使用进程注入”本身，也不是某个浏览器、邮件客户端或编辑器。必须证明受控代码位于正常剪贴板消费者内、对实际读取返回路径实施介入，并产生攻击者可用的内容副本。进程注入可另记 T1055，浏览器页面内容介入仍归 T1185；若只看到函数
+      detour 而没有剪贴板结果，则不达到本 Collection 子项完成点。
+    en: The child is not process injection by itself and is not a browser, mail client, or editor. It requires proof that
+      controlled code resided inside a normal clipboard consumer, interposed on an actual read return path, and produced an
+      adversary-usable content copy. Process injection may be separately labeled T1055, while browser-page content interposition
+      remains T1185. A function detour without a clipboard result does not reach this Collection child's completion point.
+stealth_characteristics:
+  paragraphs:
+  - zh: 粘贴消费者上下文截获让恶意读取与用户本来会触发的粘贴调用共享进程、线程时机和窗口上下文。仅按 GetClipboardData 调用者名称、签名或“是否为前台应用”判断时，活动看起来像编辑器、浏览器或其他合法应用自己的读取；独立剪贴板监视进程、listener
+      注册和固定轮询可以缺席。防守方必须检查调用栈、函数入口、模块或内存来源，并把返回内容的副本与后继日志相连。
+    en: Paste-Consumer-Context Interception makes the malicious read share the process, thread timing, and window context
+      of a paste call the user would have triggered anyway. Detection based only on the GetClipboardData caller name, signature,
+      or foreground status sees what appears to be the editor, browser, or another legitimate application's own read. A stand-alone
+      clipboard monitor, listener registration, and fixed polling can be absent. Defenders must inspect the call stack, function
+      entry, module or memory provenance, and connect the copied return content to a downstream log.
+  - zh: 寄生仍改变代码完整性和结果链。QBot 需要把注入模块放入多个目标进程并 hook GetClipboardData 与 TranslateMessage；采集内容带有被寄生进程路径和窗口标题，随后进入加密文件与传输线程。跨进程访问、内存写入、异常模块、inline/IAT
+      detour、非预期返回地址或同一内容指纹的第二次写入均可揭示介入。安全软件、DLP、无障碍、输入法、调试器和兼容性 shim 也可能合法插桩，不能把任何 hook 直接判恶。
+    en: Parasitism still changes code integrity and the outcome chain. QBot places an injected module into multiple target
+      processes and hooks GetClipboardData and TranslateMessage. Captured content carries the parasitized process path and
+      window title before entering an encrypted file and transmission thread. Cross-process access, memory writes, anomalous
+      modules, inline or IAT detours, unexpected return addresses, or a second write with the same content fingerprint can
+      reveal interposition. Security software, DLP, accessibility, input methods, debuggers, and compatibility shims may also
+      instrument applications legitimately, so a hook alone is not a malicious verdict.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 判定需要三段闭合：恶意或未批准代码进入正常剪贴板消费者并改变读取路径；用户或应用发生一次成功粘贴读取；返回内容被复制到攻击者控制的内存、日志或传输结果。仅有进程注入属于 T1055 前提，只有键盘或消息捕获属于 T1056，只有浏览器内页面或请求读取属于
+      T1185。若攻击者进程直接调用 GetClipboardData 而没有寄生正常消费者，则仍是父级但不是本子项。
+    en: 'Classification requires a closed three-part chain: malicious or unapproved code enters a normal clipboard consumer
+      and changes its read path; a user or application performs a successful paste read; and the returned content is copied
+      into adversary-controlled memory, a log, or a transfer result. Process injection alone is a T1055 prerequisite, keyboard
+      or message capture alone remains T1056, and in-browser page or request reading remains T1185. A stand-alone adversary
+      process calling GetClipboardData directly remains parent behavior rather than this child.'
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: 银行木马或信息窃取程序把模块注入用户经常粘贴账号、密码或业务文本的应用，并等待真实粘贴动作触发已有剪贴板读取。介入代码复制返回内容、附加进程与窗口上下文，再把记录交给核心模块。QBot 在 Notepad 中复制和粘贴“账户”和“密码”文本的实验直接显示内容在应用前被
+        hook 捕获，并进入后继加密文件与传输链，构成本子项的结论级实例。
+      en: A banking trojan or information stealer injects a module into applications where the user commonly pastes account
+        values, passwords, or business text and waits for a real paste action to trigger the existing clipboard read. Interposition
+        code copies the return value, annotates it with process and window context, and passes the record to a core module.
+        QBot's experiment copying and pasting account and password text into Notepad directly shows the hook capturing content
+        before the application and placing it into an encrypted file and transfer chain, providing a conclusion-level instance
+        of this child.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者需要对一个或多个剪贴板消费者拥有足够的写入、加载、插件或运行时控制权限，理解目标架构与函数路径，并让 hook 不破坏正常粘贴。它可以选择高价值应用或广泛注入，却承担模块不兼容、函数完整性检查、跨进程遥测和进程崩溃风险。用户不执行粘贴时不会产生内容结果；加密本地记录或交给核心模块还会留下跨进程、文件或
+          IPC 边。
+        en: The adversary needs sufficient write, load, plug-in, or runtime control over one or more clipboard consumers,
+          knowledge of target architecture and function paths, and a hook that preserves normal paste behavior. It can select
+          high-value applications or inject broadly but incurs module incompatibility, function-integrity checks, cross-process
+          telemetry, and crash risk. No content outcome occurs if the user never pastes. Encrypting a local record or passing
+          it to a core module adds cross-process, file, or IPC edges.
+    defender_model:
+      paragraphs:
+      - zh: 防守方需要不可变进程启动键、source-target 注入或模块加载谱系、目标进程内函数入口与调用栈完整性、成功剪贴板返回和后继写入。进程注入分析可以证明跨进程写入与调度，却不单独证明剪贴板内容结果；本子项分析还必须连接
+          GetClipboardData 或等效调用的返回状态与日志、IPC 或网络结果。没有内存或 call-stack 传感器时，可疑应用内部读取只能保持未解析。批准的 EDR、DLP、无障碍和调试工具例外必须绑定精确包、版本、owner、目标进程和用途。
+        en: Defenders need an immutable process-start key, source-to-target injection or module-load lineage, function-entry
+          and call-stack integrity inside the target, a successful clipboard return, and a downstream write. Process-injection
+          analytics can establish cross-process write and dispatch but do not by themselves prove a clipboard-content result.
+          This child additionally requires a GetClipboardData or equivalent return joined to a log, IPC, or network outcome.
+          Without memory or call-stack sensors, suspicious in-application reads remain unresolved. Exceptions for approved
+          EDR, DLP, accessibility, and debugging tools must bind exact package, version, owner, target process, and purpose.
+stealth_mechanisms:
+- mechanism_ref: NM-FD
+  role: primary
+  summary:
+    zh: 让恶意内容副本继承正常粘贴应用的进程与交互特征
+    en: Make the malicious content copy inherit a normal paste application's process and interaction features
+  analysis:
+    paragraphs:
+    - zh: 攻击者不从独立监视程序发起重复读取，而在会正常读取剪贴板的应用内 hook 返回路径；内容副本因而与合法进程名、前台窗口和用户粘贴时机同时出现。QBot 的记录明确保存 Notepad 路径、窗口标题和实际内容，证明恶意复制寄生在正常消费者特征上。仅按签名、进程名或前台状态分类会降低区分力；跨进程来源、函数
+        detour、异常模块/私有内存和第二结果链仍可拆穿寄生，所以机理置信度为 medium。
+      en: The adversary avoids repeated reads from a stand-alone monitor and instead hooks the return path inside an application
+        that normally reads the clipboard. The malicious content copy therefore appears with a legitimate process name, foreground
+        window, and user paste timing. QBot's record explicitly preserves the Notepad path, window title, and actual content,
+        establishing parasitism on normal consumer features. Classification based only on signature, process name, or foreground
+        status loses discrimination. Cross-process provenance, a function detour, an anomalous module or private memory, and
+        a second outcome chain can still expose the parasite, supporting medium confidence.
+  confidence: medium
+  evidence_refs:
+  - REF-001098
+  - REF-000362
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000252
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000222
+    - MIT-000102
+evidence:
+  claim_refs:
+  - CLM-001075
+  case_refs:
+  - CASE-000327
+  reference_refs:
+  - REF-001098
+  - REF-000362
+  - REF-001095
+  - REF-001099
+research:
+  limitations:
+    paragraphs:
+    - zh: QBot 来源提供动态实验、明确内容和后继处理，但只覆盖一个 Windows 家族及其 2020 年样本。GetClipboardData hook 与 TranslateMessage hook 同时存在，来源没有量化单独剪贴板介入对告警率的影响。不同编译器、应用更新、EDR、自保护、合法
+        DLP 和辅助功能会改变函数入口与调用栈；没有内容结果时不得从注入或 hook 能力推断已完成本子项。
+      en: The QBot source supplies a dynamic experiment, explicit content, and downstream handling but covers one Windows
+        family and its 2020 sample. GetClipboardData and TranslateMessage hooks coexist, and the source does not quantify
+        the independent alert-rate effect of clipboard interposition. Compilers, application updates, EDR, self-protection,
+        legitimate DLP, and accessibility change function entries and call stacks. Without a content outcome, injection or
+        hook capability cannot establish completion of this child.
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-10-05'
+  modified: '2026-10-05'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

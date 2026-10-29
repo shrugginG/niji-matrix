@@ -1,0 +1,120 @@
+handoff_schema_version: 2.0.0
+type: technique-research-handoff
+batch_ref: BATCH-TA0004-005
+work_item_ref: WORK-TA0004-T1037
+temporary_key_prefix: B4-005-T1037
+candidate:
+  source_type: attack
+  source_attack_id: T1037
+  name: {zh: 启动或登录初始化脚本, en: Boot or Logon Initialization Scripts}
+recommendation:
+  decision: retain
+  confidence: high
+  rationale:
+    paragraphs:
+    - zh: ATT&CK Enterprise 19.1 将 T1037 映射到 Persistence 与 Privilege Escalation，并明确限定只有“某些”初始化脚本因以更高权限运行而可能提权。因此 T1037 在 TA0004 下独立准入，但只有攻击者控制的脚本内容或专用 hook 可由低于结果的 writer/pre-state 影响，随后被更高权限生命周期 interpreter 消费并完成首个新获准操作时，才能确认提权；同用户登录脚本、必须 root 写且以 root 执行的 RC 脚本或仅有高权限父进程均不足。
+      en: ATT&CK Enterprise 19.1 maps T1037 to both Persistence and Privilege Escalation while expressly limiting elevation to some initialization scripts that run with higher privileges. T1037 is therefore independently admitted under TA0004, but elevation is confirmed only when adversary-controlled script content or a script-specific hook is influenceable by a writer or pre-state below the result, is later consumed by a higher-authority lifecycle interpreter, and completes the first newly authorized operation. A same-user logon script, an RC script that requires root to write and runs as root, or a privileged parent process alone is insufficient.
+    - zh: 直接对象仍是 NJT-0085 已建模的生命周期脚本内容；TA0003 与 TA0004 的差别是恢复结果和权限增量结果，而不是脚本 stable key。复制 NJT 会产生同一 script path、content version、writer、boot/logon 和 interpreter 键，所以应扩展复用 NJT-0085、两项现有 NJS 与 DET-000066/NJA-000045/MIT-000065，并新建独立 DEC-TA0004-T1037。
+      en: The direct object remains the lifecycle script content already modeled by NJT-0085. TA0003 and TA0004 differ in restored-execution versus authority-gain outcome, not in script stable keys. Duplicating the NJT would repeat script path, content version, writer, boot or logon, and interpreter keys, so NJT-0085, its two NJS objects, and DET-000066, NJA-000045, and MIT-000065 should be extended and reused with a new independent DEC-TA0004-T1037.
+formal_object_resolution:
+  technique_ref: NJT-0085
+  action: extend-cross-tactic
+  add_tactic_ref: TA0004
+  canonical_decision_ref_remains: DEC-TA0003-T1037
+  independent_decision_to_create: DEC-TA0004-T1037
+  subtechnique_refs_reused: [NJS-0085-001, NJS-0085-002]
+  new_subtechniques: []
+content_extension_plan:
+  parent:
+  - Add TA0004 to classification while preserving DEC-TA0003-T1037 as canonical origin.
+  - Add paired paragraphs to all required fields, mechanism analyses, taxonomy, and limitations defining the authority-result gate and its negative cases.
+  - Require writer or pre-state authority, actual interpreter token or security context, effective-authority delta, and first newly authorized outcome.
+  children:
+  - {ref: NJS-0085-001, extension: retain line-level established-content identity and require the executed changed line to cross an authority boundary; existing appliance incidents support inline persistence but not elevation}
+  - {ref: NJS-0085-002, extension: retain central version-to-multiple-client topology and evaluate authority delta per client; network logon scripts commonly run with assigned-user privileges and fan-out alone is not elevation}
+  defense:
+  - Extend DET-000066 with distinct restored-execution and privilege-escalation-chain outputs.
+  - Extend NJA-000045 with writer/pre-state authority, interpreter context, delta comparison, and first privileged outcome at each endpoint.
+  - Extend MIT-000065 with explicit separation of script writer and privileged interpreter authority and rollback of resulting privileged effects.
+stealth_mechanisms:
+- mechanism_ref: NM-ST
+  role: primary
+  confidence: medium
+  causal_chain:
+    zh: 攻击者先改变持久脚本内容并离开，脚本在以后启动或登录才由高权限 interpreter 消费；写入、静置、权限转换和结果跨会话/重启分离；短窗口只见较早 writer 或后来的正常 privileged interpreter，无法计算 authority delta；提权链因而被稀释为旧文本变化和正常初始化。content version、boot/logon ID、token 与结果仍可恢复因果。
+    en: The attacker changes durable script content and leaves before a later boot or logon consumes it under a privileged interpreter. Mutation, dormancy, authority transition, and outcome separate across sessions or reboots. A short window sees only the earlier writer or later normal privileged interpreter and cannot calculate authority delta, diluting the elevation chain into an old text change plus normal initialization. Content version, boot or logon ID, token, and outcome can still recover causality.
+  evidence_refs: [REF-000154, REF-000157, REF-000176]
+- mechanism_ref: NM-BT
+  role: secondary
+  confidence: medium
+  causal_chain:
+    zh: init、登录宿主或 GPO 客户端以自己的身份解释内容并创建子进程；执行侧来源显示正常系统或登录 consumer，原 writer 只在早先文件、配置或控制面审计中；只看当前进程谱系会把新获准操作归因给 trusted lifecycle host；brokered provenance 隐藏攻击者控制的脚本与权限转换。writer—version—consumer—token—outcome 关联仍可揭示。
+    en: Init, a logon host, or a GPO client interprets content under its own identity and creates children. Execution provenance shows a normal system or logon consumer while the original writer remains in earlier file, configuration, or control-plane audit. Current process lineage alone attributes the newly authorized operation to a trusted lifecycle host, so brokered provenance hides adversary-controlled script and authority transition. A writer-to-version-to-consumer-to-token-to-outcome join can still reveal it.
+  evidence_refs: [REF-000154, REF-000157, REF-000176]
+- mechanism_ref: NM-FD
+  role: secondary
+  confidence: medium
+  causal_chain:
+    zh: 攻击者把少量命令放入既有合法脚本，保留路径、所有者与大部分正文；清单和信誉规则看不到新对象，而实际权限效果只在以后 interpreter token 与子进程结果中出现；内容身份借用与跨层权限信息使恶意行更难从正常初始化区分，形成特征伪装。逐行 diff、writer 与实际执行行仍能反制。
+    en: The attacker places a small command difference in an established legitimate script while preserving path, owner, and most body. Inventory and reputation rules see no new object, while the authority effect appears only later in interpreter token and child outcome. Borrowed content identity plus cross-layer authority information makes the malicious line harder to distinguish from normal initialization, producing Feature Disguise. Line-level difference, writer, and actual executed line remain counter-keys.
+  evidence_refs: [REF-000154, REF-000155, REF-000156, REF-000157]
+taxonomy:
+  attack_subtechnique_count: 5
+  explicit_coverage_complete: true
+  second_pass_complete: true
+  final_formal_child_count: 2
+  new_formal_child_count: 0
+  formal_refs: [NJS-0085-001, NJS-0085-002]
+  parent_core: [whole-script replacement or creation, writer-to-interpreter authority-result gate, ATT&CK platform hook and medium implementations]
+  adjacent: [script-signing or policy bypass, permission modification, trusted deployment-chain compromise]
+  deferred: [early-boot pre-sensor execution, conditional host or user branches, path or name mimicry without inline identity proof]
+  rejected: [platform language medium or log-field partitions]
+shared_library_resolutions:
+- library: references
+  decision: extend-and-reuse
+  refs: [REF-000154, REF-000155, REF-000156, REF-000157, REF-000175, REF-000176]
+  rationale: Extend REF-000154 with the TA0004 higher-privilege condition and negative gate, and REF-000176 with the Local System startup-script execution context; reuse narrower incident, detection, and fan-out sources without claiming they prove elevation.
+- library: claims
+  decision: reuse-and-create
+  reuse_refs: [CLM-000327, CLM-000328, CLM-000329, CLM-000330, CLM-000331, CLM-000354, CLM-000355]
+  create_candidates: [B4-005-T1037-CLM-01, B4-005-T1037-CLM-02]
+  rationale: Create one atomic TA0004 relevance claim and one dual-output detection claim while reusing persistence, mechanism, and child-existence claims.
+- library: cases
+  decision: reuse
+  refs: [CASE-000058, CASE-000059]
+  rationale: Existing cases prove inline mutation and boot execution but do not expose a lower-authority writer-to-higher-authority result chain.
+- library: detections
+  decision: extend-and-reuse
+  refs: [DET-000066]
+  rationale: Script mutation, content version, lifecycle ID, and interpreter remain the stable keys; add authority-delta output rather than duplicate the strategy.
+- library: analytics
+  decision: extend-and-reuse
+  refs: [NJA-000045]
+  rationale: Add writer and pre-state authority, interpreter token, effective-authority delta, and first newly authorized operation to the existing content-to-execution lineage.
+- library: mitigations
+  decision: extend-and-reuse
+  refs: [MIT-000065]
+  rationale: Existing write control, signed baselines, interpreter constraints, central governance, and recovery apply; add an explicit writer-interpreter authority boundary and privileged-result rollback.
+- library: relationships
+  decision: defer
+  refs: []
+  rationale: tactic_refs and an independent decision express cross-tactic ownership, with no additional directional semantic needing a REL.
+evidence_coverage:
+  parent_behavior_tactic_and_privilege_condition: [REF-000154]
+  lifecycle_mutation_execution_join: [REF-000157]
+  inline_axis_and_cases: [REF-000154, REF-000155, REF-000156]
+  central_fanout_axis: [REF-000175, REF-000176]
+  privileged_interpreter_context: [REF-000154, REF-000176]
+research:
+  limitations:
+    paragraphs:
+    - zh: ATT&CK 父页直接支持 TA0004 映射和“某些脚本以更高权限运行”的可能性，Microsoft 文档直接说明 GPO startup script 以 Local System 运行；但现有公开事件没有完整给出较低权限 writer、具体脚本版本、高权限 interpreter token 与首个新获准操作的逐事件链。两项 Niji 子技术的匿迹机理继续为 medium，TA0004 结果必须由环境遥测证明。
+      en: The ATT&CK parent directly supports TA0004 mapping and the possibility that some scripts run with higher privileges, and Microsoft directly documents Group Policy startup scripts running as Local System. Existing public incidents, however, do not provide a complete event chain from lower-authority writer through a specific script version and privileged interpreter token to the first newly authorized operation. Evasion mechanisms for both Niji children remain medium, and local telemetry must prove the TA0004 outcome.
+    - zh: 五项实现的正常权限关系并不一致：网络登录脚本通常按被分配用户运行，RC 脚本通常要求 root 修改，Login Hook 创建本身要求管理员权限。没有 writer/pre-state 与实际 consumer/result 对照时只能确认脚本异常或 Persistence；中央多端扇出、root 父进程、系统路径和启动阶段都不能单独替代权限增量证明。
+      en: Normal authority relationships differ across the five implementations. Network logon scripts commonly run as their assigned user, RC scripts commonly require root to modify, and creating a Login Hook itself requires administrator authority. Without comparison of writer or pre-state to actual consumer and result, only a script anomaly or Persistence can be confirmed. Central fan-out, a root parent, a system path, or boot timing alone cannot substitute for proof of authority gain.
+  canonical_prose_bulk_generated: false
+  unresolved_hypotheses: [early-boot pre-sensor execution, conditional host or user branches, script path or name mimicry beyond inline identity]
+integration:
+  status: integrated-review
+  planned_actions: [create independent decision, extend NJT-0085 and two existing NJS, create two claims, extend REF-000154 and REF-000176, extend DET-000066 and NJA-000045, extend MIT-000065, rebuild bundle, run bilingual Web QA]
+  completed_actions: [created DEC-TA0004-T1037, extended NJT-0085 and NJS-0085-001 through NJS-0085-002, created and consumed CLM-000544 through CLM-000545, extended REF-000154 and REF-000176, extended DET-000066 and NJA-000045, extended MIT-000065, rebuilt NJT-0085 bundle, passed bilingual Web QA]

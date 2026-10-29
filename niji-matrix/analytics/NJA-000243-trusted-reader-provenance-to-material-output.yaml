@@ -1,0 +1,164 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000243
+strategy_ref: DET-000204
+name:
+  zh: 可信 reader 来源与认证材料输出差分
+  en: Trusted Reader Provenance and Authentication-Material Output Differential
+summary:
+  zh: 把受信 reader 的代码来源、敏感目标访问和输出契约违例连接到认证材料结果。
+  en: Join trusted-reader code provenance, sensitive-target access, and output-contract violation to authentication-material
+    outcome.
+domains:
+- enterprise
+platforms: []
+logic:
+  paragraphs:
+  - zh: 对 credential_target_inventory 中的每个 allowed_reader 建立预期 binary hash、signer、service config、modules、memory backing、parent/caller、user、target、rights
+      和 output contract。受信 reader 接近敏感目标时，向前十五分钟查 remote thread/APC、process tampering、unsigned or novel module、private executable
+      region、binary/config change 或异常调用者，向后三十分钟查 dump、hive copy、archive 与 egress。reader 身份正常但 provenance 或 output contract
+      偏离时输出 trusted_reader_deviation；只有输出被确认含认证材料时升级为 repurposed_reader_extraction。没有前置注入遥测时保留 output-led 推断。
+    en: For every allowed_reader in the credential target inventory, baseline expected binary hash, signer, service configuration,
+      modules, memory backing, parent or caller, user, target, rights, and output contract. When a trusted reader approaches
+      a sensitive target, look back fifteen minutes for a remote thread or APC, process tampering, unsigned or novel module,
+      private executable region, binary or configuration change, or anomalous caller and look forward thirty minutes for a
+      dump, hive copy, archive, and egress. Emit trusted_reader_deviation when reader identity is normal but provenance or
+      output contract differs. Upgrade to repurposed_reader_extraction only when output is confirmed to contain authentication
+      material. Preserve an output-led inference when precursor injection telemetry is absent.
+data_requirements:
+- source_type: process-provenance-and-injection
+  channel: Sysmon 1/7/8/10/25, EDR memory and module telemetry, service or application control
+  required_fields:
+  - event.timestamp
+  - host.id
+  - process.guid
+  - process.image
+  - process.hash
+  - signer
+  - parent.guid
+  - caller.guid
+  - module.path
+  - module.hash
+  - module.signer
+  - memory.region_type
+  - memory.protection
+  - injection.technique
+  - service.name
+  - configuration.version
+  name:
+    zh: 进程来源与注入
+    en: Process provenance and injection
+- source_type: sensitive-target-access
+  channel: EDR or OS process/object access
+  required_fields:
+  - event.timestamp
+  - host.id
+  - source_process.guid
+  - target_process.guid
+  - object.path
+  - access.mask
+  - call_trace
+  - user.id
+  - logon.id
+  - result
+  name:
+    zh: 敏感目标访问
+    en: Sensitive-target access
+- source_type: reader-output-contract
+  channel: CMDB, security-tool inventory, backup workflow and change records
+  required_fields:
+  - reader.id
+  - allowed.target
+  - allowed.rights
+  - allowed.output_path
+  - allowed.destination
+  - owner
+  - approval.id
+  - valid.from
+  - valid.to
+  name:
+    zh: Reader 输出契约
+    en: Reader output contract
+- source_type: material-output
+  channel: EDR file and network plus trusted content classifier
+  required_fields:
+  - event.timestamp
+  - host.id
+  - process.guid
+  - output.path
+  - output.hash
+  - material.class
+  - account.scope
+  - destination
+  - bytes.out
+  - parser.result
+  name:
+    zh: 材料输出
+    en: Material output
+observables:
+- zh: 受信 reader 敏感访问
+  en: Trusted-reader sensitive access
+- zh: 注入或私有可执行内存
+  en: Injection or private executable memory
+- zh: 新模块或二进制差异
+  en: Novel module or binary change
+- zh: 输出契约违例
+  en: Output-contract violation
+- zh: 认证材料输出
+  en: Credential-material output
+correlation:
+  window:
+    zh: 读取前十五分钟恢复 reader 来源和注入状态，读取后三十分钟关联输出契约违例与材料结果。
+    en: Recover reader provenance and injection state during fifteen minutes before access and join output-contract violations
+      and material outcomes for thirty minutes afterward.
+  dimensions:
+  - host.id
+  - process.guid
+  - process.hash
+  - signer
+  - parent.guid
+  - caller.guid
+  - module.hash
+  - target_process.guid
+  - object.path
+  - user.id
+  - logon.id
+  - output.hash
+  - destination
+false_positives:
+- zh: EDR 内容更新、诊断插件、受控红队、崩溃处理器、软件升级、备份代理和供应商支持可改变模块、内存与输出。只有准确版本、发布签名、批准变更、reader-target-output 三元组和限定窗口能降权；签名正常不能单独排除。
+  en: EDR content updates, diagnostic plug-ins, authorized red teaming, crash handlers, software upgrades, backup agents,
+    and vendor support can change modules, memory, and output. Down-weight only an exact version, publisher signature, approved
+    change, reader-target-output tuple, and bounded window. A valid signature alone cannot exclude.
+blind_spots:
+- zh: 同进程漏洞利用、内核/驱动执行、传感器信任链被攻陷、反射加载无模块事件和极短驻留可能没有前置线索。调用栈采集会受性能和隐私限制，供应商工具自身可能产生加密 dump。若只见可信 reader 和输出而无法证明控制，只能保持 strongly-inferred。
+  en: In-process exploitation, kernel or driver execution, compromised sensor trust, reflective loading without a module event,
+    and very brief residence can omit precursor evidence. Call-stack collection has performance and privacy limits, and a
+    vendor tool can create encrypted dumps. A trusted reader plus output without proof of control remains strongly inferred.
+tuning_guidance:
+  paragraphs:
+  - zh: 不按 svchost、EDR 或签名工具全局放行；按每个 reader 的正常 target、rights、caller、module 和 output 建图。优先首次私有可执行区、未知 module、异常服务配置、危险 LSASS
+      rights 和未登记 output。生产环境用经过批准的模拟验证告警，并将材料分类器放在隔离响应工作流中。
+    en: Never globally allow svchost, an EDR, or a signed utility. Graph normal target, rights, caller, module, and output
+      for each reader. Prioritize first private executable region, unknown module, anomalous service configuration, dangerous
+      LSASS rights, and unregistered output. Validate alerts with authorized simulation and keep material classification inside
+      an isolated response workflow.
+  - zh: 立即隔离受信 reader 所在主机并停止相关服务的非必要输出，保全内存、模块、二进制与配置后再重建可信版本。按确认材料范围轮换凭据和撤销 session；若 reader 属于 EDR、备份或身份基础设施，还需轮换其管理密钥、检查同类节点和更新供应链信任。恢复后验证旧
+      binary/module 被拒绝且 reader-output contract 已恢复。
+    en: Isolate the trusted reader's host and stop unnecessary service output, preserving memory, module, binary, and configuration
+      before rebuilding a trusted version. Rotate credentials and revoke sessions according to confirmed material scope. If
+      the reader belongs to EDR, backup, or identity infrastructure, also rotate management keys, inspect peer nodes, and
+      restore supply-chain trust. Verify old binaries or modules are rejected and the reader-output contract is restored before
+      closure.
+evidence_refs:
+- REF-000367
+- REF-000366
+- REF-000803
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-09-27'
+  modified: '2026-09-27'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

@@ -1,0 +1,170 @@
+schema_version: 2.0.0
+type: mitigation
+id: MIT-000188
+name:
+  zh: 应用 Token 暴露面与取得路径控制
+  en: Application Token Exposure-Surface and Acquisition-Path Control
+summary:
+  zh: 限制 token 返回接收者、持久副本和运行态暴露，以最小 scope、短寿命和 sender constraint 降低被取材料的后继价值。
+  en: Constrain token-return recipients, persisted copies, and runtime exposure while reducing downstream value through least
+    scope, short lifetime, and sender constraint.
+description:
+  paragraphs:
+  - zh: 本缓解把 issuer return、持久 object 与 runtime consumer 作为三个控制面。组织应限制谁能请求和接收 token，取消不必要的自动挂载与长期副本，隔离会接触 secrets 的 job/process，并使
+      token 具有最小 audience/scope、短寿命、刷新旋转和可行的 sender constraint。检测只保留 token reference/family 或受控 HMAC fingerprint，原始值保持在授权组件和受限事件证据中。
+    en: This mitigation treats issuer return, persisted object, and runtime consumer as three control planes. Organizations
+      should constrain who can request and receive tokens, remove unnecessary automount and long-lived copies, isolate jobs
+      and processes that receive secrets, and use least audience and scope, short lifetime, refresh rotation, and sender constraint
+      where feasible. Detection retains token reference or family or a controlled HMAC fingerprint, while raw values remain
+      within authorized components and restricted incident evidence.
+domains:
+- enterprise
+measures:
+- key: approved-token-recipient
+  name:
+    zh: Token 请求与接收者绑定
+    en: Token request and recipient binding
+  control_type: preventive
+  description:
+    paragraphs:
+    - zh: 将 workload identity、client、redirect、grant/consent、audience/scope 与 owner/用途绑定；限制 metadata endpoint 可达进程和容器，OAuth
+        使用 exact redirect、PKCE 与高风险管理员 consent，并记录 request—response 接收者。
+      en: Bind workload identity, client, redirect, grant or consent, audience or scope to owner and purpose. Restrict processes
+        and containers able to reach metadata endpoints, use exact redirects, PKCE, and administrator consent for high-risk
+        OAuth, and record the request-to-response recipient.
+- key: minimal-persisted-token-material
+  name:
+    zh: 持久 Token 最小化与 Reader 隔离
+    en: Persisted-token minimization and reader isolation
+  control_type: exposure-reduction
+  description:
+    paragraphs:
+    - zh: 对不需要 Kubernetes API 的 Pod 设置 automountServiceAccountToken false，优先短期投影 token，避免 token 写入仓库、工作区和长期 cache；Secret/文件
+        reader 按 workload、namespace、job 与 owner 最小授权并记录读取。
+      en: Set automountServiceAccountToken to false for Pods not needing the Kubernetes API, prefer short-lived projected
+        tokens, and avoid writing tokens into repositories, workspaces, or long-lived caches. Minimize and audit Secret or
+        file readers by workload, namespace, job, and owner.
+- key: isolated-runtime-secret-boundary
+  name:
+    zh: 运行态 Secret 隔离与可信代码约束
+    en: Runtime secret isolation and trusted-code constraint
+  control_type: preventive
+  description:
+    paragraphs:
+    - zh: 不让未受信 PR、依赖或 action 与高权 secrets 共处同一 runner/job；使用隔离 runner、immutable digest、最小 GITHUB_TOKEN/job permission、受保护进程和
+        ptrace/debug 限制，并避免把 token 放入 command line 或广域 environment。
+      en: Do not co-locate untrusted pull requests, dependencies, or actions with privileged secrets in one runner or job.
+        Use isolated runners, immutable digests, least GITHUB_TOKEN and job permissions, protected processes, and ptrace or
+        debug restrictions, and avoid command-line or broad environment exposure.
+- key: bounded-and-sender-constrained-token
+  name:
+    zh: 最小权限、短寿命与发送者约束
+    en: Least privilege, short lifetime, and sender constraint
+  control_type: cost-increasing
+  description:
+    paragraphs:
+    - zh: 将 access token 限制到具体 audience/resource/action 和最小 scope，缩短 TTL；公共 client 的 refresh token 采用旋转或 sender constraint，并在可行处使用
+        DPoP/mTLS 或 workload/device binding。绑定不能防止 token 值被复制，也必须保护对应私钥。
+      en: Restrict access tokens to specific audiences, resources, actions, and least scope with shorter TTLs. Use refresh-token
+        rotation or sender constraint for public clients and DPoP, mutual TLS, or workload or device binding where feasible.
+        Binding does not prevent copying the token value and must include protection of the corresponding private key.
+- key: privacy-preserving-token-lineage
+  name:
+    zh: 隐私保护 Token 谱系
+    en: Privacy-preserving token lineage
+  control_type: detective-support
+  description:
+    paragraphs:
+    - zh: 在 issuer、workload、object 和 resource 侧保留 request ID、token family/reference、jti 或受控 HMAC fingerprint、client/workload、audience/scope、reader/recipient、有效期和结果；禁止把
+        raw token 写入 SIEM、命令行或调试日志。
+      en: Retain request ID, token family or reference, jti or controlled HMAC fingerprint, client or workload, audience or
+        scope, reader or recipient, validity, and outcome across issuer, workload, object, and resource planes. Prohibit raw
+        tokens in SIEM, command lines, and debug logs.
+applications:
+- target_ref: NJT-0178
+  use:
+    paragraphs:
+    - zh: 为每类应用 token 建立从 issuer 到 recipient、material location、consumer 与 resource 的清单，逐层减少接收者和副本，并以 token family/reference
+        支持取得调查；完整撤销与传播验证由 MIT-000052 的扩展应用承担。
+      en: Inventory each application-token class from issuer through recipient, material location, consumer, and resource,
+        reducing recipients and copies at every layer and supporting acquisition investigations with token family or reference.
+        Complete revocation and propagation verification are handled by the proposed MIT-000052 extension.
+  expected_effect:
+    paragraphs:
+    - zh: 缩小 token 可见位置和可读主体，使取得行为更常触发 request/reader/runtime 差异；若仍被复制，最小 scope、短寿和 binding 降低后继风险并提供关联键。
+      en: Shrink token-visible locations and readers so acquisition more often creates request, reader, or runtime differences.
+        If copying still occurs, least scope, short lifetime, and binding reduce successor risk and provide correlation keys.
+  limitations:
+    paragraphs:
+    - zh: 合法应用、自动化和第三方集成必须获得 token；同一受信 workload 或供应商被控时身份外观仍正常，旧平台可能不支持 sender constraint 或稳定 token reference。
+      en: Legitimate applications, automation, and third-party integrations must receive tokens. Compromise of the trusted
+        workload or vendor preserves normal identity appearance, and legacy platforms may lack sender constraint or stable
+        token references.
+- target_ref: NJS-0178-001
+  use:
+    paragraphs:
+    - zh: 固定可请求 IMDS/token endpoint 的 workload/process、允许 audience/scope、client/redirect 和 grant owner；高权返回要求 code provenance、JIT
+        或管理员批准，并拒绝不明 recipient。
+      en: Pin workloads and processes permitted to request IMDS or token endpoints, allowed audience and scope, client and
+        redirect, and grant owner. High-privilege returns require code provenance, JIT or administrator approval, and rejection
+        of unknown recipients.
+  expected_effect:
+    paragraphs:
+    - zh: 恶意代码不能仅凭进入任意 workload 或诱导宽 consent 就静默取得高权 token，异常 request/recipient 也形成审计差。
+      en: Malicious code cannot silently obtain privileged tokens merely by entering any workload or inducing broad consent,
+        and anomalous requests or recipients create audit differences.
+  limitations:
+    paragraphs:
+    - zh: 同 process 恶意依赖可能继承所有正常前提；metadata 服务调用归因不足、业务 redirect 迁移和自动扩缩容会增加策略复杂度。
+      en: A malicious dependency in the same process can inherit all legitimate prerequisites, while weak metadata-call attribution,
+        business redirect migration, and autoscaling complicate policy.
+- target_ref: NJS-0178-002
+  use:
+    paragraphs:
+    - zh: 清点并删除不必要 token 文件/Secret/cache，关闭无需求 Pod 的自动挂载，使用短期投影和最小 reader；CI 工作区和仓库扫描同时检查意外 token 副本并立即轮换。
+      en: Inventory and remove unnecessary token files, Secrets, and caches, disable automatic mounts for Pods without need,
+        and use short-lived projection with least readers. Scan CI workspaces and repositories for accidental token copies
+        and rotate them immediately.
+  expected_effect:
+    paragraphs:
+    - zh: token 的持久副本和共享挂载减少，恶意 reader 更难找到材料且更易偏离 exact reader 清单；短期 token 限制工件泄露窗口。
+      en: Persisted token copies and shared mounts decline, making material harder to find and malicious readers more likely
+        to deviate from exact-reader inventories, while short-lived tokens limit artifact exposure windows.
+  limitations:
+    paragraphs:
+    - zh: 应用可能要求本地 cache 或离线运行；文件 0600 仍允许同 UID 恶意代码读取，Secret manager 本身被控时访问控制失效。
+      en: Applications may require local cache or offline operation. Mode 0600 still permits malicious code under the same
+        UID, and compromise of the secret manager defeats its access controls.
+- target_ref: NJS-0178-003
+  use:
+    paragraphs:
+    - zh: 用隔离 runner 和 immutable action/package digest 分离未受信代码与 token consumer，收窄 process memory/debug 权限和 environment 范围；高权
+        token 仅在批准 step 内按需注入并随 job 终止。
+      en: Separate untrusted code from token consumers with isolated runners and immutable action or package digests, constrain
+        process-memory and debug authority and environment scope, and inject privileged tokens only into approved steps for
+        the job lifetime.
+  expected_effect:
+    paragraphs:
+    - zh: 攻击者必须破坏更强 runner/job 隔离或生成明显的 runtime/第二输出差异，token 在内存中的暴露时间与主体集合缩小。
+      en: The adversary must defeat stronger runner or job isolation or create conspicuous runtime and second-output differences,
+        while token exposure time and readers in memory shrink.
+  limitations:
+    paragraphs:
+    - zh: 同一批准 step 的恶意依赖仍可读取注入 token，内核控制可绕过 process 隔离；过度拆分 runner 会增加成本和构建延迟。
+      en: A malicious dependency in the approved step can still read an injected token, kernel control can bypass process
+        isolation, and excessive runner separation increases cost and build latency.
+evidence_refs:
+- REF-000810
+- REF-000811
+- REF-000812
+- REF-000813
+- REF-000814
+- REF-000816
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-09-27'
+  modified: '2026-09-27'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

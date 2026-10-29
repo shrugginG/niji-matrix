@@ -1,0 +1,50 @@
+schema_version: "2.0.0"
+type: detection-analytic
+id: NJA-000134
+strategy_ref: DET-000132
+name: {zh: 防火墙姿态—拒绝/放行结果差分, en: Firewall Posture–Deny/Allow Outcome Differential}
+summary: {zh: 识别宽范围防火墙关停后多个原应拒绝会话同时被允许的控制缺口。, en: Identify broad firewall disablement followed by multiple sessions previously expected to be denied becoming allowed.}
+domains: [enterprise]
+platforms: []
+logic:
+  paragraphs:
+    - zh: 以资产、接口、zone、profile 和绑定的云资源为键保存批准的有效防火墙基线，包含启用状态、默认动作、策略版本、规则优先级与受控范围。将服务或 profile 停用、默认拒绝改为允许、宽范围规则删除、云安全组解绑和设备 ACL 关闭标准化为变更事务，保留 actor_id、request_id、old/new state、approval_id 与版本；按同一范围重算受影响的 deny 集合，不用命令行字符串替代生效状态。
+      en: Store an approved effective-firewall baseline keyed by asset, interface, zone, profile, and attached cloud resource, including enabled state, default action, policy version, rule precedence, and controlled scope. Normalize service or profile disablement, default deny-to-allow change, broad rule deletion, cloud security-group detachment, and device ACL shutdown as change transactions with actor_id, request_id, old and new state, approval_id, and version. Recompute the affected deny set for the same scope instead of substituting a command-line string for effective state.
+    - zh: 在变化前后固定窗口中比较同一来源类别、目标和服务的 block/allow 结果与成功握手；广域策略丧失且多个基线拒绝路径转为成功会话时输出 posture_impairment_confirmed。只有停用命令但策略继续生效时输出 attempted_change；流量尚未命中时输出 exposure_only。因日志被同时停用而缺 block 记录时，使用独立网络传感器和配置前态校准，不能把“无拒绝日志”自动等同于放行。
+      en: Compare block and allow decisions plus successful handshakes for comparable source classes, targets, and services in fixed windows before and after the change. Emit posture_impairment_confirmed when broad policy loss causes multiple baseline-denied paths to become successful sessions. A disable command with continued enforcement is attempted_change, while no matching traffic is exposure_only. If logging is disabled at the same time, calibrate with an independent network sensor and prior configuration rather than equating no deny log with allow.
+data_requirements:
+  - source_type: firewall-policy-snapshot
+    name: {zh: 防火墙有效策略与绑定快照, en: Effective firewall policy and attachment snapshots}
+    channel: null
+    required_fields: [timestamp, enforcement_point_id, asset_or_resource_id, policy_version, profile_or_zone, enabled, default_action, rule_id, rule_priority, attached_resource]
+  - source_type: firewall-change-audit
+    name: {zh: 防火墙变更控制面审计, en: Firewall change control-plane audit}
+    channel: null
+    required_fields: [timestamp, actor_id, request_id, enforcement_point_id, asset_or_resource_id, action, old_state, new_state, approval_id]
+  - source_type: independent-network-flow
+    name: {zh: 独立网络流量与握手结果, en: Independent network flow and handshake outcomes}
+    channel: null
+    required_fields: [timestamp, source_ip, destination_ip, destination_port, protocol, enforcement_point_id, session_id, handshake_result, observed_action]
+  - source_type: firewall-decision-log
+    name: {zh: 防火墙拒绝与放行裁决, en: Firewall deny and allow decisions}
+    channel: null
+    required_fields: [timestamp, enforcement_point_id, policy_version, rule_id, source_ip, destination_ip, destination_port, protocol, decision]
+observables:
+  - {zh: profile、zone 或默认动作发生未经批准的广域退化, en: "A profile, zone, or default action undergoes unapproved broad degradation"}
+  - {zh: 变更后多种原应拒绝的目标或服务出现成功会话, en: Multiple formerly denied targets or services receive successful sessions after the change}
+  - {zh: 拒绝事件密度下降而独立传感器观察到更多可达连接, en: Deny density falls while an independent sensor observes more reachable connections}
+correlation:
+  window: {zh: 比较变更前二十四小时与后两小时；低频边界按相同业务周期延至七天，不把流量自然变化当成策略效果。, en: Compare the twenty-four hours before a change with two hours after it; extend low-volume boundaries to matching business cycles up to seven days without treating natural traffic changes as policy effects.}
+  dimensions: [enforcement_point_id, asset_or_resource_id, policy_version, profile_or_zone, source_ip, destination_ip, destination_port, protocol, request_id, time]
+false_positives:
+  - {zh: 已审批的紧急故障切换、灾备演练或网络迁移, en: "Approved emergency failover, disaster-recovery exercise, or network migration"}
+  - {zh: profile 从公用变为域网络后策略本来就不同, en: A profile transition from public to domain network legitimately changes policy}
+blind_spots:
+  - {zh: 攻击者同时控制防火墙日志与独立网络传感器, en: The adversary controls both firewall logs and the independent network sensor}
+  - {zh: 没有策略前态、规则优先级或资源绑定，无法计算有效 deny 集合, en: "Missing prior policy, rule precedence, or resource attachment prevents effective deny-set computation"}
+tuning_guidance:
+  paragraphs:
+    - zh: 为每个边界维护批准 profile、zone 和默认动作，并按资产角色、流量周期和云资源绑定确定对照集。合法紧急放行只在工单规定的 actor、目标、时间及回滚结果均匹配时降噪；不得因为变更出自网络管理员就忽略多个原应拒绝的成功会话。缺少独立流量证据时保留 exposure_only 而非伪造确认。
+      en: Maintain approved profile, zone, and default action per boundary and define comparison sets by asset role, traffic cycle, and cloud-resource attachment. A legitimate emergency opening is reduced in priority only when actor, target, time, and rollback outcome match its ticket. Do not ignore multiple formerly denied successful sessions merely because a network administrator made the change. Without independent flow evidence, retain exposure_only rather than manufacture confirmation.
+evidence_refs: [REF-000451, REF-000452, REF-000454, REF-000455]
+lifecycle: {status: review, version: "1.0.0", created: "2026-09-22", modified: "2026-09-22", contributors: [Niji Matrix Research], reviewers: []}

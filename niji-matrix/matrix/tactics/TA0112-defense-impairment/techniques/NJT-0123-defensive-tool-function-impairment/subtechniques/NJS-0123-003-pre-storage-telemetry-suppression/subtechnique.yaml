@@ -1,0 +1,80 @@
+schema_version: "2.0.0"
+type: evasion-subtechnique
+id: NJS-0123-003
+parent_ref: NJT-0123
+name:
+  zh: 入库前遥测抑制
+  en: Pre-Storage Telemetry Suppression
+summary:
+  zh: 在安全事件到达持久独立存储前条件化跳过、重定向或丢弃选定记录，使真实活动存在而对应遥测从未形成。
+  en: Conditionally skip, redirect, or drop selected security records before they reach durable independent storage so real activity exists while corresponding telemetry never forms.
+aliases: []
+lineage:
+  attck_subtechnique_inherited: false
+definition_and_concept:
+  paragraphs:
+    - zh: 入库前遥测抑制是攻击者在安全事件从行为转化为持久记录的生成、provider、进程内处理、本地队列、转发、subscription 或摄取阶段，让选定事件不产生、不进入下一阶段或被送往非预期目的地。直接目标是阻止防守方获得原本应存在的事件，而不是在事件已经写入可信存储后再删除。
+      en: Pre-Storage Telemetry Suppression is adversary action at the generation, provider, in-process handling, local queue, forwarding, subscription, or ingestion stage of converting behavior into a durable security record, causing selected events not to form, not to reach the next stage, or to be delivered to an unintended destination. The immediate objective is to prevent defenders from receiving an event that should exist, not to delete it after it has reached trusted storage.
+    - zh: 稳定变量是同一独立活动对应的安全事件在持久存储边界前是否存在，以及最晚可见的管线 stage。Windows Event Log、Linux Audit、ETW、syslog、云审计和 SIEM forwarding 是实现；子技术不按平台或日志类型拆分，也不要求攻击者关闭整个来源。
+      en: The stable variable is whether the security event corresponding to the same independent activity exists before the durable-storage boundary and the last pipeline stage at which it is visible. Windows Event Log, Linux Audit, ETW, syslog, cloud audit, and SIEM forwarding are implementations. The child is not partitioned by platform or log type and does not require the adversary to stop an entire source.
+stealth_characteristics:
+  paragraphs:
+    - zh: 入库前遥测抑制可以只跳过匹配特定主体、命令、参数、事件类别或资源的记录，让相邻正常事件和总体日志量继续存在。由此形成的不是明显清空动作，而是序列内部选择性缺口；防守方若只有安全日志本身，就无法知道缺失事件曾经应该产生，也可能把活动误判为未发生。
+      en: Pre-Storage Telemetry Suppression can skip only records matching selected principals, commands, arguments, event classes, or resources while adjacent normal events and aggregate log volume continue. The trace is an internal selective gap rather than a conspicuous clearing action. Defenders with only the security log cannot know that a missing event should have existed and may infer that the activity never occurred.
+    - zh: 残余痕迹来自独立身份/主机/网络/控制面活动、provider 或进程内代码变化、audit policy、forwarder 和 subscription 前后态、队列/摄取指标、目的地变化以及 canary 在不同 stage 的到达差异。整源静默会产生明显心跳或 event-rate 断点；精确条件化跳过更隐蔽，但需要攻击者理解事件路径、匹配字段和内存结构。
+      en: Residue comes from independent identity, host, network, or control-plane activity; provider or in-process code changes; audit-policy, forwarder, and subscription before-and-after state; queue and ingestion metrics; destination changes; and canary arrival differences across stages. Whole-source silence creates a conspicuous heartbeat or event-rate break. Precise conditional skipping is more covert but requires knowledge of event paths, matching fields, and memory structures.
+scope_boundary_definition:
+  paragraphs:
+    - zh: 纳入攻击者控制的 audit/provider 禁用、事件生成函数 patch、条件化跳过、源到目的地重定向、forwarder/subscription 拆除和摄取前丢弃，只要独立活动证明事件本应存在且没有到达持久独立存储。无法定位 stage 时可以确认 telemetry_gap，但不能凭缺失推定具体抑制位置。
+      en: Scope includes adversary-controlled audit or provider disablement, event-generation function patching, conditional skipping, source-to-destination redirection, forwarder or subscription removal, and pre-ingestion dropping when independent activity establishes that an event should exist and it does not reach durable independent storage. When the stage cannot be located, telemetry_gap can be established, but the suppression position cannot be inferred from absence alone.
+    - zh: 事件已经持久化后再清除或截断属于 NJT-0112；交互式 shell 历史是否记录由 T1690 候选负责；工具整体停用归 NJS-0123-001，策略 selector 使某类对象不受检查归 NJS-0123-002。正常日志轮转、采样、隐私过滤、配额、网络分区、背压、批处理延迟和批准的管线迁移是反例，需用变更记录与 SLO 排除。
+      en: Clearing or truncating an event after durable storage belongs to NJT-0112. Recording of interactive shell history belongs to the T1690 candidate. Whole-tool disablement belongs to NJS-0123-001, and a policy selector removing object inspection belongs to NJS-0123-002. Normal rotation, sampling, privacy filtering, quota, network partition, backpressure, batch delay, and approved pipeline migration are counterexamples resolved through change records and SLOs.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+      - zh: 攻击者可在 VPN、端点或服务器进程内 patch 日志函数，只对特定命令或请求跳过记录；也可更改审计策略、停用 provider、拆除云日志集成、改写 forwarding 目的地或阻断 SIEM ingestion，然后执行凭据访问、横向移动或数据操作。CLEANPULSE 在 dslogserver 中按命令行字符串条件跳过日志调用，是“活动存在而事件从未形成”的直接案例。
+        en: An adversary can patch a logging function inside a VPN, endpoint, or server process to skip records only for selected commands or requests; it can also change audit policy, disable a provider, remove a cloud-log integration, rewrite a forwarding destination, or block SIEM ingestion before credential access, lateral movement, or data operations. CLEANPULSE conditional bypass of a logging call in dslogserver based on command-line strings is a direct case of activity existing while the event never forms.
+  threat_model:
+    attacker_model:
+      paragraphs:
+        - zh: 攻击者需要控制事件源、provider、目标进程内存、审计策略、转发器、subscription、摄取凭据或目的地配置，并了解哪些活动映射到哪些事件与 stage。条件化 patch 需要版本和地址知识，整源停用需要较少精度却更易造成可用性告警；远程不同权日志、不可变管线配置和端到端 canary 增加成本。
+          en: The adversary needs control over the event source, provider, target-process memory, audit policy, forwarder, subscription, ingestion credential, or destination configuration and knowledge of how activities map to events and stages. Conditional patching requires version and address knowledge, while whole-source disablement needs less precision but creates clearer availability alarms. Remote differently authorized logging, immutable pipeline configuration, and end-to-end canaries increase cost.
+    defender_model:
+      paragraphs:
+        - zh: 防守方至少需要一个不依赖目标安全日志的活动事实源，并维护 event_class 的覆盖率、延迟分布、provider/管线配置和持久存储边界。通过 expected_event_key 把身份结果、进程、网络或控制面动作与各 stage 记录连接；只有本地日志或只有总 EPS 时，无法区分未发生活动、低流量和选择性抑制。
+          en: Defenders need at least one activity source independent of the target security log and maintain event-class coverage, delay distribution, provider and pipeline configuration, and the durable-storage boundary. An expected_event_key joins identity results, process, network, or control-plane actions to records at each stage. Local logs alone or only aggregate events per second cannot distinguish absent activity, low volume, and selective suppression.
+stealth_mechanisms:
+  - mechanism_ref: NM-BT
+    role: primary
+    summary:
+      zh: 在持久记录形成前切断活动与安全事件的对应关系
+      en: Break the correspondence between activity and security event before a durable record forms
+    analysis:
+      paragraphs:
+        - zh: 攻击者在事件路径中加入条件、patch 或错误目的地，使真实活动继续执行而对应记录在某个 stage 停止；周围事件仍正常到达时，日志表面保持连续和可信。行为—事件边被移除后，依赖该日志的规则、调查和时间线都看不到目标动作，只有独立活动与 expected_event 的差分能恢复它，形成行为透明。
+          en: The adversary inserts a condition, patch, or wrong destination into the event path so real activity continues while the corresponding record stops at one stage. When surrounding events still arrive, the log surface remains continuous and credible. Removing the behavior-to-event edge hides the target action from rules, investigations, and timelines that depend on that log; only a differential between independent activity and expected event can recover it, producing Behavioral Transparency.
+    evidence_refs: [REF-000448]
+    confidence: high
+defense:
+  detections:
+    coverage: available
+    strategy_refs: [DET-000131]
+  mitigations:
+    coverage: available
+    mitigation_refs: [MIT-000121]
+evidence:
+  claim_refs: [CLM-000661, CLM-000663, CLM-000664]
+  case_refs: [CASE-000167]
+  reference_refs: [REF-000446, REF-000448]
+research:
+  limitations:
+    paragraphs:
+      - zh: CLEANPULSE 的逆向工程直接证明特定进程和版本中的条件化日志函数跳过，并与同一报告中的事后日志清除形成清楚边界；它没有公开所有受害环境的完整 event baseline，也不证明云、Windows 与 Linux 管线使用相同控制点。预期事件模型需要现场验证，尤其是采样、隐私过滤和低频批处理；没有独立活动、event key 或阶段指标时只能确认不完整，不能把“没有日志”提升为攻击者抑制。
+        en: CLEANPULSE reverse engineering directly establishes conditional logging-function bypass in a particular process and version and provides a clear boundary from post-hoc log clearing in the same report. It does not disclose complete event baselines for every victim environment or establish the same control point across cloud, Windows, and Linux pipelines. Expected-event models need local validation, especially under sampling, privacy filtering, and low-frequency batches. Without independent activity, an event key, or stage metrics, only incompleteness can be established; no log cannot be upgraded to adversary suppression.
+lifecycle:
+  status: review
+  version: "0.1.0"
+  created: "2026-09-22"
+  modified: "2026-09-22"
+  contributors: [Niji Matrix Research]
+  reviewers: []

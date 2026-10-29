@@ -1,0 +1,144 @@
+handoff_schema_version: 2.0.0
+type: technique-research-handoff
+batch_ref: BATCH-TA0002-001
+work_item_ref: WORK-TA0002-T1675
+temporary_key_prefix: EX1-T1675
+candidate:
+  source_type: attack
+  source_attack_id: T1675
+  name:
+    zh: ESXi 管理命令
+    en: ESXi Administration Command
+recommendation:
+  decision: adapt
+  confidence: medium
+  rationale:
+    paragraphs:
+    - zh: 执行沿受信 hypervisor-to-guest 通道进入，来宾侧可能只见 vmtoolsd 等管理代理派生进程；若 ESXi API 审计与来宾谱系不汇聚，真实发起者难以恢复，能够形成稳定匿迹因果链；因此建议 adapt。
+      en: 'The candidate has the following causal basis: execution enters through a trusted hypervisor-to-guest channel, and the guest may see only a child of a management agent such
+        as vmtoolsd; the true initiator is difficult to recover when ESXi API audit and guest lineage are not aggregated. It forms a stable stealth chain and is recommended for adapt.'
+proposed_content:
+  summary:
+    zh: 攻击者通过滥用 ESXi 来宾操作或等价虚拟化管理服务，经 VMware Tools 等常驻代理在客户机中执行命令，并利用执行路径的正常外观或观察断点降低识别和归因概率。
+    en: 'Adversaries perform the following behavior: abusing ESXi guest operations or an equivalent virtualization-management service to execute commands in guest machines through a
+      resident agent such as VMware Tools. They exploit normal execution appearance or observation breaks to reduce detection and attribution.'
+  definition_and_concept:
+    paragraphs:
+    - zh: 受信虚拟化管理通道执行是指滥用 ESXi 来宾操作或等价虚拟化管理服务，经 VMware Tools 等常驻代理在客户机中执行命令。其直接目标是从已控制的虚拟化管理层跨入来宾系统执行，而不使用来宾网络登录路径；在攻击执行战术中，以攻击者控制的代码、命令或任务开始运行为完成点，并以直接执行路径而不是工具、产品或文件格式界定对象。
+      en: Trusted Virtualization Management-Channel Execution means abusing ESXi guest operations or an equivalent virtualization-management service to execute commands in guest machines
+        through a resident agent such as VMware Tools. Its direct objective is to execute inside guests from a controlled virtualization-management layer without using a guest network
+        logon path. Under the Execution tactic, the object ends when adversary-controlled code, a command, or a task begins to run and is defined by its direct execution path rather
+        than by tool, product, or file format.
+  stealth_characteristics:
+    paragraphs:
+    - zh: 受信虚拟化管理通道执行的匿迹性来自执行沿受信 hypervisor-to-guest 通道进入，来宾侧可能只见 vmtoolsd 等管理代理派生进程；若 ESXi API 审计与来宾谱系不汇聚，真实发起者难以恢复。这会改变执行来源、时间、父进程、内容可见性或控制层之间的痕迹关系，使防守方需要跨数据域恢复意图；相关控制调用、进程结果、完整性差异和时间关系仍是残余可观测线索。
+      en: 'The stealth of Trusted Virtualization Management-Channel Execution has the following basis: execution enters through a trusted hypervisor-to-guest channel, and the guest may
+        see only a child of a management agent such as vmtoolsd; the true initiator is difficult to recover when ESXi API audit and guest lineage are not aggregated. This changes trace
+        relationships involving execution provenance, timing, parent process, content visibility, or control layers, forcing defenders to recover intent across data domains. Control
+        invocations, process outcomes, integrity differences, and temporal relationships remain residual observables.'
+  scope_boundary_definition:
+    paragraphs:
+    - zh: 本技术纳入由虚拟化来宾操作 API 和常驻来宾代理直接承载的命令与程序执行；排除来宾普通网络远程服务、hypervisor 本机解释器、云虚拟机命令服务以及按操作系统划分的子项。合法运维、软件功能、用户交互或自动化可能产生相似痕迹，只有攻击者有意利用相应执行路径改变防守观察并推动恶意操作时才属于本对象。
+      en: This technique includes command and program execution directly carried by virtualization guest-operation APIs and resident guest agents and excludes ordinary guest network
+        remote services, interpreters on the hypervisor itself, cloud virtual-machine command services, and children partitioned by operating system. Legitimate operations, software
+        functions, user interaction, or automation can produce similar traces; the object applies only when the adversary intentionally uses the execution path to change defender observation
+        and advance malicious activity.
+  application_scenarios_and_threat_model:
+    application_scenarios:
+      paragraphs:
+      - zh: 攻击者控制 ESXi 主机或具备 Guest Operations 权限后，需要向一个或多个客户机执行发现、文件操作、凭据访问或载荷命令时使用。
+        en: An adversary uses the technique after controlling an ESXi host or obtaining Guest Operations permission and needs to run discovery, file-operation, credential-access, or
+          payload commands in one or more guests.
+    threat_model:
+      attacker_model:
+        paragraphs:
+        - zh: 攻击者需要虚拟化管理 API 权限、目标客户机中的运行代理及可用来宾凭据或等价授权；代理缺失、权限收缩和 API 审计会限制操作。
+          en: The adversary needs virtualization-management API permission, a running agent in the target guest, and guest credentials or equivalent authorization; absent agents, restricted
+            privileges, and API auditing limit operations.
+      defender_model:
+        paragraphs:
+        - zh: 防守方假定保留 ESXi Guest Operations 调用、管理主体、目标 VM、请求动作和来宾进程，但两个层面的时间与身份字段必须被统一。
+          en: The defender is assumed to retain ESXi Guest Operations calls, management principal, target VM, requested action, and guest process telemetry, but time and identity fields
+            across both layers must be normalized.
+  stealth_mechanisms:
+  - mechanism_ref: NM-BT
+    role: primary
+    summary:
+      zh: 利用虚拟化管理层与来宾端点之间的观察断点
+      en: Exploit the observation break between virtualization management and guest endpoint
+    analysis:
+      paragraphs:
+      - zh: 该行为设计使来宾进程显示为常驻管理代理的后代，远端发起主体只存在于 hypervisor 审计。关键执行语义落在原有监控或关联逻辑之外，防守方虽可见局部结果却难以还原完整因果，因此形成行为透明效果。残余可观测线索仍包括控制请求、进程结果、完整性变化或跨层时间关系，扩大遥测范围可以削弱这种匿迹。
+        en: This behavior design means the guest process appears as a descendant of a resident management agent while the remote initiator exists only in hypervisor audit. Critical execution
+          semantics fall outside existing monitoring or correlation logic. Defenders may see local outcomes but struggle to recover full causality, producing a Behavioral Transparency
+          effect. Residual observables still include control requests, process outcomes, integrity changes, or cross-layer timing, so broader telemetry can weaken the stealth effect.
+    evidence_refs:
+    - REF-000120
+    confidence: medium
+  - mechanism_ref: NM-FD
+    role: secondary
+    summary:
+      zh: 借用受信来宾代理作为执行父体
+      en: Borrow a trusted guest agent as the execution parent
+    analysis:
+      paragraphs:
+      - zh: 该行为设计使进程来源具有正常虚拟机管理组件的签名和服务身份。恶意活动与合法实体共享可见特征，单点规则难以准确区分，因而形成特征伪装效果。残余可观测线索仍包括控制请求、进程结果、完整性变化或跨层时间关系，扩大遥测范围可以削弱这种匿迹。
+        en: This behavior design means process provenance carries the signature and service identity of a normal virtual-machine management component. The malicious activity shares visible
+          features with legitimate entities, weakening point classification and producing a Feature Disguise effect. Residual observables still include control requests, process outcomes,
+          integrity changes, or cross-layer timing, so broader telemetry can weaken the stealth effect.
+    evidence_refs:
+    - REF-000120
+    confidence: medium
+proposed_subtechniques: []
+defense_candidates:
+  detection_strategies:
+  - DET-000058
+  detection_analytics:
+  - NJA-000032
+  - NJA-000033
+  mitigations:
+  - MIT-000057
+existing_library_reuse:
+  reference_refs: []
+  claim_refs: []
+  case_refs: []
+  strategy_refs: []
+  analytic_refs: []
+  mitigation_refs: []
+  relationship_refs: []
+library_candidates:
+  references:
+  - REF-000120
+  claims:
+  - CLM-000263
+  cases: []
+  detection_strategies:
+  - DET-000058
+  detection_analytics:
+  - NJA-000032
+  - NJA-000033
+  mitigations:
+  - MIT-000057
+  relationships: []
+research:
+  limitations:
+    paragraphs:
+    - zh: 备份、支持和自动化管理也会调用来宾操作；当前公开证据稳定支持的是单一 hypervisor-to-guest 通道变量，尚不足以按 API 方法、来宾系统或工具继续拆分 Niji 子技术。
+      en: Backup, support, and automation also invoke guest operations. Current public evidence stably supports one hypervisor-to-guest channel variable and does not justify further
+        Niji children by API method, guest operating system, or tool.
+  rejected_mechanisms: []
+  open_questions: []
+integration:
+  status: complete
+  resolutions:
+  - disposition: create
+    objects:
+    - REF-000120
+    - CLM-000263
+    - NJT-0068
+    - DET-000058
+    - NJA-000032
+    - NJA-000033
+    - MIT-000057
+  - disposition: defer
+    objects: []

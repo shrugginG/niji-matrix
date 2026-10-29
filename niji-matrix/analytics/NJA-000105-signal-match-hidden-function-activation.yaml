@@ -1,0 +1,88 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000105
+strategy_ref: DET-000117
+name:
+  zh: 信号匹配—隐藏功能激活
+  en: Signal-Match–Hidden-Function Activation
+summary:
+  zh: 输出稀有信号、主机网络状态变化和后继控制会话之间的因果链。
+  en: Produce the causal chain among a rare signal, host network-state change, and successor control session.
+domains:
+- enterprise
+platforms:
+- Linux
+- Windows
+- Network Devices
+logic:
+  paragraphs:
+  - zh: 按来源和目标为关闭端口尝试、丢弃包、端口号、标志与到达顺序建立有限状态机，保留重置、超时和完成状态。完整有序序列后同一目标出现 ACL/防火墙修改、新监听、进程启动或反向/入站会话时，输出 stateful_signal_sequence_activation；一个包即可触发的字段或载荷交给内容模式
+      Analytic。
+    en: Build a finite-state machine by source and target for closed-port attempts, dropped packets, port numbers, flags,
+      and arrival order and retain reset, timeout, and completion state. Emit stateful_signal_sequence_activation when
+      the same target shows an ACL or firewall change, new listener, process start, or reverse or inbound session after
+      the full ordered sequence. Fields or payloads where one packet suffices are handled by the content-pattern analytic.
+data_requirements:
+- source_type: full-network-and-host-activation
+  name:
+    zh: 全流量与主机激活
+    en: Full network and host activation
+  channel: null
+  required_fields:
+  - event.timestamp
+  - source.ip
+  - destination.ip
+  - destination.port
+  - packet.flags
+  - packet.length
+  - sequence.state
+  - sequence.position
+  - firewall.rule
+  - listener.port
+  - process.start_key
+  - session.id
+observables:
+- zh: 同一来源按稳定顺序触碰多个关闭端口，完成后短暂出现监听或反向连接
+  en: One source touches several closed ports in a stable order and a listener or reverse connection appears briefly
+    after completion
+- zh: 序列状态完成后主机防火墙或 ACL 改变并出现首次成功会话
+  en: Host firewall or ACL changes after sequence completion and the first successful session follows
+correlation:
+  window:
+    zh: 覆盖实现定义的序列状态寿命、完成后首个网络/主机转变和会话；具体期限依据 matcher 超时、NAT 保留和防火墙审计设定。
+    en: Cover the implementation-defined sequence-state lifetime, first network or host transition after completion,
+      and session. Set the concrete limit from matcher timeout, NAT retention, and firewall audit.
+  dimensions:
+  - source.ip
+  - destination.ip
+  - destination.port
+  - sequence.state
+  - listener.port
+  - process.start_key
+false_positives:
+- zh: 网络探测、健康检查、防火墙自动化、负载均衡和合法端口敲击管理
+  en: Network measurement, health checks, firewall automation, load balancing, and legitimate port-knocking administration
+blind_spots:
+- zh: 边界丢弃信号、加密载荷不可归一、只保留已建立连接或 NAT 破坏来源关系
+  en: Edge devices dropping signals, encrypted payloads not normalized, retention of established connections only, or
+    NAT breaking source relationships
+tuning_guidance:
+  paragraphs:
+  - zh: 为合法自动化绑定来源、目标、序列、owner 与时间，保留丢弃包和过滤器变化。严重度以信号后隐藏功能激活和会话结果为主，而非稀有包本身。
+    en: Bind legitimate automation to source, target, sequence, owner, and time and retain dropped packets and filter
+      changes. Base severity primarily on hidden-function activation and session outcome after the signal rather than
+      packet rarity alone.
+evidence_refs:
+- REF-000408
+- REF-001060
+- REF-000634
+- REF-001061
+- REF-000230
+lifecycle:
+  status: review
+  version: 0.2.0
+  created: '2026-09-20'
+  modified: '2026-10-05'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

@@ -1,0 +1,185 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000319
+strategy_ref: DET-000245
+name:
+  zh: 外部网络响应与目标文件创建关联分析
+  en: External Network Response and Destination File Creation Correlation Analytic
+summary:
+  zh: 分别输出 request_only、response_observed、arrival_confirmed 与 arrival_executed，避免从下载命令或网络流量倒推未证实文件到达。
+  en: Emit request_only, response_observed, arrival_confirmed, and arrival_executed separately, avoiding inference of
+    unverified file arrival from a download command or network flow.
+domains:
+- enterprise
+platforms:
+- Windows
+- Linux
+- macOS
+- Network Devices
+- ESXi
+logic:
+  paragraphs:
+  - zh: 先按 device/process_start_key 将 outbound request 和成功 response 连接；有 Zeek/proxy file extraction 时以 uid→fuid 获取响应对象、大小和摘要。随后在默认五分钟内寻找同一
+      process_start_key 写入的 DeviceFileEvents，优先用 FileOriginUrl/IP、network SHA1/SHA256、size 与路径确认；若后台服务代写，则通过 origin URL、job/request
+      ID、父进程或文件元数据建立弱连接并降置信。只有目标创建/修改得到证实才输出 arrival_confirmed；后续启动、模块载入或恶意内容命中只提升 priority。再与批准记录比较 source、writer、artifact、path
+      和 time，形成 authorized_arrival 或 anomalous_arrival。
+    en: First join an outbound request and successful response by device and process_start_key. Where Zeek or proxy file
+      extraction exists, use uid to fuid to obtain response object, size, and digest. Then seek DeviceFileEvents written
+      by the same process_start_key within a default five minutes, preferring FileOriginUrl or IP, network SHA1 or SHA256,
+      size, and path for confirmation. Where a background service performs the write, use origin URL, job or request
+      ID, parent process, or file metadata as a weaker join and reduce confidence. Emit arrival_confirmed only after
+      destination create or modification is established; later launch, module load, or malicious-content detection only
+      raises priority. Compare source, writer, artifact, path, and time with the approved record to produce authorized_arrival
+      or anomalous_arrival.
+data_requirements:
+- source_type: endpoint-network
+  name:
+    zh: endpoint network
+    en: endpoint network
+  channel: Microsoft Defender XDR DeviceNetworkEvents or Sysmon Event 3
+  required_fields:
+  - event_time
+  - device_id
+  - network_action
+  - remote_ip
+  - remote_port
+  - remote_url
+  - local_ip
+  - transport
+  - process_start_key
+  - process_image
+  - command_line
+  - principal_id
+- source_type: http-transaction
+  name:
+    zh: http transaction
+    en: http transaction
+  channel: Zeek http.log or inspectable proxy
+  required_fields:
+  - event_time
+  - network_session_id
+  - client_ip
+  - server_ip
+  - request_method
+  - remote_host
+  - request_path
+  - client_fingerprint
+  - request_bytes
+  - response_bytes
+  - response_status
+  - network_file_ids
+  - response_types
+- source_type: network-file
+  name:
+    zh: network file
+    en: network file
+  channel: Zeek files.log or proxy extraction
+  required_fields:
+  - event_time
+  - network_file_id
+  - network_session_id
+  - transfer_protocol
+  - detected_type
+  - observed_bytes
+  - expected_bytes
+  - missing_bytes
+  - extracted_name
+  - extraction_complete
+  - network_sha1
+  - network_sha256
+- source_type: endpoint-file
+  name:
+    zh: endpoint file
+    en: endpoint file
+  channel: Microsoft Defender XDR DeviceFileEvents
+  required_fields:
+  - event_time
+  - device_id
+  - file_action
+  - file_name
+  - file_path
+  - file_sha1
+  - file_sha256
+  - origin_url
+  - referrer_url
+  - origin_ip
+  - file_size
+  - process_start_key
+  - writer_image
+  - writer_command_line
+  - request_protocol
+  - request_source_ip
+- source_type: approved-ingress-record
+  name:
+    zh: approved ingress record
+    en: approved ingress record
+  channel: software catalog, update policy, package repository, change management, and incident-response approvals
+  required_fields:
+  - approval_id
+  - approved_principal
+  - device_role
+  - approved_writer
+  - approved_source
+  - approved_artifact
+  - approved_path
+  - valid_from
+  - valid_to
+  - approved_purpose
+  - policy_version
+observables:
+- zh: 不常见或角色不符的进程接收外部字节并写入独立文件
+  en: An uncommon or role-inconsistent process receives outside bytes and writes an independent file
+- zh: 网络 fuid 的摘要或大小与目标文件一致，并连接后继执行
+  en: A network fuid digest or size matches a destination file and joins successor execution
+correlation:
+  window:
+    zh: 请求/响应至文件默认五分钟；后台作业、同步及后继执行保留二十四小时。
+    en: Five minutes from request or response to file by default; twenty-four hours for background jobs, sync, and later
+      execution.
+  dimensions:
+  - device_id
+  - process_start_key
+  - network_session_id
+  - network_file_id
+  - remote_url
+  - origin_ip
+  - file_path
+  - file_size
+  - file_sha1
+  - file_sha256
+  - approval_id
+  - time
+false_positives:
+- zh: 浏览器/邮件下载、软件更新、包管理、CI/CD、备份恢复和事件响应
+  en: Browser or mail downloads, software updates, package management, CI/CD, backup restore, and incident response
+blind_spots:
+- zh: TLS 不透明且端点无来源字段、内存直送或后台服务代写
+  en: Opaque TLS without endpoint origin fields, memory-only streaming, or a background service writing on behalf of
+    the caller
+- zh: 缺少文件摘要、分块/范围下载、缓存重命名、快速删除或时钟漂移
+  en: Missing file digests, chunked or range downloads, cache rename, rapid deletion, or clock skew
+tuning_guidance:
+  paragraphs:
+  - zh: 按设备角色分别维护浏览器、更新器、包管理器、BITS/同步客户端和管理脚本的 source/writer/path/artifact 清单。curl、certutil、BITS、签名、知名 CDN 或临时目录都不能永久放行或单独告警。FileOrigin
+      字段或 network hash 缺失时，以 process/time/URL/size 关联但降低置信；一个 request 或 200 response 不得升级为 arrival。
+    en: Maintain source, writer, path, and artifact allowlists by device role separately for browsers, updaters, package
+      managers, BITS or sync clients, and administration scripts. Curl, certutil, BITS, a signature, known CDN, or temporary
+      directory must never be permanently allowed or alerted on alone. When FileOrigin or network hash is missing, correlate
+      by process, time, URL, and size at lower confidence. A request or 200 response must not be promoted to arrival.
+evidence_refs:
+- REF-000084
+- REF-000139
+- REF-001055
+- REF-000604
+- REF-000924
+- REF-000632
+- REF-000633
+- REF-000230
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-10-05'
+  modified: '2026-10-05'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

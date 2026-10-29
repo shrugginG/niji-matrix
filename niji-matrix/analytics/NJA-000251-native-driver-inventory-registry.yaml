@@ -1,0 +1,103 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000251
+strategy_ref: DET-000208
+name:
+  zh: 原生驱动清单与注册表查询分析
+  en: Native Driver Inventory and Registry Query Analytic
+summary:
+  zh: 识别异常 driverquery、PnPUtil 与驱动相关注册表读取并保留结果语义。
+  en: Identify abnormal driverquery, PnPUtil, and driver-related registry reads while preserving result semantics.
+domains:
+- enterprise
+platforms:
+- Windows
+logic:
+  paragraphs:
+  - zh: 匹配 driverquery.exe、PnPUtil `/enum-drivers` 和 `HKLM\Software\WBEM\WDM` 读取，按主机角色、用户、父进程、签名与维护窗口比较。PnPUtil 结果标为第三方驱动包，不推断
+      loaded；driverquery 只标为工具报告。异常进程随后暂存清单或查询安全产品驱动时提高优先级。
+    en: Match driverquery.exe, PnPUtil `/enum-drivers`, and reads of `HKLM\Software\WBEM\WDM`, comparing host role, user,
+      parent process, signer, and maintenance window. Mark PnPUtil output as third-party driver packages rather than loaded
+      state and driverquery as utility-reported information. Prioritize an unusual process that stages output or looks up
+      security-product drivers.
+data_requirements:
+- source_type: endpoint-process-lineage
+  name:
+    zh: Windows 进程与命令行
+    en: Windows process and command line
+  channel: Sysmon Event 1 or verified EDR
+  required_fields:
+  - timestamp
+  - host_id
+  - user_id
+  - process_guid
+  - image
+  - command_line
+  - parent_guid
+  - signer
+  - hash
+- source_type: windows-registry-read
+  name:
+    zh: Windows 注册表读取
+    en: Windows registry reads
+  channel: null
+  required_fields:
+  - timestamp
+  - host_id
+  - process_guid
+  - registry_path
+  - event_action
+  - result
+- source_type: driver-asset-baseline
+  name:
+    zh: 权威驱动资产基线
+    en: Authoritative driver asset baseline
+  channel: null
+  required_fields:
+  - host_id
+  - driver_package
+  - driver_name
+  - version
+  - installed_state
+  - loaded_state
+  - signer
+  - last_verified
+observables:
+- zh: 非常用父进程执行 driverquery 或 PnPUtil 枚举
+  en: An unusual parent executes driverquery or PnPUtil enumeration
+- zh: 异常进程读取驱动注册表并随后暂存结果
+  en: An unusual process reads driver registry state and later stages output
+correlation:
+  window:
+    zh: 同一进程谱系 30 分钟，并与主机角色的 14 日维护基线比较。
+    en: Thirty minutes per process lineage, compared with a 14-day maintenance baseline for the host role.
+  dimensions:
+  - host_id
+  - user_id
+  - process_guid
+  - query_method
+  - driver_state
+  - time
+false_positives:
+- zh: IT 资产、驱动部署、打印支持、诊断、取证和安全代理会合法枚举
+  en: IT inventory, driver deployment, print support, diagnostics, forensics, and security agents legitimately enumerate
+blind_spots:
+- zh: 重命名工具、直接 API、进程注入、缺命令行、未记录注册表读及未采集输出会降低覆盖
+  en: Renamed tools, direct APIs, process injection, missing command lines, unrecorded registry reads, and absent output telemetry
+    reduce coverage
+tuning_guidance:
+  paragraphs:
+  - zh: 例外绑定 owner、主机角色、父进程、版本与维护窗口；不按 Microsoft 签名永久放行。未知输出状态保持 unknown。
+    en: Bind exceptions to owner, host role, parent, version, and maintenance window; do not permanently allow a Microsoft
+      signature. Preserve unknown output state as unknown.
+evidence_refs:
+- REF-000824
+- REF-000826
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-09-27'
+  modified: '2026-09-27'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

@@ -1,0 +1,59 @@
+schema_version: 2.0.0
+type: evasion-subtechnique
+id: NJS-0075-003
+parent_ref: NJT-0075
+name: {zh: 状态枚举抑制型计划注册, en: State-Enumeration-Suppressed Scheduled Registration}
+summary: {zh: 攻击者破坏标准管理视图所需的任务元数据，同时保留后端触发和动作，使任务继续运行但普通枚举缺失, en: Adversaries disrupt task metadata required by standard management views while retaining backend triggers and actions so execution continues despite missing ordinary enumeration}
+aliases: [Hidden Scheduled Task]
+lineage: {attck_subtechnique_inherited: false}
+definition_and_concept:
+  paragraphs:
+    - zh: 状态枚举抑制型计划注册是攻击者建立可执行任务后，删除或改变调度管理 API/UI 用于授权、索引或列举对象的元数据，但保留调度器运行所需后端注册、触发与动作。直接目标是让管理员和自动盘点工具得到“没有任务”的结果，同时执行服务仍掌握对象。稳定变量是同一任务在标准视图与高权原始状态/运行结果之间的差分，不是文件隐藏或访问控制本身。
+      en: State-Enumeration-Suppressed Scheduled Registration creates a runnable task and then removes or changes metadata used by scheduler management APIs or UI to authorize index or list the object while preserving backend registration triggers and actions needed by the scheduler. Its objective is to make administrators and inventory tools receive no-task results while the execution service still holds the object. The stable variable is a differential for one task between standard view and privileged raw state or runtime outcome rather than file hiding or access control alone.
+stealth_characteristics:
+  paragraphs:
+    - zh: 状态枚举抑制型计划注册使周期任务清单、schtasks 或管理控制台遗漏对象，即使任务仍按时产生调度器子进程。Tarrask 删除 TaskCache Tree 下的 SD 值后，WinUpdate 从标准工具消失但继续用于 C2 重连，证明攻击者能够选择性破坏观察接口而不破坏执行。依赖单一 API 快照的合规和狩猎因此产生假阴性。
+      en: State-Enumeration-Suppressed Scheduled Registration causes periodic task inventory schtasks or management consoles to omit an object even while the task continues to produce scheduler children. Tarrask deleted the TaskCache Tree SD value making WinUpdate disappear from standard tools while it continued C2 reconnection proving selective disruption of observation without disrupting execution. Compliance and hunting based on one API snapshot therefore produce false negatives.
+    - zh: 原始 TaskCache/任务文件、缺失或异常安全描述符、4698/Operational 历史、调度器内存状态和实际进程仍可观察。合法权限隔离也会使低权用户看不到某些任务，因此必须以独立高权只读身份比较视图，并验证查询主体与预期 ACL；只看到访问拒绝不能证明攻击者混淆。
+      en: Raw TaskCache or task files missing or anomalous security descriptors Event 4698 or Operational history scheduler memory state and actual processes remain observable. Legitimate separation of duties may hide tasks from low-privilege users so defenders need an independent privileged read-only comparison and must validate query principal and expected ACL. Access denial alone does not prove adversary obfuscation.
+scope_boundary_definition:
+  paragraphs:
+    - zh: 本轴纳入攻击者有意让标准支持工具遗漏仍可执行任务的状态修改。任务只是使用隐藏名称、点文件或普通 ACL，但授权管理员仍能正常枚举时不属于本轴；任务已经删除且不再运行归短驻生命周期或清理行为；通过篡改日志而非对象视图隐藏创建记录属于相邻 Indicator Removal。跨平台映射必须证明“执行存在而标准枚举缺失”的差分。
+      en: This axis includes intentional adversary state changes causing supported standard tools to omit a still-runnable task. Hidden-looking names dot files or ordinary ACLs do not qualify when authorized administrators can enumerate normally. Deleted nonrunning tasks belong to ephemeral lifecycle or cleanup and hiding creation by log tampering rather than object views belongs to adjacent Indicator Removal. Cross-platform mapping must demonstrate execution present while standard enumeration is absent.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+      - zh: 攻击者在已取得 SYSTEM/root、调度服务数据库写权限或可修改对象 ACL/索引后，用本轴保持高价值服务器上的 C2 或恢复动作，同时躲避运维巡检。Windows TaskCache 有直接案例；其他调度器只有在其 API、后端存储与执行引擎存在同类分离时才可映射，不能从不可见文件名推断。
+        en: Adversaries use the axis after obtaining SYSTEM root scheduler-database write access or authority to change object ACL or indexes to maintain C2 or recovery actions on high-value servers while evading operational inspection. Windows TaskCache has a direct case and other schedulers map only when API backend storage and execution engine have an equivalent separation rather than inferred from an unseen filename.
+  threat_model:
+    attacker_model:
+      paragraphs:
+        - zh: 攻击者必须理解调度器内部对象模型，并能在不破坏触发的情况下移除视图所需元数据。Tarrask 需要窃取 LSASS token 获得 SYSTEM 才能删除 SD，说明权限和实现知识成本较高；错误修改可能使任务停止、产生服务错误或留下明显不一致。
+          en: The adversary must understand the scheduler's internal object model and remove view metadata without breaking triggers. Tarrask needed an LSASS token for SYSTEM authority to delete the SD demonstrating substantial privilege and implementation knowledge. Incorrect changes may stop the task produce service errors or leave obvious inconsistency.
+    defender_model:
+      paragraphs:
+        - zh: 防守方需要两个独立观察路径，一个是日常管理 API/UI，另一个是高权原始后端或不可由任务 writer 同时控制的审计，并把两者与执行进程连接。若相同高权账户和主机同时负责写任务与生成盘点，攻击者控制该边界后可以伪造两种视图；远程只读采集和集中日志可降低共因失陷。
+          en: Defenders need two independent observation paths consisting of ordinary management API or UI and privileged raw backend or audit not simultaneously controlled by the task writer and must join both to execution processes. If the same privileged account and host writes tasks and produces inventory an adversary controlling that boundary may forge both views. Remote read-only collection and centralized logs reduce common-cause compromise.
+stealth_mechanisms:
+  - mechanism_ref: NM-DO
+    role: primary
+    summary: {zh: 可执行任务在标准枚举中表现为不存在, en: A runnable task appears nonexistent in standard enumeration}
+    analysis:
+      paragraphs:
+        - zh: 攻击者改变安全描述或索引元数据，使管理接口无法返回任务对象，而执行服务继续使用后端状态，造成同一数据对象在不同视图中的语义不一致和 NM-DO 数据对象混淆。Tarrask 的 SD 删除提供直接案例。原始状态、独立审计和调度器子进程形成的三方差分仍能揭示对象。
+          en: The adversary changes security-descriptor or index metadata so management interfaces cannot return the task object while the execution service continues to use backend state creating inconsistent semantics across views and NM-DO Data Object Obfuscation. Tarrask's SD deletion provides a direct case. A three-way differential among raw state independent audit and scheduler child processes can still expose it.
+    evidence_refs: [REF-000259]
+    confidence: high
+defense:
+  detections: {coverage: available, strategy_refs: [DET-000087]}
+  mitigations: {coverage: available, mitigation_refs: [MIT-000088]}
+evidence:
+  claim_refs: [CLM-000463, CLM-000461, CLM-000467, CLM-000469, CLM-000470]
+  case_refs: [CASE-000092]
+  reference_refs: [REF-000127, REF-000259, REF-000263, REF-000266]
+research:
+  limitations:
+    paragraphs:
+      - zh: 直接证据来自 Windows Tarrask，不能自动证明 cron、systemd 或 Kubernetes 都存在可保持执行而欺骗标准枚举的相同后端差分。正常 RBAC 和多租户视图也会有意隐藏对象。非 Windows 映射必须同时提供管理视图、独立原始状态和执行证据；若只能看到“权限不足”，该结论应延期。
+        en: Direct evidence comes from Windows Tarrask and does not automatically establish an equivalent backend differential for cron systemd or Kubernetes that preserves execution while fooling standard enumeration. Normal RBAC and multitenant views intentionally hide objects. Non-Windows mapping requires management view independent raw state and execution evidence and should be deferred when only access denied is visible.
+lifecycle: {status: review, version: 1.0.0, created: '2026-09-12', modified: '2026-09-12', contributors: [Niji Matrix Research], reviewers: []}

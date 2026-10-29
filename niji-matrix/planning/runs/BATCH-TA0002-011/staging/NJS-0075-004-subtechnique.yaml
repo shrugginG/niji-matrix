@@ -1,0 +1,59 @@
+schema_version: 2.0.0
+type: evasion-subtechnique
+id: NJS-0075-004
+parent_ref: NJT-0075
+name: {zh: 短驻一次性计划代理, en: Ephemeral One-Shot Scheduled Brokerage}
+summary: {zh: 攻击者在短事务内创建、触发并删除一次性任务，使载荷继承受信调度器父级且不留持久任务清单状态, en: Adversaries create trigger and delete a one-shot task in a short transaction so the payload inherits trusted scheduler parentage without durable inventory state}
+aliases: []
+lineage: {attck_subtechnique_inherited: false}
+definition_and_concept:
+  paragraphs:
+    - zh: 短驻一次性计划代理是攻击者仅为一次执行临时建立任务，快速满足其时间或事件条件，并在运行后立即删除对象的行为。其直接目的不是获得长期 Persistence，而是把进程启动委托给签名 taskhost、cron/systemd 或 Job controller 等受信调度器，同时缩短可被状态扫描发现的对象寿命。稳定变量是 create→trigger→run→delete 事务和执行父级转移，不是一次性计划本身。
+      en: Ephemeral One-Shot Scheduled Brokerage temporarily creates a task for one execution rapidly satisfies its time or event condition and deletes the object immediately after running. Its objective is not long-term Persistence but delegation of process launch to a trusted scheduler such as signed taskhost cron systemd or a Job controller while shortening the lifetime visible to state scans. The stable variable is the create-trigger-run-delete transaction and transfer of execution parentage rather than one-time scheduling alone.
+stealth_characteristics:
+  paragraphs:
+    - zh: 短驻一次性计划代理使任务在两次周期盘点之间出现和消失，载荷进程又显示调度服务为父级而不是最初的文档、脚本或远程工具。Serpent 在一条命令中创建 ONEVENT 任务、生成 Event ID 777、执行并删除，Proofpoint 将其描述为检测绕过。只看当前任务状态或可疑父进程的逻辑因此同时失效。
+      en: Ephemeral One-Shot Scheduled Brokerage creates and removes the object between periodic inventories while the payload process shows the scheduler service rather than the original document script or remote tool as parent. Serpent created a ONEVENT task generated Event ID 777 executed and deleted it in one command and Proofpoint described this as detection bypass. Logic examining only current state or suspicious parents therefore fails at both points.
+    - zh: 创建、注册、事件生成、任务启动、子进程和删除的高频事务仍会在 Security/Operational、audit/journal 或 Kubernetes audit/ownerRef 中留下链。删除先于集中转发、未启用审计或 Job TTL 过短会削弱覆盖；正常安装器、运维系统和 Kubernetes Job 也会短驻，必须结合创建者、动作、事件与结果。
+      en: The rapid sequence of creation registration event generation task start child process and deletion still leaves a chain in Security or Operational audit or journal and Kubernetes audit or owner references. Deletion before centralized forwarding disabled audit or short Job TTL weakens coverage. Legitimate installers operations and Kubernetes Jobs are also ephemeral and require creator action event and outcome context.
+scope_boundary_definition:
+  paragraphs:
+    - zh: 本轴纳入攻击者有意用一次性短驻任务改变父进程归因并避开后续状态盘点的执行。正常 run-once 安装任务、明确审批的远程运维和控制器自动清理 Job 不因短命自动纳入。对象持续存在但标准视图缺失归 NJS-0075-003；主要等待很久才执行归 NJS-0075-002；任务保持可枚举且只是名称合形归 NJS-0075-001。
+      en: This axis includes intentional use of a short-lived one-shot task to change parent-process attribution and evade later state inventory. Legitimate run-once installer tasks approved remote administration and controller-cleaned Jobs do not qualify from short lifetime alone. Durable objects missing from standard views belong to NJS-0075-003 primary long wait to NJS-0075-002 and enumerable name-conforming tasks to NJS-0075-001.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+      - zh: 攻击者在需要一次远程或本地 payload 启动、希望切断 Office/loader/管理工具到目标进程的直接谱系，或希望在状态盘点前移除任务时使用本轴。Windows ONEVENT/ONCE、at job、临时 systemd-run timer 和 Kubernetes Job 都可能承载，但只有受信父级与短生命周期被有意用于匿迹时才映射。
+        en: Adversaries use the axis for one remote or local payload launch when seeking to break direct lineage from Office loader or administration tool to the target process or remove task state before inventory. Windows ONEVENT or ONCE at jobs transient systemd-run timers and Kubernetes Jobs can carry it but map only when trusted parentage and short lifetime are intentionally used for stealth.
+  threat_model:
+    attacker_model:
+      paragraphs:
+        - zh: 攻击者需要任务创建、触发与删除权限，并能保证动作在对象被清理前启动。事件触发可减少等待，但增加合成事件痕迹；过快删除可能导致失败或未完成，过慢则暴露于状态盘点。集中审计与高频关联会显著降低收益。
+          en: The adversary needs task create trigger and delete authority and must ensure the action starts before cleanup. Event triggers reduce waiting but add synthetic-event traces. Deleting too early may fail or interrupt execution while deleting too late exposes state to inventory. Centralized audit and high-frequency correlation materially reduce benefit.
+    defender_model:
+      paragraphs:
+        - zh: 防守方以 task/object ID 和设备为事务键，在分钟级窗口关联注册、触发源、调度器运行、子进程与删除，并保留已删除对象的定义内容。若采集只按小时快照或审计在本地被删除，事务会消失；进程 EDR 若不记录 scheduler task ID，也难把受信父级连接回创建者。
+          en: Defenders use task or object ID and device as transaction keys to join registration trigger source scheduler run child process and deletion within minutes while retaining definitions of deleted objects. Hourly snapshots or locally deletable audit lose the transaction and process EDR without scheduler task IDs cannot connect trusted parentage back to the creator.
+stealth_mechanisms:
+  - mechanism_ref: NM-BT
+    role: primary
+    summary: {zh: 短命任务把载荷启动转换为受信调度器行为, en: Short-lived tasks translate payload launch into trusted scheduler behavior}
+    analysis:
+      paragraphs:
+        - zh: 攻击者将一次执行包装为合法任务事务，调度器代替原始进程创建载荷，随后登记状态被删除。端点只看父进程会认为 taskhost 等系统行为正常，状态扫描又找不到对象，形成行为透明。Serpent 直接证明该代理被用于绕过检测；完整生命周期事件与任务 ID 到子进程的关联仍可恢复因果。
+          en: The adversary wraps one execution as a legitimate task transaction so the scheduler creates the payload instead of the original process and registration state is then removed. Endpoint logic looking only at parentage treats taskhost and equivalent system behavior as normal while state inventory finds no object creating Behavioral Transparency. Serpent directly demonstrates use of this brokerage for detection bypass while complete lifecycle events and task-ID-to-child-process correlation recover causality.
+    evidence_refs: [REF-000261]
+    confidence: high
+defense:
+  detections: {coverage: available, strategy_refs: [DET-000087]}
+  mitigations: {coverage: available, mitigation_refs: [MIT-000088]}
+evidence:
+  claim_refs: [CLM-000464, CLM-000462, CLM-000468, CLM-000469, CLM-000470]
+  case_refs: [CASE-000093]
+  reference_refs: [REF-000127, REF-000261, REF-000263, REF-000265, REF-000266]
+research:
+  limitations:
+    paragraphs:
+      - zh: 直接规避案例是 Windows Serpent；Kubernetes Job TTL 和安装器 run-once 证明短生命周期是正常平台能力而非攻击意图。跨平台映射必须证明攻击者选择调度器父级和快速删除以改变观察，而不能只根据对象已被控制器清理。缺少创建/删除审计时，进程异常可以提示调查但不足以确认本轴。
+        en: The direct evasion case is Windows Serpent while Kubernetes Job TTL and installer run-once behavior show that short lifetime is a normal platform capability rather than adversary intent. Cross-platform mapping must establish attacker selection of scheduler parentage and rapid deletion to change observation rather than infer from controller cleanup. Without create and delete audit anomalous processes can prompt investigation but do not confirm the axis.
+lifecycle: {status: review, version: 1.0.0, created: '2026-09-12', modified: '2026-09-12', contributors: [Niji Matrix Research], reviewers: []}

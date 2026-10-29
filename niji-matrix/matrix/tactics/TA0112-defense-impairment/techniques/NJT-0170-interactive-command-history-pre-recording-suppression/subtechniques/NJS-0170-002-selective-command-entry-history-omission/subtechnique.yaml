@@ -1,0 +1,63 @@
+schema_version: "2.0.0"
+type: evasion-subtechnique
+id: NJS-0170-002
+name: {zh: 命令条目选择性历史遗漏, en: Selective Command-Entry History Omission}
+summary: {zh: 攻击者利用输入特征或过滤 predicate 只阻止选定命令进入历史，同时让相邻交互条目继续持久化。, en: "Adversaries use an input feature or filtering predicate to keep selected commands out of history while neighboring interactive entries continue to persist."}
+aliases: []
+parent_ref: NJT-0170
+lineage: {attck_subtechnique_inherited: false}
+definition_and_concept:
+  paragraphs:
+    - zh: 命令条目选择性历史遗漏是攻击者在仍启用 history 的交互 session 中，利用前导空格、匹配模式、回调/handler 或等价 predicate，使选定命令在加入内存/持久历史前被拒绝，而同一 session 的其他条目仍按基线保存。直接对象是 independent command sequence—predicate match—history sequence gap。
+      en: Selective Command-Entry History Omission is adversary use within an interactive session whose history remains enabled of a leading-space rule, matching pattern, callback or handler, or equivalent predicate so selected commands are rejected before entering in-memory or durable history while other entries in the same session persist normally. Its direct object is the independent command sequence to predicate match to history-sequence gap.
+    - zh: 选择性由可解释条件决定，而不是偶发丢失或事后内容编辑。完成需要看到缺失命令的独立证据、其输入/规范化值命中当时 predicate、前后或同 session 其他条目正常保存，并排除敏感信息保护的批准过滤。
+      en: Selectivity is determined by an explainable condition rather than accidental loss or post-hoc content editing. Completion requires independent evidence of the missing command, its input or normalized value matching the predicate active at the time, normal persistence of neighboring or other same-session entries, and exclusion of approved sensitive-information filtering.
+stealth_characteristics:
+  paragraphs:
+    - zh: 命令条目选择性历史遗漏保留了看似健康的 history 文件和连续用户活动，只在攻击者选择的位置形成局部序列洞。APT38 在 ignorespace 生效时为敏感命令加前导空格，调查人员仍可看到同一 session 的普通命令，因而更容易把缺口当作未执行。按命令内容告警既泄露隐私又容易被改写绕过，核心是 predicate 与序列差。
+      en: Selective Command-Entry History Omission preserves an apparently healthy history file and continuous user activity while creating local sequence holes at adversary-selected positions. APT38 prepended spaces to sensitive commands while ignorespace was active, leaving ordinary commands in the same session visible and making missing actions easier to mistake for actions never taken. Alerting on command content leaks privacy and is easy to evade; the core is the predicate and sequence difference.
+    - zh: 残余包括 raw terminal input 或其受控摘要、process exec、shell pre-exec hook、HISTCONTROL/HISTIGNORE old-new、PSReadLine/history handler、相邻 history 序号/时间和命令结果。若只有 history 文件而无独立命令源，通常无法区分“未执行”和“被遗漏”。
+      en: Residue includes raw terminal input or a controlled digest, process execution, shell pre-exec hooks, HISTCONTROL or HISTIGNORE old and new values, PSReadLine or history handlers, neighboring history sequence numbers and times, and command outcomes. With only the history file and no independent command source, defenders generally cannot distinguish “not executed” from “omitted.”
+scope_boundary_definition:
+  paragraphs:
+    - zh: 纳入要求同一 session 的 history 功能总体正常、至少一条独立观察命令未出现在预期序列、该命令命中当时输入/过滤 predicate，且 predicate 未经批准或与 owner/用途不符。相邻条目或同时间窗的成功写入是区别于整体抑制的必要证据。
+      en: Include only when history generally functions in the same session, at least one independently observed command is absent from the expected sequence, that command matches the input or filtering predicate active at the time, and the predicate is unapproved or mismatches owner or purpose. Neighboring entries or successful same-window writes are required to distinguish this child from whole-session suppression.
+    - zh: 整段 session 均不持久化归 NJS-0170-001；先写入再按内容删除归 NJT-0112；shell 去重、忽略空命令、合法秘密脱敏和管理员批准的 HISTIGNORE 是反例。命令类别、前导空格或具体 shell 不是子技术边界。
+      en: Non-persistence of an entire session belongs to NJS-0170-001. Content-based deletion after writing belongs to NJT-0112. Shell deduplication, omission of empty commands, approved secret redaction, and administrator-approved HISTIGNORE are counterexamples. Command category, leading space, and particular shell are not child boundaries.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+      - zh: 在 Bash 配置 ignorespace 后，攻击者只为凭据读取、转账系统操作或清理命令添加前导空格，其他导航命令正常进入历史；也可设置模式只过滤特定工具或参数。APT38/BeagleBoyz 案例支持第一种实现，但检测应评估任意 predicate，而不是硬编码空格。
+        en: With Bash ignorespace configured, an adversary prepends spaces only to credential reading, payment-system operations, or cleanup commands while navigation commands enter history normally. It can also configure patterns filtering particular tools or arguments. The APT38 or BeagleBoyz case supports the first implementation, but detection evaluates arbitrary predicates rather than hard-coding a space.
+  threat_model:
+    attacker_model:
+      paragraphs:
+        - zh: 需要知道活跃 predicate 并控制输入形式，或有权修改当前 session/用户 history filter，同时保持足够正常条目以伪装连续性。远程终端采集、shell pre-exec hook、进程审计和 predicate 配置审计可从不同观察面揭示。
+          en: The adversary needs knowledge of the active predicate and control of input form or authority to change the current-session or user history filter while retaining enough normal entries to mimic continuity. Remote terminal collection, shell pre-exec hooks, process audit, and predicate-configuration audit expose the behavior from separate planes.
+    defender_model:
+      paragraphs:
+        - zh: 防守方按 session_id 对齐独立 command_event 与 history_entry，保留输入的最小化特征（如 leading-space 标志或受控 hash）、规范化规则、predicate 版本和相邻序号。完整命令内容仅在受控调查层访问；没有 predicate 状态时只能报告 sequence gap。
+          en: Defenders align independent command events with history entries by session ID and retain minimized input features such as a leading-space flag or controlled hash, normalization rules, predicate version, and neighboring sequence numbers. Full command content is available only in a controlled investigation tier. Without predicate state, the result is only a sequence gap.
+stealth_mechanisms:
+  - mechanism_ref: NM-BT
+    role: primary
+    summary: {zh: 正常历史序列包围被 predicate 隐去的敏感命令, en: A normal history sequence surrounds sensitive commands hidden by a predicate}
+    analysis:
+      paragraphs:
+        - zh: 攻击者利用 history consumer 的合法过滤语义，让非敏感命令保持可见以维持 session 连续外观，同时使关键操作不进入默认回溯面。把独立 command sequence、predicate 命中和相邻 history 连接后，可将局部洞从未执行区分出来。
+          en: The adversary uses legitimate filtering semantics of the history consumer to keep nonsensitive commands visible and preserve the appearance of session continuity while critical operations never enter the default retrospective plane. Joining the independent command sequence, predicate match, and neighboring history separates a local omission from non-execution.
+    evidence_refs: [REF-000737, REF-000738, REF-000740]
+    confidence: high
+defense:
+  detections: {coverage: available, strategy_refs: [DET-000195]}
+  mitigations: {coverage: available, mitigation_refs: [MIT-000176]}
+evidence:
+  claim_refs: [CLM-000838, CLM-000839, CLM-000840]
+  case_refs: [CASE-000241]
+  reference_refs: [REF-000737, REF-000738, REF-000740]
+research:
+  limitations:
+    paragraphs:
+      - zh: APT38 案例直接支持 ignorespace，但公开资料没有完整的前后 history 序列；高置信检测依赖本地 session 对照。不同 shell 会进行 expansion、deduplication、multiline folding 或敏感内容过滤，原始输入到最终条目的规范化必须版本化，否则会产生大量假缺口。
+        en: The APT38 case directly supports ignorespace but public reporting does not include a complete before and after history sequence, so high-confidence detection depends on local session comparison. Shells perform expansion, deduplication, multiline folding, or sensitive-content filtering. Normalization from raw input to final entry must be versioned or it will create many false gaps.
+lifecycle: {status: review, version: "0.1.0", created: "2026-09-23", modified: "2026-09-23", contributors: [Niji Matrix Research], reviewers: []}

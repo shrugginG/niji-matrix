@@ -1,0 +1,81 @@
+schema_version: "2.0.0"
+type: technique
+id: NJT-0065
+name: {zh: 匿迹化解释器执行, en: Stealth-Conforming Interpreter Execution}
+summary: {zh: 攻击者让目标已有解释器解析其指令，并通过借用正常工作流谱系或把语义限制在短驻输入与内存中，降低文件视角和粗粒度进程规则的识别能力。, en: Adversaries have an existing interpreter parse their instructions and weaken file-centric and coarse process rules by borrowing normal workflow lineage or confining semantics to transient input and memory.}
+aliases: [Command and Scripting Interpreter]
+classification:
+  tactic_refs: [TA0002]
+  origin: {kind: attack-adapted, source_attack_id: T1059, source_attack_version: '19.1'}
+  decision_ref: DEC-TA0002-T1059
+definition_and_concept:
+  paragraphs:
+  - zh: 匿迹化解释器执行是攻击者通过操作系统 shell、脚本运行时、应用内语言、设备 CLI 或等价入口，把字符串、脚本块、标准输入或文件内容转化为命令、进程或运行时代码的技术。其直接目标是让攻击者控制的指令开始执行，同时借用已经安装、经常受信且具有广泛管理能力的解析环境；对象从解释器接收指令开始，到产生首个直接执行结果为止。
+    en: Stealth-Conforming Interpreter Execution uses an operating-system shell, scripting runtime, application-hosted language, device CLI, or equivalent entry point to turn strings, script blocks, standard input, or file content into commands, processes, or runtime code. Its direct objective is to begin adversary-controlled execution through an installed, commonly trusted parser with broad administrative capability. The object begins when the interpreter receives instructions and ends at its first direct execution outcome.
+  - zh: 概念锚是“解释器入口—可执行语义—结果”的因果链，而不是 PowerShell、Python 或 Shell 等语言名称。命令由 WMI、计划任务、云控制面或容器 API 送达时，可同时存在上游技术，但只有解析指令的部分归本对象；直接调用 Native API、单纯编码文本、以及只传输脚本而未执行均不属于本技术。
+    en: The anchor is the causal chain from interpreter entry through executable semantics to outcome, not a language name such as PowerShell, Python, or shell. A command delivered by WMI, a scheduler, cloud control plane, or container API may also instantiate an upstream technique, but only parsing belongs here. Direct Native API invocation, encoding text alone, and transferring a script without execution are outside this technique.
+stealth_characteristics:
+  paragraphs:
+  - zh: 匿迹矛盾在于解释器必须看到足够完整的语义才能运行，而攻击者希望防守方只看到签名正常的运行时、惯常父进程或没有独立脚本文件的短暂进程。解释器名称和签名与合法运维高度重合；若指令来自 stdin、命令参数、管道、远端内容或内存构造，文件扫描器又没有稳定制品可复核。攻击者还可让 Office、管理代理、构建器或应用服务等正常父体发起解释器，使静态允许名单和简单父子规则失去区分力。
+    en: The interpreter must receive complete semantics to execute while the adversary wants defenders to see only a signed runtime, expected parent, or short-lived process without a standalone script. Interpreter names and signatures overlap legitimate administration. Instructions through standard input, parameters, pipelines, remote content, or memory leave no durable artifact for file scanners. An ordinary Office application, management agent, builder, or application service can also become the parent, weakening static allowlists and simple lineage rules.
+  - zh: 匿迹不会消除痕迹。进程创建、祖先与调用身份、完整命令行、stdin 来源、PowerShell Script Block/AMSI、Python audit event、Linux execve、模块加载、网络取得和子进程结果都可重建链条。官方文档说明 PowerShell 能记录交互或自动化处理的脚本块，CPython 也为 subprocess 等操作产生 audit event；收益取决于遥测启用、内容保留和跨入口—结果关联，而不是“解释器天然不可见”。
+    en: Stealth does not erase evidence. Process creation, ancestry and identity, complete command line, standard-input source, PowerShell Script Block or AMSI, Python audit events, Linux execve, module loads, network retrieval, and child outcomes can reconstruct the chain. Official documentation states that PowerShell records script blocks processed interactively or through automation and CPython emits events for operations such as subprocess creation. Benefit depends on telemetry, content retention, and entry-to-outcome correlation rather than interpreters being inherently invisible.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 纳入攻击者控制的命令、脚本块、标准输入或脚本文件被解释器实际解析并导致运行时代码、命令或子进程开始的行为。必须指出解释入口和至少一个执行结果；仅观察到解释器启动只是线索。语言、版本、平台和命令长度不形成子技术，固定基线的 13 个 ATT&CK 子项是实现覆盖先验而非 Niji 分类配额。
+    en: Scope includes adversary-controlled commands, script blocks, standard input, or files actually parsed and causing runtime code, a command, or a child process to begin. Classification requires an interpretation entry and at least one outcome; interpreter startup alone is only a lead. Language, version, platform, and command length do not form children, and the thirteen ATT&CK children are implementation-coverage priors rather than a Niji quota.
+  - zh: 云 VM Agent 或 Systems Manager 的控制面—来宾命令归 NJT-0064，`kubectl exec`/kubelet 进入运行容器归 NJT-0066，ESXi Guest Operations 归 NJT-0068；其中来宾内 shell 解析仍可同时标记本技术。纯混淆、Native API 或共享模块加载分别归对应对象。合法脚本、部署、构建和诊断均可同形，不能按解释器名称定性。
+    en: Cloud VM Agent or Systems Manager control-plane-to-guest commands belong to NJT-0064, `kubectl exec` or kubelet access to NJT-0066, and ESXi Guest Operations to NJT-0068; an in-guest shell parse may also instantiate this technique. Pure obfuscation, Native API, and shared-module loading belong to their respective objects. Legitimate scripts, deployment, builds, and diagnostics share the same shape, so interpreter name is not a verdict.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: 攻击者获得用户会话、宏/文档入口、Web 服务执行、远程管理身份或自动化令牌后，可调用已有解释器完成发现、配置更改、下载与内存加载、凭据操作或启动下一阶段。适用于管理员频繁使用 shell、构建系统执行脚本、应用托管 JavaScript/Lua/VBA，或安全控制主要检查磁盘文件与少量进程名的环境。
+      en: After gaining a user session, macro or document entry, web-service execution, remote-management identity, or automation token, an adversary can use an existing interpreter for discovery, configuration change, download and memory loading, credential operations, or next-stage launch. Relevant environments include administrator-heavy shells, script-running build systems, hosted JavaScript, Lua, or VBA, and controls focused on disk files and a few process names.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者需要可达解释器入口、当前身份允许的命令能力，以及把语义送入参数、stdin、脚本块或文件的路径。借用正常谱系还需了解父级、主体、工作目录、时间与常见模块；短驻载体受参数长度、转义、版本、网络和内容扫描限制。Script Block、AMSI、audit hook、execve 与 EDR 进程链会增加暴露。
+        en: The adversary needs a reachable interpreter, capability allowed to the current identity, and a path for semantics through arguments, standard input, script block, or file. Borrowing normal lineage additionally requires knowledge of parent, principal, working directory, time, and modules. Transient carriers face length, quoting, version, network, and content-inspection constraints. Script Block, AMSI, audit hooks, execve, and EDR lineage increase exposure.
+    defender_model:
+      paragraphs:
+      - zh: 防守方需取得身份与会话、进程祖先、完整命令、脚本或运行时审计、文件与网络结果，并连接“谁从何入口送入何种指令”与“解释器随后做了什么”。只记录可执行路径、截断参数或快速清理分析日志会留下核心盲点；不同平台字段不一致，检测应保留语义等价关系而非硬编码语言名单。
+        en: Defenders need identity and session, process ancestry, complete commands, script or runtime audit, and file and network outcomes, joining who supplied which instruction through what entry to what the interpreter did next. Executable-path-only data, truncated arguments, or short retention leaves the central blind spot. Platform fields differ, so detection should preserve semantic equivalence instead of hard-coding a language list.
+stealth_mechanisms:
+- mechanism_ref: NM-FD
+  role: primary
+  summary: {zh: 借用受信解释器与正常工作流谱系, en: Borrow a trusted interpreter and expected workflow lineage}
+  analysis:
+    paragraphs:
+    - zh: 攻击者从正常父体、主体和时段送入指令后，进程名、签名与粗粒度谱系落在允许基线，形成特征伪装。FIN8 通过 WMI 产生 `wmiprvse.exe > cmd.exe > powershell.exe`，使 Word 不直接成为父进程，直接证明入口谱系可被控制以回避父子规则。残余差异包括祖先、令牌来源、工作目录、命令语义与结果。
+      en: Instructions supplied from an expected parent, principal, and time place process name, signature, and coarse lineage inside the allowed baseline, producing Feature Disguise. FIN8 used WMI to create `wmiprvse.exe > cmd.exe > powershell.exe` so Word was not the direct parent, directly showing entry lineage can be controlled to evade parent-child rules. Residual differences include ancestry, token origin, working directory, command semantics, and outcome.
+  evidence_refs: [REF-000117, REF-000196, REF-000200]
+  confidence: high
+- mechanism_ref: NM-BT
+  role: secondary
+  summary: {zh: 主要语义短驻于文件视角之外, en: Primary semantics are transient outside file-centric observation}
+  analysis:
+    paragraphs:
+    - zh: 指令经 stdin、参数、管道、下载字符串或内存流送入时，文件系统没有一一对应脚本；进程或短保留日志消失后只剩结果，形成行为透明。FIN8 让 PowerShell 命令行仅显示 `-`，PEAKLIGHT 在内存流中解密、解压并执行 PowerShell。完整输入、Script Block、AMSI、audit event、网络响应和结果进程仍可恢复语义，故“无文件”不等于不可检测。
+      en: Instructions delivered through standard input, arguments, pipelines, downloaded strings, or memory streams leave no one-to-one script; after process or short-retention logs expire only outcomes remain, producing Behavioral Transparency. FIN8 made the PowerShell command line show only `-`, while PEAKLIGHT decrypted, decompressed, and executed PowerShell in a memory stream. Complete input, Script Block, AMSI, audit events, network responses, and outcomes can still recover semantics, so fileless does not mean undetectable.
+  evidence_refs: [REF-000196, REF-000197, REF-000198, REF-000199]
+  confidence: high
+subtechnique_taxonomy:
+  narrative:
+    paragraphs:
+    - zh: NJS-0065-001 固定入口谱系借用，指令可来自文件或内联，检测核心是上下文差分；NJS-0065-002 固定短驻语义载体，父级可异常，检测核心是内容保留和入口—结果关联。前者可执行持久脚本，后者可由异常父体启动，故互不包含。跨解释器阶段拆分由两轴组合解释，编码/混淆延期到表示层技术。
+      en: NJS-0065-001 fixes entry-lineage borrowing and centers detection on contextual difference whether instructions are file-backed or inline. NJS-0065-002 fixes a transient semantic carrier and centers detection on content retention and entry-to-outcome joins even with an anomalous parent. The former can run a durable script and the latter can use an anomalous parent, so neither contains the other. Cross-interpreter staging combines both axes; encoding and obfuscation remain with representation-focused techniques.
+    - zh: 二次检索逐项覆盖 13 个 ATT&CK 子项，没有按语言或平台复制分类；云、容器与 ESXi 的专用管理通道分别交给 NJT-0064、NJT-0066 和 NJT-0068。
+      en: A second pass covered all thirteen ATT&CK children without replicating categories by language or platform. Dedicated cloud, container, and ESXi management channels belong to NJT-0064, NJT-0066, and NJT-0068.
+  coverage: established
+  subtechnique_refs: [NJS-0065-001, NJS-0065-002]
+defense: {detections: {coverage: available, strategy_refs: [DET-000078]}, mitigations: {coverage: available, mitigation_refs: [MIT-000078]}}
+evidence:
+  claim_refs: [CLM-000254, CLM-000255, CLM-000256, CLM-000389, CLM-000390, CLM-000391, CLM-000392, CLM-000393, CLM-000394]
+  case_refs: [CASE-000067, CASE-000068]
+  reference_refs: [REF-000117, REF-000196, REF-000197, REF-000198, REF-000199, REF-000200, REF-000201]
+research:
+  limitations:
+    paragraphs:
+    - zh: 现场证据最强地覆盖 Windows PowerShell、cmd 与 WMI；其他运行时只按等价入口—语义—结果结构推广，不假定相同字段。FIN8 明确说明回避命令行和父子检测，PEAKLIGHT 直接展示内存执行，因此两个子项置信度为 high。正常自动化也可能内联或无文件，最终归因仍需主体、入口、内容与结果联合异常。
+      en: Field evidence is strongest for Windows PowerShell, cmd, and WMI. Other runtimes are generalized only through equivalent entry-semantics-outcome structure without assuming identical fields. FIN8 explicitly describes command-line and parent-child evasion, while PEAKLIGHT directly shows memory execution, supporting high confidence for both children. Legitimate automation can also be inline or fileless, so attribution still requires combined principal, entry, content, and outcome anomalies.
+lifecycle: {status: review, version: 1.1.0, created: '2026-09-10', modified: '2026-09-12', contributors: [Niji Matrix Research], reviewers: []}

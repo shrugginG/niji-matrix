@@ -1,0 +1,198 @@
+schema_version: 2.0.0
+type: mitigation
+id: MIT-000172
+name:
+  zh: 独立网络分段与中继路径治理
+  en: Independent Network Segmentation and Relay-Path Governance
+summary:
+  zh: 分离边界管理权、重复执行关键分段、限制 relay/双宿主并保留双侧遥测，使单点受侵难以形成持久桥接。
+  en: Separate boundary administration, repeat critical segmentation enforcement, restrict relays and dual-homing, and retain
+    bilateral telemetry so one compromise cannot sustain a bridge.
+description:
+  paragraphs:
+  - zh: 本缓解把安全边界定义为端到端批准 path graph，而不是一台防火墙。关键域间在至少一个独立、不同权控制点重复执行 deny/inspection；路由/NAT/ACL/proxy 权限使用 JIT、双人审批和不可变配置版本。双宿主主机、管理跳板、FRP/VPN/proxy
+      relay 按 owner、domain pair、binary、peer、用途和到期登记，未批准监听和隧道阻断。边界两侧 flow 与策略裁决送往设备管理员不能同时删除的存储。
+    en: This mitigation defines a security boundary as an end-to-end approved path graph rather than one firewall. Critical
+      inter-domain denial or inspection is repeated at at least one independent differently authorized control point. Route,
+      NAT, ACL, and proxy authority use JIT, two-person approval, and immutable configuration versions. Dual-homed hosts,
+      jump boxes, and FRP, VPN, or proxy relays are registered by owner, domain pair, binary, peer, purpose, and expiry, with
+      unapproved listeners and tunnels blocked. Bilateral flows and policy decisions are exported to storage that device administrators
+      cannot delete together.
+domains:
+- enterprise
+measures:
+- key: independent-segmentation-enforcement
+  name:
+    zh: 不同权重复分段与检查
+    en: Differently Authorized Repeated Segmentation and Inspection
+  description:
+    paragraphs:
+    - zh: 在关键域的两侧或独立设备重复执行 deny/inspection，使一台路由器、防火墙或 VM 被控制后仍有未受侵控制点阻断跨域流。
+      en: Repeat deny or inspection on both sides of a critical domain or on an independent device so compromise of one router,
+        firewall, or VM still leaves an uncompromised control point to block cross-domain flow.
+  control_type: preventive
+- key: boundary-and-relay-least-authority
+  name:
+    zh: 边界配置和 relay 最小权限
+    en: Boundary Configuration and Relay Least Authority
+  description:
+    paragraphs:
+    - zh: 分离 route/NAT/ACL/proxy 与一般管理员权限，限制双宿主、监听、端口转发、VPN/FRP 和第三方连接，审批绑定准确 domain pair、peer 与期限。
+      en: Separate route, NAT, ACL, and proxy authority from ordinary administration; restrict dual-homing, listeners, port
+        forwarding, VPN or FRP, and third-party links, with approval bound to the exact domain pair, peer, and expiry.
+  control_type: preventive
+- key: immutable-path-and-bilateral-telemetry
+  name:
+    zh: 不可变路径版本与双侧遥测
+    en: Immutable Path Versions and Bilateral Telemetry
+  description:
+    paragraphs:
+    - zh: 远程保存网络域模型、边界配置 old/new、AAA、relay 进程/会话和两侧 flow/decision，生成 bridge_id 并在路径撤销后继续保留。
+      en: Remotely retain network-domain models, boundary configuration old and new, AAA, relay processes or sessions, and
+        flows and decisions on both sides, generating bridge_id and retaining it after path removal.
+  control_type: detective-support
+applications:
+- target_ref: NJT-0168
+  use:
+    paragraphs:
+    - zh: 对所有跨信任域路径维护批准图和责任人；任何新增设备或 overlay 路径须先证明独立分段仍生效并有双侧遥测。异常时在未受侵控制点阻断流量、隔离 bridge 主体并保全配置/会话。
+      en: Maintain an approved graph and owner for every cross-trust-domain path. Any new device or overlay path proves independent
+        segmentation and bilateral telemetry before use. On anomaly block traffic at an uncompromised control point, isolate
+        the bridge principal, and preserve configuration and sessions.
+  expected_effect:
+    paragraphs:
+    - zh: 单个边界设备或中继被攻陷不足以静默连接两个域，桥接状态和端到端流量可被独立重建。
+      en: Compromise of one boundary device or relay is insufficient to silently connect two domains, while bridge state and
+        end-to-end traffic remain independently reconstructable.
+  limitations:
+    paragraphs:
+    - zh: 复杂网络、云/OT/第三方路径和动态路由使批准图维护困难；重复控制会增加延迟和运维成本，攻击者若控制两侧管理域仍可能绕过。
+      en: Complex networks, cloud or OT or third-party paths, and dynamic routing make approved-graph maintenance difficult.
+        Repeated controls add latency and operational cost, and an adversary controlling both administrative domains may still
+        bypass them.
+- target_ref: NJS-0168-001
+  use:
+    paragraphs:
+    - zh: 锁定边界设备 route/NAT/ACL/proxy 与 debug 权限，配置提交使用不可变版本和双人审批，并在另一侧设备重复策略；发现异常 diff 时回滚并验证双侧 flow 已终止。
+      en: Lock route, NAT, ACL, proxy, and debug authority on boundary devices, use immutable versions and two-person approval
+        for commits, and repeat policy on another device. On an anomalous difference roll back and verify bilateral flows
+        have stopped.
+  expected_effect:
+    paragraphs:
+    - zh: 攻击者难以仅改写一个受信设备就形成完整桥接，配置变化与实际跨域结果均留在不同权系统。
+      en: An adversary has greater difficulty forming a complete bridge by rewriting one trusted device, and both configuration
+        change and cross-domain outcome remain in differently authorized systems.
+  limitations:
+    paragraphs:
+    - zh: 紧急互联和 HA failover 需要快速变更；错误回滚可能中断业务，设备内配置备份在同设备受侵时不可信。
+      en: Emergency interconnects and HA failover need rapid changes. Incorrect rollback can interrupt business, and on-device
+        configuration backup is untrusted when the same device is compromised.
+- target_ref: NJS-0168-002
+  use:
+    paragraphs:
+    - zh: 禁止未登记双宿主和 relay 软件，主机/设备应用控制限制 FRP/VPN/proxy，第三方 VPN 绑定特定 peer/domain pair；双侧网络监测按 relay_instance_id 配对。
+      en: Prohibit unregistered dual-homing and relay software, restrict FRP, VPN, and proxy through host or device application
+        control, bind third-party VPNs to specific peers and domain pairs, and pair bilateral monitoring by relay_instance_id.
+  expected_effect:
+    paragraphs:
+    - zh: 攻击者需要同时绕过应用/隧道治理和双侧 flow 检测，overlay relay 的可用时间和匿名性下降。
+      en: The adversary must bypass application or tunnel governance plus bilateral flow detection, reducing overlay-relay
+        lifetime and anonymity.
+  limitations:
+    paragraphs:
+    - zh: 加密合法工具可双重用途，MSP 和服务网格路径可能很动态；只按进程名或端口阻断会误报并可被改名绕过。
+      en: Encrypted legitimate tools can be dual use, and MSP or service-mesh paths can be dynamic. Blocking by process name
+        or port alone creates false positives and is bypassed by renaming.
+- target_ref: NJS-0183-002
+  use:
+    paragraphs:
+    - zh: 登记堡垒机、跳板、port forward 和 VPN/proxy relay 的 owner、原始来源、目标、服务、peer 和期限；限制监听、portproxy、隧道与双宿主权限，应用控制未批准 relay，并将双侧 flow、配置和目标
+        session 外送到独立存储。
+      en: Register owner, original source, destination, service, peer, and expiry for bastions, jump hosts, port forwards,
+        and VPN or proxy relays; restrict listener, portproxy, tunnel, and dual-homing authority, apply application control
+        to unapproved relays, and export bilateral flows, configuration, and destination sessions to independent storage.
+  expected_effect:
+    paragraphs:
+    - zh: 中继更难静默成为来源替身，目标只见跳板时仍可还原原始控制端。
+      en: A relay has greater difficulty silently becoming an origin substitute, and the original controller remains recoverable
+        when the destination sees only the jump host.
+  limitations:
+    paragraphs:
+    - zh: MSP、云堡垒和动态代理可能不共享完整日志；攻击者若控制中继和日志域，仍需另一侧网络或目标遥测。
+      en: MSPs, cloud bastions, and dynamic proxies may not share complete logs; control of relay and logging domain still
+        requires another-side network or destination telemetry.
+- target_ref: NJT-0222
+  use:
+    paragraphs:
+    - zh: 为每条批准隧道登记 owner、identity、binary/config hash、两端、inner protocol/service、outer protocol/peer、domain pair、用途和到期；默认阻断未批准
+        listener、port forward、VPN、服务网格和隧道客户端，并在独立边界重复限制。发现异常时同时撤销两端身份/配置并验证内外 flow 终止。
+      en: Register owner, identity, binary or configuration hash, both endpoints, inner protocol or service, outer protocol
+        or peer, domain pair, purpose, and expiry for every approved tunnel. Deny unapproved listeners, forwards, VPNs, service
+        meshes, and tunnel clients by default and repeat restrictions at an independent boundary. On anomaly revoke identity
+        and configuration at both endpoints and verify termination of inner and outer flows.
+  expected_effect:
+    paragraphs:
+    - zh: 攻击者不能仅选择一个允许外层协议就获得任意内层路径，未登记内外映射和双侧流量会显著暴露。
+      en: Selecting an allowed outer protocol no longer grants arbitrary inner paths, and unregistered inner-to-outer mappings
+        plus bilateral flows become conspicuous.
+  limitations:
+    paragraphs:
+    - zh: 自定义用户态隧道可改名，内核/设备隧道可能无进程，动态服务网格和 MSP 路径维护复杂；严格默认拒绝会影响远程运维和业务连续性。
+      en: Custom user-space tunnels can be renamed, kernel or device tunnels may lack processes, and dynamic service-mesh
+        or MSP paths are difficult to inventory. Strict default denial can disrupt remote administration and business continuity.
+- target_ref: NJS-0222-001
+  use:
+    paragraphs:
+    - zh: 对 SSH 等受管入口使用 DisableForwarding、AllowTcpForwarding、PermitOpen/PermitListen 或等效策略限制转发方向与目标；对其他隧道限制监听权限、可访问内层服务和 outer
+        peer，并把本地 socket—outer flow 映射外送审计。
+      en: On managed SSH entry points use DisableForwarding, AllowTcpForwarding, PermitOpen or PermitListen, or equivalent
+        policy to constrain forwarding direction and destination. For other tunnels restrict listener authority, reachable
+        inner services, and outer peers and export local-socket-to-outer-flow mapping for audit.
+  expected_effect:
+    paragraphs:
+    - zh: 未批准本地服务无法被任意绑定进允许隧道，内层服务目标和外层出口必须同时符合策略。
+      en: Unauthorized local services cannot be arbitrarily bound into an allowed tunnel, and inner service destination plus
+        outer egress must both satisfy policy.
+  limitations:
+    paragraphs:
+    - zh: OpenSSH 官方说明仅禁用 forwarding 对仍有 shell 的用户并非完整安全边界；攻击者可上传自定义 forwarder，因此还需应用控制、网络分段和端点 socket 检测。
+      en: OpenSSH documentation notes that disabling forwarding alone is not a complete boundary for users who retain a shell
+        because they can install another forwarder; application control, segmentation, and endpoint socket detection remain
+        necessary.
+- target_ref: NJS-0222-002
+  use:
+    paragraphs:
+    - zh: 对批准多路协议限定 controller/peer、允许 inner service、最大并发流和 session 生命周期，并在网关或端点输出 per-stream ID 与目标；未知加密多路连接不能仅因外层协议获准而整体放行。
+      en: For approved multiplexed protocols constrain controller or peer, permitted inner services, maximum concurrent streams,
+        and session lifetime and export per-stream IDs and destinations at gateway or endpoint. Do not allow an unknown encrypted
+        multiplexed connection solely because its outer protocol is approved.
+  expected_effect:
+    paragraphs:
+    - zh: 单外层连接不能无限承载未登记的并发控制流，异常 fan-in 和内层目标可被审计或阻断。
+      en: One outer connection cannot carry unlimited unregistered concurrent control streams, and anomalous fan-in plus inner
+        destinations become auditable or blockable.
+  limitations:
+    paragraphs:
+    - zh: HTTP/2、QUIC、VPN 和服务网格本身需要高并发，固定流数阈值会误报；没有 per-stream telemetry 时只能限制 peer/workload 并依赖 endpoint fan-in。
+      en: HTTP/2, QUIC, VPN, and service meshes legitimately need high concurrency, so fixed stream thresholds create false
+        positives. Without per-stream telemetry controls are limited to peer and workload plus endpoint fan-in.
+evidence_refs:
+- REF-000721
+- REF-000722
+- REF-000723
+- REF-000724
+- REF-000846
+- REF-000847
+- REF-000614
+- REF-001024
+- REF-001141
+- REF-001145
+- REF-000230
+lifecycle:
+  status: review
+  version: 1.2.0
+  created: '2026-09-23'
+  modified: '2026-10-05'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

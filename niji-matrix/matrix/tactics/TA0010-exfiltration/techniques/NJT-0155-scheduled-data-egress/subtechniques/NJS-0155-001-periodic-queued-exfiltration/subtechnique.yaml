@@ -1,0 +1,123 @@
+schema_version: 2.0.0
+type: evasion-subtechnique
+id: NJS-0155-001
+parent_ref: NJT-0155
+name:
+  zh: 周期积压外传
+  en: Periodic Queued Exfiltration
+summary:
+  zh: 先积累待传数据，再按攻击者设定的周期集中外传，减少即时外联并拉开收集与网络出站的时间距离。
+  en: Accumulate data for exfiltration and release it on an attacker-set period, reducing immediate contacts and
+    separating collection from network egress.
+aliases: []
+lineage:
+  attck_subtechnique_inherited: false
+definition_and_concept:
+  paragraphs:
+  - zh: 周期积压外传是攻击者让日志、命令结果或文件先进入待发状态，再由独立计时条件按周期取出并向外发送。其直接目的仍是把数据转移到受害环境之外；区别于普通自动化外传之处在于可配置的释放周期有意改变收集与外传的时间关系。周期可以短到十分钟，也可以更长，不以固定数值、工具或通道定义。
+    en: Periodic Queued Exfiltration places logs, command results, or files into a pending state before a separate
+      timer periodically releases them outward. Its direct purpose remains moving data out of the victim environment.
+      It differs from ordinary automated exfiltration because a configurable release period deliberately changes
+      the temporal relation between collection and transfer. The period may be ten minutes or much longer and is
+      not defined by a fixed number, tool, or channel.
+  - zh: 这一子项要求可识别的积压—释放关系；单纯每十分钟探测 C2、保持心跳或因网络失败而重试都不够。单次外传大小不受本子项定义，若还人为控制传输字节或速率，可与 T1030 对应技术并列标注。
+    en: This child requires an identifiable queue-and-release relation. Merely probing C2 every ten minutes, keeping
+      a heartbeat, or retrying after network failure is insufficient. The size of each release does not define this
+      child; deliberate control of bytes or rate can additionally map to the T1030-derived technique.
+stealth_characteristics:
+  paragraphs:
+  - zh: 周期积压外传把连续产生的敏感输出转成较少的出站事件，使只覆盖数据读取后短时间的检测逻辑难以连接外部连接。Sedreco 的出站文件、独立外传计时器和批量发送直接展示了这一时间错位；ESET 仅将“更少联系可能降低注意”表述为可能性，因此不能把积压视为必然成功的规避。周期规律、队列清空和单次较大的上传量反而给长窗口检测提供了线索。
+    en: Periodic Queued Exfiltration converts a continuing stream of sensitive output into fewer egress events,
+      frustrating a detector that only relates network connections to the immediately preceding data read. Sedreco's
+      outbound file, separate exfiltration timer, and bulk send directly show this displacement in time. ESET states
+      only that fewer contacts might reduce attention, so queuing cannot be treated as assured evasion. Regular
+      recurrence, queue draining, and potentially larger uploads instead give long-window detection usable signals.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 本子项纳入攻击者控制周期并把已产生数据从待发状态释放到外部目的地的行为，不要求系统级计划任务。排除仅有 C2 轮询、内部日志轮转而没有出站、失败重试与正常遥测批处理。检测到队列文件并不独立证明其恶意属性，必须结合文件内容或来源、出站目的地、非授权进程与重复释放关系。若只是限制每包大小或每秒带宽，归
+      T1030 的规模轴；若仅是自动触发上传，归 T1020 的自动化轴。
+    en: This child includes attacker-controlled periodic release of already produced data from a pending state to
+      an external destination and does not require an OS task. It excludes C2 polling alone, internal log rotation
+      without egress, failure retry, and routine telemetry batching. A queue file alone does not prove malice; its
+      content or provenance, outbound destination, unauthorized process, and recurring releases must be assessed
+      together. Per-packet or per-second volume caps belong to T1030's size axis, and automatic upload without a
+      timing variable belongs to T1020's automation axis.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: 在持久驻留的主机上，收集模块持续写入键盘记录、命令结果或选定文档，通信模块仅到周期点才读取待发区并向 C2 或另一个外部接收端发送。Sedreco 是具有明确队列与发送计时器的实现例；Machete 证实真实被窃数据可以以十分钟节律送往
+        C2，但单独的 Machete 报告不足以证明其使用与 Sedreco 相同的队列结构。
+      en: On a persistently compromised host, a collection component keeps writing keystrokes, command output, or
+        selected documents, while the communication component reads the pending area and sends to C2 or another
+        outside recipient only at release times. Sedreco is an implementation with an explicit queue and send timer.
+        Machete confirms stolen data can be sent to C2 on a ten-minute rhythm, but its report alone does not establish
+        the same queue structure as Sedreco.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者需要可写且可恢复的待发区、能够设定独立外传计时器的程序或服务，以及持续可用的外部路径。积压使其承担磁盘、内存、崩溃后恢复、清理与被扣押的风险；较长周期增加数据丢失和任务失败的代价，过短周期则无法明显降低外联密度。
+        en: The adversary needs a writable recoverable pending area, code or service able to set a distinct exfiltration
+          timer, and a continuing outside path. Queuing adds disk or memory, crash recovery, cleanup, and seizure
+          risk. A longer period increases loss and task-failure costs, while too short a period may not meaningfully
+          lower contact density.
+    defender_model:
+      paragraphs:
+      - zh: 防守方能用时间戳、源/目的地、原发字节和连接持续时间形成长窗口流量序列，并在端点侧关联进程、文件创建或修改、访问敏感数据与队列清空。若只有短期网络摘要而没有进程或文件线索，可以发现重复周期却难以把它归为数据外传；若只有端点日志而没有网络字节，也不能判断外送规模。
+        en: Defenders can build long-window flow series from timestamps, source and destination, originator bytes,
+          and duration, then correlate initiating process, file creation or modification, sensitive-data access,
+          and queue draining at the endpoint. Short-lived network summaries without process or file evidence may
+          reveal recurrence but cannot reliably classify it as exfiltration; endpoint events without network byte
+          counts cannot establish transferred volume.
+stealth_mechanisms:
+- mechanism_ref: NM-ST
+  role: primary
+  summary:
+    zh: 待发积压拉开收集与外传并缩减外联频次
+    en: Queueing separates collection from egress and reduces contact frequency
+  analysis:
+    paragraphs:
+    - zh: 攻击者把敏感输出写入本地待发文件，等待周期计时器触发后再集中外送；防守方在单个短窗口内只看到孤立的数据访问或孤立的网络连接，必须跨窗口连接两者。Sedreco 的网络线程定期读取待发文件并批量传输，证明行为链存在；其十分钟节律也说明时间稀释不是无限的，保留足够长的时序仍可重构。
+      en: The adversary writes sensitive output to a local pending file and waits for a period timer before releasing
+        it outward. A defender using one short window sees isolated data access or an isolated network connection
+        and must join them across windows. Sedreco's network threads periodically read and send the outbound file
+        in bulk, establishing the chain; its ten-minute rhythm also shows dilution is finite and can be reconstructed
+        from sufficiently retained sequences.
+  evidence_refs:
+  - REF-000644
+  confidence: medium
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000172
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000157
+evidence:
+  claim_refs:
+  - CLM-000775
+  - CLM-000776
+  case_refs: []
+  reference_refs:
+  - REF-000643
+  - REF-000644
+  - REF-000645
+  - REF-000634
+  - REF-000604
+research:
+  limitations:
+    paragraphs:
+    - zh: Sedreco 的详细队列证据来自逆向分析，不能代表所有周期外传实现；Machete 仅独立证明定期发送被窃数据，而非相同的积压机理。未看到队列、数据对象或出站字节时，应把重复连接保留为“周期通信”线索，不可直接宣称外传。较大的批次也可能更易触发上传量阈值。
+      en: Sedreco's detailed queue evidence comes from reverse engineering and cannot represent every periodic exfiltration
+        implementation. Machete independently confirms recurrent sends of stolen data, not the same queuing mechanism.
+        Without a queue, data object, or outbound byte evidence, recurring connections remain a periodic-communication
+        lead rather than proof of exfiltration. Larger releases may also be easier to catch with upload-volume thresholds.
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-09-22'
+  modified: '2026-09-22'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

@@ -1,0 +1,126 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000180
+strategy_ref: DET-000167
+name:
+  zh: 介质 A—B 主机传播链分析
+  en: Media A-to-B Host Propagation Lineage Analytic
+summary:
+  zh: 以同一受控介质和载荷摘要连接 A 主机播种、B 主机接入与 B 上首次执行。
+  en: Join host A seeding, host B insertion, and B's first execution by the same controlled medium and payload digest.
+domains:
+- enterprise
+platforms:
+- Windows
+logic:
+  paragraphs:
+  - zh: 先把介质挂载记录规范化为组织资产标识、系统所见序列号、卷标识、主机与时间；再在 A 的挂载至卸载期间关联由非批准写入进程生成的可执行、脚本、LNK、AUTORUN 或隐藏内容，保存内容散列与解析后的链接目标。随后寻找同一介质在不同内部
+      B 上接入，并将其后实际进程启动、UserAssist 或应用启动和首次后继动作与上述内容连接。A 写入、B 挂载、B 执行三门均通过才标为确认的横向链；缺任一门降级为播种或局部触发。对伪装项比较外观与目标命令；对自动播种项比较接入后进程枚举卷及批量写入。
+    en: Normalize mount records to organizational asset identity, observed serial, volume identity, host, and time. During
+      A's mount interval, join executable, script, LNK, AUTORUN, or hidden-content writes by unapproved processes, retaining
+      content hash and parsed shortcut target. Find subsequent attachment of the same medium to a distinct internal B and
+      join actual process creation, UserAssist or application launch, and first successor action to that content. Label a
+      confirmed lateral chain only when A write, B mount, and B execution gates all pass; otherwise retain a seeding or local-trigger
+      assessment. Compare visible lure and target command for the masquerade child, and drive enumeration plus burst writes
+      after attach for the automatic-seeding child.
+data_requirements:
+- source_type: media-device-endpoint
+  name:
+    zh: 介质接入与设备控制事件
+    en: Media insertion and device-control events
+  channel: Microsoft Defender XDR/DeviceEvents
+  required_fields:
+  - timestamp
+  - device_id
+  - action_type
+  - additional_fields.serial_number
+  - additional_fields.device_id
+- source_type: endpoint-file-activity
+  name:
+    zh: 端点文件活动
+    en: Endpoint file activity
+  channel: Microsoft Defender XDR/DeviceFileEvents
+  required_fields:
+  - timestamp
+  - device_id
+  - action_type
+  - folder_path
+  - file_name
+  - sha1
+  - initiating_process_file_name
+  - initiating_process_command_line
+- source_type: endpoint-process-activity
+  name:
+    zh: 端点进程活动
+    en: Endpoint process activity
+  channel: Microsoft Defender XDR/DeviceProcessEvents
+  required_fields:
+  - timestamp
+  - device_id
+  - file_name
+  - folder_path
+  - process_command_line
+  - initiating_process_file_name
+  - initiating_process_command_line
+- source_type: media-transfer-ledger
+  name:
+    zh: 批准介质流转台账
+    en: Approved media-transfer ledger
+  channel: null
+  required_fields:
+  - asset_id
+  - source_host
+  - destination_host
+  - transfer_time
+  - approver
+  - content_manifest
+observables:
+- zh: 同一介质在 A 主机新增诱导入口后于不同的 B 主机接入，B 随后运行与该介质内容相同的脚本或安装器。
+  en: The same medium gains a lure on host A, appears on distinct host B, and B then runs a script or installer matching content
+    on that medium.
+- zh: A 端接入后的自动卷枚举与批量写入先于 B 端第一次执行，且该流转不在批准离线发布台账中。
+  en: Automatic volume enumeration and bulk writes after insertion on A precede first execution on B, outside an approved
+    offline release ledger.
+correlation:
+  window:
+    zh: A 写入到 B 执行依合法介质轮转周期设窗，可从同日延至数周；B 接入到进程启动以分钟至一个工作班次为本地窗。
+    en: Set the A-write-to-B-execution window from legitimate media rotation, ranging from the same day to weeks; use minutes
+      to one work shift for B insertion to process launch.
+  dimensions:
+  - organizational_media_asset
+  - observed_media_serial
+  - volume_id
+  - content_sha1
+  - source_device_id
+  - target_device_id
+  - process_lineage
+  - transfer_record
+  - time
+false_positives:
+- zh: 获批准的离线补丁、取证拷贝及备份还原也会使同一介质在多机携带可执行文件。
+  en: Approved offline patching, forensic copies, and backup restoration also carry executables on the same medium between
+    hosts.
+blind_spots:
+- zh: 隔离 B 无端点遥测、介质 ID 不稳定或载荷先复制到本地再运行，会使 A—介质—B 链失去确定性。
+  en: No endpoint telemetry on isolated B, unstable media IDs, or a payload copied locally before launch can break deterministic
+    A-to-media-to-B lineage.
+tuning_guidance:
+  paragraphs:
+  - zh: 以介质资产与批准用途建立基线，按角色限定可执行内容、写入主机和目标主机；只把经过审批的具体散列、签发者、版本和有效期纳入例外。保留 B 端实际执行门，不能因维护盘常见就永久忽略介质上的新脚本或异常链接目标。
+    en: Baseline media assets and approved purposes, constraining executable content, writer hosts, and target hosts by role.
+      Scope exceptions to an approved hash, signer, version, and validity period. Preserve the B-side execution gate; common
+      maintenance drives must not permanently suppress new scripts or anomalous shortcut targets.
+evidence_refs:
+- REF-000596
+- REF-000597
+- REF-000475
+- REF-000598
+- REF-000301
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-09-22'
+  modified: '2026-09-22'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

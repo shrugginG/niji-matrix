@@ -1,0 +1,222 @@
+schema_version: 2.0.0
+type: technique
+id: NJT-0223
+name:
+  zh: 攻击者密钥控制通道保护
+  en: Adversary-Keyed C2 Protection
+summary:
+  zh: 攻击者在 C2 消息上额外施加自有密钥和恢复流程，使无对应秘密或端点明文观察的检查点无法恢复命令与结果。
+  en: Adversaries apply their own keying and recovery process to C2 messages so inspection points without the corresponding
+    secret or endpoint plaintext cannot recover commands and results.
+aliases:
+- Encrypted Channel
+classification:
+  tactic_refs:
+  - TA0011
+  origin:
+    kind: attack-adapted
+    source_attack_id: T1573
+    source_attack_version: '19.1'
+  decision_ref: DEC-TA0011-T1573
+definition_and_concept:
+  paragraphs:
+  - zh: 攻击者密钥控制通道保护指植入与控制端在承载协议之外对命令、参数、结果或消息封套执行密码变换，并通过嵌入/派生共享秘密、协商会话秘密或公钥封装消息密钥让接收端恢复明文。直接目的是在网络、代理或协议解密检查点隐藏 C2 语义；算法安全强弱不是定义条件，攻击者控制的
+      keying layer 必须实际决定内容可恢复性。
+    en: Adversary-Keyed C2 Protection means an implant and controller cryptographically transform commands, parameters, results,
+      or message envelopes beyond the carrier protocol and let the receiver recover plaintext through an embedded or derived
+      shared secret, negotiated session secret, or public-key envelope for a message key. Its direct purpose is hiding C2
+      semantics at network, proxy, or protocol-decryption inspection points. Algorithm strength is not definitional; the actor-controlled
+      keying layer must actually determine content recoverability.
+  - zh: 判定需同时证明 ciphertext、密钥/材料/derive/unwrap 路径、receiver decrypt 和解密后的控制结果。静态分析可从字符串、配置或 key blob 重建 shared key；动态分析可从 handshake、crypto
+      API、memory/key handle 与同一 flow 恢复 session key。即使私钥未知，也需样本代码和协议格式证明预期接收方如何恢复。Base64、压缩、普通 HTTPS 及只标记 encrypted 的厂商结论不足。
+    en: Classification requires ciphertext, a key, material, derive or unwrap path, receiver decryption, and a decrypted control
+      outcome. Static analysis can reconstruct a shared key from a string, configuration, or key blob. Dynamic analysis can
+      recover a session key from a handshake, cryptographic API, memory or key handle, and the same flow. Even when a private
+      key is unknown, sample code and protocol format must establish intended receiver recovery. Base64, compression, ordinary
+      HTTPS, and vendor labels that merely say encrypted are insufficient.
+stealth_characteristics:
+  paragraphs:
+  - zh: 密码层把 command ID、参数、路径、shell output 和文件内容变为 ciphertext；协议解析器仍可见五元组、TLS/SNI/cert、HTTP length/timing 或 custom frame，但缺
+      key 时不能生成 C2 语义。key reuse 让一个样本/配置可能解密多段历史流量；session-scoped keying 将恢复窗口缩到握手与进程内存；嵌套加密让 TLS inspection 成功后仍只得到内层 ciphertext。
+    en: The cryptographic layer turns command IDs, parameters, paths, shell output, and file contents into ciphertext. Protocol
+      parsers still see five-tuples, TLS, SNI, certificates, HTTP length and timing, or custom frames but cannot produce C2
+      semantics without the key. Key reuse can let one sample or configuration decrypt multiple historical flows. Session-scoped
+      keying narrows recovery to handshake and process-memory windows. Nested encryption leaves inner ciphertext even after
+      successful TLS inspection.
+  - zh: 加密不会隐藏 endpoint、process、key generation/import/derive API、handshake 顺序、key blob/config、内存 key schedule、加解密前后 buffer
+      长度/摘要及解密后的进程/文件动作。固定 key 泄露会扩大历史暴露，复杂协商会增加指纹与实现漏洞，嵌套层增加 CPU、帧开销和端点 hook 面。
+    en: Encryption does not hide endpoints, processes, key generation, import, or derivation APIs, handshake order, key blobs
+      or configuration, key schedules in memory, pre- and post-crypt buffer lengths or digests, or process and file actions
+      after decryption. Fixed-key leakage expands retrospective exposure, complex negotiation adds fingerprints and implementation
+      flaws, and nested layers add CPU, framing overhead, and endpoint hook surfaces.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 纳入要求攻击者附加密码 transform 与恢复路径覆盖持续 C2 消息，并能连接解密内容或控制结果。合法浏览器、更新器、VPN 或企业 agent 只用标准 TLS/mTLS 不属于本项；攻击者自建 C2 仅开启 HTTPS
+      也不足，除非还有独立消息密码层。算法、key length、OpenSSL/CNG、RSA/AES/RC4 名称不构成子技术。
+    en: Inclusion requires an attacker-added cryptographic transform and recovery path covering continuing C2 messages and
+      a link to decrypted content or control outcome. Legitimate browsers, updaters, VPNs, or enterprise agents using standards-conforming
+      TLS or mTLS alone are outside scope. An attacker-operated C2 merely enabling HTTPS is insufficient unless an independent
+      message cryptographic layer exists. Algorithm, key length, OpenSSL or CNG, and RSA, AES, or RC4 names do not define
+      children.
+  - zh: T1132 负责不依赖秘密、按表示规则恢复的编码；keyed XOR 只有提供 confidentiality 流程时才进入本项。NJT-0152 负责 padding、载体与服务契约外观，NJT-0115 负责文件、代码或一般内容的静态表示遮蔽；同一密码实现可在
+      artifact 与 C2 会话并列，但分析主体需分开。
+    en: T1132 owns encoding recoverable by a representation rule without a secret. Keyed XOR enters here only with a confidentiality
+      workflow. NJT-0152 owns padding, carriers, and service-contract appearance, while NJT-0115 owns static representation
+      obscuration of files, code, or general content. One cryptographic implementation can coexist for an artifact and a C2
+      session, but analytic subjects remain separate.
+  - zh: T1572 负责可识别内层协议会话被外层隧道承载；外层隧道加密可并列本项，但封装/路由/边界穿越不由密码子项拥有。协议原生 TLS 即使采用非对称握手和对称记录保护，仍只是 carrier protection；Cyclops
+      Blink 一类 TLS 下再加每消息封套才满足附加层。
+    en: T1572 owns an identifiable inner protocol session carried by an outer tunnel. Outer-tunnel encryption can coexist
+      here, but cryptographic children do not own encapsulation, routing, or boundary crossing. Protocol-native TLS remains
+      carrier protection even with asymmetric handshake and symmetric record protection. An additional per-message envelope
+      beneath TLS, as in Cyclops Blink, qualifies.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: 简单 RAT 可在 HTTP body 内用硬编码字符串派生 key 解密任务并用相同 key 加密 output；样本取得后可能回溯解密。高级 P2P 植入可用 PSK 与 Diffie-Hellman 建立每 session
+        key，命令参数再有内层 key。网络设备 botnet 可在 TLS 内为每消息生成随机 AES key/IV 并以 RSA 封套，TLS inspection 后仍需内层恢复。
+      en: A simple RAT can decrypt tasking in an HTTP body with a key derived from a hardcoded string and encrypt output with
+        the same key, allowing retrospective decryption after sample acquisition. An advanced P2P implant can establish a
+        per-session key through PSK and Diffie-Hellman with another inner key for command parameters. A network-device botnet
+        can generate a random AES key and IV per message beneath TLS and envelope them with RSA, requiring inner recovery
+        after TLS inspection.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者需在两端正确实现 key generation/distribution/agreement、IV/nonce、方向、版本、padding/integrity 与错误处理。可复用 key 简单但泄露影响广；session
+          key 降低跨会话暴露却增加 handshake/state；嵌套 crypto 抵抗协议检查却增加 framing 和端点成本。key reuse、弱 group 或验证错误会提供解密机会。
+        en: The actor must correctly implement key generation, distribution or agreement, IV or nonce, direction, version,
+          padding or integrity, and error handling. Reusable keys are simple but disclosure has broad impact. Session keys
+          limit cross-session exposure but add handshake and state. Nested cryptography resists protocol inspection but adds
+          framing and endpoint cost. Key reuse, weak groups, or validation errors create decryption opportunities.
+    defender_model:
+      paragraphs:
+      - zh: 防守方可有 PCAP/flow/TLS 日志、样本/配置、端点进程/网络、授权 memory capture、crypto API instrumentation、批准测试/诊断的 TLS keylog，以及解密命令结果。以
+          flow/session ID、process start key、sample/config hash、key identifier/digest、direction、message sequence 和时间连接。只有 ciphertext/entropy
+          时不能声称 key/plaintext，生产环境不得无限制泄露合法 TLS secrets。
+        en: The defender may have PCAP, flow and TLS logs, samples and configuration, endpoint process and network telemetry,
+          authorized memory capture, cryptographic API instrumentation, TLS key logs for approved test or diagnosis, and decrypted
+          command outcomes. Joins use flow or session ID, process start key, sample or configuration hash, key identifier
+          or digest, direction, message sequence, and time. Ciphertext or entropy alone cannot establish a key or plaintext,
+          and production detection must not expose legitimate TLS secrets without limit.
+stealth_mechanisms:
+- mechanism_ref: NM-DO
+  role: primary
+  summary:
+    zh: 攻击者密钥把可解析控制语义变为无密钥不可恢复的 ciphertext
+    en: Adversary keying turns parseable control semantics into ciphertext unrecoverable without the secret
+  analysis:
+    paragraphs:
+    - zh: 攻击者在承载协议外对 command/result 应用 key-dependent transform，检查点只见 ciphertext，须经 receiver-compatible recovery/decrypt 才出现语义。3PARA、Snake
+        和 Cyclops Blink 分别证明固定派生 key、session agreement 与 message envelope。恢复 key/逻辑并验证 plaintext outcome 可拆除遮蔽。
+      en: The actor applies a key-dependent transform to commands and results beyond the carrier protocol, leaving inspection
+        points with ciphertext until receiver-compatible recovery and decryption reveal semantics. 3PARA, Snake, and Cyclops
+        Blink establish fixed derived keys, session agreement, and message envelopes respectively. Recovering the key or logic
+        and validating a plaintext outcome removes the obscuration.
+  evidence_refs:
+  - REF-001146
+  - REF-001147
+  - REF-001148
+  confidence: high
+- mechanism_ref: NM-BT
+  role: secondary
+  summary:
+    zh: 运行时或嵌套密钥把明文边界移出常规网络检查
+    en: Runtime or nested keying moves the plaintext boundary beyond ordinary network inspection
+  analysis:
+    paragraphs:
+    - zh: session secret 只在 endpoint runtime 出现，或 inner envelope 位于解密后 TLS body 内，使 proxy/NDR 没有 attacker-layer key。关键解密行为存在于进程
+        crypto context/memory，落在常规网络观察外。Snake 与 Cyclops Blink 直接支持；端点 instrumentation/key recovery 可恢复观察。
+      en: A session secret appears only at endpoint runtime, or an inner envelope sits inside a decrypted TLS body, leaving
+        a proxy or NDR without the attacker-layer key. Critical decryption behavior exists in process cryptographic context
+        and memory outside ordinary network observation. Snake and Cyclops Blink directly support this effect; endpoint instrumentation
+        and key recovery restore visibility.
+  evidence_refs:
+  - REF-001147
+  - REF-001148
+  confidence: high
+subtechnique_taxonomy:
+  narrative:
+    paragraphs:
+    - zh: 三项子技术按 key recovery 与检查差异划分。可复用植入密钥保护让相同 embedded/derived secret 跨消息/会话存在，支持样本/配置恢复与历史解密；运行时会话秘密建立让 key 由 handshake
+        或随机 message envelope 产生，恢复依赖特定 session 的握手、memory 或 crypto API；嵌套密码检查边界把 attacker layer 放在协议原生 TLS 内，需 carrier decrypt
+        后再恢复 inner layer。第三轴可与前两项并列。
+      en: Three children use key-recovery and inspection differentials. Reusable Implant-Key Protection keeps one embedded
+        or derived secret across messages or sessions, allowing sample or configuration recovery and retrospective decryption.
+        Runtime Session-Secret Establishment generates a key through a handshake or random message envelope, making recovery
+        specific to a session's handshake, memory, or cryptographic API. Nested Cryptographic Inspection Boundary places the
+        attacker layer inside protocol-native TLS and requires inner recovery after carrier decryption. The third axis can
+        coexist with either key-lifetime child.
+    - zh: 对称或非对称算法、密钥长度、TLS、密码库和产品名称都不改变本分类的密钥恢复范围或检查边界，因而不单独成项。只有密文外观而无法恢复密钥材料路径、接收端解密和后继命令结果时，应停留在不透明通道候选层级。
+      en: Symmetric or asymmetric algorithms, key length, TLS, cryptographic libraries, and product names do not change the
+        key-recovery scope or inspection boundary and therefore do not form children. Ciphertext appearance without a recoverable
+        key-material path, receiver decryption, and successor command outcome remains an opaque-channel candidate.
+  coverage: established
+  subtechnique_refs:
+  - NJS-0223-001
+  - NJS-0223-002
+  - NJS-0223-003
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000259
+    - DET-000260
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000228
+    - MIT-000229
+evidence:
+  claim_refs:
+  - CLM-001108
+  - CLM-001109
+  - CLM-001110
+  - CLM-001111
+  - CLM-001112
+  case_refs:
+  - CASE-000339
+  - CASE-000340
+  - CASE-000341
+  reference_refs:
+  - REF-000625
+  - REF-001146
+  - REF-001147
+  - REF-001148
+  - REF-001149
+  - REF-001150
+  - REF-001151
+  - REF-001152
+  - REF-001153
+  - REF-000920
+  - REF-000634
+  - REF-000604
+  - REF-000598
+  - REF-000772
+research:
+  limitations:
+    paragraphs:
+    - zh: 3PARA、Snake 与 Cyclops Blink 是三组实现证据，不构成所有 encrypted C2 的流行度或完备样本；无原始 PCAP 时不能在本批复验全部 decrypt path。
+      en: 3PARA, Snake, and Cyclops Blink are three implementation evidence sets rather than prevalence or exhaustive coverage
+        of encrypted C2; without original PCAP this batch cannot reproduce every decryption path.
+    - zh: high entropy、TLS、crypto API call、算法或 key length 都可能来自正常软件；缺少 receiver-compatible recovery 与 command/result outcome
+        时必须保持 candidate。
+      en: High entropy, TLS, cryptographic API calls, algorithms, and key lengths commonly occur in legitimate software; without
+        receiver-compatible recovery and a command or result outcome, classification must remain a candidate.
+    - zh: endpoint memory/API instrumentation 不是操作系统默认数据源，可能产生隐私、稳定性和密钥泄露风险；只能在授权范围内短时采集并隔离 key material。RFC 9850 也明确不支持把
+        TLS key logging 作为生产默认。
+      en: Endpoint memory and API instrumentation is not an operating-system default data source and can create privacy, stability,
+        and key-disclosure risk; collect it only temporarily within authorized scope and isolate key material. RFC 9850 likewise
+        does not support TLS key logging as a production default.
+    - zh: 嵌套检查边界与 key lifetime 是正交轴；只有 Cyclops Blink 直接支持 runtime+nested。本批没有 reusable+nested 的直接案例，正式写入时不得用概念可组合性代替证据。
+      en: The nested inspection boundary and key lifetime are orthogonal axes. Only Cyclops Blink directly supports runtime
+        plus nested. This batch lacks a direct reusable plus nested case, so formal authoring must not substitute conceptual
+        composability for evidence.
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-10-05'
+  modified: '2026-10-05'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

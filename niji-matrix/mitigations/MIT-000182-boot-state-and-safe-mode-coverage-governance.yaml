@@ -1,0 +1,58 @@
+schema_version: "2.0.0"
+type: mitigation
+id: MIT-000182
+name: {zh: 启动状态与安全模式覆盖治理, en: Boot-State and Safe-Mode Coverage Governance}
+summary: {zh: 限制 BCD 和 SafeBoot 变更、为关键防御提供受测试的受限启动覆盖并保留外部遥测，缩小跨重启观察缺口。, en: "Constrain BCD and SafeBoot changes, provide tested restricted-boot coverage for critical defenses, and retain external telemetry to reduce the cross-reboot observation gap."}
+description:
+  paragraphs:
+    - zh: 本缓解把启动模式、SafeBoot 允许集和安全产品受限启动能力作为同一控制面治理。BCD/boot entry、SafeBoot Minimal/Network、service/COM 与 shutdown/restart 权限使用最小管理员、JIT/双人审批和精确 host/boot entry/时间窗；Registry 与 BCD old-new 远程保存。关键 EDR/AV/防火墙组件应按厂商支持设计并测试 Safe Mode 启动、heartbeat 和 tamper policy，不能为“提高覆盖”盲目把高权 service 加入允许集。
+      en: This mitigation governs boot mode, the SafeBoot allowlist, and restricted-boot capability of security products as one control plane. BCD or boot entry, SafeBoot Minimal or Network, service or COM, and shutdown or restart authority use least administration, JIT or two-person approval, and exact host, boot entry, and time window, with Registry and BCD old and new retained remotely. Critical EDR, AV, and firewall components are designed and tested for Safe Mode startup, heartbeat, and tamper policy under vendor support, without blindly adding privileged services to the allowlist in the name of coverage.
+    - zh: 对无法在 Safe Mode 运行的防御，使用虚拟化/云管理面、网络、交换机、远程控制器或不可由本地主机管理员删除的外部 heartbeat 覆盖重启窗口。发现异常时可从独立管理面阻断网络/隔离主机、取消 safeboot、撤销恶意 service/COM 并保全 BCD/Registry/boot/result 证据；若系统完整性未知，优先重建而非仅恢复正常模式。
+      en: Where defenses cannot run in Safe Mode, virtualization or cloud management planes, network or switch telemetry, remote controllers, or external heartbeats that local host administrators cannot delete cover the reboot window. On anomaly, an independent management plane can block networking or isolate the host, remove safeboot, revoke malicious service or COM state, and preserve BCD, Registry, boot, and outcome evidence. If system integrity is uncertain, rebuild is preferred over merely returning to normal mode.
+domains: [enterprise]
+measures:
+  - key: restricted-boot-change-control
+    name: {zh: 受限启动变更控制, en: Restricted-Boot Change Control}
+    description: {paragraphs: [{zh: 将 BCD safeboot、MSConfig/Startup Settings、shutdown/restart 和离线 BCD 操作纳入高风险 JIT/双人审批，记录 actor、boot entry、host、理由、期限和恢复动作。, en: "Place BCD safeboot, MSConfig or Startup Settings, shutdown or restart, and offline BCD operations under high-risk JIT or two-person approval recording actor, boot entry, host, reason, expiry, and recovery action."}]}
+    control_type: preventive
+  - key: safeboot-allowlist-integrity
+    name: {zh: SafeBoot 允许集完整性, en: SafeBoot Allowlist Integrity}
+    description: {paragraphs: [{zh: 保护并版本化 Minimal/Network、service/COM 与二进制身份，只允许签名且按 host role 批准的恢复/安全组件进入，并对新增项要求下一 boot 消费验证。, en: "Protect and version Minimal or Network, service or COM, and binary identities; allow only signed recovery or security components approved by host role and require next-boot consumption validation for additions."}]}
+    control_type: preventive
+  - key: tested-safe-mode-defense-coverage
+    name: {zh: 经测试的 Safe Mode 防御覆盖, en: Tested Safe Mode Defensive Coverage}
+    description: {paragraphs: [{zh: 按安全产品/版本/主机角色测试受支持的 Safe Mode driver/service、heartbeat、tamper 和恢复能力；不支持时明确声明覆盖缺口并用外部控制补偿。, en: "Test supported Safe Mode drivers, services, heartbeats, tamper protection, and recovery by security product, version, and host role. Declare the coverage gap explicitly and compensate with external controls when unsupported."}]}
+    control_type: detective-support
+  - key: independent-reboot-window-containment
+    name: {zh: 独立重启窗口监测与隔离, en: Independent Reboot-Window Monitoring and Isolation}
+    description: {paragraphs: [{zh: 从虚拟化/云管理面、网络和远程控制器观察 boot/heartbeat/flow，并能在本地 agent 缺席时隔离网络、冻结磁盘或触发受控恢复。, en: "Observe boot, heartbeat, and flow from virtualization or cloud management, network, and remote controllers and retain the ability to isolate networking, freeze disks, or trigger controlled recovery while the local agent is absent."}]}
+    control_type: containment
+applications:
+  - target_ref: NJT-0172
+    use:
+      paragraphs:
+        - zh: 对受管 Windows 主机记录允许的 boot mode、维护入口和每种模式的 defense component set。未批准 safeboot/重启由独立管理面阻断或隔离；实际进入 Safe Mode 时外部 telemetry 验证 EDR/AV gap 和后继行为，并在保全证据后删除 boot flag、轮换凭据、检查 Impact 或重建。
+          en: Record allowed boot modes, maintenance entry points, and defense-component sets for each mode on managed Windows hosts. An independent management plane blocks or isolates unapproved safeboot or reboot. When Safe Mode actually occurs, external telemetry verifies EDR or AV gaps and follow-on behavior, after which boot flags are removed, credentials rotated, Impact reviewed, or the host rebuilt following evidence preservation.
+    expected_effect:
+      paragraphs:
+        - zh: 攻击者更难只凭本地管理员静默制造跨重启覆盖缺口，Safe Mode 中的防御缺席可被外部控制识别或补偿，恢复不再依赖同一受侵 agent。
+          en: The adversary has greater difficulty creating a silent cross-reboot coverage gap with local administrator rights alone. Defensive absence in Safe Mode is identified or compensated by external controls, and recovery no longer depends on the same compromised agent.
+    limitations:
+      paragraphs:
+        - zh: 某些安全产品、旧版系统和离线/分支主机无法提供 Safe Mode agent 或外部管理面；严格阻止重启可能妨碍真实故障恢复，攻击者控制 hypervisor/cloud 管理面时独立性也会消失。
+          en: Some security products, legacy systems, and offline or branch hosts cannot provide a Safe Mode agent or external management plane. Strict reboot blocking can impede real recovery, and independence also disappears when the adversary controls the hypervisor or cloud management plane.
+  - target_ref: NJS-0172-001
+    use:
+      paragraphs:
+        - zh: 锁定并远程版本化 SafeBoot Minimal/Network 与 service/COM 注册，新 enrollment 绑定签名 binary、owner、host role、期限和审批；下一 boot 验证是否被消费。异常时从外部面隔离主机、删除恶意 enrollment/service、保全 binary/Registry，并检查同窗口 defense 删除与 payload 结果。
+          en: Lock and remotely version SafeBoot Minimal or Network plus service or COM registration. Bind each new enrollment to a signed binary, owner, host role, expiry, and approval and verify consumption on the next boot. On anomaly, isolate the host externally, remove malicious enrollment or service, preserve binary and Registry evidence, and inspect defense deletion and payload outcomes in the same window.
+    expected_effect:
+      paragraphs:
+        - zh: 攻击者难以在防御被 Safe Mode 排除时让自身载荷成为唯一额外存活组件，Registry/service 前态和实际消费都会留在不同权系统。
+          en: The adversary has greater difficulty making its payload the sole additional surviving component while Safe Mode excludes defenses, and both Registry or service prior state and actual consumption remain in differently authorized systems.
+    limitations:
+      paragraphs:
+        - zh: 安全、存储、网络与恢复产品本身可能合法增加 SafeBoot 项；攻击者可复用已有受信 service、内存替换或离线修改绕过普通 writer 归因，因此不能只按新键或未知签名阻断。
+          en: Security, storage, network, and recovery products can legitimately add SafeBoot entries. An adversary can reuse an existing trusted service, replace memory, or modify offline to bypass ordinary writer attribution, so controls cannot block solely on a new key or unknown signature.
+evidence_refs: [REF-000359, REF-000754, REF-000755, REF-000756, REF-000757, REF-000758]
+lifecycle: {status: review, version: "1.0.0", created: "2026-09-23", modified: "2026-09-23", contributors: [Niji Matrix Research], reviewers: []}

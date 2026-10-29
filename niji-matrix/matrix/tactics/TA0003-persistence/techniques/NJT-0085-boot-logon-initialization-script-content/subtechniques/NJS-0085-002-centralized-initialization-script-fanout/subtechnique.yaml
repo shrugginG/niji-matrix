@@ -1,0 +1,140 @@
+schema_version: 2.0.0
+type: evasion-subtechnique
+id: NJS-0085-002
+parent_ref: NJT-0085
+name:
+  zh: 集中初始化脚本扇出
+  en: Centralized Initialization-Script Fan-Out
+summary:
+  zh: 攻击者改变一份中央策略或共享位置中的初始化脚本，使多个下游系统或用户在各自启动/登录时分散执行，减少逐端点写入并割裂中央变更与客户端结果。
+  en: Adversaries change one initialization script in central policy or shared storage so multiple downstream systems or users
+    execute it at their own boot or logon, reducing per-endpoint writes and separating central mutation from client results.
+aliases: []
+lineage:
+  attck_subtechnique_inherited: false
+definition_and_concept:
+  paragraphs:
+  - zh: 集中初始化脚本扇出是攻击者修改由目录、组策略、集中设备管理或等价共享控制面分配的启动/登录脚本，使同一脚本版本被多个下游计算机或用户在各自生命周期事件中解释执行。分类变量是“一个上游脚本状态对多个执行主体的扇出”，不是 Windows、GPO
+      或网络共享；其直接目标是用一次中央写入建立分布式持久执行。
+    en: Centralized Initialization-Script Fan-Out is adversary modification of a boot or logon script assigned through directory,
+      Group Policy, centralized device management, or an equivalent shared control plane so the same script version is interpreted
+      by multiple downstream computers or users at their own lifecycle events. The variable is one upstream script state fanning
+      out to multiple execution principals rather than Windows, GPO, or a network share. Its direct objective is distributed
+      persistent execution from one central write.
+  - zh: 与既有脚本内联植入不同，本子项不要求保留大部分合法正文；中央脚本可以新建、整体替换或局部改写，只要其作用范围跨多个下游主体且执行由中央分配关系驱动。单机脚本、每台设备分别写入的脚本和仅分发但不在启动/登录执行的部署任务仍归父级或相邻对象。
+    en: Unlike Existing Initialization-Script Inline Implantation, this child does not require preservation of mostly legitimate
+      content. The central script can be new, wholly replaced, or locally modified as long as its scope spans multiple downstream
+      principals and execution follows the central assignment relationship. A single-host script, a script written separately
+      to every device, or deployment that does not execute at boot or logon remains parent scope or a neighboring object.
+stealth_characteristics:
+  paragraphs:
+  - zh: 集中初始化脚本扇出把少量控制面写入转换为在不同设备、用户和时间发生的多次执行。端点可以只看到域策略或共享路径下的正常脚本解释器，而恶意写入者留在域控制器、GPO 或中央文件审计；中央侧又未必看到每个客户端的子进程结果。检测若只查本地脚本创建或只审查中央配置，就会遗漏完整影响范围和因果。
+    en: Centralized Initialization-Script Fan-Out converts a small number of control-plane writes into executions across different
+      devices, users, and times. An endpoint may see only a normal script interpreter under domain policy or a shared path,
+      while the malicious writer remains in domain-controller, GPO, or central-file audit. The central side may not see each
+      client's child-process outcome. Detection limited to local script creation or central configuration misses complete
+      impact and causality.
+  - zh: GPO 版本、共享文件哈希、分配范围、域控制器写入者、客户端策略版本、boot/logon ID、脚本路径与子进程仍可重建扇出图。合法管理员会用相同机制部署登录映射、审计和配置脚本，因而必须以变更单、批准脚本哈希、目标 OU/组和预期命令排除；广泛影响不是恶意的充分条件。
+    en: GPO version, shared-file hash, assignment scope, domain-controller writer, client policy version, boot or logon ID,
+      script path, and child process can reconstruct the fan-out graph. Legitimate administrators use the same mechanism for
+      logon mapping, audit, and configuration scripts, requiring change record, approved script hash, target OU or group,
+      and expected commands as exclusions. Broad impact is not sufficient evidence of maliciousness.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 纳入一份受攻击者控制的中央初始化脚本或其分配关系，被两个或更多下游系统/用户在启动或登录时消费。判定需要证明中央对象及版本、目标范围、至少一个后继生命周期执行和攻击者控制；只有潜在全域范围但没有传播/执行证据时保持中央状态异常，不声称完整扇出。
+    en: Scope includes one adversary-controlled central initialization script or assignment relationship consumed by two or
+      more downstream systems or users at boot or logon. Classification requires the central object and version, target scope,
+      at least one successor lifecycle execution, and adversary control. Potential domain-wide scope without propagation or
+      execution evidence remains a central-state anomaly rather than a complete fan-out claim.
+  - zh: 本地脚本内联归 NJS-0085-001；GPO 仅设置 Run 描述符而脚本正文不在范围时归 NJT-0084；通过软件部署立即执行而非生命周期脚本归相应 Execution。按 OU、域、用户或计算机分类只是部署范围，不形成兄弟子项。
+    en: Local inline script mutation belongs to NJS-0085-001. A GPO that only configures a Run descriptor with script content
+      out of scope belongs to NJT-0084. Immediate software deployment rather than a lifecycle script belongs to the relevant
+      Execution object. OU, domain, user, or computer classifications are deployment scope and do not form sibling children.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: 攻击者取得域管理员、GPO 编辑或 Netlogon/SYSVOL 等共享脚本写权限后，可改变关联到目标 OU、组或用户的脚本，等待各客户端在下一启动或登录拉取并执行。它允许一次控制面动作维持多个入口，但也可能产生范围广、时间分散且版本传播不一致的结果。
+      en: After obtaining domain-administrator, GPO-edit, or shared-script write authority such as Netlogon or SYSVOL, an
+        adversary can change a script assigned to a target OU, group, or user and wait for clients to retrieve and execute
+        it at their next boot or logon. One control-plane action can preserve multiple entries, but results may be broad,
+        temporally distributed, and inconsistent across policy versions.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者需要中央脚本或分配对象写权限、目标范围与复制/缓存语义知识，并保持脚本依赖可由不同客户端访问。职责分离、只读共享、GPO 签名/版本审批、管理员工作站隔离和最小目标范围会提高成本；错误脚本可能同时中断大量登录并迅速暴露。
+        en: The adversary needs write authority over central script or assignment object, knowledge of target scope and replication
+          or cache semantics, and dependencies reachable by different clients. Separation of duties, read-only shares, GPO
+          signature or version approval, isolated administrator workstations, and minimum target scope raise cost. A faulty
+          script can disrupt many logons and expose the operation quickly.
+    defender_model:
+      paragraphs:
+      - zh: 防守方需要域/GPO/共享文件变更与版本、目标 OU/组、复制状态、客户端应用的策略版本、boot/logon 和脚本/子进程遥测，并能够由中央对象展开受影响主体。只看端点没有真实写入者，只看中央对象没有执行结果；版本不一致时必须避免把旧缓存执行误归到新变更。
+        en: The defender needs domain, GPO, or shared-file mutation and version, target OU or group, replication state, client-applied
+          policy version, boot or logon, and script or child-process telemetry, with ability to expand affected principals
+          from the central object. Endpoint-only data lacks the true writer, while central-only data lacks execution outcome.
+          Version mismatch must not attribute stale cached execution to a new mutation.
+stealth_mechanisms:
+- mechanism_ref: NM-ST
+  role: primary
+  summary:
+    zh: 单一中央写入把执行分散到多个主体和后续登录窗口
+    en: One central write distributes execution across multiple principals and later logon windows
+  analysis:
+    paragraphs:
+    - zh: 攻击者在上游只产生一次或少量脚本/策略变更，下游执行随不同用户登录和设备启动分布。逐端点文件创建信号减少，中央变更与客户端进程跨系统、主体和时间分离，形成时空释痕。ATT&CK 明确说明网络登录脚本可作用于多个或全部系统，并以
+        GPO 更新到远程脚本执行的多事件关联检测，直接支持拓扑；匿迹收益保持 medium 强推断。
+      en: The adversary creates one or a small number of upstream script or policy mutations, while downstream execution spreads
+        across user logons and device boots. Per-endpoint file-creation signals fall, and central mutation separates from
+        client process by system, principal, and time, producing Spatiotemporal Trace Dilution. ATT&CK explicitly states that
+        network logon scripts may apply to multiple or all systems and detects them by multi-event correlation from GPO update
+        to remote script execution, directly supporting the topology while evasion benefit remains a medium-confidence strong
+        inference.
+    - zh: Microsoft 文档确立脚本存储于域控制器共享、由 GPO 关联到生命周期并在客户端执行的正常架构，也说明这种扇出是合法管理能力。GPO 版本、脚本哈希、目标范围和客户端结果能恢复链条，所以本机理不主张不可观测或必然成功。
+      en: Microsoft documentation establishes the normal architecture in which scripts reside on a domain-controller share,
+        are associated by GPO with lifecycle events, and execute on clients, while also showing that fan-out is legitimate
+        administration. GPO version, script hash, target scope, and client outcome can recover the chain, so the mechanism
+        does not claim invisibility or inevitable success.
+  evidence_refs:
+  - REF-000175
+  - REF-000176
+  confidence: medium
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000066
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000065
+evidence:
+  claim_refs:
+  - CLM-000354
+  - CLM-000355
+  - CLM-000544
+  - CLM-000545
+  case_refs: []
+  reference_refs:
+  - REF-000175
+  - REF-000176
+research:
+  limitations:
+    paragraphs:
+    - zh: 当前直接架构与恶意范围证据集中于 Windows Active Directory/GPO；其他中央设备管理或目录实现只有在证明一份脚本状态被多个下游生命周期消费时才能纳入。不能把任何软件分发或远程脚本自动外推为本子项。
+      en: Direct architecture and adversary-scope evidence centers on Windows Active Directory and Group Policy. Another centralized
+        device-management or directory implementation qualifies only when one script state is proven to be consumed by multiple
+        downstream lifecycle events. Ordinary software distribution or remote scripts cannot be generalized automatically
+        into this child.
+    - zh: ATT&CK 页面说明了潜在的多系统范围，但没有给出一个公开攻击案例的完整组策略版本、所有受影响客户端与检测结果，因此子技术和时空释痕机理保持中等置信度。只有中央修改而没有下游执行时，不能仅凭目标范围宣称实际扇出。
+      en: The ATT&CK page describes potential multi-system scope but does not provide one public incident with a complete
+        Group Policy version, every affected client, and detection outcome, so the child and Spatiotemporal Trace Dilution
+        mechanism remain medium confidence. A central mutation without downstream execution does not establish actual fan-out
+        merely from its target scope.
+lifecycle:
+  status: review
+  version: 0.3.0
+  created: '2026-09-11'
+  modified: '2026-09-19'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

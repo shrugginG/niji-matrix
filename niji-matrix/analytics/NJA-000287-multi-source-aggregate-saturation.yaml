@@ -1,0 +1,116 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000287
+strategy_ref: DET-000230
+name:
+  zh: 多源汇聚与接口饱和分析
+  en: Multi-Source Aggregation and Interface Saturation Analytic
+summary:
+  zh: 输出每源低贡献但目的 fan-in、接口利用/丢弃和业务失败共同上升的网络洪泛。
+  en: Emit flooding where per-source contribution remains low while destination fan-in, interface utilization or discard,
+    and business failures rise together.
+domains:
+- enterprise
+platforms:
+- Network Devices
+logic:
+  paragraphs:
+  - zh: 把 IPFIX 按 destination、port/protocol、observationDomain 和 10/60 秒窗口聚合，计算来源 IP/AS 数、每源 octet/packet 分位、总量、SYN/UDP
+      比和 fan-in。与 IF-MIB ifHCInOctets/packets/discards/errors/ifHighSpeed 对齐，校正 samplingInterval 和 counter discontinuity。
+    en: Aggregate IPFIX by destination, port or protocol, observationDomain, and 10 or 60 second windows, calculating
+      source IP or AS count, per-source octet or packet quantiles, totals, SYN or UDP ratios, and fan-in. Align IF-MIB
+      octets, packets, discards, errors, and speed, correcting sampling and counter discontinuity.
+  - zh: 当总量/丢弃/时延接近容量且合法探针失败，而大多数来源低于单源基线时输出；在五分钟连接业务事件、CDN/发布和上游清洗结果。
+    en: Emit when totals, discard, or latency approach capacity and legitimate probes fail while most sources stay
+      below per-source baseline; over five minutes join business events, CDN or releases, and upstream scrubbing.
+data_requirements:
+- source_type: ipfix-flow
+  name:
+    zh: IPFIX/NetFlow 流
+    en: IPFIX or NetFlow flows
+  channel: IPFIX/NetFlow
+  required_fields:
+  - flow.start
+  - flow.end
+  - source.ip
+  - destination.ip
+  - source.port
+  - destination.port
+  - protocol
+  - packet.count
+  - octet.count
+  - tcp.flags
+  - ingress.interface
+  - observation.domain
+  - source.as
+  - sampling.interval
+- source_type: interface-capacity
+  name:
+    zh: IF-MIB 接口容量
+    en: IF-MIB interface capacity
+  channel: SNMP IF-MIB
+  required_fields:
+  - event.time
+  - interface.id
+  - in.octets
+  - in.packets
+  - in.discards
+  - in.errors
+  - high.speed
+  - counter.discontinuity
+- source_type: network-service-health
+  name:
+    zh: 网络服务健康与业务事件
+    en: Network service health and business events
+  channel: null
+  required_fields:
+  - event.time
+  - destination.id
+  - probe.success
+  - latency
+  - packet.loss
+  - event.id
+  - approval.id
+observables:
+- zh: 大量来源低贡献但目的 fan-in 和接口利用同步上升
+  en: Many low-contribution sources coincide with rising destination fan-in and interface utilization
+- zh: 丢弃/错误与合法探针失败相交
+  en: Discard or errors intersect legitimate-probe failure
+correlation:
+  window:
+    zh: 10 秒、60 秒多尺度，业务/清洗关联五分钟，基线至少 30 天。
+    en: Use 10-second and 60-second scales, five minutes for business or scrubbing context, and at least a 30-day
+      baseline.
+  dimensions:
+  - destination.ip
+  - destination.port
+  - protocol
+  - observation.domain
+  - source.as
+  - interface.id
+  - event.time
+false_positives:
+- zh: 软件发布、直播/新闻 flash crowd、CDN 回源、灾难事件和批准压测
+  en: Software release, live or news flash crowd, CDN origin traffic, disaster event, and approved load test
+blind_spots:
+- zh: 采样丢弱流、NAT/代理合并来源、多 observationDomain 时钟偏差和上游不可见
+  en: Sampling drops weak flows, NAT or proxy merges sources, clock skew across domains, and upstream invisibility
+tuning_guidance:
+  paragraphs:
+  - zh: 按目的服务和接口容量调优 fan-in/利用，维护活动日历与批准压测；不按来源数量 alone 告警，要求容量与健康结果。
+    en: Tune fan-in and utilization by destination service and interface capacity, maintain event calendars and approved
+      tests, and never alert on source count alone without capacity and health outcome.
+evidence_refs:
+- REF-000664
+- REF-000956
+- REF-000957
+- REF-000961
+- REF-000962
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-10-04'
+  modified: '2026-10-04'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

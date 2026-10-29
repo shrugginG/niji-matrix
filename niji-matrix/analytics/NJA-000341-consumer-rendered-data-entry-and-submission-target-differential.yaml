@@ -1,0 +1,147 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000341
+strategy_ref: DET-000256
+name:
+  zh: 消费者渲染数据入口与提交目标差分
+  en: Consumer-Rendered Data-Entry and Submission-Target Differential
+summary:
+  zh: 比较批准制品与消费者实际收到的表单、脚本、字段和接收目标。
+  en: Compare approved artifacts with the form, scripts, fields, and receiver targets actually delivered to the consumer.
+domains:
+- enterprise
+platforms:
+- Web Applications
+- Windows
+- Linux
+- macOS
+logic:
+  paragraphs:
+  - zh: 对登记的数据入口生成批准图，将 app_id、release_id、origin、asset_path、expected_hash、script_id、form_id、field_schema_digest、approved_form_action、approved_connect_destination
+      和数据合同连接。通过受管浏览器、真实用户监测或独立合成浏览器取得实际资源哈希、脚本来源、DOM/form 摘要、覆盖层标志、form action、fetch/XHR 目的与 CSP/SRI 结果，识别未批准资源、字段、覆盖表单或接收目标；不记录字段值。
+    en: Build an approved graph for registered data-entry surfaces joining application ID, release ID, origin, asset path,
+      expected hash, script ID, form ID, field-schema digest, approved form action, approved connect destination, and data
+      contract. Through managed-browser telemetry, real-user monitoring, or an independent synthetic browser, collect actual
+      resource hashes, script origins, a DOM or form digest, overlay indicator, form action, fetch or XHR destination, and
+      CSP or SRI outcome. Identify unapproved resources, fields, overlaid forms, or receivers without recording field values.
+  - zh: 在发现差异后的二十四小时内，对每个 pseudonymous_session_id 和 form_id 关联成功的表单或字段事件元数据、HTTP outcome、bytes_out 以及页面或浏览器进程到非批准接收方的第二请求。只见制品、字段或策略差异输出
+      integrity exposure；只有差异表单发生成功提交且接收方或后继结果不在批准图中时输出 suspected capture。相同 origin 的请求交给第二项 Analytic 继续解析路由和服务器结果。
+    en: During the twenty-four hours after drift, join each pseudonymous session ID and form ID to successful form or field-event
+      metadata, HTTP outcome, bytes out, and a second request from the page or browser process to an unapproved receiver.
+      Artifact, field, or policy drift alone yields integrity exposure. Suspected capture requires a successful submission
+      through the changed form and a receiver or downstream outcome outside the approved graph. Same-origin requests pass
+      to the second analytic for route and server-outcome resolution.
+data_requirements:
+- source_type: approved-data-entry-manifest
+  name:
+    zh: 批准的数据入口制品与接收图
+    en: Approved Data-Entry Artifact and Receiver Graph
+  channel: Externally retained CI or CD manifest, script inventory, form schema registry, and data-contract catalog
+  required_fields:
+  - app_id
+  - release_id
+  - origin
+  - asset_path
+  - expected_hash
+  - script_id
+  - script_source
+  - form_id
+  - field_schema_digest
+  - approved_form_action
+  - approved_connect_destination
+  - data_contract_id
+  - approval_start
+  - approval_end
+- source_type: consumer-rendered-entry-telemetry
+  name:
+    zh: 消费者实际渲染入口与策略遥测
+    en: Consumer-Rendered Entry and Policy Telemetry
+  channel: Managed browser, real-user monitor, or independent synthetic browser with privacy-safe schema collection
+  required_fields:
+  - timestamp
+  - device_or_probe_id
+  - pseudonymous_session_id
+  - app_id
+  - page_origin
+  - release_hint
+  - resource_url
+  - observed_hash
+  - script_source
+  - form_id
+  - field_schema_digest
+  - overlay_indicator
+  - form_action
+  - connect_destination
+  - csp_or_sri_result
+- source_type: browser-or-edge-request-outcome
+  name:
+    zh: 浏览器或边缘请求结果元数据
+    en: Browser or Edge Request-Outcome Metadata
+  channel: Managed browser, reverse proxy, web application firewall, or edge request log
+  required_fields:
+  - timestamp
+  - pseudonymous_session_id
+  - app_id
+  - page_origin
+  - form_id
+  - request_method
+  - request_path
+  - destination_origin
+  - response_status
+  - bytes_out
+  - bytes_in
+observables:
+- zh: 浏览器收到未在发布清单中的脚本或模板哈希
+  en: Browser receives a script or template hash outside the release manifest
+- zh: 数据入口新增或覆盖字段且字段模式摘要未获批准
+  en: Data entry adds or overlays fields whose schema digest is unapproved
+- zh: form action 或 fetch 目的偏离接收图
+  en: Form action or fetch destination departs from the receiver graph
+- zh: 差异入口发生成功提交并产生第二请求
+  en: A drifted entry surface receives a successful submission and produces a second request
+correlation:
+  window:
+    zh: 制品或表单差异后观察二十四小时；对单次输入交互，以同一 pseudonymous_session_id、form_id 和 page_origin 在前后十五分钟连接提交与第二请求。
+    en: Observe for twenty-four hours after artifact or form drift; for one interaction, join submissions and second requests
+      by pseudonymous session ID, form ID, and page origin within fifteen minutes.
+  dimensions:
+  - app_id
+  - release_id
+  - page_origin
+  - asset_path
+  - observed_hash
+  - form_id
+  - field_schema_digest
+  - pseudonymous_session_id
+  - destination_origin
+  - request_path
+  - time
+false_positives:
+- zh: 批准发布、紧急修复、标签管理、A/B 测试、本地化、无障碍组件、反欺诈脚本、支付处理器更新、客服表单和合成测试会合法改变资源、字段与目的地。
+  en: Approved releases, emergency fixes, tag management, A/B testing, localization, accessibility components, fraud scripts,
+    payment-processor updates, support forms, and synthetic tests legitimately change resources, fields, and destinations.
+blind_spots:
+- zh: 未受管浏览器、动态内联脚本、运行态内存改写、服务端按用户或 Cookie 选择性返回、同源请求和已受侵监测探针会削弱可见性。浏览器提交成功只能证明接收候选，必须连接接收控制权或结果才能确认 capture。
+  en: Unmanaged browsers, dynamic inline scripts, in-memory runtime rewriting, server-side responses selected by user or cookie,
+    same-origin requests, and compromised monitoring probes reduce visibility. A successful browser submission establishes
+    a receiver candidate only and must be joined to receiver control or outcome to confirm capture.
+tuning_guidance:
+  paragraphs:
+  - zh: 从构建与数据合同自动生成版本化允许图，按 release、租户、地区和实验 cohort 设到期例外；独立合成探针使用脱敏字段并覆盖不同 Cookie、会话和页面路径。对首次出现资源、未登记字段、未批准 action、策略违规以及差异后首次成功提交提高权重，不按域名或供应商整体放行。
+    en: Generate a versioned allow graph from builds and data contracts, with expiring exceptions by release, tenant, region,
+      and experiment cohort. Independent synthetic probes use redacted fields and vary cookies, sessions, and page paths.
+      Raise weight for first-seen resources, unregistered fields, unapproved actions, policy violations, and the first successful
+      submission after drift without globally allowlisting a domain or vendor.
+evidence_refs:
+- REF-001128
+- REF-001129
+- REF-001130
+- REF-001131
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-10-05'
+  modified: '2026-10-05'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

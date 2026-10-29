@@ -1,0 +1,126 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000325
+strategy_ref: DET-000247
+name:
+  zh: 解析应答—私有变换—后继 socket 关联
+  en: Resolver Answer–Private Transform–Successor Socket Join
+summary:
+  zh: 从解析应答恢复参数公式并验证合成端点被同一进程连接。
+  en: Recover a parameter formula from resolver answers and verify that the synthesized endpoint is connected by the
+    same process.
+domains:
+- enterprise
+platforms:
+- Windows
+- Linux
+- macOS
+- Network Devices
+logic:
+  paragraphs:
+  - zh: 对已知样本/家族从代码或内存取得 answer→IP/port transform；对每个 endpoint DNS answer 计算候选输出，并在 resolver cache/样本轮询窗口内连接同一 ProcessGuid
+      的 Event 3/DeviceNetworkEvents。若未知公式，收集多个 answer 与后继 socket 配对，只在重复得到同一稳定 mapping 后升级。Numbered Panda 的 `(octet1*octet2)+octet3`
+      只作家族规则。标准 SRV/SVCB/HTTPS 解析、应用配置服务和代理 PAC 等批准映射先排除。高置信还需 successor endpoint 的 C2 结果。
+    en: Obtain an answer-to-IP-or-port transform from code or memory for a known sample or family. Calculate candidate
+      outputs for each endpoint DNS answer and join them to Event 3 or DeviceNetworkEvents for the same ProcessGuid within
+      the resolver-cache or sample polling window. With an unknown formula, collect multiple answer-to-successor-socket
+      pairs and elevate only after a stable mapping repeats. Numbered Panda's `(octet1*octet2)+octet3` is a family rule
+      only. Exclude approved standard SRV, SVCB, or HTTPS resolution, application configuration services, and proxy PAC
+      mappings first. High confidence additionally requires a C2 outcome at the successor endpoint.
+data_requirements:
+- source_type: endpoint-dns
+  name:
+    zh: endpoint_dns
+    en: endpoint_dns
+  channel: Sysmon Event 22 or equivalent
+  required_fields:
+  - utc_time
+  - computer
+  - process_guid
+  - image
+  - query_name
+  - query_status
+  - query_results
+- source_type: dns-transaction
+  name:
+    zh: dns_transaction
+    en: dns_transaction
+  channel: Zeek dns.log or resolver
+  required_fields:
+  - ts
+  - uid
+  - client_ip
+  - query
+  - qtype_name
+  - rcode_name
+  - answers
+  - ttls
+- source_type: endpoint-network
+  name:
+    zh: endpoint_network
+    en: endpoint_network
+  channel: Sysmon Event 3 or Defender DeviceNetworkEvents
+  required_fields:
+  - timestamp
+  - device_id
+  - process_guid
+  - image
+  - remote_ip
+  - remote_port
+  - remote_url
+  - protocol
+- source_type: transformation-knowledge
+  name:
+    zh: transformation_knowledge
+    en: transformation_knowledge
+  channel: Sample/memory/repeated-pair analytic
+  required_fields:
+  - sample_hash_or_family
+  - transform_version
+  - input_fields
+  - transform_expression_or_mapping
+  - expected_output
+observables:
+- zh: 解析应答按稳定公式合成非字面 IP/port 并由同一进程连接
+  en: A resolver answer is transformed by a stable formula into a nonliteral IP or port connected by the same process
+- zh: 重复 answer-to-endpoint 映射与后继 C2 会话闭合
+  en: Repeated answer-to-endpoint mappings close with successor C2 sessions
+correlation:
+  window:
+    zh: 解析缓存生命周期加一个轮询周期；公式未知时保留七至三十日重复对。
+    en: Resolver-cache lifetime plus one polling cycle; retain repeated pairs for seven to thirty days when the formula
+      is unknown.
+  dimensions:
+  - device_id
+  - process_guid
+  - query
+  - answer
+  - transform_version
+  - remote_ip
+  - remote_port
+  - time
+false_positives:
+- zh: SRV/SVCB/HTTPS 记录消费、服务发现、PAC、游戏/媒体协商或 STUN/ICE
+  en: SRV, SVCB, or HTTPS record use, service discovery, PAC, game or media negotiation, or STUN or ICE
+blind_spots:
+- zh: 无公式/样本、只有一对观察、共享进程、DoH 无端点查询或长延迟
+  en: No formula or sample, one observed pair, a shared process, DoH without endpoint query, or long delay
+tuning_guidance:
+  paragraphs:
+  - zh: 标准记录语义和批准产品 mapping 建白名单；未知公式维持 hypothesis，至少三组或样本支持的稳定 mapping 再升高。不要因端口 443/80 或 answer/connection 不一致单独告警。
+    en: Allowlist standard record semantics and approved product mappings. Keep an unknown formula at hypothesis until
+      at least three stable pairs or sample support. Do not alert solely because the port is 443 or 80 or because answer
+      and connection differ.
+evidence_refs:
+- REF-001073
+- REF-000635
+- REF-000230
+- REF-000604
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-10-05'
+  modified: '2026-10-05'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

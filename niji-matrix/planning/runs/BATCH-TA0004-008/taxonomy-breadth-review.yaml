@@ -1,0 +1,89 @@
+review_schema_version: 1.0.0
+type: taxonomy-breadth-review
+batch_ref: BATCH-TA0004-008
+work_item_ref: WORK-TA0004-T1611
+attack_baseline: {domain: enterprise-attack, version: '19.1'}
+attack_subtechnique_count: 0
+attack_subtechnique_ids: []
+represented_dimensions: []
+breadth_trigger: zero-child-open-evasion-variable-search
+coverage_resolutions: []
+candidate_stealth_axes_examined:
+- axis: host-resource-namespace-alias-projection
+  discovery_source: ATT&CK-T1611-host-filesystem-and-global-symbolic-link-cases-Kubernetes-hostPath-and-container-escape-observability-research
+  final_resolution: formal
+  child_ref: B4-008-T1611-NJS-01
+  reason_zh: 攻击者有意取得或构造一个把宿主文件、块设备、registry/object namespace 或等价资源投射为容器内路径/句柄的映射，并让仍带 workload/container 来源的进程直接使用该别名。稳定键是 container-visible alias 与 canonical host resource 的一对映射，不是 hostPath、bind mount、设备或 Windows symbolic link 的产品名称。痕迹从“新建宿主进程”变为容器进程对看似容器内路径的访问；Linux Audit 等记录若缺少 container ID、mount namespace 与 inode/canonical path，防守方不能确定同名 `/etc/passwd` 或目标究竟属于容器还是宿主。该轴独立要求资源解析、只读/递归只读、mount propagation 与 host-resource effect 防御。
+  reason_en: The adversary deliberately obtains or constructs a mapping that projects a host file, block device, registry or object namespace, or equivalent resource as a path or handle inside the container and has a process that still carries workload or container provenance use that alias directly. The stable key is the mapping between a container-visible alias and a canonical host resource, not the product label hostPath, bind mount, device, or Windows symbolic link. The trace changes from a newly created host process into a container process accessing an apparently container-local path. When Linux Audit or equivalent records lack container ID, mount namespace, inode, and canonical path, defenders cannot determine whether a same-named `/etc/passwd` or other target belongs to the container or host. This axis independently requires resource resolution, read-only or recursive-read-only enforcement, mount-propagation controls, and host-resource effect detection.
+- axis: host-broker-escape-provenance-translation
+  discovery_source: ATT&CK-T1611-docker-socket-and-host-callback-behavior-Docker-daemon-security-TeamTNT-runtime-escape-tools-and-provenance-research
+  final_resolution: formal
+  child_ref: B4-008-T1611-NJS-02
+  reason_zh: 攻击者从隔离工作负载向宿主侧 runtime、kubelet、hypervisor service、kernel helper/callback 或等价高权限 Broker 提交可控请求或状态，随后由 Broker 建立高权限容器、调用宿主 helper 或产生 host-only 结果。稳定键是 original container principal/process/request 与 effective host broker transaction/process/outcome 之间的来源转换，不等同于“使用 docker.sock”。结果侧会显示 dockerd、containerd、kubelet、runc、system helper 或新工作负载身份，而原始容器调用落在 socket/API/control-file 观测面；仅看宿主进程树会误归因。该轴独立要求 channel/request→broker transaction→host context→outcome 关联与控制通道最小授权。
+  reason_en: The adversary submits a controllable request or state from an isolated workload to a host-side runtime, kubelet, hypervisor service, kernel helper or callback, or equivalent privileged broker, after which the broker creates a privileged container, invokes a host helper, or produces a host-only result. The stable key is provenance translation between the original container principal, process, or request and the effective host-broker transaction, process, or outcome; it is not synonymous with using `docker.sock`. The result side shows dockerd, containerd, kubelet, runc, a system helper, or a newly created workload identity, while the originating container call resides in a socket, API, or control-file observation surface, so host-process-tree-only analysis misattributes it. This axis independently requires correlation from channel or request through broker transaction and host context to outcome, plus least authority on control channels.
+- axis: direct-kernel-or-namespace-crossing
+  discovery_source: ATT&CK-T1611-unshare-keyctl-vulnerability-and-ESXi-examples
+  final_resolution: parent-core
+  reason_zh: 漏洞、`unshare`、`setns`、capability 或 hypervisor escape 使进程取得超出原 isolation boundary 的上下文，是 T1611 的核心越界方式。只要没有稳定的 alias mapping 或 broker provenance translation，防御仍使用 parent 的 pre-state、boundary event、host context、权限差与首个结果链；按 syscall 或漏洞族建立 sibling 会导入实现。
+  reason_en: Vulnerabilities, `unshare`, `setns`, capabilities, or hypervisor escape can give a process context beyond its original isolation boundary and are core ways T1611 crosses that boundary. Without a stable alias mapping or broker provenance translation, defense still uses the parent pre-state, boundary event, host context, authority difference, and first-outcome chain. Creating siblings by syscall or vulnerability family would import implementation detail.
+- axis: container-or-workload-identity-preservation-after-crossing
+  discovery_source: cross-category-container-process-attribution-and-cgroup-label-propagation
+  final_resolution: parent-core-and-formal-when-resource-alias-is-stable-key
+  child_refs: [B4-008-T1611-NJS-01]
+  reason_zh: 宿主内核可以继续把逃逸进程标为原 container cgroup，或逃逸后的新进程丢失该标签；这个结果受 primitive、runtime 与传感器影响，不总是攻击者稳定选择。若攻击者通过资源别名保持容器进程直接访问宿主对象，则由正式 alias axis 覆盖；其余标签保留/丢失作为父级 observation requirement，不单独成项。
+  reason_en: The host kernel may continue labeling an escaping process with its original container cgroup, or a new post-escape process may lose that label. The result depends on primitive, runtime, and sensor and is not always a stable adversary choice. Deliberate direct host-object access through a resource alias is covered by the formal alias axis; other label preservation or loss remains a parent observation requirement rather than a separate child.
+- axis: deferred-host-helper-or-callback-activation
+  discovery_source: cgroup-release-agent-and-runtime-helper-reexecution-research
+  final_resolution: formal-under-host-broker-axis
+  child_refs: [B4-008-T1611-NJS-02]
+  reason_zh: 写入 host-consumed callback 状态后由 kernel/helper 在另一时间和 host context 执行，会改变可见主体并切断短窗口来源链，但 stable key 与 runtime socket 路径相同，都是 container-originated control action 经宿主 Broker 转换为宿主结果。是否异步、使用何种 helper 是该子项内部参数；若仅有延迟而无来源转换，则留在父级。
+  reason_en: Writing callback state that a kernel or helper later consumes in another time and host context changes the visible actor and breaks short-window provenance. Its stable key is the same as the runtime-socket path: a container-originated control action is translated by a host broker into a host result. Synchrony and helper type remain parameters within that child; delay without provenance translation stays at parent level.
+- axis: transient-host-action-and-return-or-cleanup
+  discovery_source: cross-category-short-lived-trace-search
+  final_resolution: hypothesis
+  reason_zh: 攻击者可以在完成一次宿主操作后删除新容器、卸载映射、恢复 callback 或结束宿主进程，理论上压缩证据窗口。现有案例证明脚本/历史清理和短容器常见，但没有结论级材料证明一个跨 escape primitive 的稳定“越界—结果—回退”变量及其独立于资源别名/Broker 谱系的防御边界，暂不正式化。
+  reason_en: An adversary can delete a new container, unmount a mapping, restore callback state, or terminate a host process after one host operation, theoretically compressing the evidence interval. Existing cases establish script or history cleanup and short-lived containers, but do not provide conclusion-level evidence for one stable cross-primitive boundary-crossing-to-outcome-to-reversion variable with a defense boundary independent of resource alias and broker provenance, so it is not formalized.
+- axis: one-versus-chained-isolation-boundaries
+  discovery_source: container-sandbox-VM-hypervisor-and-cluster-layer-search
+  final_resolution: parent-core
+  reason_zh: 从 sandbox 到 container 再到 node，或 VM 到 ESXi hypervisor 的多层越界改变链长和每层 pre/post context，但每个 confirmed crossing 使用同一父级结果门。层数、方向与环境是 application scope；没有独立匿迹变量时不建立 sibling。
+  reason_en: Crossing from sandbox to container to node, or from a VM to an ESXi hypervisor, changes chain length and the pre and post context at each layer, but every confirmed crossing uses the same parent outcome gate. Layer count, direction, and environment are application scope rather than siblings absent an independent evasion variable.
+- axis: restart-reschedule-replacement-or-node-selection
+  discovery_source: orchestrator-lifecycle-and-distributed-node-search
+  final_resolution: adjacent-and-deferred
+  adjacent_refs: [NJT-0067, NJT-0089, NJT-0092]
+  reason_zh: 创建新 workload 的部署执行归 NJT-0067，持久服务/调和定义归 NJT-0089，镜像到未来实例的状态归 NJT-0092。重启、替换、调度到目标 node 可能分离 exploit 与结果，但现有材料没有证明它在 T1611 内构成独立可控匿迹轴；当它只决定前提或承载方式时保持 adjacent/deferred。
+  reason_en: New-workload deployment execution belongs to NJT-0067, durable service or reconciliation definitions to NJT-0089, and image state carried into future instances to NJT-0092. Restart, replacement, or scheduling onto a target node may separate exploit from outcome, but current evidence does not establish an independent controlled T1611 evasion axis; it remains adjacent or deferred when it only selects a prerequisite or carrier.
+- axis: exploit-vulnerability-capability-or-misconfiguration-family
+  discovery_source: ATT&CK-internal-and-container-security-research
+  final_resolution: parent-core-and-adjacent
+  adjacent_refs: [T1068]
+  reason_zh: kernel/runtime/hypervisor CVE、privileged、CAP_SYS_ADMIN、host namespace、可写 cgroup、开放 runtime API 和配置缺陷决定如何到达边界，是 parent prerequisite；若分析对象是漏洞利用本身则相邻 T1068。只有实际 crossing 与 host-only result 才确认 T1611，不能把能力字段或 CVE 命中改名为 Niji 子项。
+  reason_en: Kernel, runtime, or hypervisor CVEs, privileged mode, CAP_SYS_ADMIN, host namespaces, writable cgroups, exposed runtime APIs, and configuration defects determine how the boundary is reached and are parent prerequisites; exploitation itself is adjacent T1068. T1611 requires actual crossing and a host-only result, and capability fields or CVE hits are not renamed as Niji children.
+- axis: host-filesystem-device-credential-namespace-cgroup-or-control-plane-target
+  discovery_source: ATT&CK-internal-and-Kubernetes-hostPath-dimensions
+  final_resolution: rejected-as-partition
+  reason_zh: 文件、设备、凭据、namespace、cgroup、socket 和 control-plane 是 primitive/target 类型。它们可以分别落入 alias、Broker 或 parent-core，但目标介质本身不保证不同匿迹效果；按对象名拆分会机械复制实现。
+  reason_en: Files, devices, credentials, namespaces, cgroups, sockets, and control planes are primitive or target types. They can instantiate the alias child, broker child, or parent core, but target medium alone does not guarantee a distinct evasion effect. Splitting by object name would mechanically copy implementations.
+- axis: platform-runtime-provider-CVE-image-tool-log-field-partition
+  discovery_source: ATT&CK-internal
+  final_resolution: rejected
+  reason_zh: 按 Linux/Windows/ESXi、Docker/containerd/Kubernetes、provider、CVE、image、escape tool、mount/socket/device 或日志字段拆分，只产生产品与实现枚举，不能满足跨环境稳定键、sibling 边界、痕迹与独立防御门禁。
+  reason_en: Splitting by Linux, Windows, ESXi, Docker, containerd, Kubernetes, provider, CVE, image, escape tool, mount, socket, device, or log field only enumerates products and implementations and fails cross-environment stable-key, sibling-boundary, trace, and independent-defense gates.
+second_pass_required: false
+second_pass_completed: true
+second_pass_dimensions: [boundary-crossing topology, visible actor continuity, canonical resource identity, runtime and callback brokerage, asynchronous activation, transient cleanup, chained boundaries, orchestrator lifecycle, vulnerability and capability prerequisites, target medium, platform product and field partitions]
+final_formal_niji_child_count: 2
+new_formal_niji_child_count: 2
+breadth_gap_explained: true
+why_not_more:
+  zh: ATT&CK 固定零子项但开放搜索覆盖十一类维度。直接 kernel/namespace/hypervisor crossing、身份标签变化、边界层数和能力/漏洞前提归 parent-core；重启/调度/镜像与服务定义有 adjacent owner；短暂回退缺少结论证据，保持 hypothesis；资源类型和产品字段分区 rejected。除“容器可见别名指向宿主规范资源”和“容器请求经宿主 Broker 转换为结果”外，没有第三个轴同时具备攻击者可控 stable key、互不包含的 trace topology、结论证据和独立检测/缓解 owner。
+  en: ATT&CK has no fixed children, but open search covers eleven dimensions. Direct kernel, namespace, or hypervisor crossing, identity-label variation, boundary count, and capability or vulnerability prerequisites remain parent core. Restart, scheduling, image, and service-definition dimensions have adjacent owners. Transient reversion lacks conclusion-level evidence and remains a hypothesis. Resource-type and product or field partitions are rejected. Beyond a container-visible alias pointing to a canonical host resource and a container request translated by a host broker into an outcome, no third axis combines an adversary-controlled stable key, mutually distinct trace topology, conclusion-level evidence, and an independent detection or mitigation owner.
+why_not_fewer:
+  zh: 两个正式轴在结果出现时的 visible actor 与关键关联键相反且互不包含。alias 轴由同一容器进程直接访问宿主资源，必须解析 mount/object namespace、inode/handle 与 canonical host target；Broker 轴由宿主 daemon/helper 或新 workload 产生结果，必须连接原 container request、control channel、broker transaction 与 effective host context。Siloscape、TeamTNT、Docker/Kubernetes 官方语义与 provenance 研究分别证明这些痕迹与观察差异。合并会迫使一条泛化 analytic 同时用不相容的主键，减少为零则丢失两个攻击者可控且防御动作不同的匿迹变量。
+  en: The two formal axes have opposite visible actors and different primary correlation keys at outcome time, and neither contains the other. The alias axis has the same container process directly access a host resource and requires resolution of mount or object namespace, inode or handle, and canonical host target. The broker axis has a host daemon or helper or a new workload produce the result and requires joining the original container request, control channel, broker transaction, and effective host context. Siloscape, TeamTNT, official Docker and Kubernetes semantics, and provenance research establish these trace and observation differences. Combining them would force one generic analytic to use incompatible primary keys, while reducing the count to zero would lose two adversary-controlled variables with different defensive actions.
+residual_hypotheses:
+- transient boundary crossing followed by complete mapping broker-state or host-process cleanup as an independent short-lived-trace child
+- deliberate node selection or multi-boundary chaining used to exploit cross-sensor retention gaps rather than merely reach a vulnerable host
+original_attack_subtechniques_imported: false
+canonical_prose_bulk_generated: false

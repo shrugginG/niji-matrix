@@ -1,0 +1,119 @@
+schema_version: 2.0.0
+type: evasion-subtechnique
+id: NJS-0223-001
+parent_ref: NJT-0223
+name:
+  zh: 可复用植入密钥保护
+  en: Reusable Implant-Key Protection
+summary:
+  zh: 攻击者让样本或配置中的同一秘密/派生输入跨消息或会话保护 C2，使密钥恢复前内容不可读而恢复后可回溯解密。
+  en: Adversaries protect C2 across messages or sessions with the same secret or derivation input in an implant or configuration,
+    preventing content recovery until key extraction but enabling retrospective decryption afterward.
+aliases: []
+lineage:
+  attck_subtechnique_inherited: false
+definition_and_concept:
+  paragraphs:
+  - zh: 可复用植入密钥保护是攻击者在样本、配置、硬编码字符串或稳定派生输入中保存跨多条消息/会话使用的 secret，使发送端和接收端无需每次协商便可加解密 C2。直接目标是用低运营成本隐藏命令与结果；稳定变量是 key/material
+      scope 跨会话可复用，而不是 DES、AES、XOR 或 key length。
+    en: Reusable Implant-Key Protection means an actor stores a secret in a sample, configuration, hardcoded string, or stable
+      derivation input and reuses it across multiple C2 messages or sessions so sender and receiver encrypt and decrypt without
+      negotiating each time. The direct goal is hiding commands and results at low operational cost. The stable variable is
+      reusable key or material scope across sessions rather than DES, AES, XOR, or key length.
+  - zh: 3PARA RAT 使用固定字符串的 MD5 派生 DES-CBC key 解密任务，失败时以同字符串派生 8-byte XOR key，并用同一方法加密 task output 后 HTTP POST 回传。CrowdStrike
+      同时恢复 command set 和 output path，满足 key recovery、receiver decrypt 与 C2 result。
+    en: 3PARA RAT derives a DES-CBC key from the MD5 of a fixed string to decrypt tasking, falls back to an eight-byte XOR
+      key derived from the same string, and encrypts task output with the same method before HTTP POST return. CrowdStrike
+      also recovered the command set and output path, satisfying key recovery, receiver decryption, and C2 result.
+stealth_characteristics:
+  paragraphs:
+  - zh: 可复用植入密钥保护让所有捕获会话在取得 secret 前只呈现相似 ciphertext/长度/时序，但相同 key/derivation 会留下跨样本和历史 PCAP 的稳定恢复点。一旦样本或配置泄露，防守可验证 padding/command
+      format、重算 plaintext digest 并回溯整个 cryptoperiod；若每主机配置不同，恢复范围相应缩小。
+    en: Reusable Implant-Key Protection leaves captured sessions with ciphertext, lengths, and timing until the secret is
+      obtained but creates a stable recovery point across samples and historical PCAP through the same key or derivation.
+      Once a sample or configuration is acquired, defenders can validate padding and command format, recompute plaintext digests,
+      and decrypt the cryptoperiod retrospectively. Per-host configuration narrows that scope.
+  - zh: 高熵或重复长度不证明 reuse；需 key/material 或可复现 derivation 和至少两条消息/会话的成功解密。合法软件也嵌入 API credentials、public keys 或 test keys，且
+      key string 出现不等于被用于 C2。
+    en: High entropy or repeated lengths do not prove reuse. Evidence needs key material or reproducible derivation and successful
+      decryption of at least two messages or sessions. Legitimate software also embeds API credentials, public keys, or test
+      keys, and a key string does not establish C2 use.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 纳入要求可复用 secret/derive input、对应 crypt operation、receiver decrypt 及命令/结果。只嵌入 public key 但每消息随机 secret 的主要变量归兄弟运行时秘密；固定
+      TLS certificate/private key 只服务协议原生 TLS 时排除。静态文件解密而无持续 C2 归 NJT-0115。
+    en: Inclusion requires a reusable secret or derivation input, corresponding cryptographic operation, receiver decryption,
+      and command or result. A merely embedded public key with a random secret per message belongs primarily to the runtime-secret
+      sibling. A fixed TLS certificate or private key serving only protocol-native TLS is excluded. Static file decryption
+      without continuing C2 belongs to NJT-0115.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: 攻击者可在小型 RAT 中硬编码 passphrase/seed，让多个受害者的 HTTP C2 body 使用同一 key。防守取得一份样本后，可从代理/PCAP 筛选同 framing 流量并批量尝试 decrypt，确认命令、shell
+        output 或 file operation。
+      en: An actor can hardcode a passphrase or seed in a small RAT so HTTP C2 bodies across victims use the same key. After
+        obtaining one sample, defenders can select similarly framed traffic from proxy data or PCAP, apply decryption, and
+        confirm commands, shell output, or file operations.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者需控制样本秘密分发和两端版本；reuse 简化部署但单样本泄露可暴露所有同 key 流量。按 campaign/host 派生能缩小影响却增加配置和服务端 key inventory。
+        en: The actor must control sample-secret distribution and versions on both ends. Reuse simplifies deployment but one
+          sample can expose all traffic using that key. Campaign- or host-specific derivation narrows impact but increases
+          configuration and server key inventory.
+    defender_model:
+      paragraphs:
+      - zh: 防守方假定可取得合法授权的 sample/config/memory 与 PCAP/flow，保存 sample hash、key source/digest、derive inputs、cipher framing、flow/session、direction/message
+          sequence 和解密结果。没有 ciphertext 原始字节或 padding/integrity 校验时，错误 key 可能产生伪 plaintext。
+        en: The defender is assumed to obtain an authorized sample, configuration, or memory plus PCAP or flow and retain
+          sample hash, key source and digest, derivation inputs, cipher framing, flow or session, direction and message sequence,
+          and decryption result. Without original ciphertext bytes or padding and integrity validation, a wrong key can produce
+          false plaintext.
+stealth_mechanisms:
+- mechanism_ref: NM-DO
+  role: primary
+  summary:
+    zh: 可复用 secret 持续遮蔽多个会话的控制语义
+    en: A reusable secret persistently obscures control semantics across sessions
+  analysis:
+    paragraphs:
+    - zh: 攻击者用同 secret/derive path 把多条 C2 plaintext 变为 ciphertext，网络检查缺 key 时无法读取；3PARA 的固定字符串和双解密路径直接支持。样本恢复 key 后跨历史会话解密，遮蔽被集中逆转。
+      en: The actor uses one secret or derivation path to turn multiple C2 plaintexts into ciphertext that network inspection
+        cannot read without the key. 3PARA's fixed string and dual decryption path directly support this behavior. Recovering
+        the key from a sample reverses the obscuration across historical sessions.
+  evidence_refs:
+  - REF-001146
+  confidence: high
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000259
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000228
+evidence:
+  claim_refs:
+  - CLM-001109
+  case_refs:
+  - CASE-000339
+  reference_refs:
+  - REF-001146
+  - REF-001151
+research:
+  limitations:
+    paragraphs:
+    - zh: CrowdStrike 报告直接给出 3PARA key derivation、fallback、task output 和 commands，但不提供可下载 PCAP，也不能证明所有 3PARA 变体/受害者共享同 key。历史解密能力需由主
+        Agent 在可用样本与流量上验证。
+      en: CrowdStrike directly reports 3PARA key derivation, fallback, task output, and commands but provides no downloadable
+        PCAP and cannot establish that every 3PARA variant or victim shares one key. Retrospective decryption requires validation
+        on available samples and traffic.
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-10-05'
+  modified: '2026-10-05'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

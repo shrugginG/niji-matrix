@@ -1,0 +1,120 @@
+schema_version: 2.0.0
+type: mitigation
+id: MIT-000074
+name:
+  zh: Registry 状态完整性、跨视图验证与 Consumer 恢复
+  en: Registry State Integrity, Cross-View Validation, and Consumer Recovery
+summary:
+  zh: 以最小写权、版本化状态、独立事务保留、同快照跨 API 盘点和 consumer 联动恢复，减少 Registry 持久状态及伪隐藏对象的攻击空间。
+  en: Reduce attack surface for Registry-resident state and pseudo-hidden objects through least write authority, versioned state, independent transaction retention, same-snapshot cross-API inventory, and consumer-aware recovery.
+description:
+  paragraphs:
+    - zh: >-
+        本缓解不把 Registry 当作一个可整体禁止的介质，而是为会在以后被系统、应用或载荷消费的 key/value 建立 owner、允许 writer、软件包/策略来源、可信版本、ACL、寿命和 consumer 清单。关键路径使用最小写权与受控安装，Registry create/delete、value set 和 rename 事件远程保留，并以周期快照证明状态差异；这样既限制攻击者写入，也避免只删除一个值后被残余 consumer 或 installer 重建。
+      en: >-
+        This mitigation does not treat the Registry as a medium that can be prohibited wholesale. It assigns owner, allowed writer, package or policy provenance, trusted version, ACL, lifetime, and consumer inventory to keys and values consumed later by a system, application, or payload. Critical paths use least write authority and controlled installation, Registry create or delete, value set, and rename events are retained remotely, and periodic snapshots establish state differences. This limits adversary writes and prevents a residual consumer or installer from recreating a value after it alone is deleted.
+    - zh: >-
+        对伪隐藏对象，组织不能把一次 Win32 成功枚举视为全集，应使用冻结/VSS/离线 hive 在等价权限下比较标准、native 与 raw 视图并保留查询错误和原始名称字节。发现差异后先保全 hive、事务、writer 和 consumer 证据，再使用受验证的 RegDelNull 或等价工具清除，修复 Run/file association/loader 等依赖并验证状态不再被消费。专用删除可能破坏合法应用，因此恢复需要 owner 确认、备份和回滚路径。
+      en: >-
+        For pseudo-hidden objects, an organization cannot treat one successful Win32 enumeration as complete. It should compare standard, native, and raw views of a frozen, VSS, or offline hive at equivalent privilege and retain query errors and raw-name bytes. After finding a difference, preserve hive, transaction, writer, and consumer evidence before using validated RegDelNull or an equivalent tool, repairing dependencies such as Run, file association, or loader, and verifying that state is no longer consumed. Specialized deletion can break legitimate applications, so recovery requires owner confirmation, backup, and a rollback path.
+domains:
+  - enterprise
+measures:
+  - key: registry-least-write-and-owner
+    name:
+      zh: Registry 最小写权与对象 Owner
+      en: Registry Least Write Authority and Object Owner
+    description:
+      paragraphs:
+        - zh: >-
+            按 hive、路径和设备角色限制写入主体，使用户、服务、installer 和策略代理只获得其明确对象所需权限；关键持久路径记录 owner、允许 writer、预期值类型/hash、ACL 和 consumer。高风险变更绑定工单、软件包或策略版本，并对异常 ACL、未知 owner 和非安装窗口写入阻断或隔离。
+          en: >-
+            Constrain writers by hive, path, and device role so users, services, installers, and policy agents receive authority only for explicit objects. Record owner, allowed writer, expected value type or hash, ACL, and consumer for critical durable paths. Bind high-risk changes to a change record, package, or policy version and block or isolate anomalous ACLs, unknown owners, and writes outside installation windows.
+    control_type: preventive
+  - key: registry-version-and-transaction-retention
+    name:
+      zh: Registry 版本快照与事务独立保留
+      en: Registry Version Snapshots and Independent Transaction Retention
+    description:
+      paragraphs:
+        - zh: >-
+            远程保存对象创建/删除、value set、rename、writer ProcessGuid/PID、用户、目标和结果，并为关键系统/用户 hive 生成可比较快照，记录原始名称、内容 hash、ACL、last-write 与 package/owner。保留期覆盖状态寿命和至少一个重启/登录周期，日志出口与被监控主机使用不同管理权限。
+          en: >-
+            Retain object create or delete, value set, rename, writer ProcessGuid or PID, user, target, and outcome remotely and produce comparable snapshots of critical system and user hives with raw name, content hash, ACL, last-write, and package or owner. Retention covers state lifetime and at least one restart or sign-in cycle, and the log destination uses administration separate from the monitored host.
+    control_type: detective-support
+  - key: equivalent-privilege-cross-view-inventory
+    name:
+      zh: 等价权限同快照跨视图盘点
+      en: Equivalent-Privilege Same-Snapshot Cross-View Inventory
+    description:
+      paragraphs:
+        - zh: >-
+            以独立只读主体对冻结/VSS/离线 hive 执行标准 Win32、native API 和 raw parser 盘点，统一逻辑 key identity 并保留 raw length/bytes、view、visible、error code 和 hash。任何查询错误或截断都进入复核队列；在线差异必须在同一快照复现，以排除状态竞争、未装载 hive、WOW64 和 ACL 差异。
+          en: >-
+            Use an independent read-only principal to inventory a frozen, VSS, or offline hive through standard Win32, native API, and a raw parser, normalizing logical key identity while retaining raw length or bytes, view, visibility, error code, and hash. Every query error or truncation enters review. A live discrepancy must reproduce on one snapshot to exclude state races, unloaded hives, WOW64, and ACL differences.
+    control_type: detective-support
+  - key: consumer-aware-preservation-and-recovery
+    name:
+      zh: Consumer 感知的证据保全与恢复
+      en: Consumer-Aware Evidence Preservation and Recovery
+    description:
+      paragraphs:
+        - zh: >-
+            删除可疑 Registry 状态前，保全 hive、事务、writer、原始名称和值，枚举 Run、file association、服务、脚本、模块和自定义 loader 等 consumer。对 embedded-null 对象使用已验证的 RegDelNull 或离线工具并保留备份，随后修复或移除恶意 consumer、重启验证、监控状态重建和后继进程/网络再次出现。
+          en: >-
+            Before deleting suspicious Registry state, preserve the hive, transactions, writer, raw name, and value and enumerate consumers such as Run, file associations, services, scripts, modules, and custom loaders. Use a validated RegDelNull or offline tool for embedded-null objects with a backup, then repair or remove malicious consumers, validate after restart, and monitor for state recreation and recurring downstream process or network activity.
+    control_type: containment
+applications:
+  - target_ref: NJT-0094
+    use:
+      paragraphs:
+        - zh: >-
+            对注册表驻留持久状态，把关键系统和用户 hive 中以后会被消费的 key/value 纳入 owner、writer、软件包/策略版本、ACL、内容 hash、寿命和 consumer 盘点。远程保存事务并周期快照；发现未批准差异时先连接 writer 与启动/读取/进程结果，再同时恢复状态和 consumer，而不是按路径批量删除或只终止当前进程。
+          en: >-
+            For Registry-Resident Persistence State, bring keys and values in critical system and user hives that will be consumed later under owner, writer, package or policy version, ACL, content hash, lifetime, and consumer inventory. Retain transactions remotely and snapshot periodically. When an unapproved difference appears, first join writer to startup, read, or process outcome, then recover state and consumer together rather than bulk-delete by path or terminate only the current process.
+    expected_effect:
+      paragraphs:
+        - zh: >-
+            该应用减少能够留下未批准持久状态的写入者与时间窗口，使每个异常 key/value 具有可恢复前一版本和可归因 consumer，并阻止恶意 loader 在值删除后自动重建。攻击者必须控制受限 writer/installer、伪造版本与审批，或反复产生远程事务和快照差异，成本与痕迹都会增加。
+          en: >-
+            This application reduces writers and intervals able to leave unapproved durable state, gives each anomalous key or value a recoverable prior version and attributable consumer, and prevents a malicious loader from recreating state after value deletion. The adversary must control a restricted writer or installer, forge version and approval, or repeatedly create remotely retained transaction and snapshot differences, increasing cost and evidence.
+    limitations:
+      paragraphs:
+        - zh: >-
+            Registry 正常变化量大，vendor 不总是公开 key 语义，严格 ACL 或错误回滚会破坏安装、用户配置和应用启动。签名 installer、组策略和自修复也可能重建值；in-process consumer 缺少读取遥测时谱系只能间接证明。控制需要按设备角色和软件包校准，不能把 HKCU/HKLM 整体设为只读。
+          en: >-
+            Registry change volume is high, vendors do not always document key semantics, and strict ACLs or bad rollback can break installation, user configuration, and application startup. Signed installers, Group Policy, and self-repair can also recreate values, while lineage is only indirect when an in-process consumer lacks read telemetry. Controls require calibration by device role and package and cannot make all of HKCU or HKLM read-only.
+  - target_ref: NJS-0094-001
+    use:
+      paragraphs:
+        - zh: >-
+            对 API 差分伪隐藏注册表键，禁止盘点程序把 Win32 成功结果当作全集；针对关键 hive 定期生成同一 acquisition 的 Win32/native/raw 视图，记录 embedded null、raw bytes、查询错误和等价权限。发现差异后用专用工具复核、装载所有相关用户 hive、定位实际 consumer，并在保全证据和备份后安全删除对象及依赖。
+          en: >-
+            For API-Differential Pseudo-Hidden Registry Key, prevent inventory from treating successful Win32 output as complete. Generate Win32, native, and raw views under one acquisition for critical hives and retain embedded null, raw bytes, query errors, and equivalent privilege. After finding a discrepancy, verify with a specialized tool, load all relevant user hives, locate the actual consumer, and safely remove the object and dependencies after evidence preservation and backup.
+    expected_effect:
+      paragraphs:
+        - zh: >-
+            该应用消除攻击者仅依靠一个 API/工具解析盲区隐藏持久状态的机会，使 null/counted-string 对象在写入、盘点和消费三处都产生可检查记录。攻击者必须同时规避事务采集、raw/native 视图和 consumer 监控，或放弃该稳定视图差，显著增加操作成本。
+          en: >-
+            This application removes the opportunity to hide durable state behind one API or tool parsing blind spot and gives a null or counted-string object reviewable evidence at write, inventory, and consumption. The adversary must evade transaction collection, raw or native views, and consumer monitoring together or abandon the stable view differential, materially increasing operational cost.
+    limitations:
+      paragraphs:
+        - zh: >-
+            raw hive 获取可能需要 VSS、离线采集或高权限并影响性能，parser 与 Windows 版本不匹配会误报；在线扫描竞争、不同权限和未装载用户 hive也会产生差异。RegDelNull 类删除会让依赖该 key 的合法应用失败，因此任何自动清除都必须先验证 null 因果、consumer 所有者、备份和回滚。
+          en: >-
+            Raw-hive acquisition can require VSS, offline collection, or high privilege and affect performance, while parser and Windows-version mismatch creates false positives. Live-scan races, different privilege, and unloaded user hives also create discrepancies. RegDelNull-style removal can break a legitimate application depending on the key, so automatic cleanup must first validate null causality, consumer owner, backup, and rollback.
+evidence_refs:
+  - REF-000188
+  - REF-000230
+  - REF-000308
+  - REF-000309
+  - REF-000310
+  - REF-000311
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: "2026-09-11"
+  modified: "2026-09-12"
+  contributors:
+    - Niji Matrix Research
+  reviewers: []

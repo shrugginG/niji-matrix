@@ -1,0 +1,49 @@
+schema_version: "2.0.0"
+type: detection-analytic
+id: NJA-000228
+strategy_ref: DET-000198
+name: {zh: 非 DC DRS 来源—目录结果关联分析, en: Non-DC DRS Origin–Directory Outcome Correlation Analytic}
+summary: {zh: 关联非批准复制来源、合法 DC 的 DRS 接受和带异常 originating DSA 的目录对象变化，确认来源错位完成。, en: "Correlate an unapproved replication origin, DRS acceptance by a legitimate DC, and directory-object changes carrying an anomalous originating DSA to confirm completed origin displacement."}
+domains: [enterprise]
+platforms: [Windows]
+logic:
+  paragraphs:
+    - zh: 从合法 DC、网络传感器和身份系统提取 DRSBind、DRSReplicaAdd/Sync/UpdateRefs/GetNCChanges 等 drsuapi 事务，记录 source/destination host/IP、RPC interface/opnum、Kerberos principal、SPN、authentication/session、naming context、source DRA、DSA GUID、flags、status、bytes 和 replication_cycle_id。将 source identity 与 NJA-000227 的 controller_registration_id、批准 DC inventory 和时间有效性连接。
+      en: Extract drsuapi transactions such as DRSBind, DRSReplicaAdd, DRSReplicaSync, DRSUpdateRefs, and DRSGetNCChanges from legitimate DCs, network sensors, and identity systems, retaining source and destination host or IP, RPC interface or opnum, Kerberos principal, SPN, authentication or session, naming context, source DRA, DSA GUID, flags, status, bytes, and replication_cycle_id. Join source identity to NJA-000227's controller_registration_id, approved DC inventory, and time validity.
+    - zh: 在事务后读取受影响对象的 old-new、USN/version、originating DSA/time、attribute set、接收 DC 与复制邻居。若未批准/非 DC 主机以 controller SPN/DSA 身份发起成功复制，合法 DC 接受更新，且目标账户/ACL/schema/SIDHistory/凭据等对象的新版本指向该 DSA，则输出 confirmed_origin_displacement。仅请求失败输出 attempted_replication；仅对象变化无网络/身份链输出 directory_origin_anomaly。
+      en: After the transaction, read affected objects' old and new state, USN or version, originating DSA and time, attribute set, receiving DC, and replication neighbor. Emit confirmed_origin_displacement when an unapproved or non-DC host initiates successful replication under a controller SPN or DSA identity, a legitimate DC accepts the update, and a new version of a target account, ACL, schema, SIDHistory, credential, or other object points to that DSA. A failed request produces attempted_replication, while an object change without network or identity lineage produces directory_origin_anomaly.
+    - zh: 事件 4928/4929 与 Defender for Identity CEF 作为补强信号，而非必要单点。把 DCSync 的 client 拉取方向、正常 KCC/复制邻居、备份/恢复和批准 promotion 排除；若来源 DSA 曾获批准但时间已失效，应使用历史 inventory 而不是当前 OU 位置判断。
+      en: Events 4928 or 4929 and Defender for Identity CEF are strengthening signals rather than mandatory single points. Exclude client-pull DCSync direction, normal KCC or replication neighbors, backup or recovery, and approved promotion. When a source DSA was once approved but is no longer valid, use historical inventory rather than current OU position.
+data_requirements:
+  - source_type: directory-replication-rpc
+    name: {zh: DRSUAPI/RPC 复制事务, en: DRSUAPI or RPC Replication Transactions}
+    channel: Domain controller RPC telemetry network sensor or ETW
+    required_fields: [timestamp, forest_id, domain_id, source_host, source_ip, destination_dc, destination_ip, rpc_interface_uuid, rpc_opnum, operation, authentication_session_id, kerberos_principal, spn, naming_context, source_dra_dn, source_dsa_guid, flags, status, bytes, replication_cycle_id]
+  - source_type: detailed-directory-replication-audit
+    name: {zh: 详细目录复制与 Defender Identity 信号, en: Detailed Directory Replication and Defender Identity Signals}
+    channel: Windows Security 4928 4929 Directory Service and MDI CEF
+    required_fields: [timestamp, sensor_id, event_or_alert_id, source_address, source_host, source_dra_dn, destination_dc, naming_context, user_id, application, outcome, alert_type, replication_cycle_id]
+  - source_type: active-directory-replication-metadata
+    name: {zh: 目录对象版本与 Originating DSA 元数据, en: Directory Object Versions and Originating DSA Metadata}
+    channel: LDAP replication metadata directory snapshots or forensic export
+    required_fields: [timestamp, forest_id, domain_id, object_dn, object_guid, object_class, attribute_name, old_value_hash, new_value_hash, version, usn, originating_dsa_guid, originating_time, receiving_dc, replication_neighbor_id]
+observables:
+  - {zh: 非批准主机使用 controller SPN/DSA 身份向合法 DC 发起成功 DRS 事务, en: An unapproved host uses a controller SPN or DSA identity for a successful DRS transaction to a legitimate DC}
+  - {zh: 事务后的目录版本由异常 originating DSA 产生并在合法 DC 可见, en: A post-transaction directory version originates from an anomalous DSA and is visible on a legitimate DC}
+  - {zh: 注册、复制请求、合法 DC 接受和目标对象变化共享同一 registration/cycle 谱系, en: Registration replication request legitimate-DC acceptance and target-object change share one registration and cycle lineage}
+correlation:
+  window: {zh: 从注册前一小时到最后一次相关对象复制后七日；复制延迟按 site link 基线扩展。, en: "Correlate from one hour before registration through seven days after the final related object replication and extend for site-link replication delay."}
+  dimensions: [forest_id, domain_id, controller_registration_id, replication_cycle_id, source_host, source_ip, source_dsa_guid, destination_dc, authentication_session_id, kerberos_principal, spn, naming_context, object_guid, attribute_name, usn, originating_dsa_guid, time]
+false_positives:
+  - {zh: 批准 DC promotion、拓扑重建、灾备恢复或站点间复制更改, en: Approved DC promotion topology rebuild disaster recovery or inter-site replication change}
+  - {zh: 授权目录同步/身份产品使用复制权限但只执行批准方向与对象集, en: Authorized directory synchronization or identity products use replication rights only for approved direction and object sets}
+  - {zh: 历史 inventory 过期，把刚获批准的 DC 误标为非 DC, en: Stale historical inventory labels a newly approved DC as non-DC}
+blind_spots:
+  - {zh: RPC 加密且没有 DC/网络侧方法或来源字段，无法识别 DRS 操作, en: Encrypted RPC without DC-side or network method and origin fields prevents DRS operation identification}
+  - {zh: 攻击者控制合法 DC、目录元数据和中央传感器，使来源链同权污染, en: The adversary controls a legitimate DC directory metadata and central sensors and contaminates the origin chain under one authority}
+tuning_guidance:
+  paragraphs:
+    - zh: 先按 forest/site 建立合法 DC、目录同步产品、复制方向、naming context 与 service account allowlist，并保留生效区间。高置信必须同时满足未批准来源、成功 DRS、合法 DC 接受和异常 originating DSA 对象结果；不能仅按端口、Domain Admin、事件 4929 或产品警报触发。敏感属性值使用 hash/类别，调查层按权限读取原值。
+      en: Baseline legitimate DCs, directory-synchronization products, replication direction, naming contexts, and service-account allowlists by forest and site with effective intervals. High confidence requires an unapproved origin, successful DRS, legitimate-DC acceptance, and an object outcome with an anomalous originating DSA. Do not trigger solely on a port, Domain Admin identity, event 4929, or a product alert. Use hashes or classes for sensitive attribute values and restrict plaintext to an authorized investigation tier.
+evidence_refs: [REF-000748, REF-000749, REF-000750, REF-000752, REF-000753]
+lifecycle: {status: review, version: "1.0.0", created: "2026-09-23", modified: "2026-09-23", contributors: [Niji Matrix Research], reviewers: []}

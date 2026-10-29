@@ -1,0 +1,49 @@
+schema_version: "2.0.0"
+type: detection-analytic
+id: NJA-000143
+strategy_ref: DET-000139
+name: {zh: SMB 写入与目标文件创建的源角色差分, en: "SMB Write and Destination File Creation Source-Role Differential"}
+summary: {zh: 确认 SMB 投递后的文件到达，并按来源角色、载荷摘要和批准目标范围识别异常跨主机复制。, en: "Confirm file arrival after SMB delivery and identify unusual cross-host copies by source role, payload digest, and approved destination scope."}
+domains: [enterprise]
+platforms: [Windows]
+logic:
+  paragraphs:
+    - zh: 在共享服务器或目标主机先筛选 5145 中请求 WriteData 或 AddFile 的共享访问，保留事件时间、SubjectLogonId、IpAddress、ShareName、RelativeTargetName 与 AccessMask。以同一记录主机的 4624 Type 3 和登录标识恢复网络会话及账户，解析源 IP 到稳定资产 ID；5145 只表示权限检查，不能作为“文件已到达”的唯一证据。
+      en: First select share-access event 5145 requests for WriteData or AddFile on the share server or destination, retaining time, SubjectLogonId, IpAddress, ShareName, RelativeTargetName, and AccessMask. Join type-3 event 4624 on the same logging host by logon ID to recover the network session and principal, and resolve the source IP to a stable asset ID. Event 5145 is an access check and cannot alone establish that a file arrived.
+    - zh: 然后把共享与相对路径规范化为目标绝对路径，并在短时间窗内寻找 DeviceFileEvents 的创建或修改记录；有 SACL 时可用 4663 的实际 WriteData 辅证。提取可用 SHA1 或其他由端点校验的摘要，在二十四小时调查窗内按来源、目标、账户和摘要聚合。只有相同内容经不常承担分发的源主机进入多个目标，或目标落地后又成为同内容的出站来源，且与批准发布的源、目标、内容或有效期不匹配时，输出带证据链的候选告警。后续启动和恶意内容命中提高优先级，但不替代到达证明。
+      en: Normalize the share and relative path into a destination absolute path and seek a DeviceFileEvents creation or modification nearby; where a SACL exists, event 4663 showing actual WriteData can corroborate the write. Extract available SHA1 or another endpoint-verified digest, then group by source, destination, principal, and digest over a twenty-four-hour investigation window. Emit an evidence-backed candidate only when equivalent content reaches multiple targets from a host that rarely distributes files, or a receiving host becomes an outbound source for that content, and the path differs from approved source, destination, content, or validity. Later launch or a malicious-content match raises priority but cannot replace arrival proof.
+data_requirements:
+  - source_type: windows-detailed-file-share
+    name: {zh: Windows 共享访问检查, en: "Windows detailed file-share access checks"}
+    channel: Security/5145
+    required_fields: [timestamp, host_id, subject_logon_id, subject_user_sid, source_ip, share_name, relative_target_name, access_mask]
+  - source_type: windows-network-logon
+    name: {zh: Windows 网络登录, en: "Windows network logon"}
+    channel: Security/4624
+    required_fields: [timestamp, host_id, target_logon_id, target_user_sid, logon_type, source_ip]
+  - source_type: endpoint-file-events
+    name: {zh: 目标端文件创建与修改, en: "Destination file creation and modification"}
+    channel: Microsoft Defender XDR/DeviceFileEvents
+    required_fields: [timestamp, device_id, action_type, folder_path, file_name, sha1]
+  - source_type: approved-distribution-record
+    name: {zh: 授权发布与资产角色清单, en: "Approved release and asset-role inventory"}
+    channel: null
+    required_fields: [approval_id, source_host_id, destination_host_id, principal_id, artifact_hash, valid_from, valid_to, source_role]
+observables:
+  - {zh: 普通终端账户向服务器共享请求写入，目标随后在对应路径创建相同工具内容。, en: "An ordinary endpoint account requests a write to a server share and the destination subsequently creates matching tool content at the mapped path."}
+  - {zh: 同一内容摘要从非批准分发源到达多个目标，或一台接收主机随后向其他目标复制该内容。, en: "The same content digest reaches multiple targets from an unapproved distribution source, or a receiving host subsequently copies it to further targets."}
+correlation:
+  window: {zh: 单次 5145 与文件创建默认相隔不超过五分钟；多目标或多跳聚合默认二十四小时，并按发布窗口和离线主机情况调整。, en: "Default to five minutes between a 5145 request and file creation, then aggregate multi-target or multi-hop arrival over twenty-four hours, adjusted for release windows and offline hosts."}
+  dimensions: [source_host, destination_host, principal, share, path, file_digest, approval, time]
+false_positives:
+  - {zh: 补丁发布、事件响应工具推送、备份还原和管理员临时复制可能合法地产生相同的跨主机到达图。, en: "Patching, incident-response tool pushes, backup restoration, and ad hoc administrator copies can legitimately produce the same cross-host arrival graph."}
+  - {zh: 同一标准工具会由多个运维源分发；未登记的紧急变更可能看似违反批准范围。, en: "The same standard tool may be distributed by several operations sources, and an unregistered emergency change can appear outside approved scope."}
+blind_spots:
+  - {zh: 未启用共享审计、目标文件事件缺失或设备与源 IP 映射不稳定时，无法可靠重建到达谱系。, en: "Absent share auditing, missing destination file events, or unstable source-IP-to-device mapping prevent reliable arrival lineage."}
+  - {zh: 非 SMB 加密通道、逐主机变形的载荷和缺失摘要会使该 Windows 分析失效，不能据此宣称没有横向传输。, en: "Encrypted non-SMB channels, payload changes on each host, and missing hashes defeat this Windows analytic and cannot establish the absence of lateral transfer."}
+tuning_guidance:
+  paragraphs:
+    - zh: 按文件服务器、源资产角色、目标组、批准内容摘要和维护窗口建立基线，给每次例外记录 owner、有效期和目标集合。不要永久放行 C$、域控制器、签名复制工具或特定服务账户；这些正常外观恰是需要连接内容与范围的原因。只把 5145 的写权限视为候选，必须用目标文件事件或有条件的 4663 确认到达。
+      en: Baseline by file server, source asset role, destination group, approved content digest, and maintenance window, with owner, validity, and target set for each exception. Do not permanently allow C$, domain controllers, signed copy tools, or service accounts; their ordinary appearance is why content and scope must be joined. Treat 5145 write rights as candidates and require destination file events or conditional 4663 confirmation of arrival.
+evidence_refs: [REF-000473, REF-000474, REF-000475, REF-000377, REF-000379]
+lifecycle: {status: review, version: "0.1.0", created: "2026-09-22", modified: "2026-09-22", contributors: [Niji Matrix Research], reviewers: []}

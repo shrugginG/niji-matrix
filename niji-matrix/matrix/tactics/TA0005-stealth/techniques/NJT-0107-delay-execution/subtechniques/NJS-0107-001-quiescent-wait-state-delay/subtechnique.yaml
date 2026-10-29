@@ -1,0 +1,113 @@
+schema_version: 2.0.0
+type: evasion-subtechnique
+id: NJS-0107-001
+name:
+  zh: 静默等待状态延迟
+  en: Quiescent Wait-State Delay
+summary:
+  zh: 攻击者使用休眠、计时器或绝对时间门控，在低事件密度的等待状态中跨越观察窗口。
+  en: Adversaries use sleep, timers, or absolute-time gating to outlast an observation window in a low-event-density wait state.
+aliases: []
+parent_ref: NJT-0107
+lineage:
+  attck_subtechnique_inherited: false
+definition_and_concept:
+  paragraphs:
+  - zh: 静默等待状态延迟是攻击者在前态与后继恶意动作之间使用休眠、可等待计时器、单调时间或绝对时间比较，使运行实体在等待期间只产生少量状态痕迹的匿迹子技术。直接目标是让分析或关联窗口在后继载荷、通信或破坏动作出现前结束。
+    en: Quiescent Wait-State Delay is an evasion sub-technique in which an adversary uses sleep, a waitable timer, monotonic
+      time, or absolute-time comparison between a prior state and a malicious successor so that the running entity emits few
+      state traces while waiting. Its immediate objective is to end analysis or correlation before a payload, communication,
+      or destructive successor appears.
+  - zh: 稳定变量是观察窗口内的低事件密度等待状态，而不是休眠 API、计时器类型、时长或操作系统。通过大量低价值操作消耗时间归 NJS-0107-002；由调度器保存独立未来触发对象归相邻 T1053 调度技术。
+    en: The stable variable is a low-event-density wait state inside the observation window, not a sleep API, timer type, duration,
+      or operating system. Consuming time through large volumes of low-value operations belongs to NJS-0107-002, while a scheduler
+      preserving an independent future trigger object belongs to adjacent T1053 scheduling.
+stealth_characteristics:
+  paragraphs:
+  - zh: 静默等待状态延迟把原本连续的初始执行与后续敏感动作拉开，在中间留下低 CPU、低系统调用和少量计时器或时钟读取。短沙箱和短关联窗口可能只看到等待前或等待后的一半因果。
+    en: Quiescent Wait-State Delay separates initial execution from a sensitive successor and leaves low CPU, few system calls,
+      and sparse timer or clock reads in between. Short sandboxes and correlation windows may see only the pre-wait or post-wait
+      half of the causal chain.
+  - zh: 残余痕迹包括等待 API、计时器句柄与到期时间、时钟比较、进程长寿命和等待后首个敏感动作。保留稳定进程身份、完整计时器状态并一致推进墙钟、单调时钟与计时器会限制匿迹效果。
+    en: Residual traces include wait APIs, timer handles and due times, clock comparisons, long process lifetime, and the first
+      sensitive action after waiting. Stable process identity, complete timer state, and coherent advancement of wall clock,
+      monotonic clock, and timers limit the stealth effect.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 纳入由攻击者控制的休眠、计时器或时间比较，且该等待将后继恶意动作移出预期观察窗口。判定需要前态、无业务依赖的等待和后继敏感动作的稳定连接。
+    en: Scope includes adversary-controlled sleep, timer, or time comparison that moves a malicious successor outside the expected
+      observation window. Classification requires a stable join among prior state, waiting without a business dependency,
+      and a sensitive successor action.
+  - zh: 合法退避、锁等待、用户等待、批处理窗口、同步、网络重试和维护时间是反例。忙循环、ping 或 API hammering 产生高密度工作时归 NJS-0107-002；调度器保存独立未来触发归 T1053。
+    en: Legitimate backoff, lock waiting, user waiting, batch windows, synchronization, network retry, and maintenance timing
+      are counterexamples. Busy loops, ping, or API hammering that creates high-density work belongs to NJS-0107-002, while
+      scheduler-preserved independent future triggers belong to T1053.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: loader 可在解包或释放下一阶段前休眠，implant 可持续比较绝对时间或等待计时器到期后才开始通信。后继动作可以是载荷执行、发现、通信或破坏，但本子技术只描述运行实体内的静默时间门控。
+      en: A loader may sleep before unpacking or releasing a next stage, and an implant may repeatedly compare absolute time
+        or wait on a timer before beginning communication. The successor can be payload execution, discovery, communication,
+        or impact, but this child describes only quiescent temporal gating within the running entity.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者需要运行实体在等待期间存活，并能预测沙箱、告警或人工观察窗口。长等待增加重启、进程终止、环境变化和机会丢失风险，时间加速与多时钟一致性也可破坏延迟。
+        en: The adversary needs the running entity to survive the wait and estimates sandbox, alert, or analyst observation
+          windows. Long waits increase risk of reboot, termination, environmental change, and lost opportunity, while time
+          acceleration and cross-clock consistency can break the delay.
+    defender_model:
+      paragraphs:
+      - zh: 防守方可观察进程 start key、等待操作、计时器到期、时钟读取、进程寿命和后继敏感动作，并执行正常时间与一致加速时间的差分。沙箱过早结束、等待期间身份丢失或只推进部分时钟时形成盲区。
+        en: The defender observes process start key, wait operation, timer due time, clock reads, process lifetime, and sensitive
+          successor actions and runs differentials between normal and coherently accelerated time. Blind spots arise when the
+          sandbox ends early, identity is lost during waiting, or only some clocks advance.
+stealth_mechanisms:
+- mechanism_ref: NM-ST
+  role: primary
+  summary:
+    zh: 低密度等待状态把后继动作移出短期观察窗口
+    en: A low-density wait state moves the successor action outside a short observation window
+  analysis:
+    paragraphs:
+    - zh: 攻击者在前态与后继动作间插入几乎不产生工作痕迹的等待，使两个事件落入不同分析或告警窗口；局部时间密度下降，短周期系统无法恢复因果，形成时空释痕。
+      en: The adversary inserts a wait that produces almost no work traces between prior state and successor action so the
+        two events land in different analysis or alert windows. Local temporal density falls and short-horizon systems cannot
+        restore causality, producing Spatiotemporal Trace Dilution.
+  evidence_refs:
+  - REF-000387
+  - REF-000418
+  confidence: medium
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000104
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000106
+evidence:
+  claim_refs:
+  - CLM-000623
+  case_refs: []
+  reference_refs:
+  - REF-000387
+  - REF-000418
+research:
+  limitations:
+    paragraphs:
+    - zh: ATT&CK 程序例子支持休眠与日期门控，Microsoft 支持计时器语义，但当前未新建独立在野案例，因此子项保持中等置信。
+      en: ATT&CK procedure examples support sleep and date gates and Microsoft supports timer semantics, but no independent
+        in-the-wild case was added here, so the child remains medium confidence.
+    - zh: 等待时长和休眠 API 不能证明恶意意图。缺少前态、业务依赖分析和后继敏感动作时，只能确认一次等待，不得确认匿迹延迟。
+      en: Wait duration and a sleep API do not prove malicious intent. Without prior state, business-dependency analysis, and
+        a sensitive successor action, only a wait can be established and stealth delay must not be asserted.
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-09-21'
+  modified: '2026-09-21'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

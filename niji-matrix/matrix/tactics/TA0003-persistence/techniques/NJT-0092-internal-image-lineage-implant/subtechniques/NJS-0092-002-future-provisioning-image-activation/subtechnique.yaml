@@ -1,0 +1,119 @@
+schema_version: 2.0.0
+type: evasion-subtechnique
+id: NJS-0092-002
+parent_ref: NJT-0092
+name:
+  zh: 未来置备镜像激活
+  en: Future-Provisioning Image Activation
+summary:
+  zh: 攻击者先植入内部镜像，等待以后扩缩容、重建或恢复在另一时间和资产启动恶意内容。
+  en: Adversaries implant an internal image and wait for later scaling, rebuild, or recovery to start malicious content at another time and on
+    another asset.
+aliases: []
+lineage:
+  attck_subtechnique_inherited: false
+definition_and_concept:
+  paragraphs:
+  - zh: 未来置备镜像激活是攻击者把植入内容保存到内部镜像，但不立即修改当前实例，而让正常置备事件在以后创建新 VM、容器或节点时激活载荷的匿迹子技术。直接目标是让原受害实例删除后仍从上游镜像复现能力。
+    en: Future-Provisioning Image Activation stores implanted content in an internal image without immediately changing current instances and
+      relies on a normal provisioning event to activate the payload when creating a later VM, container, or node. Its direct objective is to reproduce
+      capability from the upstream image after the original victim instance is deleted.
+stealth_characteristics:
+  paragraphs:
+  - zh: 未来置备镜像激活使 registry 修改与运行异常跨数日、重启或不同资产分离；实例启动看似正常扩容或恢复，局部节点没有原 push 来源。image ID/digest、launch template、deployment revision、pull 和首次结果仍可恢复链条。
+    en: Future-Provisioning Image Activation separates registry modification from runtime anomaly across days, rebuilds, or different assets.
+      Instance start resembles normal scaling or recovery and the local node lacks the original push provenance. Image ID or digest, launch template,
+      deployment revision, pull, and first outcome can still recover the chain.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 纳入内部镜像先被植入且以后置备事件实际或预期消费它的序列。只在当前容器 commit 后立即运行而无跨生命周期能力仍属父级；定时任务不是本轴，关键变量是置备依赖和跨资产激活。
+    en: Include a sequence in which an internal image is implanted before a later provisioning event actually or intentionally consumes it. Immediate
+      execution of a committed current container without cross-lifecycle capability remains parent scope. A scheduled task is not this axis; the
+      key variables are provisioning dependency and cross-asset activation.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: 攻击者把植入内容保存到 autoscaling group、Kubernetes Deployment、黄金 VM 或灾备模板引用的内部镜像，暂不改变当前实例，等待扩容、节点故障、重建、滚动更新或恢复在另一资产启动。新实例沿正常置备路径继承异常，即使最初被攻陷实例已经删除，能力仍可复现。
+      en: An adversary stores implanted content in an internal image referenced by an autoscaling group, Kubernetes Deployment, golden VM, or
+        recovery template without changing current instances and waits for scaling, node failure, rebuild, rolling update, or recovery to start
+        it on another asset. The new instance inherits the anomaly through normal provisioning, reproducing capability even after the originally
+        compromised instance is removed.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者需要 image catalog/registry 或构建权限、与目标运行时兼容的内容，并知道置备依赖、pull policy、扩缩容/恢复触发和预期等待时间。其可以选择高概率未来使用但当前静止的镜像，以减少立即运行信号；如果镜像退役、引用变更或从未被消费，Persistence
+          不会实际恢复。
+        en: The adversary needs image-catalog, registry, or build authority, content compatible with the target runtime, and knowledge of provisioning
+          dependencies, pull policy, scaling or recovery triggers, and expected delay. It can select an image likely to be used later but currently
+          dormant to reduce immediate runtime signals. If the image is retired, references change, or it is never consumed, Persistence is not
+          actually restored.
+      - zh: digest pinning、签名和 provenance admission、隔离 builder、最小 push 权限、上线前扫描/沙箱及新实例 first-action 监控提高成本。等待时间越长，registry audit 和签名差异越可能被发现；镜像错误也会在大规模扩容中放大故障。
+        en: Digest pinning, signature and provenance admission, isolated builders, least push authority, prelaunch scanning or sandboxing, and
+          new-instance first-action monitoring raise cost. Longer waiting gives registry audit and signature differences more time to expose the
+          implant, while a bad image amplifies failures during scaling.
+    defender_model:
+      paragraphs:
+      - zh: 防守方需要把 registry push/manifest、image ID/digest、签名/SBOM、builder/actor、launch template/deployment revision、node pull、instance/pod ID、启动时间和
+          first process/network/resource action跨生命周期连接。保留期必须覆盖镜像存续及可能数周或数月后的灾备/扩容，而不是只跟随单个节点。
+        en: Defenders need cross-lifecycle joins among registry push or manifest, image ID or digest, signature or SBOM, builder or actor, launch
+          template or deployment revision, node pull, instance or pod ID, start time, and first process, network, or resource action. Retention
+          must cover image lifetime and possible recovery or scaling weeks or months later rather than follow one node only.
+      - zh: 静态镜像异常但没有消费只能形成供应风险；正常置备但没有上游身份又不能解释来源。防守方应在 admission 记录批准 digest 和 signer，在运行时验证实际 digest/attestation，并将 first-action 差异与同镜像历史比较。短生命周期实例、跨账户
+          registry 和灾备隔离环境是主要盲区。
+        en: A static image anomaly without consumption establishes only supply risk, while normal provisioning without upstream identity cannot
+          explain origin. Defenders should record approved digest and signer at admission, verify actual digest or attestation at runtime, and
+          compare first-action differences with image history. Short-lived instances, cross-account registries, and isolated recovery environments
+          are major blind spots.
+stealth_mechanisms:
+- mechanism_ref: NM-ST
+  role: primary
+  summary:
+    zh: 上游植入与下游运行跨时间和资产分离
+    en: Upstream implantation and downstream execution separate across time and assets
+  analysis:
+    paragraphs:
+    - zh: 镜像 push 与实例行为落在不同窗口和节点，局部检测只能看到正常置备或静态镜像，需长期跨资产关联才能还原，形成时空释痕。
+      en: Image push and instance behavior land in different windows and nodes, leaving local detection with normal provisioning or a static image
+        and requiring long-term cross-asset correlation to reconstruct the chain, producing Spatiotemporal Trace Dilution.
+  evidence_refs:
+  - REF-000185
+  - REF-000186
+  confidence: high
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000072
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000072
+evidence:
+  claim_refs:
+  - CLM-000376
+  case_refs: []
+  reference_refs:
+  - REF-000185
+  - REF-000186
+  - REF-000211
+  - REF-000214
+  - REF-000215
+research:
+  limitations:
+    paragraphs:
+    - zh: ATT&CK 和现有检测材料支持 image push 与以后 deployment/instance start 的关联，但公开案例没有为所有 VM、容器和灾备系统提供相同字段。跨环境统一只基于 image identity—content—instance 谱系，不能假定统一窗口或签名系统。
+      en: ATT&CK and existing detection material support correlation of image push with later deployment or instance start, but public cases do
+        not provide identical fields across every VM, container, and recovery system. Cross-environment unification follows only image identity-content-instance
+        lineage and cannot assume one window or signing system.
+    - zh: 扩缩容、恢复和滚动更新天然产生跨时间/资产启动；必须证明镜像先被未经批准修改且新实例继承异常结果。未被消费的镜像保持风险状态，合法发布或灾备演练必须用 actor、工单、签名与预期 first action 排除。
+      en: Scaling, recovery, and rolling update naturally create cross-time and cross-asset starts. Prior unapproved image modification and anomaly
+        inherited by a new instance must be shown. An unconsumed image remains a risk state, while legitimate release or recovery exercise requires
+        actor, change record, signature, and expected first action as counterexamples.
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-09-11'
+  modified: '2026-09-12'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

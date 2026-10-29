@@ -1,0 +1,112 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000165
+strategy_ref: DET-000155
+name:
+  zh: 客户端信任链与源站上游握手关联
+  en: Client Trust Chain and Origin Upstream-Handshake Join
+summary:
+  zh: 将客户端接受的替代链与独立源站证书及中间节点上游握手连接。
+  en: Join the client's accepted substitute chain to independent-origin certificates and an intermediary's upstream handshake.
+domains:
+- enterprise
+platforms: []
+logic:
+  paragraphs:
+  - zh: 当终端对敏感通信域接受新根或非批准签发链时，比较本端证书的名称、公钥和签发者与独立观察点所得源站证书；在源站可协作或受控时，把同一请求窗口的入口 TLS 来源和客户端原始来源相连。相同名称但链或公钥不同，且有独立上游握手和正常内容返回时，判为可读终止候选；只有中间节点流记录、内容副本或可核验的后继使用才升级为特定内容已收集。
+    en: When an endpoint accepts a new root or unapproved chain for a sensitive communications domain, compare the certificate's
+      names, public key, and issuer with an origin certificate from an independent vantage. Where the origin is cooperative
+      or controlled, join its inbound TLS source to the original client in the same request window. Matching names with a
+      different chain or key, a separate upstream handshake, and a normal content response indicate readable termination.
+      Promote to acquisition of particular content only with intermediary flow records, a content copy, or verifiable downstream
+      use.
+data_requirements:
+- source_type: endpoint-certificate-observation
+  name:
+    zh: 端点实际证书观察
+    en: Endpoint accepted-certificate observation
+  channel: null
+  required_fields:
+  - event.timestamp
+  - endpoint.id
+  - requested.domain
+  - peer.certificate.subject
+  - peer.certificate.san
+  - peer.certificate.spki_fingerprint
+  - peer.certificate.issuer_fingerprint
+  - tls.validation_result
+- source_type: endpoint-trust-store-inventory
+  name:
+    zh: 端点信任根清单
+    en: Endpoint trust-root inventory
+  channel: null
+  required_fields:
+  - event.timestamp
+  - endpoint.id
+  - trust_root.fingerprint
+  - trust_root.owner
+  - install.source
+- source_type: independent-origin-probe
+  name:
+    zh: 独立出口源站证书探测
+    en: Independent-origin certificate probe
+  channel: null
+  required_fields:
+  - event.timestamp
+  - requested.domain
+  - peer.certificate.spki_fingerprint
+  - peer.certificate.issuer_fingerprint
+- source_type: origin-tls-access
+  name:
+    zh: 源站 TLS 访问记录
+    en: Origin TLS access record
+  channel: null
+  required_fields:
+  - event.timestamp
+  - requested.domain
+  - source.ip
+  - tls.client_hello_fingerprint
+  - http.request_id
+observables:
+- zh: 客户端接受的受信根与独立源站链不一致
+  en: The client accepts a trusted root divergent from the independent origin chain
+- zh: 源站看到与客户端请求时间闭合的另一上游握手
+  en: The origin sees another upstream handshake aligned with the client request
+correlation:
+  window:
+    zh: 以请求前后二分钟连接两段 TLS，并复核前后二十四小时的根证书变更。
+    en: Join both TLS legs within two minutes of a request and review trust-root changes across the surrounding twenty-four
+      hours.
+  dimensions:
+  - endpoint.id
+  - requested.domain
+  - peer.certificate.spki_fingerprint
+  - trust_root.fingerprint
+  - source.ip
+  - http.request_id
+  - event.timestamp
+false_positives:
+- zh: 批准安全网关、调试代理、CDN 边缘证书、移动运营商优化代理和正常续签。
+  en: Approved security gateways, debugging proxies, CDN edge certificates, mobile-carrier optimization proxies, and normal
+    renewal.
+blind_spots:
+- zh: 无端点证书遥测、无独立路径、源站不提供入口 TLS 记录、请求 ID 跨代理丢失，或应用另有端到端正文加密。
+  en: Missing endpoint certificate telemetry, independent path, or origin TLS records; request IDs lost across a proxy; or
+    separate application-layer end-to-end encryption.
+tuning_guidance:
+  paragraphs:
+  - zh: 先核验签发者所有权与批准检查范围，再以链、公钥和上游来源三方差分提高置信度；单个 IP 或 TLS 指纹不是通用 IOC，批准根的越权使用也不应白名单排除。
+    en: Verify issuer ownership and approved inspection scope before raising confidence through chain, key, and upstream-source
+      differences. One IP or TLS fingerprint is not a universal IOC, and misuse of an approved root should not disappear into
+      an allowlist.
+evidence_refs:
+- REF-000556
+- REF-000557
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-09-22'
+  modified: '2026-09-22'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

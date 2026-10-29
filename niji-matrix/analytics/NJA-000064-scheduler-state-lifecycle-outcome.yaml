@@ -1,0 +1,97 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000064
+strategy_ref: DET-000087
+name: {zh: 跨窗口计划对象与调度结果差分分析, en: Cross-Window Scheduled Object and Scheduler Outcome Differential Analytic}
+summary: {zh: 统一任务创建、定义、枚举、触发、实际权限和资源结果，分别评分四类匿迹轴并分级确认权限提升, en: Normalize task creation definitions enumeration triggers actual authority and resource outcomes to score four stealth axes and tier confirmed privilege escalation}
+domains: [enterprise]
+platforms: [Windows, Linux, macOS, Containers, ESXi, Network Devices]
+logic:
+  paragraphs:
+    - zh: 分析把 Windows task path/GUID、cron owner+entry fingerprint、systemd timer/unit 和 Kubernetes CronJob UID 规范成 scheduler_object_id，并为每个版本保存 writer、定义 digest、动作、账户、计划/实际时间、权限和来源。合形分支比较同资产软件清单、同角色节点和同名历史，寻找名称/作者正常但动作或创建谱系异常；延期分支在创建时索引 next-run，并在跨重启或数周后把首次关键执行连接回原对象。
+      en: The analytic normalizes Windows task path or GUID cron owner plus entry fingerprint systemd timer or unit and Kubernetes CronJob UID into scheduler_object_id and versions writer definition digest action account scheduled and actual time permissions and provenance. The conformity branch compares asset software inventory peer-role nodes and same-name history for normal-looking names or authors with anomalous actions or creation lineage. The delay branch indexes next-run at creation and joins first critical execution back to the object across reboots or weeks.
+    - zh: 枚举分支以同一高权采集周期比较标准 API/UI 结果与原始注册表、文件、unit 或控制面状态，并要求缺失对象仍有调度器执行；短驻分支在十五分钟内连接 create/register、trigger、scheduler start、child/Pod 和 delete/TTL cleanup。最终评分要求定义或 writer 异常与至少一个后继行为相交，例如用户可写路径、解释器/代理二进制、未安装产品名称、秘密/网络访问、C2 或制品变化。只有当前清单缺失、长间隔或任务名相似时不做高置信定性。
+      en: The enumeration branch compares standard API or UI results with raw registry file unit or control-plane state during one privileged collection cycle and requires an omitted object to retain scheduler execution. The ephemeral branch joins create or register trigger scheduler start child or Pod and delete or TTL cleanup within fifteen minutes. Final scoring requires a definition or writer anomaly to intersect a successor behavior such as user-writable paths interpreter or proxy binaries names of absent products secret or network access C2 or artifact change. Missing current inventory a long interval or name similarity alone does not create a high-confidence conclusion.
+    - zh: 对每个四轴候选，TA0004 分支冻结 submitter 在登记或影响定义时的 authorization set 和 actor/session，验证精确 definition digest 被调度器准入并触发，再从 Windows task token、cron owner/system username、systemd service credentials 或 Pod ServiceAccount 解析实际 runtime authority。分析把第一个攻击者控制的 file、credential、IPC、namespace、control-plane 或其他 protected-resource 操作连接到该 run，并用同一 resource/action 对 pre-state 进行 expected-deny 求值、对实际事件记录 observed allow。principal 字符串、RunLevel 或成功码不能替代有效权限与结果。
+      en: For every four-axis candidate the TA0004 branch freezes the submitter authorization set and actor or session when the definition is registered or influenced verifies that the exact definition digest is admitted and triggered and resolves actual runtime authority from the Windows task token cron owner or system username systemd service credentials or Pod ServiceAccount. It joins the first adversary-controlled file credential IPC namespace control-plane or other protected-resource operation to that run and evaluates expected deny for the same resource and action in pre-state against observed allow in the actual event. Principal strings RunLevel and success codes do not substitute for effective authority and outcome.
+    - zh: 输出分为 scheduler_anomaly、execution_confirmed、execution_confirmed_non_elevating、authority_unresolved 与 elevation_confirmed。四轴证据但尚无运行进入 scheduler_anomaly；同一版本实际运行进入 execution_confirmed；权限相同或未使用差异进入 non-elevating；缺 submitter pre-state、actual runtime authority 或 resource decision 进入 unresolved；只有可枚举正权限差和首个 expected-deny/observed-allow 结果进入 elevation_confirmed。sensor stop、raw/API 不一致或关键审计断裂另加 telemetry_integrity_at_risk，而不把缺日志解释为无攻击。
+      en: Outputs are scheduler_anomaly execution_confirmed execution_confirmed_non_elevating authority_unresolved and elevation_confirmed. Four-axis evidence without runtime remains scheduler_anomaly and actual execution of the same version becomes execution_confirmed. Equal authority or an unused difference becomes non-elevating. Missing submitter pre-state actual runtime authority or resource decision becomes unresolved. Only an enumerable positive authority difference and first expected-deny to observed-allow result become elevation_confirmed. Sensor stop raw-to-API inconsistency or a critical audit break additionally marks telemetry_integrity_at_risk rather than treating missing logs as no attack.
+data_requirements:
+  - source_type: scheduler-lifecycle-audit
+    name: {zh: 调度对象创建、修改、启停与删除审计, en: Scheduler object create modify enable disable and delete audit}
+    channel: null
+    required_fields: [timestamp, device_or_cluster_id, scheduler_type, scheduler_object_id, action, actor_id, definition_digest, task_name, execution_principal, scheduled_time, trigger_type, result]
+  - source_type: scheduler-raw-definition
+    name: {zh: 任务原始定义、后端状态与权限, en: Raw task definition backend state and permissions}
+    channel: null
+    required_fields: [timestamp, device_or_cluster_id, scheduler_object_id, raw_path, content, content_digest, action_target, arguments, owner, security_descriptor, index_state, next_run_time]
+  - source_type: scheduler-enumeration
+    name: {zh: 标准与高权调度对象枚举, en: Standard and privileged scheduler-object enumeration}
+    channel: null
+    required_fields: [timestamp, device_or_cluster_id, querying_principal_id, enumeration_method, scheduler_object_id, visible, access_result, raw_registration_present]
+  - source_type: scheduler-runtime
+    name: {zh: 调度器触发和控制器运行事件, en: Scheduler trigger and controller runtime events}
+    channel: null
+    required_fields: [timestamp, device_or_cluster_id, scheduler_object_id, scheduled_time, actual_start_time, scheduler_process_id, run_id, job_uid, pod_uid, completion_state]
+  - source_type: process-container-lineage
+    name: {zh: 进程、容器与文件执行谱系, en: Process container and file execution lineage}
+    channel: null
+    required_fields: [timestamp, device_or_cluster_id, scheduler_object_id, process_or_container_id, parent_id, image, command_line, executable_hash, file_path, user_id, namespace, service_account]
+  - source_type: asset-network-outcome
+    name: {zh: 资产软件、网络与任务结果上下文, en: Asset software network and task outcome context}
+    channel: null
+    required_fields: [timestamp, device_or_cluster_id, installed_software, asset_role, scheduler_object_id, process_or_container_id, network_destination, bytes_out, artifact_id, result]
+  - source_type: submitter-identity-authority-prestate
+    name: {zh: 提交主体身份与事件时权限前态, en: Submitter identity and event-time authority pre-state}
+    channel: null
+    required_fields: [timestamp, device_or_cluster_id, actor_id, actor_session_id, scheduler_object_id, definition_digest, identity, groups, roles, integrity_level, privileges, capabilities, namespaces, authorization_set]
+  - source_type: scheduler-admission-runtime-authority
+    name: {zh: 调度准入与实际运行权限, en: Scheduler admission and actual runtime authority}
+    channel: null
+    required_fields: [timestamp, device_or_cluster_id, scheduler_object_id, definition_digest, admission_result, admission_reason, run_id, actual_principal, token_id, integrity_level, privileges, capabilities, namespace, service_account, authorization_set]
+  - source_type: protected-resource-authorization
+    name: {zh: 受保护资源授权与副作用结果, en: Protected-resource authorization and side-effect outcome}
+    channel: null
+    required_fields: [timestamp, device_or_cluster_id, run_id, process_or_container_id, actor_identity, resource_id, resource_type, operation, authorization_decision, result, side_effect_id]
+  - source_type: approved-scheduler-change-context
+    name: {zh: 已批准调度变更与授权范围, en: Approved scheduler change and authority scope}
+    channel: null
+    required_fields: [change_id, owner, approver, actor_id, scheduler_object_id, definition_digest, approved_runtime_identity, approved_resources, approved_operations, valid_from, valid_until]
+observables:
+  - {zh: 任务名称或作者仿照已知产品，但产品未安装、动作位于用户目录或调度器启动异常代理二进制, en: A task name or author imitates a known product but the product is absent the action lies in a user directory or the scheduler launches an anomalous proxy binary}
+  - {zh: 新任务的首次关键执行发生在创建数日后且原始 dropper/会话已经结束，随后访问首次目的地或启动未见载荷, en: A new task's first critical run occurs days after creation and the original dropper or session has ended followed by first-seen network or payload activity}
+  - {zh: 标准枚举缺少任务，但原始注册状态、调度器运行和子进程共享同一对象身份, en: Standard enumeration omits a task whose raw registration scheduler run and child process share one object identity}
+  - {zh: create、事件/时间触发、调度器子进程和 delete 在十五分钟内完成，且目标进程与创建者基线不符, en: Create event or time trigger scheduler child and delete complete within fifteen minutes and the target process is inconsistent with creator baseline}
+  - {zh: 未批准或低权 writer 的精确任务版本被调度器接受，实际 runtime token、capability 或 ServiceAccount 比 submitter 多出可枚举权限, en: An exact task version from an unapproved or lower-authority writer is admitted and its actual runtime token capability or ServiceAccount has enumerable authority absent from the submitter}
+  - {zh: 同一 run 的首个攻击者资源操作对 submitter 前态模拟为 deny、对实际 runtime identity 记录为 allow 并产生副作用, en: The first adversary resource operation for the same run evaluates deny for submitter pre-state records allow for actual runtime identity and produces a side effect}
+  - {zh: 任务以 root、SYSTEM 或特权 ServiceAccount 运行，但提交者本已具同等资源权限，输出 non-elevating 而非提权, en: A task runs as root SYSTEM or a privileged ServiceAccount but the submitter already has equal resource authority producing non-elevating rather than elevation}
+  - {zh: 调度器记录高权 principal 或 RunLevel，但 admission、实际 token 或资源决议缺失，权限状态保持 unresolved, en: The scheduler records a privileged principal or RunLevel but admission actual token or resource decision is missing and authority remains unresolved}
+  - {zh: 定义版本中的 principal/ServiceAccount 与实际运行身份不一致，或 cron timer service Job Pod 谱系无法一一对应, en: Definition principal or ServiceAccount differs from actual runtime identity or cron timer service Job and Pod lineage does not map one-to-one}
+  - {zh: raw state、标准 API、runtime 或资源审计在关键事务内中断或相互矛盾，标记 telemetry integrity 风险, en: Raw state standard API runtime or resource audit stops or conflicts during the critical transaction marking telemetry-integrity risk}
+correlation:
+  window: {zh: 同时维护十五分钟短驻事务、从创建到首次执行后两小时的任务窗，以及最长三十天的延期 watchlist；关键服务器和月度任务可按风险扩展到九十天。, en: Maintain a fifteen-minute ephemeral transaction a task window from creation through two hours after first execution and a delay watchlist up to thirty days with risk-based extension to ninety days for critical servers and monthly jobs.}
+  dimensions: [device_or_cluster, scheduler_type, scheduler_object, task_name, definition_digest, actor, actor_session, submitter_authorization_set, admission_result, execution_principal, runtime_token_or_service_account, runtime_authorization_set, scheduled_time, actual_time, run_or_job, process_or_pod, action_target, protected_resource, resource_operation, authorization_decision, side_effect, network_destination]
+false_positives:
+  - {zh: 软件安装、浏览器更新、备份、监控和证书轮换会创建与删除任务并使用系统账户, en: Software installation browser updates backups monitoring and certificate renewal create and delete tasks and use system accounts}
+  - {zh: 离线主机、夏令时变化、systemd Persistent 与 Kubernetes missed schedules 会让实际运行显著晚于登记时间, en: Offline hosts daylight-saving changes systemd Persistent and Kubernetes missed schedules can make actual runs materially later than registration}
+  - {zh: RBAC、租户隔离和受限运维账户会让标准枚举合法遗漏对象，控制器 TTL 会自动删除完成 Job, en: RBAC tenant separation and constrained operators legitimately omit objects from standard enumeration and controller TTL automatically deletes completed Jobs}
+  - {zh: 已批准的部署、备份、补丁和集群控制器可由受限提交主体通过受管队列合法调用更高 runtime identity，并按预定资源范围产生 allow, en: Approved deployment backup patching and cluster controllers may legitimately let constrained submitters invoke a higher runtime identity through a managed queue and receive allows within a predefined resource scope}
+blind_spots:
+  - {zh: 未启用 Windows TaskScheduler Operational/Security 审计、cron 文件无 audit 或 systemd journal 不持久时，生命周期事务不可恢复, en: Lifecycle transactions cannot be recovered when Windows TaskScheduler Operational or Security audit is disabled cron files lack audit or systemd journal is nonpersistent}
+  - {zh: 直接修改后端状态绕过 API 且没有文件/注册表监控，会隐藏 writer；同一高权主体被攻陷时可同时伪造原始与标准视图, en: Direct backend modification bypassing APIs without file or registry monitoring hides the writer and compromise of the same privileged collector can falsify raw and standard views together}
+  - {zh: Kubernetes Job history/TTL 清理和短驻 Pod 无运行时遥测时，只能看到 CronJob 或 API 状态而缺少真实载荷结果, en: Kubernetes Job history or TTL cleanup and short-lived Pods without runtime telemetry leave only CronJob or API state without actual payload outcome}
+  - {zh: 缺少事件时 submitter 组、角色、privilege、capability 或 namespace 快照时，事后当前权限不能可靠代表 pre-state, en: Without event-time submitter group role privilege capability or namespace snapshots current authority cannot reliably represent pre-state}
+  - {zh: 运行事件只记录任务声明账户而不记录实际 token、impersonation、capability 或 ServiceAccount token 时，无法证明 runtime authority, en: Runtime events that record only the declared task account without actual token impersonation capability or ServiceAccount token cannot establish runtime authority}
+  - {zh: 受保护资源不记录 allow/deny、operation 或 side effect，或跨主机/集群 ID 无法连接 run 时，正权限差没有结果级验证, en: When protected resources omit allow or deny operation or side effect or cross-host and cluster IDs cannot join the run a positive authority difference lacks outcome-level validation}
+tuning_guidance:
+  paragraphs:
+    - zh: 按资产角色、安装软件、scheduler 类型、任务 folder/namespace、执行账户和 action family 建立版本化基线，并把合法安装/升级例外绑定发布包、审批者、定义 digest 与有效期。名称相似、SYSTEM/root 和调度器父进程只降低或提高背景概率，不能成为白名单；动作路径、writer、计划偏差和后继网络应独立评分后组合。
+      en: Build versioned baselines by asset role installed software scheduler type task folder or namespace execution principal and action family and bind legitimate install or upgrade exceptions to release package approver definition digest and expiry. Name similarity SYSTEM or root and scheduler parentage affect background probability but cannot become allowlists. Score action path writer schedule difference and successor network independently before combination.
+    - zh: 对关键资产在任务创建时生成 future-run watchlist，并验证日志保留覆盖其 next-run；对短驻轴把 TaskScheduler、audit/journal 与进程事件的延迟预算控制在分钟级。高权差分枚举应由独立只读主体执行并记录 query principal。沙箱可推进时钟和模拟重启，但应保留真实环境分支以避免把正常 catch-up 误判。
+      en: Generate future-run watchlists at task creation on critical assets and verify retention covers next-run. Keep TaskScheduler audit or journal and process-event latency within minutes for the ephemeral axis. Privileged differential enumeration should use an independent read-only principal and record query identity. Sandboxes may advance clocks and simulate reboots but should retain real-environment branches to avoid misclassifying normal catch-up.
+    - zh: 用已知 submitter 与 runtime 身份对同一资源执行受控 deny/allow 回放，校准 authorization-set 比较；Windows 以实际 task token 为准，cron 区分 user crontab owner 与 system username，systemd timer 连接 service User/capability/sandbox，CronJob 连接 Job/Pod 的实际 ServiceAccount 和 RBAC。任何仅来自显示字段的“高权限”最多进入 unresolved，不能作为高严重度白名单或告警条件。
+      en: Calibrate authorization-set comparison with controlled deny and allow replay for the same resource under known submitter and runtime identities. Use actual task tokens on Windows distinguish user-crontab owner from system username for cron join systemd timers to service User capability and sandbox and join CronJobs to actual Job or Pod ServiceAccount and RBAC. Privileged status derived only from display fields enters unresolved at most and cannot become a high-severity allowlist or alert condition.
+    - zh: 将受管委托例外绑定 exact actor/session、object/version、admission path、runtime identity、resource/operation、ticket、窗口和预期结果；任一维度偏离即重新评分。响应时保全已删除定义、权限快照、token/ServiceAccount、首次资源结果和视图差分，再撤销任务及其创建的进程、会话、账户、文件、ACL、secret 或控制面副作用；审计中断另升 telemetry_integrity_at_risk。
+      en: Bind managed-delegation exceptions to exact actor or session object and version admission path runtime identity resource and operation ticket window and expected result and rescore any divergence. During response preserve deleted definitions authority snapshots token or ServiceAccount first resource outcome and view differential before revoking the task and its process session account file ACL secret or control-plane side effects. Audit interruption separately raises telemetry_integrity_at_risk.
+evidence_refs: [REF-000259, REF-000260, REF-000261, REF-000262, REF-000263, REF-000264, REF-000265, REF-000266, REF-000372, REF-000373, REF-000374, REF-000375]
+lifecycle: {status: review, version: 1.1.0, created: '2026-09-12', modified: '2026-09-13', contributors: [Niji Matrix Research], reviewers: []}

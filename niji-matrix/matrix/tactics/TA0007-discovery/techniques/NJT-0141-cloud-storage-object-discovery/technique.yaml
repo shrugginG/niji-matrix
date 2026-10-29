@@ -1,0 +1,161 @@
+schema_version: 2.0.0
+type: technique
+id: NJT-0141
+name:
+  zh: 云存储对象发现
+  en: Cloud Storage Object Discovery
+summary:
+  zh: 在已知云存储容器内列举对象键、前缀与清单元数据，借普通获准读取外观选择后续访问目标。
+  en: List keys, prefixes, and inventory metadata inside a known cloud storage container, selecting later targets through
+    ordinary-looking authorized reads.
+aliases: []
+classification:
+  tactic_refs:
+  - TA0007
+  origin:
+    kind: attack-retained
+    source_attack_id: T1619
+    source_attack_version: '19.1'
+  decision_ref: DEC-TA0007-T1619
+definition_and_concept:
+  paragraphs:
+  - zh: 云存储对象发现是攻击者已经定位到桶或容器后，取得其中对象名称、键、前缀和可列举元数据的行为。直接产物是可供筛选下一步访问目标的对象清单；列举不需要先下载每个对象正文，也不能据此断定内容已经被收集。
+    en: Cloud Storage Object Discovery occurs after an adversary has identified a bucket or container and obtains object names,
+      keys, prefixes, and listable metadata inside it. The immediate product is an inventory for selecting later access targets.
+      Listing need not download each object body and does not establish that content collection has occurred.
+  - zh: 本项按容器内部的直接信息结果界定，可以由实时对象列表接口或已有清单间接实现；后者要成为独立匿迹子项仍需恶意取用证据。ListObjects、ListBlobs 与 GCP objects.list 是不同平台实现，API 名称、对象字段和
+      GUI 工具本身不是 Niji 子技术。
+    en: The direct information result inside the container defines this technique. Live list APIs or a preexisting inventory
+      could supply it, although adversarial use of the latter still needs evidence before becoming a child. ListObjects, ListBlobs,
+      and GCP objects.list are provider implementations; API names, object fields, and GUI tools are not Niji sub-techniques.
+stealth_characteristics:
+  paragraphs:
+  - zh: 在已有权限的身份下，桶内列表请求与备份、索引、数据治理和日常浏览使用相似的只读操作；单条请求即使被记录，也难说明操作者是寻找敏感对象还是执行批准作业。若防守只报警写入或大量 GetObject 下载，发现阶段可能与后续内容访问分离。
+    en: Under an entitled identity, in-bucket list requests resemble read-only backup, indexing, data-governance, and routine
+      browsing operations. Even a recorded request does not by itself reveal whether the actor is selecting sensitive targets
+      or running an approved job. Defenders alerting only on writes or heavy GetObject downloads can miss the separate discovery
+      stage.
+  - zh: 对象列举并非天然无痕。AWS 对象数据事件和 S3 server access log、Azure Blob 资源日志以及 GCP Data Access 可在各自启用条件下保留请求；身份、容器、来源与后继下载仍可关联。Unit
+      42 受害案没有对象数据日志，它对 ListObjects 的清晰序列来自另行受控实验，不能把实验事件移植为攻击者在受害租户的实测痕迹。
+    en: Object listing is not inherently traceless. AWS object-data events and S3 server access logs, Azure Blob resource
+      logs, and GCP Data Access can retain requests under their respective enablement conditions; identity, container, origin,
+      and later downloads remain correlatable. Unit 42’s victim lacked object-data logs, while its clear ListObjects sequence
+      came from a separate controlled experiment and cannot be presented as measured victim activity.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 只纳入已知存储容器内部对象键、前缀或清单属性的取得。查桶是否存在、有哪些桶或桶与其他 IaaS 资源如何关联，归 T1580；查存储服务能力是否启用归 T1526。对象正文读取、预览下载、打包和外传按后续行为分别处理，不能因先有列表就把它们全部算作发现。
+    en: Include acquisition of keys, prefixes, or inventory attributes inside a known storage container. Bucket existence,
+      bucket lists, and relationships to other IaaS resources belong to T1580; storage-service availability belongs to T1526.
+      Object-body reads, previews that download content, packaging, and exfiltration are separate later acts and are not all
+      discovery merely because listing preceded them.
+  - zh: 正常备份、搜索索引、生命周期治理和响应调查会用相同权限与分页、prefix 条件。只有身份来源、批准桶范围、请求序列与后继结果能够把异常意图区分出来；GUI 浏览只说明交互路径，公开对象访问还可能处于不同的审计/身份条件之下。
+    en: Normal backups, search indexing, lifecycle governance, and incident investigation use the same permissions, paging,
+      and prefix filters. Actor origin, approved bucket scope, request sequence, and later outcomes are needed to distinguish
+      abnormal intent. GUI browsing only identifies an interaction path, and public-object access can have different audit
+      and identity conditions.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: 取得可列对象的凭据后，攻击者可以先读取对象名或前缀以挑选高价值备份、配置和文档，再决定是否真正取回正文。Unit 42 调查记录 Bling Libra 使用 S3 Browser 和 WinSCP 等工具在被入侵的云环境中活动，但受害环境没有对象级日志；其工具行为实验仅展示可能的列表请求，不给这起攻击补造逐项列表时间线。
+      en: After acquiring listing rights, an adversary can inspect names and prefixes for valuable backups, configurations,
+        or documents before choosing whether to fetch bodies. Unit 42 reports Bling Libra using tools such as S3 Browser and
+        WinSCP in a compromised cloud environment, but the victim had no object-level logs. Its tool experiment shows possible
+        list requests, not an invented item-by-item listing timeline for that incident.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者需先知道容器位置并拥有列举权限，权限可能来自 IAM、共享键或 SAS，得到的对象集仍受容器范围、前缀策略和访问视图限制。其可控制请求范围与节奏，但当前案例没有证明 prefix、分页或多身份被用于降低检测；用旧
+          Inventory 报告还须另证报告存在且身份可读。
+        en: The adversary needs a known container and listing authority, which may come from IAM, a shared key, or SAS. Results
+          remain bounded by container scope, prefix policy, and access view. The attacker can control request scope and cadence,
+          but current incidents do not prove use of prefixes, paging, or multiple identities to lower detection. An old Inventory
+          report additionally requires evidence that it exists and is readable.
+    defender_model:
+      paragraphs:
+      - zh: 防守方可在已启用的 AWS S3 对象数据事件、尽力投递的服务器访问日志、Azure StorageBlobLogs 或 GCP DATA_READ 中看到部分列表请求，并将它们与身份、桶和后继对象读取关联。各通道的选择器、诊断设置、保留与公开访问例外决定覆盖；请求日志通常不包含完整返回键集，缺事件不能直接证明没有列举。
+        en: Defenders may see some listing requests in enabled AWS S3 object-data events, best-effort server access logs,
+          Azure StorageBlobLogs, or GCP DATA_READ, and join them to identity, bucket, and later object reads. Selectors, diagnostic
+          settings, retention, and public-access exceptions determine coverage. Request logs generally lack the complete returned
+          key set, and missing events do not prove no listing occurred.
+stealth_mechanisms:
+- mechanism_ref: NM-FD
+  role: primary
+  summary:
+    zh: 获准对象列表请求的外观接近正常备份与索引读取
+    en: Authorized object-list requests resemble ordinary backup and indexing reads
+  analysis:
+    paragraphs:
+    - zh: 攻击者使用已有列举权限请求桶内键，而不在这一阶段下载正文或修改对象。若审计启用，记录的是正常接口上的身份、桶、时间和来源，形式上与备份、索引和治理作业相近；只以 GetObject 量或写入为信号的防守方难辨这一步目标筛选。跨作业基线、陌生来源、越界桶及后继下载能恢复差异。Unit
+        42 的受害工具使用与受控实验支持行为可行性，但没有证明受害环境的列表事件或实测漏报，故置信度为 medium。
+      en: The attacker uses existing listing rights to request keys inside a bucket without downloading bodies or changing
+        objects at this stage. Where audit is enabled, the record has an identity, bucket, time, and origin on an ordinary
+        interface, resembling backup, indexing, and governance jobs. A defender keyed only to GetObject volume or writes can
+        miss this target-selection step. Job baselines, unfamiliar origins, out-of-scope buckets, and later downloads help
+        restore distinction. Unit 42’s victim tool use and separate controlled experiment support feasibility but not victim
+        list events or measured misses, so confidence is medium.
+  evidence_refs:
+  - REF-000536
+  - REF-000513
+  - REF-000539
+  - REF-000540
+  confidence: medium
+subtechnique_taxonomy:
+  narrative:
+    paragraphs:
+    - zh: 限定 prefix/分页的局部列举、读取预先生成的对象 Inventory、跨身份与时间分散均经独立检索。预存报告最可能改变源桶与报告文件之间的观察面，但现有资料只证明厂商能力，未证明真实攻击者为此取用报告，也未核实相应报告访问日志和与实时列表不同的防御价值。
+      en: Scoped prefix or paginated listing, reading a prebuilt object Inventory, and dispersing reads across identities
+        or time were researched separately. A stored report is most likely to move observation from the source bucket to the
+        report file, but present sources establish provider capability rather than adversarial use, its report-access audit,
+        or distinct defensive value compared with live listing.
+    - zh: 工具、API 版本、对象字段和云厂商不会因为名称不同就形成兄弟项；普通分页与 prefix 也常由合法界面和索引作业产生。没有结论级行为序列支持独立子项，故当前 coverage 为 deferred 且正式 NJS 为空。
+      en: Tool, API version, object field, and provider names do not create sibling children by themselves. Ordinary paging
+        and prefixes are common in legitimate interfaces and indexing jobs. No conclusion-level behavior sequence supports
+        an independent child, so coverage is deferred and the formal NJS set is empty.
+  coverage: deferred
+  subtechnique_refs: []
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000152
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000141
+evidence:
+  claim_refs:
+  - CLM-000721
+  - CLM-000722
+  case_refs: []
+  reference_refs:
+  - REF-000535
+  - REF-000536
+  - REF-000537
+  - REF-000538
+  - REF-000539
+  - REF-000540
+  - REF-000541
+  - REF-000513
+  - REF-000524
+research:
+  limitations:
+    paragraphs:
+    - zh: Unit 42 受害环境没有对象数据日志，不能从 S3 Browser 的受控实验推定攻击者在受害桶触发哪一种 ListObjects 事件；同案缺完整对象清单和主观避审意图。AWS 当前文档在普通 S3 对象资源行列 ListObjects，却未列
+        ListObjectsV2，V2 出现在其他资源类型行；这只是表格覆盖差，不证明普通桶 V2 必定不记，正式部署必须受控验证。
+      en: Unit 42’s victim lacked object-data logs, so its controlled S3 Browser experiment cannot establish which ListObjects
+        event the attacker triggered in the victim bucket. The same incident lacks a complete key inventory and audit-evasion
+        motive. AWS’s current table lists ListObjects under ordinary S3 object resources but not ListObjectsV2, which appears
+        under other resource types. That table difference does not prove ordinary-bucket V2 is never logged; a controlled
+        deployment test is required.
+    - zh: S3 server access log 按尽力交付，Azure 数据面诊断和 GCP DATA_READ 需要配置；共享键、SAS、公开访问与跨账户读取还会削弱身份归因。已有 Inventory 报告转读只是一项待证假设，不能以厂商提供报表的能力替代实际恶意案例。
+      en: S3 server access logs are best effort, and Azure data-plane diagnostics and GCP DATA_READ require configuration.
+        Shared keys, SAS, public access, and cross-account reads weaken identity attribution. Retrieving a stored Inventory
+        report remains an unproven hypothesis; provider report capability cannot substitute for an adversarial case.
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-09-22'
+  modified: '2026-09-22'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

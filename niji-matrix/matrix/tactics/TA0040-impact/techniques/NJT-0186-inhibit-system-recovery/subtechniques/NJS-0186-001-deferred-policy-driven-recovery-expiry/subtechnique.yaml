@@ -1,0 +1,126 @@
+schema_version: 2.0.0
+type: evasion-subtechnique
+id: NJS-0186-001
+parent_ref: NJT-0186
+name:
+  zh: 策略驱动的延迟恢复点到期
+  en: Deferred Policy-Driven Recovery-Point Expiry
+summary:
+  zh: 攻击者缩短恢复点生命周期，让备份服务稍后自动删除恢复材料，使策略写入与损失事件分离。
+  en: An adversary shortens recovery-point lifecycle so a backup service later deletes recovery material automatically,
+    separating the policy write from the loss event.
+aliases: []
+lineage:
+  attck_subtechnique_inherited: false
+definition_and_concept:
+  paragraphs:
+  - zh: 策略驱动的延迟恢复点到期是攻击者改变备份计划或恢复点生命周期，把保留期限缩短到低于受保护资产要求，并让备份服务在计算到期时间自动删除恢复点。分类变量是一次策略写入与后来服务执行在主体、时间和遥测平面上的分离，不是云产品或备份类型。
+    en: Deferred Policy-Driven Recovery-Point Expiry changes a backup plan or recovery-point lifecycle so retention
+      falls below protected-asset requirements and a backup service automatically deletes the point at calculated
+      expiry. The variable is separation of one policy write from later service execution across actor, time, and
+      telemetry plane, not cloud product or backup type.
+  - zh: 子项只有在策略变化实际覆盖关键恢复点、服务到期结果出现且幸存恢复点造成 RPO 缺口时完成。缩短保留但被锁拒绝、及时回滚或尚未到期只证明企图或事前风险。
+    en: The child completes only when the policy change covers critical recovery points, service expiry occurs, and
+      surviving points create an RPO gap. Shortened retention rejected by a lock, promptly rolled back, or not yet
+      expired establishes an attempt or pre-impact risk only.
+stealth_characteristics:
+  paragraphs:
+  - zh: 策略驱动的延迟恢复点到期可以在删除前数小时或数日写入策略，后来结果由备份服务身份和调度产生；直接删除阈值看不到原操作者，生产业务也可能继续正常。只看当前恢复点或服务删除事件的守方会丢失策略因果。
+    en: Deferred Policy-Driven Recovery-Point Expiry can write policy hours or days before deletion, while later outcomes
+      are produced under backup-service identity and scheduling; direct-deletion thresholds miss the original operator
+      and production may continue normally. Defenders viewing only current recovery points or service deletion events
+      lose policy causality.
+  - zh: 策略版本、DeleteAfterDays、CalculatedLifecycle DeleteAt、vault/恢复点 ARN、服务删除事件、资源映射和 RPO 差仍可串联。及时事前告警、不可变锁和长期日志会显著降低优势。
+    en: Policy revision, DeleteAfterDays, CalculatedLifecycle DeleteAt, vault and recovery-point ARNs, service deletion
+      events, resource mapping, and RPO differential remain joinable. Prompt pre-impact alerting, immutable locks,
+      and long retention materially reduce the advantage.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 纳入未获批准的生命周期或备份计划变更，使关键恢复点在以后由服务删除并导致恢复覆盖低于要求。获批保留调整、资源退役、成本清理和测试 vault 是反例；配置变化没有实际结果时不确认。
+    en: Include an unapproved lifecycle or backup-plan change that later causes service deletion of critical recovery
+      points and lowers recovery coverage below requirement. Approved retention changes, resource retirement, cost
+      cleanup, and test vaults are counterexamples; a configuration change without outcome is not confirmed.
+  - zh: 直接 DeleteRecoveryPoint、删除卷影副本和禁用 WinRE 属于父级核心；当前业务对象的生命周期删除归 NJT-0156。其他平台只有具备等价策略、计算到期、服务结果和 RPO 证据才能纳入。
+    en: Direct DeleteRecoveryPoint, shadow-copy deletion, and WinRE disablement remain parent core; lifecycle deletion
+      of current business objects belongs to NJT-0156. Other platforms enter only with equivalent policy, calculated
+      expiry, service outcome, and RPO evidence.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: 取得 AWS Backup 管理权的攻击者可缩短 DeleteAfterDays、改变计划或选择，让现有/后继恢复点在服务计算的 DeleteAt 到期。若 SOC 只监测即时删除 API，策略事件与后来 BackupDeleted
+        可能跨值班窗口。
+      en: An attacker with AWS Backup authority can shorten DeleteAfterDays or change plans or selections so existing
+        or later recovery points expire at the service-calculated DeleteAt. A SOC watching only immediate delete APIs
+        may place policy and later BackupDeleted events in different shifts.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者需要更新生命周期或计划的权限、目标 vault 与资源映射知识以及等待到期的时间。合规 Vault Lock、最低保留策略、不同权审批和及时回滚会阻断或缩小结果。
+        en: The attacker needs lifecycle or plan update authority, knowledge of target vault and resource mapping,
+          and time to wait for expiry. Compliance Vault Lock, retention floors, differently authorized approval, and
+          prompt rollback block or reduce the outcome.
+    defender_model:
+      paragraphs:
+      - zh: 防守方保留 CloudTrail、策略版本、恢复点清单、CalculatedLifecycle、vault 锁、资源映射和 RPO/RTO，并跨到期时间关联服务结果。缺少旧策略、跨账户副本或还原测试时，只能证明策略异常或清单损失，不能断言不可恢复。
+        en: Defenders retain CloudTrail, policy revisions, recovery-point inventory, CalculatedLifecycle, vault locks,
+          resource mapping, and RPO/RTO and correlate service outcomes across expiry. Missing prior policy, cross-account
+          copies, or restore tests means only policy anomaly or inventory loss can be established, not non-recoverability.
+stealth_mechanisms:
+- mechanism_ref: NM-BT
+  role: primary
+  summary:
+    zh: 服务到期把策略写入主体与恢复点删除结果分离
+    en: Service expiry separates the policy writer from recovery-point deletion outcomes
+  analysis:
+    paragraphs:
+    - zh: 攻击者先改变保留策略，服务随后按计算时间以自身身份删除恢复点；痕迹从一个即时主体—对象事务变为较早配置和较晚服务结果。只看删除事件的守方难以归因，跨策略版本、到期和资源覆盖关联能恢复链条。
+      en: The adversary changes retention policy first, and the service later deletes recovery points at the calculated
+        time under its own identity. The trace changes from one immediate actor-object transaction to an earlier configuration
+        and later service outcome. Delete-only defenders struggle to attribute the result, while correlation across
+        policy revisions, expiry, and resource coverage restores the chain.
+  evidence_refs:
+  - REF-000875
+  - REF-000876
+  - REF-000878
+  confidence: medium
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000214
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000195
+evidence:
+  claim_refs:
+  - CLM-000914
+  - CLM-000915
+  - CLM-000916
+  case_refs: []
+  reference_refs:
+  - REF-000874
+  - REF-000875
+  - REF-000876
+  - REF-000877
+  - REF-000878
+  - REF-000524
+research:
+  limitations:
+    paragraphs:
+    - zh: 官方资料建立可复现的策略—计算到期—服务删除链，防御资料也要求监控未授权保留变化；没有公开命名受害者案例证明攻击者实际用此路径造成失败恢复。正式置信度为中等且不创建 CASE。
+      en: Official sources establish a reproducible policy-to-calculated-expiry-to-service-deletion chain, and defensive
+        guidance calls for monitoring unauthorized retention changes. No public named victim case establishes attacker
+        use causing failed restoration. Confidence is medium and no CASE is created.
+    - zh: 服务删除时间、连续备份语义、锁模式和已有恢复点是否受新计划影响需按产品验证。短保留期、服务延迟和 RPO 缺口也可能由合法运营产生，必须连接主体、审批和结果。
+      en: Service deletion timing, continuous-backup semantics, lock mode, and whether a new plan affects existing
+        points require product validation. Short retention, service delay, and an RPO gap can also arise from legitimate
+        operations and require actor, approval, and outcome.
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-10-04'
+  modified: '2026-10-04'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

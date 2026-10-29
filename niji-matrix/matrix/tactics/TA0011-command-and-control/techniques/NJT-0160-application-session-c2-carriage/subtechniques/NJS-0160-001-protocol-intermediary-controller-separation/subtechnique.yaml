@@ -1,0 +1,136 @@
+schema_version: 2.0.0
+type: evasion-subtechnique
+id: NJS-0160-001
+parent_ref: NJT-0160
+name:
+  zh: 协议中介分离控制端
+  en: Protocol-Intermediary Controller Separation
+summary:
+  zh: 攻击者经应用协议规定或支持的解析器、broker 或消息路由节点收发控制，使受害端所连服务与实际下令者分离。
+  en: An actor exchanges control through a resolver, broker, or message-routing node supported by the application
+    protocol, separating the service contacted by the victim from the actual task issuer.
+aliases: []
+lineage:
+  attck_subtechnique_inherited: false
+definition_and_concept:
+  paragraphs:
+  - zh: 协议中介分离控制端是攻击者让植入体与解析器、broker 或消息路由节点完成应用层会话，再由该节点取回或转送攻击者的命令和结果。植入体无需知道控制端的直连 IP；定义重点是会话终点与实际下令者被中介分开，而不是中介是否有信誉或是否为公共云服务。IBM
+      和 ESET 分别在 WailingCrab 与 MQsTTang 中观察到植入只连公共 MQTT broker，而控制端通过主题发布任务。
+    en: Protocol-Intermediary Controller Separation occurs when an actor has the implant complete its application
+      session with a resolver, broker, or message-routing node that retrieves or forwards commands and results.
+      The implant need not know the controller's direct IP. The defining point is separation between session endpoint
+      and task issuer, regardless of the intermediary's reputation or whether it is a public cloud service. IBM
+      and ESET independently observed WailingCrab and MQsTTang implants connect to a public MQTT broker while the
+      controller issued tasks through topics.
+stealth_characteristics:
+  paragraphs:
+  - zh: 协议中介分离控制端让受害端网络日志只记录中介为目的地；攻击者真实控制端的地址、账户或发布会话位于另一观察域，因而只按受害端五元组关联恶意控制 IP 会遗漏关系。DNS 经递归解析器取 TXT 的情形也有此分层，但问题名仍可能指向攻击者控制域；不能把
+      IP 分离夸写成域名或命令内容完全不可见。broker 的客户端 ID、主题和消息方向以及端点执行仍是残余线索。
+    en: Protocol-Intermediary Controller Separation makes the intermediary the destination in victim-side network
+      logs, while the actor's controller address, account, or publishing session sits in another observation domain.
+      Correlation based only on victim five-tuples and malicious controller IPs therefore misses the relationship.
+      DNS TXT retrieval through a recursive resolver has a similar layering, but the question name may still identify
+      an actor domain; IP separation must not be overstated as complete concealment of the domain or command. Broker
+      client IDs, topics, message direction, and endpoint execution remain as residual evidence.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 本子项要求实际协议中介在控制交换链中终止或转送事务，且防守方所见目的地与下令端不同。普通企业代理仅转发内层通道时应核对 T1090/T1572；第三方网站内容或 API 资源本身承担死信箱时应核对 T1102；公共
+      broker 可与 T1102 并列，但这里的判断不依赖服务知名度。只在 HTTP 请求中伪造客户端头字段归 NJT-0152，DNS 查询名称本身也不能单独证明控制。
+    en: This child requires a real protocol intermediary to terminate or forward a transaction in the control exchange,
+      with the defender-visible destination differing from the task issuer. An ordinary enterprise proxy forwarding
+      an inner channel calls for T1090 or T1572 review; a third-party website's content or API resource serving
+      as a dead drop calls for T1102 review. A public broker can coexist with T1102, but this classification does
+      not depend on service popularity. Forging client headers inside an HTTP request belongs to NJT-0152, and a
+      DNS question name alone does not prove control.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: 在允许 MQTT 的设备网中，植入体连接 broker、订阅任务主题并发布心跳或结果；控制端另连 broker 发送命令。另一种受限网络中，植入经受管解析器发送查询并从攻击者权威 DNS 的答案获得指令。两种场景都须确认命令后的进程或设备动作，避免把正常事件总线与
+        DNS 配置查询误判为 C2。
+      en: On a device network permitting MQTT, an implant connects to a broker, subscribes to a task topic, and
+        publishes keepalives or results while the controller separately connects to the broker to send commands.
+        In another restricted network, an implant queries through a managed resolver and receives instructions from
+        an actor-controlled authoritative DNS answer. Both scenarios require confirmation of process or device action
+        after task delivery, so ordinary event buses and DNS configuration lookups are not mistaken for C2.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者需要可达中介和可控制下游答案或发布的一侧；若使用公共 broker，可不运维 broker，但需协调主题及权限。若受害方管理 broker 或解析器、限制非批准客户端并保留路由日志，操作者会留下身份和时间关联。被封的中介可能直接中断控制，且源端并非必然被遮蔽。
+        en: The actor needs a reachable intermediary and control of downstream answers or publications. A public
+          broker avoids operating the broker but still requires coordinated topics and permissions. When the defender
+          manages the broker or resolver, limits unauthorized clients, and retains routing logs, the operator leaves
+          identity and timing links. Blocking the intermediary can interrupt control, and source identity is not
+          necessarily hidden.
+    defender_model:
+      paragraphs:
+      - zh: 防守方至少可见受害设备、进程、目的地、时间和连接方向；若掌握 broker 的发布订阅事件或解析器的完整查询与答案，可把中介两侧用主题、事务 ID、时间和设备身份连接起来。对外部公共 broker 没有服务日志时，只能根据不合业务角色的进程连接、会话形态及后继执行提出候选，不应声称恢复了发布者。
+        en: The defender at minimum sees victim device, process, destination, time, and connection direction. With
+          broker publish-subscribe events or full resolver queries and answers, the two sides of mediation can be
+          linked by topic, transaction ID, time, and device identity. Without service logs from an external public
+          broker, process-to-service mismatch, session shape, and subsequent execution support a candidate finding
+          but not a claim to have identified the publisher.
+stealth_mechanisms:
+- mechanism_ref: NM-BT
+  role: primary
+  summary:
+    zh: 中介服务遮断受害端到控制端的直连
+    en: Intermediary service breaks the victim-to-controller direct link
+  analysis:
+    paragraphs:
+    - zh: 植入体仅与协议中介建连，中介按查询、订阅或邮箱投递把任务送回；网关因此只显示中介 IP，原以直连恶意端点或外部主动入站为边界的检测缺少实际下令者。broker 或解析器日志若保留路由键仍可恢复控制谱系，因此收益依赖日志边界而非协议名称。
+      en: The implant connects only to the protocol intermediary, which returns tasks by query, subscription, or
+        mailbox delivery. The gateway therefore shows the intermediary IP, leaving detectors keyed to direct malicious
+        endpoints or unsolicited inbound connections without the actual issuer. Broker or resolver logs can restore
+        the lineage when routing keys are retained, so the benefit depends on a logging boundary rather than a protocol
+        name.
+  evidence_refs:
+  - REF-000679
+  - REF-000680
+  - REF-000678
+  - REF-000682
+  confidence: medium
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000180
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000162
+evidence:
+  claim_refs:
+  - CLM-000791
+  - CLM-000793
+  - CLM-000795
+  case_refs:
+  - CASE-000219
+  - CASE-000220
+  - CASE-000221
+  reference_refs:
+  - REF-000625
+  - REF-000678
+  - REF-000679
+  - REF-000680
+  - REF-000682
+  - REF-000683
+  - REF-000684
+  - REF-000230
+  - REF-000635
+research:
+  limitations:
+    paragraphs:
+    - zh: 两个原始 MQTT 案例确证 broker 分离控制端，但并未测量任一具体防守网络的告警遗漏率；Wekby 案例中的 DNS 问题名和 TXT 数据仍可能可见。邮件基础设施可能保留完整发件人与消息 ID，不应假设每种中介都隐匿操作者。外部
+        broker 无日志共享时，提出的跨两侧关联分析不能完整实施。
+      en: Two original MQTT cases establish controller separation by a broker but do not measure missed-alert rates
+        in any specific defender network. DNS question names and TXT data in Wekby can remain visible. Mail infrastructure
+        may retain sender and message IDs, so intermediary use cannot be assumed to hide the operator in every case.
+        Cross-side correlation cannot be fully implemented when an external broker does not share logs.
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-09-22'
+  modified: '2026-09-22'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

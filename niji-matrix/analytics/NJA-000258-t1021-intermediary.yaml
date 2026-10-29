@@ -1,0 +1,152 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000258
+strategy_ref: DET-000211
+name:
+  zh: 中继双侧流到目标远程会话关联
+  en: Relay Bilateral Flow to Destination Remote Session Correlation
+summary:
+  zh: 从目标所见跳板或 localhost 反查中继双侧流、转发状态与原始控制端。
+  en: Trace a destination-visible jump host or localhost through bilateral relay flows and forwarding state to the original
+    controller.
+domains:
+- enterprise
+platforms:
+- Windows
+- Linux
+- macOS
+- Network Devices
+- IaaS
+logic:
+  paragraphs:
+  - zh: 从目标接受连接的 target_visible_source、principal、service 和 session/logon ID 出发，将来源解析为 relay device。采集 relay 的 listener、进程/服务、command/config、portproxy/ProxyJump/tunnel
+      状态和 socket，生成 relay_instance_id；把入口与到目标的出口 flow 按时间、端口、寿命、字节/包比例和协议指纹配对，再反查 original_controller 并连接目标动作。四段均成立且不符合批准
+      jump-path owner、原始来源、目标、服务和期限时输出 intermediary_origin_control；只有 relay 配置输出 relay_exposure，只有目标来自跳板输出 origin_unresolved。
+    en: Begin with target_visible_source, principal, service, and session or logon ID of an accepted destination connection
+      and resolve it to a relay device. Collect listener, process or service, command or configuration, portproxy, ProxyJump
+      or tunnel state, and sockets and generate relay_instance_id. Pair ingress and destination-bound egress by time, ports,
+      lifetime, byte or packet ratio, and protocol fingerprint, trace ingress to original_controller, and join destination
+      action. Emit intermediary_origin_control only when all four segments hold and mismatch approved jump-path owner, original
+      source, destination, service, or expiry. Relay state alone emits relay_exposure and destination origin from a jump host
+      alone emits origin_unresolved.
+data_requirements:
+- source_type: approved-jump-relay-inventory
+  name:
+    zh: 批准跳板、中继和路径清单
+    en: Approved Jump Relay and Path Inventory
+  channel: CMDB network path and remote access governance
+  required_fields:
+  - relay.device_id
+  - owner.id
+  - allowed_original_source
+  - allowed_destination
+  - allowed_service
+  - relay.binary_or_service
+  - valid_from
+  - valid_until
+- source_type: relay-process-listener-config
+  name:
+    zh: 中继进程、监听和转发配置
+    en: Relay Process Listener and Forwarding Configuration
+  channel: Endpoint process service registry and configuration telemetry
+  required_fields:
+  - event.timestamp
+  - relay.device_id
+  - process_or_service.id
+  - binary.hash
+  - principal.id
+  - command_or_config
+  - listener.address
+  - listener.port
+  - tunnel_or_proxy.id
+- source_type: relay-bilateral-flow
+  name:
+    zh: 中继双侧网络流
+    en: Relay Bilateral Network Flows
+  channel: Endpoint socket NetFlow IPFIX or packet metadata
+  required_fields:
+  - event.timestamp
+  - relay.device_id
+  - process_or_tunnel.id
+  - source.ip
+  - source.port
+  - destination.ip
+  - destination.port
+  - protocol
+  - flow.id
+  - bytes
+  - packets
+  - duration
+- source_type: destination-remote-session-action
+  name:
+    zh: 目标远程会话及动作
+    en: Destination Remote Session and Action
+  channel: Remote service authentication session and endpoint action audit
+  required_fields:
+  - event.timestamp
+  - destination.device_id
+  - target_visible_source
+  - principal.id
+  - service.id
+  - session_or_logon.id
+  - action.id
+  - outcome
+observables:
+- zh: 目标会话记录跳板或 localhost，而中继同时有可配对的入口和目标出口
+  en: destination session records a jump host or localhost while relay has pairable ingress and destination-bound egress
+- zh: portproxy、Plink/SSH 转发、ProxyJump 或等价状态与目标会话重合
+  en: portproxy Plink or SSH forwarding ProxyJump or equivalent state overlaps destination session
+- zh: 原始控制端不在批准来源集合且目标产生未授权动作
+  en: original controller is outside approved source set and target produces unauthorized action
+correlation:
+  window:
+    zh: 从 relay 配置前一小时覆盖双侧连接全寿命、目标 session 和断开后二十四小时；长连接滚动十五分钟配对，路径版本保留至少九十日。
+    en: Correlate from one hour before relay configuration across the full bilateral lifetime, destination session, and twenty-four
+      hours after disconnect; pair long flows in rolling fifteen-minute windows and retain path versions for at least ninety
+      days.
+  dimensions:
+  - original_controller.device_id
+  - relay.device_id
+  - relay_instance.id
+  - inbound_flow.id
+  - outbound_flow.id
+  - destination.device_id
+  - principal.id
+  - service.id
+  - session_or_logon.id
+  - action.id
+  - time
+false_positives:
+- zh: 批准堡垒机、管理跳板、MSP 支持、灾备转发、负载代理和运维隧道
+  en: approved bastions management jump hosts MSP support recovery forwarding load proxies and operational tunnels
+- zh: 同一中继上近时但不转发的独立入口与出口
+  en: close independent ingress and egress on one relay without forwarding
+blind_spots:
+- zh: 加密中继缺进程/socket 归因、第三方不共享入口、NAT 丢失 tuple 或目标不记来源/session
+  en: encrypted relay lacks process or socket attribution third party withholds ingress NAT loses tuple or destination omits
+    origin/session
+- zh: 攻击者控制批准原始终端、中继和主体且动作在允许范围
+  en: adversary controls approved original endpoint relay and principal with actions inside scope
+tuning_guidance:
+  paragraphs:
+  - zh: 为每个 jump/relay 绑定 owner、允许原始来源、目标、服务、binary/service、peer 和到期，不按 IP 或工具名永久放行。高置信要求明确转发状态或进程/socket 归因、双侧 flow、目标接受
+      session 和动作；只有容量/时间相似保持 suspected。localhost 仅提高优先级。
+    en: Bind each jump or relay to owner, allowed original source, destination, service, binary or service, peer, and expiry
+      rather than allowing IP or tool name permanently. High confidence requires explicit forwarding state or process and
+      socket attribution, bilateral flows, destination-accepted session, and action. Volume or timing similarity alone remains
+      suspected. Localhost only raises priority.
+evidence_refs:
+- REF-000846
+- REF-000847
+- REF-000377
+- REF-000604
+- REF-000848
+- REF-000598
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-09-27'
+  modified: '2026-09-27'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

@@ -1,0 +1,153 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000323
+strategy_ref: DET-000247
+name:
+  zh: 同名应答池变化与同进程连接消费
+  en: Same-Name Answer-Pool Change and Same-Process Connection Consumption
+summary:
+  zh: 连接同名变化应答、同进程后继连接和 C2 结果。
+  en: Join changing answers for one name, same-process successor connections, and C2 outcomes.
+domains:
+- enterprise
+platforms:
+- Windows
+- Linux
+- macOS
+- Network Devices
+logic:
+  paragraphs:
+  - zh: 对每个 client/device、process 和规范化 query 保存 `answers+TTLs+rcode` 的时间版本，按本地 resolver 缓存寿命将每次成功应答与同一 ProcessGuid/InitiatingProcessUniqueId
+      到 answer IP 的首个连接配对；跨至少一个业务周期汇总 unique answers、answer lifespan、ASN/region、SNI/cert 和 nameserver/RDAP 变化。只有同一非批准进程反复消费当前应答、端点集合变化不能由批准
+      CDN/DDNS/灾备解释，且后继连接出现 C2 行为时确认。低 TTL、多 IP 或 ASN 多样性单独只是排名特征。
+    en: For each client or device, process, and normalized query, retain time-versioned answers, TTLs, and rcode and
+      pair each successful answer with the same ProcessGuid or InitiatingProcessUniqueId's first connection to an answer
+      IP within the local resolver cache lifetime. Across at least one business cycle, aggregate unique answers, answer
+      lifespan, ASN or region, SNI or certificate, and nameserver or RDAP changes. Confirm only when the same unapproved
+      process repeatedly consumes current answers, the endpoint-set change is not explained by approved CDN, DDNS, or
+      disaster recovery, and successor connections exhibit C2 behavior. Low TTL, multiple IPs, or ASN diversity alone
+      are ranking features.
+data_requirements:
+- source_type: recursive-dns
+  name:
+    zh: recursive_dns
+    en: recursive_dns
+  channel: Zeek dns.log or managed resolver
+  required_fields:
+  - ts
+  - uid
+  - id.orig_h
+  - id.resp_h
+  - query
+  - qtype_name
+  - rcode_name
+  - answers
+  - ttls
+  - rtt
+- source_type: endpoint-dns
+  name:
+    zh: endpoint_dns
+    en: endpoint_dns
+  channel: Sysmon Event 22 or equivalent
+  required_fields:
+  - utc_time
+  - computer
+  - process_guid
+  - process_id
+  - image
+  - query_name
+  - query_status
+  - query_results
+- source_type: endpoint-network
+  name:
+    zh: endpoint_network
+    en: endpoint_network
+  channel: Sysmon Event 3 or Defender DeviceNetworkEvents
+  required_fields:
+  - timestamp
+  - device_id
+  - process_unique_id
+  - image
+  - remote_ip
+  - remote_port
+  - remote_url
+  - protocol
+- source_type: passive-dns
+  name:
+    zh: passive_dns
+    en: passive_dns
+  channel: CIRCL Passive DNS or equivalent
+  required_fields:
+  - rrname
+  - rrtype
+  - rdata
+  - count
+  - time_first
+  - time_last
+- source_type: infrastructure-metadata
+  name:
+    zh: infrastructure_metadata
+    en: infrastructure_metadata
+  channel: RDAP and CT/TLS logs
+  required_fields:
+  - domain
+  - registration_event_time
+  - registrar
+  - nameserver
+  - entity_or_handle
+  - cert_fingerprint
+  - cert_subject
+  - cert_issuer
+  - cert_validity
+  - sni
+observables:
+- zh: 同一名称应答池变化并由同一进程连接当前答案产生 C2 结果
+  en: One name changes answer pools and the same process connects the current answer with a C2 outcome
+- zh: 应答寿命、ASN/证书和端点消费相对本地服务基线异常
+  en: Answer lifetime, ASN or certificate, and endpoint consumption diverge from the local service baseline
+correlation:
+  window:
+    zh: 应答至连接覆盖 resolver cache 生命周期；应答池与基础设施历史七至三十日并按服务校准。
+    en: Answer-to-connection spans the resolver cache lifetime; retain seven to thirty days for answer-pool and infrastructure
+      history and calibrate by service.
+  dimensions:
+  - device_id
+  - process_guid_or_process_unique_id
+  - query
+  - answer_ip
+  - uid
+  - remote_ip
+  - sni
+  - cert_fingerprint
+  - asn
+  - time
+false_positives:
+- zh: CDN/GSLB、云扩缩、容灾、合法 DDNS 和安全更新服务
+  en: CDN or GSLB, cloud scaling, disaster recovery, legitimate DDNS, and security update services
+blind_spots:
+- zh: DoH/DoQ 绕过受管解析器、缓存无客户端映射或代理隐藏进程连接
+  en: DoH or DoQ bypasses managed resolvers, cache lacks client mapping, or a proxy hides process connections
+tuning_guidance:
+  paragraphs:
+  - zh: 建立 provider/service owner、域、ASN、证书、预期 TTL 范围和设备进程画像；允许规则绑定服务身份而不是永久 IP。先按 answer consumption 和未知 process 提升，再用
+      churn/多样性排序。未知本地基线时不使用固定 IP 数或 TTL 阈值。
+    en: Baseline provider or service owner, domain, ASN, certificate, expected TTL range, and device process. Bind allowances
+      to service identity rather than permanent IP. Elevate first on answer consumption by an unknown process and then
+      rank by churn and diversity. Do not use fixed IP-count or TTL thresholds without a local baseline.
+evidence_refs:
+- REF-001071
+- REF-000635
+- REF-000230
+- REF-000604
+- REF-001074
+- REF-000038
+- REF-000036
+- REF-000920
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-10-05'
+  modified: '2026-10-05'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

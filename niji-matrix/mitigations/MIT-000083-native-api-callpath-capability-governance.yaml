@@ -1,0 +1,44 @@
+schema_version: "2.0.0"
+type: mitigation
+id: MIT-000083
+name: {zh: 原生 API 调用路径、内存能力与结果治理, en: Native API Call-Path Memory-Capability and Outcome Governance}
+summary: {zh: 以应用控制、内存执行约束、内核调用栈遥测和敏感结果策略降低 syscall 绕过与动态 API 解析收益。, en: Reduce syscall-bypass and dynamic-resolution benefit through application control memory-execution constraints kernel call-stack telemetry and sensitive-outcome policy.}
+description:
+  paragraphs:
+  - zh: 原生 API 无法整体禁用，因为所有应用依赖内核服务。本缓解控制哪些代码能够进入敏感调用、从何种模块/内存发起以及可产生什么结果：使用应用控制和签名限制未知加载器，阻止不必要的可写且可执行内存、跨进程写入和未授权线程/驱动/服务，部署内核级调用遥测与完整栈，不把用户态 hook 或导入表作为唯一控制。
+    en: Native APIs cannot be disabled globally because every application depends on kernel services. This mitigation controls which code can reach sensitive calls, from what module or memory origin, and what outcomes it may create. Use application control and signing to restrict unknown loaders, prevent unnecessary writable-executable memory cross-process writes and unauthorized threads drivers or services, deploy kernel-level invocation telemetry with complete stacks, and never make user-mode hooks or imports the sole control.
+  - zh: 对动态解析软件建立批准 image/version、resolver 模式、目标 API 与结果基线；对 direct/indirect syscall 建立 OS build、标准栈和合法低层软件例外。异常时先保存进程、线程栈、内存映射、resolved target 与内核结果，再隔离进程/主机、撤销执行来源并恢复被创建的线程、服务或驱动；只阻断单个 API 名称无法处理哈希或调用号变化。
+    en: Baseline approved image or version resolver pattern target APIs and outcomes for dynamic-resolution software and OS build standard stacks and legitimate low-level exceptions for direct or indirect syscalls. On anomaly preserve process thread stacks memory maps resolved targets and kernel outcomes before isolating process or host revoking execution origin and restoring created threads services or drivers. Blocking one API name does not handle hashes or syscall-number changes.
+domains: [enterprise]
+measures:
+- key: native-caller-application-control
+  name: {zh: 原生调用者应用控制与来源完整性, en: Native Caller Application Control and Origin Integrity}
+  description: {paragraphs: [{zh: 只允许批准签名/image hash 的低层工具和模块执行，对未知加载器、非系统 syscall stub 和异常模块映射实施阻断或高强度审计。, en: Allow low-level tools and modules by approved signature or image hash and block or strongly audit unknown loaders non-system syscall stubs and anomalous module mappings.}]}
+  control_type: preventive
+- key: memory-thread-outcome-policy
+  name: {zh: 内存、线程与跨进程结果策略, en: Memory Thread and Cross-Process Outcome Policy}
+  description: {paragraphs: [{zh: 限制 W+X、非映像可执行页、跨进程写入、远程线程、未授权驱动/服务等结果，并按进程职责允许具体组合。, en: Constrain writable-executable or unbacked executable pages cross-process writes remote threads and unauthorized drivers or services and allow concrete combinations by process role.}]}
+  control_type: preventive
+- key: kernel-callpath-telemetry
+  name: {zh: 内核调用路径与运行时解析遥测, en: Kernel Call-Path and Runtime Resolution Telemetry}
+  description: {paragraphs: [{zh: 从内核记录敏感操作、完整调用栈、模块/内存来源、OS build 与结果，并记录导出遍历、resolver 与间接目标，连接静态导入差分。, en: Record sensitive operations complete call stacks module or memory origin OS build and outcomes from the kernel and capture export traversal resolvers and indirect targets for static-import comparison.}]}
+  control_type: detective-support
+- key: native-execution-response
+  name: {zh: 原生执行证据化隔离与恢复, en: Evidence-Preserving Native Execution Isolation and Recovery}
+  description: {paragraphs: [{zh: 保存线程栈、内存、目标地址和内核结果后隔离进程/主机，阻断来源 image/token，终止恶意线程/服务/驱动并核查被操作目标。, en: Preserve thread stacks memory target addresses and kernel outcomes before isolating process or host blocking source image or token terminating malicious threads services or drivers and inspecting affected targets.}]}
+  control_type: containment
+applications:
+- target_ref: NJT-0073
+  use: {paragraphs: [{zh: 对敏感原生 API 统一实施 caller 来源、调用路径、内存能力和结果控制；批准项绑定产品版本、签名、标准栈和允许结果，不因 NTDLL、libc 或 GetProcAddress 是合法组件而放行。, en: Apply caller-origin call-path memory-capability and outcome controls to sensitive native APIs. Bind approvals to product version signature standard stack and allowed outcome rather than allowing NTDLL libc or GetProcAddress as legitimate components.}]}
+  expected_effect: {paragraphs: [{zh: 即使攻击者绕过 hook 或隐藏导入，内核结果和调用来源仍受约束并可归因，迫使其控制更高层内核或使用产生更多痕迹的路径。, en: Even when hooks are bypassed or imports hidden kernel outcomes and caller origins remain constrained and attributable forcing control of higher kernel layers or noisier paths.}]}
+  limitations: {paragraphs: [{zh: 内核/栈遥测有性能与兼容成本，高权限攻击者可攻击传感器；JIT、安全软件和反作弊形成复杂良性基线，需要审计模式和精细例外。, en: Kernel and stack telemetry has performance and compatibility cost and privileged adversaries can attack sensors. JIT security software and anti-cheat create complex benign baselines requiring audit mode and narrow exceptions.}]}
+- target_ref: NJS-0073-001
+  use: {paragraphs: [{zh: 将策略放在 syscall 后的敏感内核结果并验证完整 caller 栈；对非系统模块/非映像内存发起且缺少批准栈的跨进程、内存和线程操作阻断或隔离，不依赖用户态 hook 命中。, en: Place policy at sensitive kernel outcomes and validate the complete caller stack. Block or isolate cross-process memory and thread operations from non-system modules or unbacked memory without an approved stack regardless of user-mode hook hits.}]}
+  expected_effect: {paragraphs: [{zh: 直接移除绕过用户态入口后的盲点，使调用号或 direct/indirect 变体不能逃避结果控制。, en: Removes the blind spot after bypassing a user-mode entry so syscall-number and direct or indirect variants cannot avoid outcome control.}]}
+  limitations: {paragraphs: [{zh: 栈欺骗、内核漏洞和受信低层工具代理可降低准确性；没有硬件/内核栈时只能按结果限制，无法精确分类。, en: Stack spoofing kernel exploits and trusted low-level proxies reduce accuracy. Without hardware or kernel stacks control can constrain outcomes but not precisely classify the child.}]}
+- target_ref: NJS-0073-002
+  use: {paragraphs: [{zh: 对运行时解析建立 approved image—resolver—target—outcome 清单，记录目标地址和导出来源；未知 image 解析敏感 API 并产生内存/线程/服务结果时限制。静态审批同时检查解析器和 hash 表，而非只查 imports。, en: Maintain an approved image-resolver-target-outcome inventory and record target address and export origin. Constrain unknown images resolving sensitive APIs before memory thread or service outcomes. Static approval inspects resolver and hash tables rather than imports alone.}]}
+  expected_effect: {paragraphs: [{zh: 让 API 身份即使执行前隐藏也在解析时进入策略，降低哈希、序号或 PEB 遍历对静态检查的规避收益。, en: Brings API identity into policy at resolution even when hidden before execution reducing evasion benefit from hashes ordinals or PEB traversal.}]}
+  limitations: {paragraphs: [{zh: 浏览器、插件和跨版本应用广泛动态解析，固定 API 白名单易失效；需以 image、签名、调用栈与结果组合而非 resolver 名称阻断。, en: Browsers plug-ins and cross-version applications resolve dynamically at scale and fixed API allowlists age quickly. Combine image signature call stack and outcome rather than block resolver names.}]}
+evidence_refs: [REF-000222, REF-000223, REF-000224, REF-000225, REF-000226]
+lifecycle: {status: review, version: 0.1.0, created: '2026-09-12', modified: '2026-09-12', contributors: [Niji Matrix Research], reviewers: []}

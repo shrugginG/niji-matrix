@@ -1,0 +1,34 @@
+import { chromium, expect } from '@playwright/test';
+import assert from 'node:assert/strict';
+const browser = await chromium.launch({channel:'chromium'});
+try {
+ const page=await browser.newPage({viewport:{width:1626,height:1100}});
+ const base='http://127.0.0.1:18091';
+ let index;
+ await expect.poll(async()=>{const s=await (await page.request.get(`${base}/data/status.json`)).json();index=await(await page.request.get(`${base}/data/${s.revision}/index.json`)).json();return !!index.objects['CLM-000001'].statement_zh;},{timeout:90000}).toBe(true);
+ await page.goto(`${base}/objects/NJT-0001`);
+ await expect(page.locator('.defense-group')).toHaveCount(2);
+ await expect(page.locator('.defense-group').first().locator('.related-row')).toHaveCount(4);
+ await expect(page.locator('.defense-group').last().locator('.related-row')).toHaveCount(3);
+ await expect(page.locator('.analytic-shortcuts a')).toHaveCount(4);
+ await expect(page.locator('.evidence-group')).toHaveCount(3);
+ for(const [i,count] of [4,2,12].entries())await expect(page.locator('.evidence-group').nth(i).locator('.related-row')).toHaveCount(count);
+ await expect(page.locator('.evidence-group').first()).toContainText(index.objects['CLM-000001'].statement_zh);
+ await expect(page.locator('.evidence-group').nth(1)).toContainText(index.objects['CASE-000001'].description_zh);
+ await expect(page.locator('.research-prose p')).toHaveCount(2);
+ await expect(page.locator('.classification-grid')).toContainText('保留 ATT&CK 技术');
+ await expect(page.locator('.classification-grid')).toContainText('T1595');
+ await expect(page.locator('.lifecycle-grid')).toContainText('2026-09-09');
+ await expect(page.locator('.lifecycle-grid')).toContainText('未记录');
+ const full=await(await page.request.get(`${base}/data/${index.revision}/objects/NJT-0001.json`)).json();
+ await expect(page.locator('.reverse-groups .related-row')).toHaveCount(full._reverse.length);
+ const group=page.locator('.reverse-group').last();if(!await group.evaluate(el=>el.open))await group.locator('summary').click();await expect(group.locator('.related-row').first()).toBeVisible();
+ await page.locator('#defense').screenshot({path:'.playwright/defense-redesign.png'});
+ await page.locator('#classification').screenshot({path:'.playwright/classification-redesign.png'});
+ await page.locator('.analytic-shortcuts a').first().click();await expect(page).toHaveURL(/objects\/NJA-/);
+ await page.goto(`${base}/objects/NJS-0001-001`);await expect(page.locator('.defense-group .related-row')).toHaveCount(2);await expect(page.locator('.evidence-group').first().locator('.related-row')).toHaveCount(1);
+ await page.setViewportSize({width:390,height:844});assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+ const a=await page.locator('.defense-group').first().boundingBox(),b=await page.locator('.defense-group').last().boundingBox();assert.ok(b.y>a.y);
+ await page.getByRole('button',{name:'EN',exact:true}).click();await expect(page.locator('.evidence-group').first()).toContainText(index.objects['CLM-000002'].statement_en);
+ console.log('PASS: defense groups and analytics, complete evidence summaries, research, classification, lifecycle, grouped reverse links, parent/child, mobile and English');
+} finally { await browser.close(); }

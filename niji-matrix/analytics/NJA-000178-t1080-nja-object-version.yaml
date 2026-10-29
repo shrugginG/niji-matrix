@@ -1,0 +1,138 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000178
+strategy_ref: DET-000166
+name:
+  zh: 共享对象内容版本—消费者首个执行差分
+  en: Shared-Object Content Version to Consumer First-Execution Differential
+summary:
+  zh: 把共享对象旧新版本的主动内容差异与另一主机的真实打开和首次执行连成链。
+  en: Join active-content differences between old and new shared-object versions to another host's real open and first execution.
+domains:
+- enterprise
+platforms:
+- Windows
+- SaaS
+logic:
+  paragraphs:
+  - zh: 对批准的高价值共享文档/安装包，先用 4663 实际写权限与共享版本库 FileModified/版本 ID 建立 writer、对象、修改时间及旧/新摘要；5145 只补充源 IP 和访问请求，不单独判定完成写入。比较旧/新版本的宏、远程模板、脚本入口、可执行节或签名/摘要，并与变更单及批准编辑者核对。再在最长
+      7 天的调查窗口内，将另一内部设备对同一对象版本的读取/同步/打开与其 Office/安装程序进程、首个脚本解释器/可执行子进程或异常网络连接相连。只有“异常变更→异机消费→执行/可控结果”三段成立才报确认的横向链；无末段时输出污染调查线索，不夸称成功。
+    en: For approved high-value shared documents or installers, use actual 4663 write rights plus FileModified or version
+      history to establish writer, object, modification time, and before-and-after digest. Use 5145 only to add source IP
+      and access-request context, never as proof that bytes were written. Compare old and new versions for macros, remote
+      templates, script entry points, executable sections, or signing/digest change against change records and approved editors.
+      Over an investigation window up to seven days, join another internal device's read, sync, or open of that exact object
+      version to its Office or installer process and first script interpreter, executable child, or abnormal network connection.
+      Report established lateral movement only when anomalous change, cross-host consumption, and execution or control outcome
+      all hold; without the last segment, output a taint lead rather than claimed success.
+data_requirements:
+- source_type: shared-object-version-history
+  name:
+    zh: 共享对象版本历史
+    en: Shared-object version history
+  channel: null
+  required_fields:
+  - object.id
+  - object.path
+  - version.id
+  - modified_at
+  - modifier.id
+  - content.hash
+- source_type: windows-security-file-access
+  name:
+    zh: Windows 文件对象访问审计
+    en: Windows file-object access audit
+  channel: Security/4663
+  required_fields:
+  - event.timestamp
+  - host.id
+  - subject_user_sid
+  - object_name
+  - access_mask
+  - process_name
+- source_type: endpoint-object-consumption
+  name:
+    zh: 目标端对象读取或打开
+    en: Destination object read or open
+  channel: null
+  required_fields:
+  - event.timestamp
+  - device.id
+  - user.id
+  - object.path
+  - object.version_or_hash
+  - process.id
+- source_type: endpoint-process-and-network
+  name:
+    zh: 目标端进程与网络结果
+    en: Destination process and network outcomes
+  channel: null
+  required_fields:
+  - event.timestamp
+  - device.id
+  - process.id
+  - process.parent_id
+  - process.command_line
+  - network.destination
+- source_type: approved-content-change
+  name:
+    zh: 批准内容变更记录
+    en: Approved content-change records
+  channel: null
+  required_fields:
+  - object.id
+  - version.id
+  - approver.id
+  - valid_from
+  - valid_to
+observables:
+- zh: 共享文件原路径保持不变而旧/新版本增加宏、远程模板、代码或异常签名差，写入主体偏离受批编辑者
+  en: Original shared path persists while version delta adds macro remote template code or anomalous signing change and writer
+    differs from approved editor
+- zh: 另一设备打开同一污染版本后首次产生脚本或异常网络后继行为
+  en: Another device opens the same tainted version and then shows first script or abnormal network successor behavior
+correlation:
+  window:
+    zh: 对同一对象版本从异常改写到异机消费追踪最长七天；预览、同步及离线设备延迟按存储服务实际日志调整。
+    en: Track one object version from anomalous modification to cross-host consumption for up to seven days, adjusting for
+      preview, synchronization, and offline-device delay.
+  dimensions:
+  - object.id
+  - object.path
+  - version.id
+  - content.hash
+  - modifier.id
+  - consumer.device.id
+  - consumer.user.id
+  - process.id
+  - approval.id
+false_positives:
+- zh: 经批准的宏更新、模板迁移或内部软件发布也可能产生相同版本—消费链。
+  en: Approved macro updates, template migrations, and internal software releases may produce the same version-to-consumption
+    chain.
+blind_spots:
+- zh: 没有改写前版本、内容加密或未采集目标进程时，无法确认恶意语义差分或执行结果。
+  en: Without a prior version, inspectable content, or destination process telemetry, the malicious semantic difference or
+    execution result cannot be confirmed.
+tuning_guidance:
+  paragraphs:
+  - zh: 对业务共享设置对象级版本基线与受批编辑者，按活跃宏或脚本、消费者角色、未批准 writer 和实际后继行为提高优先级；不要仅凭 FileAccessed 认定人为打开，也不要把签名程序或管理员身份设为全局白名单。高频协作区用内容语义和跨设备结果收窄，而不是取消采集。
+    en: Baseline versions and approved editors for business shares; prioritize active macro or script change, consumer role,
+      unapproved writer, and actual successor behavior. Do not infer deliberate user opening from FileAccessed alone or globally
+      allowlist a signed program or administrator. Narrow busy collaboration areas by semantic content and cross-device outcome
+      rather than disabling collection.
+evidence_refs:
+- REF-000590
+- REF-000591
+- REF-000379
+- REF-000561
+- REF-000594
+- REF-000190
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-09-22'
+  modified: '2026-09-22'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

@@ -1,0 +1,100 @@
+schema_version: 2.0.0
+type: technique
+id: NJT-0074
+name: {zh: 流水线投毒执行, en: Poisoned Pipeline Execution}
+summary: {zh: 攻击者使受信 CI/CD runner 从流水线定义、间接构建输入或外部贡献触发链执行恶意逻辑，以自动化身份和正常构建外观削弱识别与归因, en: Adversaries cause trusted CI/CD runners to execute malicious logic from pipeline definitions indirect build inputs or external-contribution trigger chains using automation identity and normal build appearance to weaken detection and attribution}
+aliases: []
+classification:
+  tactic_refs: [TA0002]
+  origin: {kind: attack-retained, source_attack_id: T1677, source_attack_version: '19.1'}
+  decision_ref: DEC-TA0002-T1677
+definition_and_concept:
+  paragraphs:
+    - zh: 流水线投毒执行是攻击者让 CI/CD 控制面把恶意代码作为构建、测试、检查或发布步骤交给 runner 执行的行为。恶意逻辑可以直接写入 workflow，也可以位于 workflow 自动消费的源文件、宏、测试、action、制品或外部贡献数据中。其直接目标是在自动化账户、构建主机和 job 所拥有的秘密、网络位置与发布权限下取得代码执行，因而服务于 Execution 战术，而不是仅描述后续被污染软件在消费者端运行。
+      en: Poisoned Pipeline Execution is the act of causing a CI/CD control plane to hand malicious code to a runner as a build test check or release step. The logic may be written directly into a workflow or reside in source macros tests actions artifacts or external-contribution data that the workflow automatically consumes. Its direct objective is code execution with the secrets network position and release authority of the automation account build host and job so it serves the Execution tactic rather than merely describing later execution of a poisoned product by consumers.
+    - zh: 这里的“流水线”是从版本化定义和触发事件，经调度与 runner，到进程、制品和外部结果的执行图，不等同于某一 SaaS 产品或 YAML 文件类型。技术成立需要攻击者控制的输入实际到达 runner 的解释或执行边界；只获得仓库权限、只修改未被调用的文件或只替换最终制品而没有 runner 侧攻击者代码运行，都不满足本概念。
+      en: Pipeline here means the execution graph from versioned definitions and trigger events through scheduling and runners to processes artifacts and external outcomes rather than a particular SaaS product or YAML file type. The technique requires an adversary-controlled input to reach the runner's interpretation or execution boundary. Repository access alone modification of an unreferenced file or replacement of only a final artifact without runner-side adversary code execution does not satisfy the concept.
+stealth_characteristics:
+  paragraphs:
+    - zh: 流水线投毒执行把恶意行为置于组织本来就信任的 workflow、job 名称、runner 进程和自动化服务身份下。直接定义注入主要改变版本历史，间接输入可以保持主 workflow 不变，外部贡献路径则把低权限输入与后续具权执行分散到不同主体和事件。结果是仓库、CI 控制面与 runner 端点中的任一局部视图都可能只显示合法变更、成功构建或受信父进程，难以独立判断恶意因果。
+      en: Poisoned Pipeline Execution places malicious behavior beneath workflows job names runner processes and automation service identities that the organization already trusts. Direct definition injection primarily changes version history indirect inputs may leave the main workflow unchanged and external-contribution paths distribute low-privilege input and later privileged execution across different principals and events. Any local view of the repository CI control plane or runner endpoint may therefore show only a legitimate-looking change successful build or trusted parent and cannot independently recover malicious causality.
+    - zh: 匿迹并不消除痕迹。提交与审批记录、解析后的 workflow 摘要、实际 checkout ref、依赖或 action digest、job/runner 标识、进程树、秘密读取、出站连接、制品哈希和来源证明仍会留下差异。执行失败、未预期网络目的地、从未出现的工具下载或源代码与构建产物不一致会显著削弱伪装；防守方只有在保留这些跨层关联键时才能可靠恢复整条链。
+      en: Stealth does not remove traces. Commit and review history resolved workflow digests actual checkout refs dependency or action digests job and runner identifiers process trees secret reads outbound connections artifact hashes and provenance still expose differences. Build failure unexpected destinations first-seen tool downloads or disagreement between source and output materially weakens the disguise. Defenders can reliably reconstruct the chain only when these cross-layer join keys are retained.
+scope_boundary_definition:
+  paragraphs:
+    - zh: 本技术纳入直接修改流水线定义、污染其自动调用的构建输入，以及通过 fork、PR、issue、discussion 或其他事件上下文把不可信数据送入 runner 执行 sink。判定要求同时存在攻击者可控输入、流水线调度关系和 runner 侧执行结果。正常 workflow 维护、依赖升级、测试新增和发布作业即使产生相同文件或进程，也只有在主体、审批、来源与结果证据表明恶意控制时才进入本范围。
+      en: This technique includes direct modification of pipeline definitions poisoning of automatically invoked build inputs and use of fork pull-request issue discussion or other event context to deliver untrusted data to a runner execution sink. Classification requires an adversary-controlled input a pipeline scheduling relationship and a runner-side execution outcome. Normal workflow maintenance dependency updates added tests and release jobs may create the same files or processes and enter scope only when principal review provenance and outcome evidence establishes malicious control.
+    - zh: 在 runner 内通过普通解释器执行的具体脚本仍可同时映射命令与脚本解释器，但 T1677 固定的是从 CI/CD 信任图到执行的因果入口。仅通过软件部署平台向终端下发命令属于 T1072 对应对象；只在下游消费者加载被污染软件属于供应链或其他执行技术；构建主机上的计划任务、服务或 WMI 若不依赖流水线输入，则归各自父技术。平台、语言、文件扩展名和 hosted/self-hosted 形式本身都不是子技术边界。
+      en: A concrete script executed within a runner may also map to Command and Scripting Interpreter while T1677 fixes the causal entry from the CI/CD trust graph to execution. Endpoint commands issued solely through software-deployment platforms belong to the T1072-derived object. Poisoned software loaded only by downstream consumers belongs to supply-chain or another execution technique. Scheduled tasks services or WMI on a build host belong to their own parents when they do not depend on pipeline input. Platform language file extension and hosted versus self-hosted form are not child boundaries.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+      - zh: 攻击者在取得仓库写权限、维护者或自动化凭据、可变 action/tag 控制权，或者仅能提交外部贡献时使用本技术。常见触发点是合并、PR 检查、nightly build、release、discussion 或跨 workflow 制品处理；直接目的可以是读取 job 秘密、进入内部网络、篡改制品、注册持久 runner，或借发布权限扩展供应链影响。
+        en: Adversaries use the technique after obtaining repository write access maintainer or automation credentials control of a mutable action or tag or only an external-contribution path. Common triggers include merge pull-request checks nightly builds releases discussions or cross-workflow artifact processing. Immediate objectives include reading job secrets reaching internal networks altering artifacts registering persistent runners or using publication authority to extend supply-chain impact.
+      - zh: 高价值场景包括开源项目接受 fork PR、企业 release job 使用长期秘密、自托管 runner 可访问内网，以及主 workflow 引用大量脚本、复用 workflow 或第三方 action。攻击者通常选择业务会自然运行的构建时机，并尽量保持 job 成功、日志低噪声和预期产物形状，使恶意步骤不触发开发者排障。
+        en: High-value scenarios include open-source projects accepting fork pull requests enterprise release jobs holding long-lived secrets self-hosted runners reaching internal networks and primary workflows referencing many scripts reusable workflows or third-party actions. Adversaries commonly choose build moments the business will run naturally and preserve job success low-noise logs and expected artifact shape so malicious steps do not prompt developer troubleshooting.
+  threat_model:
+    attacker_model:
+      paragraphs:
+        - zh: 攻击者至少需要控制一个能进入执行图的输入，并理解触发事件、checkout 行为、被引用文件、runner 类型、权限与秘密暴露。直接定义轴通常要求可合并修改或被盗身份；间接输入轴要求可改变自动消费的材料；外部贡献轴可以不具仓库写权限，但必须找到不可信数据到具权 sink 的实际路径。
+          en: The adversary must control at least one input that enters the execution graph and understand trigger events checkout behavior referenced files runner type permissions and secret exposure. The direct-definition axis commonly requires merge-capable access or a stolen identity. The indirect-input axis requires control of automatically consumed material. The external-contribution axis may need no repository write access but requires a real path from untrusted data to a privileged sink.
+        - zh: 攻击者还必须承受评审、分支保护、固定 digest、环境审批、并发隔离和 runner 生命周期带来的约束。为了维持低差异，攻击代码往往需要不破坏构建、适配目标源版本、控制出站目的地并清理临时输入；这些兼容性和反馈需求限制了可扩展性，也为防守方制造可观察失败。
+          en: The adversary must also operate under review branch protection digest pinning environment approvals concurrency isolation and runner lifetime. Maintaining low difference often requires avoiding build failure matching target source versions controlling outbound destinations and cleaning temporary inputs. These compatibility and feedback requirements constrain scale and create observable failure modes for defenders.
+    defender_model:
+      paragraphs:
+        - zh: 假定防守方可以取得源代码管理审计、评审与分支保护结果、workflow 版本或解析摘要、CI run/job/runner 日志、实际 checkout 与依赖 digest、runner 进程和网络遥测、秘密访问及制品来源证明。任何单一数据面都不足以覆盖三个子项，尤其是 SaaS 控制面与短驻 runner 端点之间经常缺少共同保留期和统一主体标识。
+          en: The defender is assumed to have source-control audit review and branch-protection results workflow versions or resolved digests CI run job and runner logs actual checkout and dependency digests runner process and network telemetry secret access and artifact provenance. No single plane covers all three children particularly because SaaS control planes and ephemeral runner endpoints often lack common retention and normalized principal identity.
+        - zh: 防守模型以 repository、commit/PR、workflow、run、job、runner、process、artifact 和 principal 作为主要关联维度，并以环境角色和历史 workflow 行为建立基线。第三方 action 内部、动态下载、缓存内容、加密出站流量和被销毁的 runner 会形成盲区；缺少来源或运行时数据时只能降低置信度，不能把成功 CI 作业视为良性证明。
+          en: The defender model uses repository commit or pull request workflow run job runner process artifact and principal as primary correlation dimensions and baselines behavior by environment role and historical workflow. Third-party action internals dynamic downloads cache content encrypted egress and destroyed runners create blind spots. Missing provenance or runtime data lowers confidence and a successful CI job cannot serve as proof of benign intent.
+stealth_mechanisms:
+  - mechanism_ref: NM-BT
+    role: primary
+    summary: {zh: 恶意步骤继承受信 runner 与自动化身份, en: Malicious steps inherit trusted runner and automation identity}
+    analysis:
+      paragraphs:
+        - zh: 攻击者把命令登记为正常 job，或让被引用输入在既有 step 内执行，使控制面显示获准 workflow/run，端点显示 runner、shell、compiler 或 package manager 等预期父进程。行为设计改变了“谁在执行”的可见来源，而不是隐藏所有动作；若检测逻辑把自动化身份或构建父进程视为良性，秘密读取、下载与网络访问便落入行为透明。定义变更、runner registration、process/job 对齐和结果异常仍可打破这种透明。
+          en: The adversary registers a command as a normal job or causes referenced input to execute inside an existing step so the control plane shows an approved workflow run and the endpoint shows expected runner shell compiler or package-manager parents. The design changes visible execution provenance rather than hiding every action. If analytics treat automation identities or build parents as benign secret reads downloads and network activity become behaviorally transparent. Definition changes runner registration process-to-job alignment and outcome anomalies can still break that transparency.
+    evidence_refs: [REF-000252, REF-000255]
+    confidence: high
+  - mechanism_ref: NM-FD
+    role: secondary
+    summary: {zh: 恶意输入保持正常构建材料与步骤外观, en: Malicious input retains normal build-material and step appearance}
+    analysis:
+      paragraphs:
+        - zh: 攻击者把逻辑放入源文件、M4 宏、测试、action、制品或其他原本会被构建消费的对象，并尽量保持主 workflow、job 名称和产物格式不变。恶意与正常材料共享相同目录、文件类型和调用方式，使只看可见特征或主配置的审查无法区分。Git 与发布 tarball 的差异、固定引用解析结果、输入 digest、构建日志抑制和源到产物差分仍提供可检测特征。
+          en: The adversary places logic in source M4 macros tests actions artifacts or other objects normally consumed by the build while preserving the primary workflow job names and output format. Malicious and benign material shares directories file types and invocation paths so review of visible features or the main configuration cannot distinguish it. Git-to-release differences resolved immutable references input digests suppressed build logs and source-to-output differentials remain detectable features.
+    evidence_refs: [REF-000252, REF-000253, REF-000257]
+    confidence: high
+  - mechanism_ref: NM-ST
+    role: secondary
+    summary: {zh: 低权贡献与具权执行跨主体和事件分离, en: Low-trust contribution and privileged execution separate across principals and events}
+    analysis:
+      paragraphs:
+        - zh: 外部贡献路径让攻击者先提交 fork 内容、PR 元数据或制品，后由 pull_request_target、workflow_run 或其他具权事件在不同时间和主体上下文消费。仓库审计看到低权限贡献，runner 审计看到目标组织的自动化身份；短窗口或单平台分析难以将二者复原为同一因果链。PR、head SHA、artifact digest、触发 run 与派生 job 的稳定标识仍可跨层连接，但当前直接现场证据不足以把该机理提高到 high。
+          en: External-contribution paths let the adversary submit fork content pull-request metadata or an artifact before pull_request_target workflow_run or another privileged event consumes it later under a different principal context. Repository audit sees a low-privilege contribution while runner audit sees the target organization's automation identity and short-window or single-platform analysis struggles to recover one causal chain. Pull-request head SHA artifact digest triggering run and derived job identifiers remain cross-plane join keys but current direct field evidence is insufficient for high confidence.
+    evidence_refs: [REF-000254, REF-000256, REF-000257]
+    confidence: medium
+subtechnique_taxonomy:
+  narrative:
+    paragraphs:
+      - zh: 子技术按不可信执行内容进入 runner 图的稳定因果入口划分。受信流水线定义注入直接改变调度定义；间接构建输入激活保持主定义稳定而改变其自动消费的内容；外部贡献情境门控执行由低权外部输入通过目标 workflow 的具权触发或数据流抵达执行 sink。三者分别要求定义历史、输入依赖图和跨主体触发链，能够形成不同检测与控制责任。
+        en: Children are partitioned by the stable causal entry through which untrusted executable content reaches the runner graph. Trusted Pipeline-Definition Injection directly changes the scheduled definition. Indirect Build-Input Activation preserves the main definition while changing automatically consumed content. External-Contribution Context-Gated Execution carries low-trust external input through a target workflow's privileged trigger or data flow to an execution sink. They respectively require definition history input dependency graphs and cross-principal trigger chains and therefore create different detection and control responsibilities.
+      - zh: 可变 action tag、缓存和跨 workflow 制品只要作为主定义引用的执行输入，就归间接输入轴；如果外部贡献是其必要来源且具权触发边界是关键差异，则归外部贡献轴。平台、语言、文件类型、runner 托管形式和 ATT&CK 页面中的示例类别不作为 Niji 子项；只污染下游制品而无 runner 侧执行的行为留在相邻供应链对象。
+        en: Mutable action tags caches and cross-workflow artifacts belong to the indirect-input axis when they are executable inputs referenced by the primary definition. If an external contribution is necessary and the privileged-trigger boundary is the material difference the external-contribution axis applies. Platform language file type runner hosting model and example categories on the ATT&CK page are not Niji children. Artifact-only poisoning without runner-side execution remains in adjacent supply-chain objects.
+  coverage: established
+  subtechnique_refs: [NJS-0074-001, NJS-0074-002, NJS-0074-003]
+defense:
+  detections: {coverage: available, strategy_refs: [DET-000062]}
+  mitigations: {coverage: available, mitigation_refs: [MIT-000061]}
+evidence:
+  claim_refs: [CLM-000280, CLM-000281, CLM-000282, CLM-000283, CLM-000451, CLM-000452, CLM-000453, CLM-000454, CLM-000455, CLM-000456, CLM-000457, CLM-000458]
+  case_refs: [CASE-000087, CASE-000088, CASE-000089]
+  reference_refs: [REF-000126, REF-000252, REF-000253, REF-000254, REF-000255, REF-000256, REF-000257, REF-000258]
+research:
+  limitations:
+    paragraphs:
+      - zh: SUNSPOT 与 XZ 对间接输入提供强直接证据，Shai-Hulud 对恶意 workflow 提供现场证据；外部贡献轴主要由 GitHub 漏洞研究和平台语义证明可行性，尚缺同等强度的攻击者规避意图案例，因此保持 medium。来源对具体 SaaS 的字段可见性不同，Analytic 中的规范字段需要在部署时映射而不能假定所有平台完整提供。
+        en: SUNSPOT and XZ provide strong direct evidence for indirect inputs and Shai-Hulud provides a field example of a malicious workflow. The external-contribution axis is supported mainly by GitHub vulnerability research and platform semantics and lacks an equally strong case of adversarial evasion intent so it remains medium. Source visibility differs across SaaS platforms and canonical analytic fields must be mapped at deployment rather than assumed universally available.
+      - zh: 成功构建、workflow 变更或新网络目的地本身都不能证明投毒。内部开发者可能合法调整 job，依赖安装可能首次联系新站点，reproducible build 也不能单独排除有意改变的源输入。若未来证据表明外部贡献与间接输入在控制和观察上无法稳定区分，应合并相关子项；若新型 agentic workflow 建立独立的权限与痕迹边界，则需要重新执行开放 taxonomy 审查。
+        en: A successful build workflow change or new destination alone does not prove poisoning. Developers may legitimately revise jobs dependency installation may contact a new site and reproducible builds alone cannot exclude intentionally changed source inputs. If future evidence shows external contribution and indirect input cannot be stably distinguished in control or observation the children should merge. If agentic workflows establish a distinct authority and trace boundary open taxonomy review should be repeated.
+lifecycle: {status: review, version: 2.0.0, created: '2026-09-10', modified: '2026-09-12', contributors: [Niji Matrix Research], reviewers: []}

@@ -1,0 +1,109 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000078
+strategy_ref: DET-000098
+name:
+  zh: 容器别名—规范宿主资源—权限结果分析
+  en: Container Alias-to-Canonical Host Resource and Authority-Outcome Analytic
+summary:
+  zh: 版本化 workload 与运行时映射，将容器进程的 namespace-relative path/handle 解析为宿主 inode/file ID/object，并确认相对 pre-state 新增的宿主权限与首个结果。
+  en: Version workload and runtime mappings, resolve a container process's namespace-relative path or handle to a host inode, file ID, or object, and confirm new host authority and the first outcome relative to pre-state.
+domains: [enterprise]
+platforms: [Containers, Linux, Windows, ESXi]
+logic:
+  paragraphs:
+  - zh: >-
+      分析先建立事件时有效的 workload 和边界快照。按 cluster/node/runtime、workload UID/container or VM ID、image digest、creator、service account、security context、capability、seccomp/LSM、user/PID/mount namespace、cgroup、rootfs/overlay、hostPath/bind/shared source、container mount alias、device major/minor、read-only/recursiveReadOnly、mount propagation、global link/object directory 与 start/end time 版本化。manifest/admission 与实际 runtime map 分开保存；短命 workload 在删除前采集 mountinfo、namespace IDs 与 root mapping。
+    en: >-
+      The analytic first builds the workload and boundary snapshot valid at event time. It versions cluster, node, and runtime; workload UID or container or VM ID; image digest; creator; service account; security context; capabilities; seccomp or LSM; user, PID, and mount namespaces; cgroup; rootfs or overlay; hostPath, bind, or shared source; container mount alias; device major and minor; read-only and recursive-read-only state; mount propagation; global link or object directory; and start and end time. Manifest and admission state remains separate from the actual runtime map, and mountinfo, namespace IDs, and root mapping are captured before a short-lived workload is deleted.
+  - zh: >-
+      对每个 container-attributed file/device/object event，分析以 process start key、PID/cgroup/container ID 绑定其 namespace view，取得 operation、container-visible path/drive/handle、inode/file ID/object ID、device、mount ID 与 result。先在容器 root 中解析，再沿 mount tree、bind source、submount、global link 或 handle table 转换到 node/host canonical object；canonical identity 与 host integrity/authorization sensor 一致才输出 host_resource_resolved。若只有 path string 或 mapping 已销毁，则用 node、container root、path、hash、时间做 candidate mapping，并标记 resource_ambiguity。
+    en: >-
+      For each container-attributed file, device, or object event, the analytic binds namespace view through process start key, PID or cgroup, and container ID and obtains operation, container-visible path, drive, or handle, inode, file ID, or object ID, device, mount ID, and result. It resolves first inside container root and then follows mount tree, bind source, submount, global link, or handle table into a node or host canonical object. Agreement between canonical identity and host-integrity or authorization sensors produces host_resource_resolved. With only a path string or after mapping destruction, node, container root, path, hash, and time form a candidate mapping labeled resource_ambiguity.
+  - zh: >-
+      随后判定 crossing 与权限。host_resource_resolved 必须落在 workload root/approved data volumes 之外，且原 process 直接产生 read/write/ioctl/map/execute 或等价 successful result，才输出 alias_crossing_observed。为相同 principal/process 构造 pre-state authorization set，包括 namespace isolation、UID/GID mapping、capabilities、device policy、LSM/ACL 与批准 host resources；将实际 host object operation 与 post-state set 比较。只有增加至少一个 host permission，并出现 pre-state expected deny、post-state observed allow 及资源副作用，才输出 alias_escape_confirmed。
+    en: >-
+      The analytic then determines crossing and authority. host_resource_resolved must fall outside workload root and approved data volumes, and the original process must directly produce a successful read, write, ioctl, map, execute, or equivalent result before alias_crossing_observed is emitted. It constructs a pre-state authorization set for the same principal or process, including namespace isolation, UID or GID mapping, capabilities, device policy, LSM or ACL, and approved host resources, and compares the actual host-object operation with post-state. Only at least one added host permission plus pre-state expected deny, post-state observed allow, and a resource side effect produces alias_escape_confirmed.
+  - zh: >-
+      最后连接宿主效果与下游消费。对 host credential read，要求后继 authentication/use 才把 capability 扩大结论提高；对 cron/service/runtime binary/registry/security config write，记录 content old/new、writer container、host consumer process/time 与结果；对 block device 或 shared folder，记录真实 file/object accessed。若 runtime Broker 先创建新 container/map，则把 NJA-000079 的 broker transaction/new workload ID 作为上游，但本分析仍只判断新进程是否经 alias 命中 canonical host object。没有 host result、只有 failed syscall 或只有 dangerous spec 分别保持 escape_attempt 与 boundary_risk。
+    en: >-
+      Finally, the analytic joins host effect and downstream consumption. A host-credential read needs later authentication or use to raise the capability-gain conclusion. A write to cron, service or runtime binary, registry, or security configuration records content old and new, writer container, host-consumer process and time, and outcome. A block device or shared folder records the actual file or object accessed. If a runtime broker first creates a new container or mapping, the broker transaction and new-workload ID from NJA-000079 become upstream, while this analytic still determines only whether the new process reaches a canonical host object through an alias. No host result, a failed syscall only, and a dangerous specification only remain escape_attempt and boundary_risk respectively.
+data_requirements:
+- source_type: workload-specification-and-admission
+  name: {zh: 工作负载规范、创建者与准入结果, en: Workload specification creator and admission result}
+  channel: null
+  required_fields: [timestamp, cluster_or_runtime_id, node_id, workload_uid, container_or_vm_id, creator_or_service_account, image_reference, resolved_digest, security_context, capabilities, host_namespaces, volume_source, container_mount_path, read_only, recursive_read_only, mount_propagation, devices, admission_result, approval_id]
+- source_type: runtime-mount-namespace-object-map
+  name: {zh: 运行时 mount、namespace 与对象映射, en: Runtime mount namespace and object mapping}
+  channel: null
+  required_fields: [timestamp, node_id, container_or_vm_id, process_id, process_start_key, cgroup_id, user_namespace_id, pid_namespace_id, mount_namespace_id, rootfs_or_overlay_id, mount_id, source_host_path_or_device, container_alias, inode_or_file_id, device_major_minor, object_directory_or_global_link, mapping_start, mapping_end]
+- source_type: container-system-call-file-device-object
+  name: {zh: 容器进程 syscall、文件、设备与对象访问, en: Container process syscall file device and object access}
+  channel: null
+  required_fields: [timestamp, node_id, process_id, process_start_key, parent_process_id, container_id, cgroup_id, namespace_ids, executable, command_line, operation, container_visible_path_or_handle, inode_or_file_id, device_or_object_id, mount_id, requested_access, result, bytes_or_effect]
+- source_type: host-canonical-resource-integrity
+  name: {zh: 宿主规范资源与完整性变化, en: Host canonical resource and integrity mutation}
+  channel: null
+  required_fields: [timestamp, node_or_host_id, canonical_resource_id, canonical_path_or_object, inode_or_file_id, device_or_object_id, sensitivity, owner, acl_or_policy, old_hash_or_state, new_hash_or_state, operation, actor_process_id, result, side_effect_id]
+- source_type: workload-host-authority-and-outcome
+  name: {zh: 工作负载/宿主权限集合与结果, en: Workload and host authority sets and outcome}
+  channel: null
+  required_fields: [timestamp, workload_or_container_id, process_or_principal_id, prestate_namespace_and_authorization_set, poststate_authorization_set, added_host_permission, canonical_host_resource_id, operation, previous_expected_result, actual_result, host_consumer_or_follow_on_id, side_effect_id]
+- source_type: approved-host-resource-mapping-baseline
+  name: {zh: 批准的宿主资源映射基线, en: Approved host-resource mapping baseline}
+  channel: null
+  required_fields: [approval_id, owner_id, workload_uid, resolved_digest, node_scope, source_host_resource, container_alias, read_only, recursive_read_only, propagation, allowed_operations, capability_and_device_set, validity_window]
+observables:
+- zh: container process 的 path/handle 经事件时 mount/object map 解析到 workload root 与批准 data volume 之外的 canonical host resource。
+  en: A container process path or handle resolves through the event-time mount or object map to a canonical host resource outside workload root and approved data volumes.
+- zh: 同一可见路径字符串在 container root 与 host root 对应不同 inode/file ID，而实际 event 命中宿主一侧。
+  en: The same visible path string maps to different inode or file IDs in container root and host root, and the actual event reaches the host side.
+- zh: 容器进程直接修改宿主 cron、authorized_keys、runtime binary、registry、安全配置或读取节点 credential，未出现独立宿主 shell。
+  en: A container process directly changes host cron, authorized_keys, runtime binary, registry, or security configuration or reads a node credential without a separate host shell.
+- zh: global symbolic link、bind/hostPath、device mount 或 leaked handle 在访问时有效，且 canonical target 与创建/批准状态不一致。
+  en: A global symbolic link, bind or hostPath, device mount, or leaked handle is valid at access time and its canonical target differs from creation or approval state.
+- zh: pre-state namespace/ACL/capability 会拒绝的宿主操作，经 alias 后实际 allow 并产生 file/object side effect。
+  en: A host operation denied by pre-state namespace, ACL, or capability is allowed through an alias and produces a file or object side effect.
+- zh: 危险 mapping 存在但从未访问、访问失败或只命中容器副本，分别保持 boundary_risk、escape_attempt 或 no_host_crossing。
+  en: A dangerous mapping that is unused, fails on access, or reaches only a container copy remains boundary_risk, escape_attempt, or no_host_crossing respectively.
+correlation:
+  window:
+    zh: >-
+      从 workload create/admission 前最后一个可信 spec 开始，覆盖 runtime 实际 mapping、全部 process access、mapping 删除和宿主对象最长 consumer/side-effect 寿命。默认热关联二十四小时，短命 workload 的 spec/mount/namespace 快照与 host integrity 证据至少保留九十日；精确 container ID、mount ID、inode/file ID/handle、canonical resource 与 side-effect 优先于时间邻近。
+    en: >-
+      Begin at the last trusted specification before workload creation or admission and cover actual runtime mapping, every process access, mapping deletion, and the longest host-object consumer or side-effect lifetime. Use a twenty-four-hour hot join by default and retain specification, mount, and namespace snapshots plus host-integrity evidence for short-lived workloads for at least ninety days. Exact container ID, mount ID, inode or file ID or handle, canonical resource, and side effect take precedence over temporal proximity.
+  dimensions: [cluster_node_runtime, workload_uid_and_container_or_vm_id, image_digest_and_creator, process_start_key_and_cgroup, user_pid_and_mount_namespace, mapping_version_and_mount_id, container_alias, inode_file_id_handle_or_object, canonical_host_resource, security_context_and_capabilities, prestate_and_poststate_authorization, operation_result_and_side_effect, approval_owner_and_window, time]
+false_positives:
+- zh: 经批准的 node log collector、backup、security sensor、CSI/device plugin 与 storage driver 会读取有限宿主资源。
+  en: Approved node log collectors, backup agents, security sensors, CSI or device plugins, and storage drivers read bounded host resources.
+- zh: debug/incident-response Pod 可能临时挂载宿主根并运行诊断，但应有独立审批、人员、目标 node、短窗口和会话记录。
+  en: Debugging or incident-response Pods can temporarily mount host root and run diagnostics but should have independent approval, operator, target node, short window, and session record.
+- zh: Docker-in-Docker、buildkit、嵌套虚拟化和设备工作负载可见 host-like 路径或设备，但不一定命中真实宿主规范对象。
+  en: Docker-in-Docker, buildkit, nested virtualization, and device workloads can see host-like paths or devices without reaching the actual canonical host object.
+- zh: read-only node log、时区、证书或配置映射可能包含敏感字符串，却在批准范围内且没有权限差或副作用。
+  en: Read-only node-log, timezone, certificate, or configuration mappings can contain sensitive strings while remaining approved and producing no authority difference or side effect.
+blind_spots:
+- zh: workload 删除前未采集 mountinfo、namespace ID 或 global link map 时，历史 path 很难恢复到 canonical resource。
+  en: Without mountinfo, namespace IDs, or global-link maps before workload deletion, historical paths are difficult to resolve to canonical resources.
+- zh: Linux Audit 只提供 path 而缺 container/cgroup，或 EDR 只保留 container-relative path 而缺 inode/file ID，会产生 resource_ambiguity。
+  en: Linux Audit that provides path without container or cgroup, or EDR retaining only container-relative path without inode or file ID, produces resource_ambiguity.
+- zh: 原始块设备、GPU、FUSE、network filesystem 或 hypervisor shared resource 的规范身份可能不由普通文件审计表达。
+  en: Canonical identity for raw block devices, GPUs, FUSE, network filesystems, or hypervisor shared resources can be absent from ordinary file audit.
+- zh: 攻击者取得宿主权限后篡改 runtime map、audit、host file integrity 与时钟，可使多个来源一致缺失。
+  en: After obtaining host authority, an adversary can alter runtime maps, audit, host-file integrity, and clocks and make multiple sources consistently absent.
+tuning_guidance:
+  paragraphs:
+  - zh: >-
+      为每个 workload 维护事件时间版本的 container-root-to-host map，而不是只保存 current manifest。将 mount source、submount、propagation、read-only recursion、device 和 global-link target 规范为 host resource ID；优先使用 inode/file ID/handle/object ID，不依赖 /host、/mnt 或盘符命名。mutating admission 与 runtime default 的差异必须显式呈现。
+    en: >-
+      Maintain an event-time-versioned container-root-to-host map for every workload rather than only a current manifest. Normalize mount source, submount, propagation, read-only recursion, device, and global-link target into host resource IDs. Prefer inode, file ID, handle, or object ID over /host, /mnt, or drive naming, and expose differences introduced by mutating admission and runtime defaults.
+  - zh: >-
+      按 host resource sensitivity 和 operation 分级：对宿主 credential、runtime binary/socket、cron/service、security policy 与 raw device 的成功 write/execute/ioctl 优先；普通 read 先输出 crossing_observed。只有 pre-state expected deny、post-state allow 与 side effect 完整才升为 alias_escape_confirmed。缺 mapping 或 inode 时降低 confidence，禁止以 path keyword 填补因果。
+    en: >-
+      Tier by host-resource sensitivity and operation. Prioritize successful write, execute, or ioctl on host credentials, runtime binaries or sockets, cron or service objects, security policy, and raw devices, while ordinary reads first produce crossing_observed. Promote to alias_escape_confirmed only with pre-state expected deny, post-state allow, and a side effect. Lower confidence when mapping or inode is absent and never substitute path keywords for causality.
+  - zh: >-
+      allowlist 精确绑定 owner、workload UID、resolved digest、node selector、canonical source resource、container alias、readOnly/recursive state、propagation、allowed operations/capabilities 和 validity window。长期信任 privileged namespace、service account、image name 或 hostPath prefix 会压制真正逃逸；每次版本变化重新评估，短命资源销毁不删除历史。
+    en: >-
+      Bind allowances exactly to owner, workload UID, resolved digest, node selector, canonical source resource, container alias, read-only and recursive state, propagation, allowed operations and capabilities, and validity window. Standing trust in privileged namespaces, service accounts, image names, or hostPath prefixes suppresses real escapes. Re-evaluate every version change and retain history after short-lived resources are destroyed.
+evidence_refs: [REF-000213, REF-000345, REF-000347, REF-000348, REF-000349, REF-000350, REF-000351]
+lifecycle: {status: review, version: 0.1.0, created: '2026-09-13', modified: '2026-09-13', contributors: [Niji Matrix Research], reviewers: []}

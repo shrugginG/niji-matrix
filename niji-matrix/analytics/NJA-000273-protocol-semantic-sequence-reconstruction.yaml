@@ -1,0 +1,121 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000273
+strategy_ref: DET-000221
+name:
+  zh: 多协议载荷语义与源数据重组
+  en: Cross-Protocol Payload Semantics and Source-Data Reconstruction
+summary:
+  zh: 重建协议事务中的编码序列，识别合法语法内承载的失窃数据。
+  en: Reconstruct encoded sequences across protocol transactions to identify stolen data carried in valid syntax.
+domains:
+- enterprise
+platforms: []
+logic:
+  paragraphs:
+  - zh: 对 DNS 按 source_host、process、registered_domain 聚合 query、qtype、rcode、answers、标签长度、字符集、唯一率、序号和查询—响应比例，比较该域及软件的正常模型并尝试只在可逆规则明确时解码/重组。对邮件按
+      message_id、sender、recipient、client_process、attachment_hash、body_size 和 MIME 关联批准客户端与业务收件人；对可检查 HTTP 按 uid、method、host、uri、request_body_len、header_name/value_shape
+      与状态聚合。通用结果状态为 semantic_anomaly、reconstructible_payload 和 source_data_match；最后一级要求重组字节、敏感类型或同进程读取与载荷相符。熵、长域名、Base64
+      或单次大邮件只能产生低置信候选。
+    en: For DNS, aggregate query, qtype, rcode, answers, label length, alphabet, uniqueness, sequence values, and
+      query-to-response ratio by source_host, process, and registered_domain. Compare the domain and software's
+      normal model and decode or reconstruct only when a reversible rule is established. For mail, join message_id,
+      sender, recipient, client_process, attachment_hash, body_size, and MIME against approved clients and business
+      recipients. For inspectable HTTP, aggregate uid, method, host, uri, request_body_len, header_name or value
+      shape, and status. Emit semantic_anomaly, reconstructible_payload, and source_data_match separately; the last
+      requires reconstructed bytes or sensitive type matching a source read by the same process. Entropy, long domains,
+      Base64, or one large message yields only a low-confidence candidate.
+data_requirements:
+- source_type: dns-transaction
+  name:
+    zh: DNS 请求与响应
+    en: DNS queries and responses
+  channel: managed resolver or Zeek dns.log
+  required_fields:
+  - ts
+  - uid
+  - id.orig-h
+  - id.resp-h
+  - query
+  - qtype-name
+  - rcode-name
+  - answers
+- source_type: mail-gateway
+  name:
+    zh: 邮件提交与投递日志
+    en: Mail submission and delivery log
+  channel: managed SMTP or mail security gateway
+  required_fields:
+  - event-time
+  - message-id
+  - source-host
+  - sender
+  - recipient
+  - client-process-or-auth
+  - subject
+  - body-size
+  - attachment-name
+  - attachment-hash
+  - action
+- source_type: http-transaction
+  name:
+    zh: 可检查 HTTP 事务
+    en: Inspectable HTTP transaction
+  channel: proxy or Zeek http.log after authorized inspection
+  required_fields:
+  - ts
+  - uid
+  - id.orig-h
+  - id.resp-h
+  - method
+  - host
+  - uri
+  - request-body-len
+  - status-code
+observables:
+- zh: DNS 标签、邮件字段或 HTTP 参数出现可排序分段、异常唯一率或方向负载
+  en: DNS labels, mail fields, or HTTP parameters contain ordered segments, unusual uniqueness, or directional payload
+- zh: 同一进程敏感读取后向异常域、收件人或 URI 发送协议有效事务
+  en: The same process sends valid transactions to an unusual domain, recipient, or URI after sensitive access
+correlation:
+  window:
+    zh: 以七日建立协议语义基线，并在二十四小时内重组一次候选序列。
+    en: Use seven days for protocol-semantic baseline and reconstruct one candidate sequence within twenty-four
+      hours.
+  dimensions:
+  - source-host
+  - process-start-key
+  - registered-domain-or-recipient
+  - protocol
+  - message-or-transaction-id
+  - sequence-value
+  - time
+false_positives:
+- zh: CDN、EDR 遥测、广告标识、软件更新和批准批量邮件/API
+  en: CDN, EDR telemetry, advertising identifiers, software updates, and approved bulk mail or APIs
+blind_spots:
+- zh: DoH/DoT、TLS 或端到端邮件遮蔽事务字段
+  en: DoH, DoT, TLS, or end-to-end mail hides transaction fields
+- zh: 保留期不足以跨低吞吐序列重组内容
+  en: Retention is too short to reconstruct low-throughput sequences
+tuning_guidance:
+  paragraphs:
+  - zh: 按注册域、软件和业务功能训练正常事务，不使用全局熵阈值。DNS 低吞吐必须延长窗口并过滤已知合法交换；邮件按批准发件进程和收件人关系调优；HTTP 首部/参数只有与源数据或进程谱系结合才升级。解析器失败和不可逆编码应保留为盲区，而不是强行解码。
+    en: Model normal transactions by registered domain, software, and business function rather than using a global
+      entropy threshold. Low-throughput DNS requires longer windows and legitimate-exchange filtering. Tune mail
+      by approved sending process and recipient relationship. Upgrade HTTP header or parameter candidates only with
+      source-data or process lineage. Record parser failure and irreversible encoding as blind spots instead of
+      forcing a decode.
+evidence_refs:
+- REF-000917
+- REF-000921
+- REF-000635
+- REF-000632
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-10-04'
+  modified: '2026-10-04'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

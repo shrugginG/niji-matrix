@@ -1,0 +1,39 @@
+schema_version: "2.0.0"
+type: evasion-subtechnique
+id: NJS-0072-002
+parent_ref: NJT-0072
+name: {zh: 短驻 IPC 请求执行, en: Transient IPC-Request Execution}
+summary: {zh: 攻击者把执行语义放入短驻方法调用、消息、字段、pipe buffer 或 socket frame，使会话结束后没有持久请求对象可复核。, en: Adversaries place execution semantics in a transient method call message field pipe buffer or socket frame so no durable request object remains after the session.}
+aliases: []
+lineage: {attck_subtechnique_inherited: false}
+definition_and_concept:
+  paragraphs:
+  - zh: 短驻 IPC 请求执行固定“控制语义的载体寿命”变量。攻击者将执行 object/method、DDE 字段、XPC dictionary、pipe/stdin 数据或 socket message 只在一次连接、conversation 或内存 buffer 中传递，接收进程消费后立即产生执行结果，而磁盘上没有与请求一一对应的任务、脚本或持久配置。
+    en: Transient IPC-Request Execution fixes lifetime of the control-semantic carrier. The adversary passes an execution object or method DDE field XPC dictionary pipe or standard-input data or socket message only through one connection conversation or memory buffer. The receiver consumes it and produces an execution outcome without a one-to-one task script or durable configuration on disk.
+  - zh: 短驻不表示消息必须很小，也不要求 broker 受信；攻击者自有 client/server 可满足本项。若请求已完整持久保存并可事后还原，不因 IPC 协议而成立；若唯一匿迹效果是受信执行者来源，则归 NJS-0072-001。
+    en: Transient does not require a small message or trusted broker and adversary-owned client and server can qualify. A completely persisted and reconstructable request does not qualify merely because it used IPC. When trusted executor provenance is the only stealth effect classification belongs to NJS-0072-001.
+stealth_characteristics:
+  paragraphs:
+  - zh: 短驻 IPC 请求执行使延迟调查可能只见接收进程的子进程、文件或网络，不见决定执行的 message。Microsoft 明确说明 DDE 支持一次性消息与共享内存，Sysmon 命名管道事件通常只记录 create/connect，说明连接可见而内容未必可见。实时 method/message audit、请求 hash、client/server PID、session 时序和结果仍可恢复；完整内容采集会消除主要收益。
+    en: Transient IPC-Request Execution can leave delayed investigation with receiver child processes files or network but not the message that determined execution. Microsoft states DDE supports one-time messages and shared memory, while Sysmon named-pipe events usually record create and connect, showing a visible connection without necessary content. Real-time method or message audit request hash client and server PIDs session timing and outcome remain recoverable; complete content capture removes the main benefit.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 必须证明攻击者控制的执行语义只存在于短驻 IPC 载体、被接收者消费并产生结果，且组织实际事后采集不能完整复核请求。仅有短连接、pipe 名称或进程短命不足；合法 RPC、浏览器 native messaging、shell stdin 和服务心跳同形。stdout 只承载已执行命令结果而不触发新执行时排除。
+    en: Evidence must show adversary-controlled execution semantics existed only in a transient IPC carrier, were consumed for an outcome, and cannot be completely revisited by actual post-event collection. A short connection pipe name or short-lived process alone is insufficient. Legitimate RPC browser native messaging shell standard input and service heartbeat share the shape. Stdout that only carries results of an already running command without triggering new execution is excluded.
+application_scenarios_and_threat_model:
+  application_scenarios: {paragraphs: [{zh: 攻击者不希望写入脚本/任务，或可向已运行服务、Office/XPC helper、恶意模块或 shell stdin 发送一次性命令时使用；在只记录 endpoint 名称而不保留消息内容的环境中收益最大。, en: The adversary uses this when avoiding scripts or tasks and able to send a one-time command to a running service Office or XPC helper malicious module or shell standard input. Benefit is greatest where only endpoint names rather than message content are retained.}]}
+  threat_model:
+    attacker_model: {paragraphs: [{zh: 需要知道协议格式、endpoint、会话和参数，确保一次请求成功；无重试持久状态会降低可靠性。消息审计、内容验证、长度/类型约束和 client identity 会限制，失败请求也可留下高价值异常。, en: Requires protocol format endpoint session and arguments and reliable one-request success; absence of durable retry state reduces reliability. Message audit content validation length or type constraints and client identity checks constrain it while failures can leave high-value anomalies.}]}
+    defender_model: {paragraphs: [{zh: 需在消息存在时记录 client/server、endpoint/method、内容或不可逆摘要、session 与 response，并关联后继结果。仅保留进程和 pipe create/connect 时无法复原语义；敏感消息需加密、受限访问和有限保留。, en: Defenders record client and server endpoint or method content or irreversible digest session and response while the message exists and join successor outcomes. Process and pipe create or connect alone cannot recover semantics. Sensitive messages require encryption restricted access and bounded retention.}]}
+stealth_mechanisms:
+- mechanism_ref: NM-BT
+  role: primary
+  summary: {zh: 消息消失后执行结果仍存在而关键请求不在有效观察中, en: Execution outcomes remain after the message expires outside effective observation}
+  analysis: {paragraphs: [{zh: 短驻载体被消费后不留下持久执行对象，防守方看到 broker 结果却缺失控制语义，形成行为透明。DDE 一次性消息与 Sysmon pipe 内容边界支持 high；实时消息摘要和 client—server—result 关联可恢复。, en: The transient carrier leaves no durable execution object after consumption so defenders see broker outcomes without control semantics producing Behavioral Transparency. One-time DDE semantics and the Sysmon pipe-content boundary support high confidence; real-time message digests and client-server-result correlation restore it.}]}
+  evidence_refs: [REF-000227, REF-000228, REF-000230, REF-000231]
+  confidence: high
+defense: {detections: {coverage: available, strategy_refs: [DET-000083]}, mitigations: {coverage: available, mitigation_refs: [MIT-000084]}}
+evidence: {claim_refs: [CLM-000276, CLM-000425, CLM-000428], case_refs: [CASE-000079], reference_refs: [REF-000227, REF-000228, REF-000230, REF-000231]}
+research:
+  limitations: {paragraphs: [{zh: 直接恶意案例以 DDE 为主；pipe/XPC 对短驻载体的支持来自官方事件/接口边界，不能假定所有实现都不记录内容。若服务完整持久请求或 EDR 实时采集 message，本子项观察差异会显著降低；隐私和性能可能限制全面内容采集。, en: Direct malicious evidence centers on DDE while pipe and XPC transient-carrier support comes from official event or interface boundaries and does not imply every implementation omits content. If a service persists complete requests or EDR captures messages in real time this child's observation difference falls materially. Privacy and performance can limit comprehensive content collection.}]}
+lifecycle: {status: review, version: 1.1.0, created: '2026-09-10', modified: '2026-09-12', contributors: [Niji Matrix Research], reviewers: []}

@@ -1,0 +1,95 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000071
+strategy_ref: DET-000094
+name: {zh: 远程会话状态重放与风险情境重入分析, en: Remote Session-State Replay and Risk-Context Reentry Analytic}
+summary:
+  zh: 规范 token/session 生命周期、认证步骤、设备与来源，将状态重放和风险情境贴合分别连接到远程会话及后继资源访问。
+  en: Normalize token or session lifecycle, authentication steps, device, and origin and separately join state replay and risk-context alignment to remote sessions and downstream resource access.
+domains: [enterprise]
+platforms: [Identity Provider, VPN, VDI, Windows, Linux, macOS, Network Devices, SaaS]
+logic:
+  paragraphs:
+    - zh: 首先规范远程网关与 IdP 事件，保存 tenant/gateway、principal、session/token hash 或 ID、签发、refresh、auth methods、MFA/posture、challenge、logout/revoke、gateway node、source IP/port、ASN/ISP、country/region、device/client、request/correlation 和结果。把会话建立连接到端点进程、远程桌面或管理通道和后继资源操作；标记是首次入口还是在已知处置、原会话终止或 implant 清除后的重入。
+      en: First normalize remote-gateway and identity-provider events retaining tenant or gateway, principal, session or token hash or ID, issuance, refresh, authentication methods, MFA or posture, challenge, logout or revocation, gateway node, source IP or port, ASN or ISP, country or region, device or client, request or correlation, and outcome. Join session establishment to endpoint process, remote desktop or management channel, and downstream resource action and label first entry versus re-entry after known response, original-session termination, or implant removal.
+    - zh: 状态重放分支按精确 token/session 优先连接签发、首次使用、refresh 与再次使用，检查是否缺少本应出现的口令/MFA/device challenge、是否跨 IP/ASN/device 跳变或并发、是否发生在 logout/revoke 后及状态是否仍有效。没有精确 ID 时仅按 principal、gateway、device/client、时间和资源降级，并要求至少来源跳变、并发、撤销矛盾或异常后继行为之一。
+      en: The state-replay branch prefers exact token or session joins across issuance, first use, refresh, and repeated use and checks whether an expected password, MFA, or device challenge is absent, whether origin hops across IP, ASN, or device or becomes concurrent, whether use follows logout or revoke, and whether state remains valid. Without an exact ID, it falls back to principal, gateway, device or client, time, and resource at lower confidence and requires at least origin hopping, concurrency, revocation contradiction, or anomalous downstream behavior.
+    - zh: 风险情境分支为每个用户/角色建立地理、ASN/ISP、住宅/企业/移动/数据中心网络、device/client、工作时间和远程服务的长期分布，并计算当前会话与基线距离。低偏离不是良性证明；分析继续检查 proxy provider/exit rotation、设备资产与注册者、TLS/client、用户实际活动、并发会话、访问资源和命令/数据行为。已知住宅代理、异常设备来源或后继高风险操作提高置信度。
+      en: The risk-context branch builds a long-term distribution for each user or role covering geography, ASN or ISP, residential, enterprise, mobile, or datacenter network, device or client, work time, and remote service and calculates current-session distance from baseline. Low deviation is not proof of benignness. The analytic continues with proxy provider or exit rotation, device asset and registrant, TLS or client, actual user activity, concurrent sessions, accessed resources, and command or data behavior. A known residential proxy, anomalous device origin, or high-risk downstream action raises confidence.
+    - zh: 输出分为“远程会话异常”“疑似状态重放”“风险情境贴合”“确认恶意远程入口”和“确认持续重入”。最后一类要求在处置边界后仍有效的状态或情境、会话建立及攻击者后继结果。正常 SSO/roaming/旅行/轮班/HA gateway 通过历史 owner、设备、企业 egress 与工单降级；字段缺失时保留分支和不确定性而不是扩大窗口或把地理当身份。
+      en: Tier outputs as remote-session anomaly, suspected state replay, risk-context alignment, confirmed malicious remote entry, and confirmed continuing re-entry. The last requires state or context remaining usable after a response boundary, session establishment, and adversary downstream outcome. Normal SSO, roaming, travel, shift work, and high-availability gateway changes lower confidence through history, owner, device, enterprise egress, and change records. Missing fields preserve branch and uncertainty rather than widening windows or treating geography as identity.
+data_requirements:
+  - source_type: remote-gateway-session
+    name: {zh: VPN、RDP、VDI 与远程管理会话, en: "VPN, RDP, VDI, and remote-management sessions"}
+    channel: null
+    required_fields: [timestamp, gateway_id, principal_id, session_id, source_ip, source_port, device_or_client_id, authentication_state, session_action, outcome]
+  - source_type: identity-token-authentication
+    name: {zh: Token、Cookie、认证方法与 MFA 生命周期, en: "Token, cookie, authentication-method, and MFA lifecycle"}
+    channel: null
+    required_fields: [timestamp, tenant_id, principal_id, token_or_session_hash, issuance_time, refresh_time, authentication_methods, mfa_result, device_posture_result, challenge_result, logout_or_revoke_time, request_or_correlation_id]
+  - source_type: network-origin-context
+    name: {zh: 来源 IP、ASN、ISP、代理与地理情境, en: "Source IP, ASN, ISP, proxy, and geography context"}
+    channel: null
+    required_fields: [timestamp, source_ip, source_port, asn, isp, network_class, proxy_or_vpn_provider, country_or_region, first_seen, reputation]
+  - source_type: device-client-context
+    name: {zh: 设备、客户端、证书与资产情境, en: "Device, client, certificate, and asset context"}
+    channel: null
+    required_fields: [timestamp, device_id, client_id, tls_or_certificate_id, managed_state, compliance_state, asset_owner, registration_actor, first_seen]
+  - source_type: user-remote-access-baseline
+    name: {zh: 用户远程接入长期基线, en: "User remote-access long-term baseline"}
+    channel: null
+    required_fields: [baseline_window, principal_or_role_id, usual_regions, usual_asns_or_isps, usual_network_classes, usual_devices_or_clients, usual_hours, usual_gateways, travel_or_shift_context]
+  - source_type: session-resource-outcome
+    name: {zh: 远程会话后的端点与资源结果, en: "Endpoint and resource outcomes after remote session"}
+    channel: null
+    required_fields: [timestamp, tenant_or_device_id, principal_id, session_id, process_or_channel, target_resource, action, data_or_command_volume, outcome]
+  - source_type: response-and-revocation-record
+    name: {zh: 处置、会话撤销与身份恢复记录, en: "Response, session-revocation, and identity-recovery records"}
+    channel: null
+    required_fields: [response_id, principal_id, gateway_id, revoked_token_or_session_ids, revoked_at, device_action, credential_rotation, expected_effective_time, status]
+observables:
+  - zh: 同一 token/session 在没有新口令、MFA 或 device challenge 时从新 IP/ASN/device 建立远程会话。
+    en: The same token or session establishes a remote session from a new IP, ASN, or device without a new password, MFA, or device challenge.
+  - zh: 一个 session/token 在不同来源或设备并发使用，或在 logout/revoke 后继续成功并访问资源。
+    en: One session or token is used concurrently across origins or devices or continues succeeding and accessing resources after logout or revocation.
+  - zh: 登录地理、住宅/移动 ISP 和时间贴合用户历史，但 proxy provider、设备注册者、TLS/client 或资源行为与用户不一致。
+    en: Sign-in geography, residential or mobile ISP, and time align with user history while proxy provider, device registrant, TLS or client, or resource behavior conflicts with the user.
+  - zh: 低风险远程会话使用刚出现或非资产设备，随后访问异常高价值资源或产生与用户角色不符的命令/数据活动。
+    en: A low-risk remote session uses a newly seen or nonasset device and then accesses unusual high-value resources or produces command or data activity inconsistent with the user's role.
+  - zh: 已知处置撤销一个 implant/会话后，相同主体通过仍有效 session 或相同拟态情境重新建立远程入口。
+    en: After known response removes an implant or session, the same principal reestablishes remote entry through still-valid state or the same mimicked context.
+  - zh: token/session、设备、来源、网关、认证步骤与后继资源形成完整重入谱系。
+    en: Token or session, device, origin, gateway, authentication steps, and downstream resource form complete re-entry lineage.
+correlation:
+  window:
+    zh: 精确 token/session 从签发持续到撤销、过期和最后使用，默认最长九十日；登录到资源结果使用一小时直接窗口，持续重入从处置前一小时观察到其后三十日。用户风险基线至少九十日并覆盖旅行、轮班与设备更换。
+    en: Follow an exact token or session from issuance through revocation, expiry, and last use with a default maximum of ninety days. Use a direct one-hour window from sign-in to resource outcome and observe continuing re-entry from one hour before response through thirty days afterward. User-risk baselines use at least ninety days and cover travel, shift work, and device change.
+  dimensions: [tenant_or_gateway, principal, token_or_session, request_or_correlation, source_ip_asn_isp, device_or_client, authentication_sequence, resource, response_boundary, time]
+false_positives:
+  - zh: 正常 SSO、浏览器恢复、VPN roaming 与 HA gateway 切换会省略新认证或改变节点/IP。
+    en: Normal SSO, browser restore, VPN roaming, and high-availability gateway changes omit new authentication or change node or IP.
+  - zh: 移动运营商、CGNAT、企业代理和安全访问服务会让多个用户共享出口或发生同国 ASN 变化。
+    en: Mobile carriers, CGNAT, enterprise proxies, and secure-access services cause shared egress or same-country ASN changes.
+  - zh: 合法旅行、轮班、设备替换、VDI 与灾难恢复会偏离或重新贴合用户历史。
+    en: Legitimate travel, shift work, device replacement, VDI, and disaster recovery deviate from or realign with user history.
+  - zh: 令牌撤销存在传播延迟，短时间内的成功不一定表示控制失败或恶意重放。
+    en: Token revocation has propagation delay and a short interval of success does not necessarily establish control failure or malicious replay.
+blind_spots:
+  - zh: 服务不暴露稳定 token/session ID、认证步骤或撤销状态时，只能做主体和时间级弱关联。
+    en: Only weak principal- and time-level correlation is possible when a service omits stable token or session ID, authentication steps, or revocation state.
+  - zh: 商业住宅代理与真实用户共享 ISP/地区，provider risk engine 不公开特征权重时难以量化拟态。
+    en: Mimicry is difficult to quantify when commercial residential proxies share ISP and region with real users and the provider does not expose risk-engine feature weights.
+  - zh: unmanaged 设备、隐私代理、TLS 终止和多层 NAT 会移除设备、客户端或真实来源字段。
+    en: Unmanaged devices, privacy proxies, TLS termination, and layered NAT remove device, client, or true-origin fields.
+  - zh: 攻击者控制 IdP/网关日志或处置记录时，可以伪造 session 生命周期与撤销结果。
+    en: An adversary controlling identity-provider or gateway logs or response records can forge session lifecycle and revocation outcomes.
+tuning_guidance:
+  paragraphs:
+    - zh: 按网关和 token 类型验证哪些认证步骤会在 resume/refresh 时省略、哪些字段表示 device/IP binding 和注销；不把“没有 MFA”统一解释为重放。精确 ID 优先，主体级匹配必须同时要求来源/设备转换、并发、撤销矛盾或异常资源之一并降低置信度。
+      en: Validate per gateway and token type which authentication steps are omitted during resume or refresh and which fields represent device or IP binding and logout. Do not treat no MFA uniformly as replay. Prefer exact IDs. Principal-level matches require an origin or device transition, concurrency, revocation contradiction, or anomalous resource and carry lower confidence.
+    - zh: 风险基线按用户角色、地区、ASN/ISP/network class、设备/client、时间和服务建立，白名单绑定企业 egress、资产设备、旅行/轮班工单和有效期，不能永久允许住宅 ASN 或一个国家。低风险分数只降低一个信号，不抑制 proxy、设备 provenance 和后继行为分析。
+      en: Build risk baselines by user role, region, ASN or ISP and network class, device or client, time, and service. Bind allowances to enterprise egress, asset device, travel or shift record, and validity rather than permanently allowing a residential ASN or country. A low risk score lowers one signal and does not suppress proxy, device provenance, and downstream behavior analysis.
+    - zh: 将“会话异常”“疑似重放”“情境贴合”“恶意入口”“持续重入”分级。处置时记录预期撤销生效时间，并在该时间后监控相同 token/session、设备和情境；合法并发与 HA 切换通过 owner 和系统记录降级，攻击者后继资源结果提高。
+      en: Tier session anomaly, suspected replay, context alignment, malicious entry, and continuing re-entry. During response record expected revocation-effective time and monitor the same token or session, device, and context afterward. Legitimate concurrency and high-availability change lower confidence through owner and system records, while adversary downstream resource outcomes raise it.
+evidence_refs: [REF-000088, REF-000102, REF-000103, REF-000111, REF-000112, REF-000070]
+lifecycle: {status: review, version: 1.0.0, created: "2026-09-12", modified: "2026-09-12", contributors: [Niji Matrix Research], reviewers: []}

@@ -1,0 +1,99 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000083
+strategy_ref: DET-000100
+name:
+  zh: 进程创建映像—角色行为一致性分析
+  en: Process-Birth Image-to-Role-Behavior Consistency Analytic
+summary:
+  zh: 比较 process creation file/section/image 与 first-executed content，并把 target selection、approved code provenance、角色基线和首个后继动作连接，以识别创建期来源分离和角色贴合注入。
+  en: Compare process-creation file, section, and image with first-executed content and join target selection, approved-code provenance, role baseline, and first follow-on action to identify birth-time provenance divergence and role-conforming injection.
+domains: [enterprise]
+platforms: [Windows, Linux, macOS]
+logic:
+  paragraphs:
+  - zh: >-
+      分析按 host、boot/session/namespace 与 process-start key 记录 creator、child/target、creation API/flags/result、initial file object/path/hash/signer、section/image identity、command line、parent relation、token/integrity/capabilities、architecture 和 suspended/running state。随后保留 creator 或 controller 对 child 的 file/section transaction、process open、unmap/map/write/protect、entry/context change 与 resume，以及 target 的 initial memory hash/backing、entry bytes、first instruction/call stack 和 first loaded modules。普通 process create 只建立 birth record；没有实际 first execution 不判断来源分离。
+    en: >-
+      The analytic records creator, child or target, creation API, flags, and result, initial file object, path, hash, and signer, section or image identity, command line, parent relationship, token, integrity, or capabilities, architecture, and suspended or running state by host, boot, session, namespace, and process-start key. It then preserves creator or controller file and section transactions, process open, unmap, map, write, protection, entry or context change, and resume against the child, plus target initial-memory hash and backing, entry bytes, first instruction or call stack, and first loaded modules. Ordinary process creation establishes only a birth record, and provenance divergence is not decided without actual first execution.
+  - zh: >-
+      NJS-0103-003 比较三层：creation callback/file identity、实际 mapped image/section 与 first-executed bytes/region。只有 attacker-controlled mutation 使合法或 transient creation identity 与后两层产生因果一致的 divergence，且被替换内容在 target context 执行，才输出 birth_provenance_divergence。合法 updater/self-replacement、browser sandbox、application virtualization、packer/protector、JIT 与 security tooling 必须由 exact package/version、owner、creation flags、expected transition 和窗口解释。仅 deleted file、image mismatch、suspended child 或 ProcessTampering event 分别输出 provenance_signal，不能独立定性。
+    en: >-
+      NJS-0103-003 compares three layers: creation-callback or file identity, actual mapped image or section, and first-executed bytes or region. birth_provenance_divergence requires an attacker-controlled mutation that causes a causally consistent difference between a legitimate or transient creation identity and the latter layers and execution of substituted content in target context. Legitimate updater self-replacement, browser sandboxes, application virtualization, packers or protectors, JIT, and security tooling require explanation by exact package and version, owner, creation flags, expected transition, and window. A deleted file, image mismatch, suspended child, or ProcessTampering event alone produces provenance_signal and cannot classify the child.
+  - zh: >-
+      NJS-0103-004 先从 configuration/memory/command or enumeration 恢复 source payload purpose 和 candidate targets，再为选中的 exact target 建立 role profile：service group/browser profile、normal executable/modules/code regions、owner、resource/action classes、destinations/protocols 和正常 source relationships。把 injection chain、executing region/module provenance 与 first injected action 连接；只有攻击者从合理候选中选择 target，使 payload action 与其正常 role/action class 合形，同时 actual code 不在 approved provenance 内，才输出 role_conforming_target。target 名称常见但动作异常、只因 long-lived/privileged 被选或没有选择证据时分别留在 parent 或 role_alignment_unresolved。
+    en: >-
+      NJS-0103-004 first recovers source payload purpose and candidate targets from configuration, memory, commands, or enumeration, then builds a role profile for the selected exact target: service group or browser profile, normal executable, modules, and code regions, owner, resource and action classes, destinations and protocols, and normal source relationships. It joins the injection chain and executing-region or module provenance to the first injected action. role_conforming_target requires adversary selection among plausible candidates that makes the payload action conform to the target's normal role or action class while actual code remains outside approved provenance. A common target name with anomalous behavior, selection only for longevity or privilege, or absent selection evidence respectively stays parent or role_alignment_unresolved.
+  - zh: >-
+      两个分支都把结果交给 DET-000100 的权限门：保存 source pre-state、target effective authority 和 first injected resource action 的 allow/deny，只有正权限差与 expected-deny/observed-allow 才输出 elevation_confirmed。VEILEDSIGNAL、Dofoil 与 controlled DueDLLigence 只为 axis 和 detection rationale 提供依据，不自动证明公开事件中的 TA0004。响应前保全 initial file/section、memory、thread context、payload config、candidate list、role baseline 与 first action；若 target 已退出或 source 清理，保持 provenance/role unresolved 而不是由 malware family 名称补齐。
+    en: >-
+      Both branches pass results to DET-000100's authority gate by preserving source pre-state, target effective authority, and allow or deny for the first injected resource action. Only a positive authority difference and expected-deny to observed-allow transition produces elevation_confirmed. VEILEDSIGNAL, Dofoil, and controlled DueDLLigence support the axes and detection rationale but do not automatically prove TA0004 in their public events. Before response, preserve initial file or section, memory, thread context, payload configuration, candidate list, role baseline, and first action. If the target exited or the source cleaned up, keep provenance or role unresolved rather than fill the gap from a malware-family name.
+data_requirements:
+- source_type: process-birth-and-authority
+  name: {zh: 进程创建、映像身份与权限, en: Process Birth Image Identity and Authority}
+  channel: null
+  required_fields: [timestamp, host_id, boot_session_or_namespace, creator_start_key, target_start_key, creation_api_and_flags, result, initial_file_object_path_hash_signer, initial_section_or_image_id, command_line, parent_relation, token_integrity_privileges_or_capabilities, architecture, suspended_or_running]
+- source_type: birth-time-file-section-and-memory-mutation
+  name: {zh: 创建期 file、section 与 memory 变更, en: Birth-Time File Section and Memory Mutation}
+  channel: null
+  required_fields: [timestamp, creator_or_controller_ref, target_start_key, file_transaction_id, section_or_image_id, operation, address_range, bytes_or_hash, old_new_protection, entry_or_context_change, result]
+- source_type: initial-execution-provenance
+  name: {zh: Initial image、entry 与首段执行来源, en: Initial Image Entry and First-Execution Provenance}
+  channel: null
+  required_fields: [timestamp, target_start_key, creation_file_ref, mapped_section_or_image_ref, initial_memory_hash_and_backing, entry_bytes, first_instruction_region, call_stack, first_module_set, execution_result]
+- source_type: target-selection-and-payload-purpose
+  name: {zh: Target 枚举、选择与 payload 目的, en: Target Enumeration Selection and Payload Purpose}
+  channel: null
+  required_fields: [timestamp, source_start_key, payload_or_module_hash, intended_action_class, candidate_target_start_keys, selection_order_or_rule, selected_target_start_key, configuration_or_memory_evidence, selection_result]
+- source_type: versioned-process-role-baseline
+  name: {zh: 版本化 process role 与批准代码基线, en: Versioned Process Role and Approved-Code Baseline}
+  channel: null
+  required_fields: [valid_from, valid_to, host_or_group, target_executable_hash, service_group_or_profile, owner, approved_modules_or_code_regions, normal_source_relationships, normal_action_classes, normal_resources_destinations_protocols, version]
+- source_type: injected-code-first-behavior
+  name: {zh: Injected code 首个后继行为, en: First Follow-On Behavior from Injected Code}
+  channel: null
+  required_fields: [timestamp, target_start_key, thread_region_or_module_ref, code_provenance, action_class, resource_or_destination, protocol_or_operation, result, authorization_decision_id, causality_ref]
+- source_type: approved-image-transition-and-role-exception
+  name: {zh: 获批映像转换与角色例外, en: Approved Image Transition and Role Exception}
+  channel: null
+  required_fields: [timestamp, owner, ticket_or_policy, exact_package_hash_version, approved_creator_target, approved_creation_flags_and_transition, approved_code_and_action, window_start, window_end, expected_result]
+observables:
+- {zh: 合法 path/hash/signature 建立 target，但 suspended child 随后被 creator/controller unmap、map、write 或改 entry, en: A legitimate path hash or signature creates a target but the suspended child is subsequently unmapped mapped written or re-entered by a creator or controller}
+- {zh: creation file object、mapped section/image 与 first-executed bytes/region 三层不一致, en: Creation file object mapped section or image and first-executed bytes or region disagree across three layers}
+- {zh: transient/deleted backing 与 target memory 保持可执行内容，但缺 expected updater transition, en: Transient or deleted backing leaves executable target memory without an expected updater transition}
+- {zh: source 枚举多个 browser/service 候选并按可用性或 role 选择 exact target, en: A source enumerates multiple browser or service candidates and selects an exact target by availability or role}
+- {zh: payload configuration/function 指向的 action class 与 target 正常 resource/protocol role 合形, en: The action class indicated by payload configuration or function conforms to the target's normal resource or protocol role}
+- {zh: target 执行常见 action，但 call stack/region/module provenance 不在其批准代码基线, en: The target performs a common action while call-stack region or module provenance lies outside its approved-code baseline}
+- {zh: role-conforming target 退出后 source 监视并重新注入同角色实例，形成 injection/IPC 重复边, en: The source monitors target exit and reinjects another instance of the same role creating repeated injection and IPC edges}
+- {zh: 已确认来源分离或角色贴合注入完成 source 原本 expected deny 的首个授权操作, en: Confirmed provenance-divergent or role-conforming injection completes the first authorized operation expected denied for the source}
+correlation:
+  window:
+    zh: >-
+      创建期分支从 initial file open/section creation 前五分钟覆盖 process creation、suspended mutation/resume、first instruction 与首个结果，默认一小时；以 file transaction、section/image ID、target start key、address/entry overlap 闭合。角色分支从 target enumeration/payload configuration 起，覆盖 injection、first action 和 target termination/reinjection，默认二十四小时；以 source-target start key、payload/module hash、IPC/region/thread 与 destination/resource 连接。role baseline 和 approval 必须按事件时版本解析，不能用当前配置回填。
+    en: >-
+      The birth-time branch spans five minutes before initial file open or section creation through process creation, suspended mutation and resume, first instruction, and first result, with a one-hour default. Close it through file transaction, section or image ID, target-start key, and address or entry overlap. The role branch begins at target enumeration or payload configuration and spans injection, first action, and target termination or reinjection, with a twenty-four-hour default. Join through source-target start key, payload or module hash, IPC, region, or thread, and destination or resource. Resolve role baseline and approvals by event time rather than backfill current configuration.
+  dimensions: [host, boot_session_namespace, creator_target_start_key, creation_flags_result, file_transaction_section_image, memory_entry_first_instruction, suspend_resume, source_target_injection, payload_purpose_candidate_selection, target_role_version, approved_code_module_region, first_action_resource_destination, authority_prestate_and_result, owner_ticket_window, time]
+false_positives:
+- {zh: 合法 updater、installer 或 self-replacing application 在受控窗口替换映像并按已签名版本恢复, en: A legitimate updater installer or self-replacing application substitutes an image in a controlled window and restores an approved signed version}
+- {zh: Browser sandbox、application virtualization、packer/protector、JIT 或 compatibility layer 产生 file-memory 差异, en: Browser sandboxes application virtualization packers or protectors JIT or compatibility layers create file-to-memory differences}
+- {zh: EDR、anti-malware、instrumentation 或 live-response 工具注入 browser/service 并执行其获批网络或扫描行为, en: EDR anti-malware instrumentation or live-response tools inject a browser or service and perform approved network or scanning behavior}
+- {zh: 合法 browser extension、credential provider、security/backup plugin 或 automation 使常见主体执行扩展动作, en: Legitimate browser extensions credential providers security or backup plugins or automation make an ordinary subject perform an extended action}
+blind_spots:
+- {zh: Creation callback 只记录 path/name 而无 file object/section identity 时，transient backing 可能无法恢复, en: Creation callbacks that record only path or name without file-object or section identity may not recover transient backing}
+- {zh: 缺少 initial memory/entry 或 first-instruction telemetry 时只能看到事后 image mismatch, en: Missing initial-memory entry or first-instruction telemetry leaves only a later image mismatch}
+- {zh: Payload purpose、candidate list 和 target selection logic 常驻于短命 source memory，事后可能丢失, en: Payload purpose candidate lists and target-selection logic often reside in short-lived source memory and can be lost after the event}
+- {zh: 粗粒度 process-name baseline 无法区分具体 service group、browser profile、module set 和 destination, en: Coarse process-name baselines cannot distinguish a concrete service group browser profile module set or destination}
+- {zh: Encrypted/custom payload 或 legitimate-looking standard DLL 可隐藏 intended action，直到 first behavior 发生, en: Encrypted or custom payloads and legitimate-looking standard DLLs can hide intended action until first behavior occurs}
+- {zh: 公开案例缺 source 权限前态和 resource decision，不能由 target 身份推断 TA0004, en: Public cases lack source authority pre-state and resource decisions so TA0004 cannot be inferred from target identity}
+tuning_guidance:
+  paragraphs:
+  - zh: >-
+      创建期检测同时要求三层来源和 attacker-controlled mutation；对合法 updater/sandbox/virtualization 建 exact version、creator、flags、file/section transition、expected entry 和到期窗口，而不按 signer 全局允许。将 unknown/deleted backing、异常 suspended child、entry-byte mismatch、first instruction outside approved image 和即时后继行为组合提高风险；终止前先保全 file/section 和 memory。
+    en: >-
+      Birth-time detection requires all three provenance layers plus attacker-controlled mutation. Model legitimate updater, sandbox, and virtualization activity through exact version, creator, flags, file or section transition, expected entry, and expiring window rather than a signer-wide allow. Raise risk by combining unknown or deleted backing, an unusual suspended child, entry-byte mismatch, first instruction outside the approved image, and immediate follow-on behavior. Preserve file, section, and memory before termination.
+  - zh: >-
+      角色检测按 service group/browser profile/version 维护 normal modules/code regions、source relationships、action classes、resources/destinations，不永久信任 browser、svchost、security 或 signed process。只有 injection provenance 异常且 payload/first action 与 role 合形时标记 NJS-0103-004；动作异常留父级，只有 long-lived/privileged 理由留 hypothesis。将 repeated enumeration/reinjection、named-pipe/IPC 和 unapproved code origin 用于提高归因。
+    en: >-
+      Maintain normal modules or code regions, source relationships, action classes, and resources or destinations per service group, browser profile, and version. Never permanently trust a browser, svchost, security, or signed process. Label NJS-0103-004 only when injection provenance is abnormal and payload or first action conforms to the role. An anomalous action remains parent, and longevity or privilege alone remains a hypothesis. Use repeated enumeration or reinjection, named-pipe or IPC, and unapproved code origin to strengthen attribution.
+evidence_refs: [REF-000108, REF-000362, REF-000364, REF-000366, REF-000367, REF-000369]
+lifecycle: {status: review, version: 0.1.0, created: '2026-09-13', modified: '2026-09-13', contributors: [Niji Matrix Research], reviewers: []}

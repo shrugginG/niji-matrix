@@ -1,0 +1,235 @@
+schema_version: 2.0.0
+type: evasion-subtechnique
+id: NJS-0101-001
+parent_ref: NJT-0101
+name:
+  zh: 宿主资源命名空间别名投射
+  en: Host-Resource Namespace-Alias Projection
+summary:
+  zh: 攻击者让容器或 guest 可见的路径、盘符、句柄或设备别名解析到宿主规范资源，使仍呈现隔离工作负载身份的进程直接产生宿主结果，并利用资源归属语义缺失降低识别。
+  en: An adversary makes a path, drive, handle, or device alias visible to a container or guest resolve to a canonical host
+    resource, allowing a process still carrying isolated-workload identity to produce a host result while missing resource-ownership
+    semantics weakens identification.
+aliases: []
+definition_and_concept:
+  paragraphs:
+  - zh: 宿主资源命名空间别名投射以 container/guest-visible alias 与 canonical host resource 之间的映射为攻击者可控 stable key。alias 可以来自既有 hostPath/bind/shared
+      mount、暴露的 block/character device、mount propagation、global symbolic link、泄漏的 file descriptor 或等价 object namespace 解析；形式不重要。成立要求同一仍可归属原
+      workload 的进程经该 alias 直接读写一个 pre-state 不可访问的宿主对象，并产生 host-only result。
+    en: Host-Resource Namespace-Alias Projection uses the mapping between a container- or guest-visible alias and a canonical
+      host resource as an adversary-controlled stable key. The alias can derive from an existing hostPath, bind or shared
+      mount, exposed block or character device, mount propagation, global symbolic link, leaked file descriptor, or equivalent
+      object-namespace resolution; form is not the boundary. The child requires a process still attributable to the original
+      workload to directly read or write through that alias a host object unavailable in pre-state and produce a host-only
+      result.
+  - zh: “投射”不要求攻击者创建 mapping；它也可以主动选择、发现并利用一个由部署者预置的映射。攻击者控制的变量是使用哪个 alias、解析到哪个 canonical host target 以及由原容器进程完成何种宿主结果。路径字符串与对象名称只是
+      namespace-relative view：容器内 /etc/passwd、X:\、/host 或某 device node 不能说明底层对象归属。只有 container identity、namespace/mapping
+      state、inode/file ID/handle、host canonical path 和 resource effect 组合，才能证明这个子项。
+    en: 'Projection does not require the adversary to create the mapping; it can deliberately select, discover, and use a
+      mapping preconfigured by the deployer. The controlled variables are which alias is used, which canonical host target
+      it resolves to, and which host result the original container process produces. A path string or object name is only
+      a namespace-relative view: in-container /etc/passwd, X:\, /host, or a device node does not identify underlying ownership.
+      Only container identity, namespace or mapping state, inode or file ID or handle, host canonical path, and resource effect
+      together confirm this child.'
+stealth_characteristics:
+  paragraphs:
+  - zh: 宿主资源命名空间别名投射保留最容易被进程检测看见的主体——原 container process——却改变目标的真实归属。文件审计可以记录 cat、sh、echo 或 malware 打开 /etc/passwd、/host/etc/cron.d
+      或 X:\ 路径，进程也仍带 container cgroup、image 与 namespace 标签；但同一名称在 container root、overlay layer、bind source 和 host root 中可能代表不同
+      inode/object。只以 command/path string 或 container process 范围判断时，防守方把已经发生的宿主访问解释为容器内部活动。
+    en: Host-Resource Namespace-Alias Projection preserves the actor most visible to process detection, the original container
+      process, while changing the target's true ownership. File audit can record cat, sh, echo, or malware opening /etc/passwd,
+      /host/etc/cron.d, or an X:\ path, and the process can retain container cgroup, image, and namespace labels. Yet the
+      same name can denote different inodes or objects in container root, an overlay layer, a bind source, and host root.
+      Analysis based only on command or path string or container-process scope interprets host access that already occurred
+      as activity inside the container.
+  - zh: 该匿迹收益在攻击者避免启动独立宿主 shell 时最明显：写宿主 cron、authorized_keys、runtime config 或 registry 后，真实执行可能稍后由正常 host service 完成，初始越界时只留下
+      container-origin file event。Siloscape 的 global link 与 TeamTNT 的 host-root mount 分别证明 Windows object namespace 和 Linux
+      mount namespace 能承载同一变量。alias 不会消除 mount/spec、symbolic-link operation、inode、file ID、host file integrity 或后继 consumer
+      痕迹；完整资源解析会显著削弱效果。
+    en: The stealth benefit is strongest when the adversary avoids launching a distinct host shell. After writing host cron,
+      authorized_keys, runtime configuration, or registry, a normal host service can execute later, leaving only a container-originated
+      file event at initial crossing. Siloscape's global link and TeamTNT's host-root mount establish that Windows object
+      namespaces and Linux mount namespaces carry the same variable. An alias does not erase mount or specification state,
+      symbolic-link operations, inode, file ID, host-file integrity, or later consumer traces, and complete resource resolution
+      materially weakens its effect.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 纳入要求可识别原始进程或工作负载、事件发生时有效的别名到宿主目标映射、能够解析到规范宿主资源的稳定标识，以及通过该映射实际完成的宿主操作。仅出现 hostPath、卷挂载、共享盘符、设备或挂载调用只说明暴露面；没有宿主资源结果时不能确认本子技术。
+    en: Inclusion requires an identifiable original process or workload, the alias-to-host-target mapping effective at event
+      time, a stable identifier resolving the canonical host resource, and a host operation actually completed through the
+      mapping. A hostPath, volume mount, shared drive, device, or mount call alone shows exposure; without a host-resource
+      outcome the child cannot be confirmed.
+  - zh: 若 runtime/daemon 接收原 container request 并在宿主侧创建或执行结果，分类转为 NJS-0101-002；如果 Broker 创建的新容器包含 host alias，两个子项并列，分别对 request
+      lineage 与 resource mapping 负责。直接 setns/kernel exploit 后进程脱离原 workload 且不经 alias 时留在 NJT-0101 父级。普通 volume data、同一 tenant
+      的批准共享存储、只读 node logs、CSI/device plugin 和备份代理是反例，必须用批准 spec/digest、owner、scope、readOnly/recursiveReadOnly、mapping version
+      和预期 resource operation 解释。
+    en: When a runtime or daemon receives the original container request and creates or executes the result on the host, NJS-0101-002
+      applies. If a broker-created container contains a host alias, both children co-occur, with request lineage and resource
+      mapping owned separately. A direct setns or kernel exploit whose process leaves the workload without an alias remains
+      parent NJT-0101. Ordinary volume data, approved shared storage within one tenant, read-only node logs, CSI or device
+      plugins, and backup agents are counterexamples explained through approved specification and digest, owner, scope, read-only
+      or recursive-read-only setting, mapping version, and intended resource operation.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: 攻击者进入一个带可写 hostPath 或 host-root bind mount 的 Pod/container 后，枚举 /proc/self/mountinfo、device major/minor、overlay
+        root 和 inode，确认 /host/etc、/host/root 或挂载块设备对应节点资源。它可以直接追加宿主 cron/SSH key、替换 runtime binary、读取 kubelet credential 或修改安全配置；container
+        process 不必切换 PID namespace，也不必在 crossing 时产生新的 host shell。后继 host service 对修改内容的消费属于下游技术，但首次写入/读取规范宿主对象确认本项。
+      en: After entering a Pod or container with writable hostPath or a host-root bind mount, an adversary enumerates /proc/self/mountinfo,
+        device major and minor, overlay root, and inode to confirm that /host/etc, /host/root, or a mounted block device maps
+        to node resources. It can directly append host cron or SSH keys, replace a runtime binary, read kubelet credentials,
+        or change security configuration without changing PID namespace or creating a new host shell at crossing time. Later
+        consumption of modified content by a host service belongs to downstream techniques, while the first read or write
+        of the canonical host object confirms this child.
+    - zh: 在 Windows server container 中，攻击者可取得设置 global symbolic link 所需 privilege，让 container drive 或 named-object alias 转向
+        host root/object directory。Siloscape 通过 X→host C 搜索 kubeconfig、写入 Tor 组件并执行节点命令，是该路径的结论级案例。VM shared folder、passed-through
+        device 或 guest-to-host handle 理论上也可落入本项，但必须证明 canonical host identity；仅共享介质存在或 guest 看见同名文件不足。
+      en: In a Windows server container, an adversary can obtain the privilege required to set a global symbolic link and
+        direct a container drive or named-object alias to the host root or object directory. Siloscape's X-to-host-C mapping
+        used to find kubeconfig, write Tor components, and execute node commands is conclusion-level evidence. A VM shared
+        folder, passed-through device, or guest-to-host handle can theoretically instantiate the child, but canonical host
+        identity must be proved; shared media presence or a same-named file visible in the guest is insufficient.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者需要容器/guest 内执行，以及发现或建立 mapping 的权限。Linux 路径可能依赖预置 hostPath、privileged/CAP_SYS_ADMIN、device allowlist、可用 mount
+          syscall 或泄漏 descriptor；Windows 路径可能依赖 object-manager API 与 SeTcbPrivilege。它还需识别 overlay/mount propagation、真实 host
+          root、目标文件格式和宿主 consumer 行为。错误写入容器副本不会产生宿主结果，错误 device 或 nonrecursive read-only 假设会失败或暴露。
+        en: The adversary needs in-container or guest execution plus authority to discover or establish a mapping. A Linux
+          path can depend on preconfigured hostPath, privileged mode or CAP_SYS_ADMIN, a device allowlist, available mount
+          syscall, or leaked descriptor, while a Windows path can depend on object-manager APIs and SeTcbPrivilege. It must
+          identify overlay or mount propagation, actual host root, target file format, and host-consumer behavior. Writing
+          a container copy produces no host result, and a wrong device or non-recursive-read-only assumption fails or exposes
+          the attempt.
+      - zh: 为保持该轴，攻击者偏好让现有 container process 直接完成最少宿主访问，避免 nsenter/chroot 后启动明显独立进程，并可选择只修改稍后由正常 host service 消费的对象。它假设传感器记录
+          path string 而非 inode/canonical path，container metadata 与 host file integrity 未连接，workload 销毁后 mount state 不保留。只读映射、recursive
+          read-only、user namespace、SELinux/AppArmor、device/capability 最小化和实时 host integrity 会缩小可行面。
+        en: To preserve this axis, the adversary prefers the existing container process to perform the minimum host access,
+          avoids an obvious independent process after nsenter or chroot, and can modify an object consumed later by a normal
+          host service. It assumes sensors record a path string rather than inode or canonical path, container metadata is
+          not joined to host-file integrity, and mount state is not retained after workload destruction. Read-only and recursive-read-only
+          mappings, user namespaces, SELinux or AppArmor, minimum devices and capabilities, and real-time host integrity shrink
+          the feasible surface.
+    defender_model:
+      paragraphs:
+      - zh: 防守方必须版本化 workload spec 与运行时真实 mount：workload UID/container ID、image digest、node、source host path/device/object、container
+          mount path、read-only 与 recursive state、propagation、mount namespace ID、overlay root、inode/file ID/handle、process
+          cgroup 和 event time。规范声明与 runtime state 都要保留，因为 mutating admission、runtime default、submount 和人工 debug 可使最终映射不同。Windows
+          还需 server silo/object directory、global link source/target 与 token privilege。
+        en: 'Defenders must version both workload specification and actual runtime mappings: workload UID or container ID,
+          image digest, node, source host path or device or object, container mount path, read-only and recursive state, propagation,
+          mount namespace ID, overlay root, inode or file ID or handle, process cgroup, and event time. Declared specification
+          and runtime state both matter because mutating admission, runtime defaults, submounts, and manual debugging can
+          change the final mapping. Windows also needs server-silo or object-directory identity, global-link source and target,
+          and token privilege.'
+      - zh: 每个 file/device/object access 先在 process namespace 中解析，再映射到 host canonical resource 与 sensitivity，最后检查 pre-state
+          policy 与实际 result。一个容器访问自己 rootfs 的 /etc/passwd 是反例；同一命令命中 host passwd、cron 或 kubeconfig 才进入 crossing。若 inode/handle
+          不可得，用 mount tree、container root、path、node 与 file hash 形成降级连接并标记 ambiguity。短命 Pod 删除前应保存 mountinfo 与 container-to-host
+          path map；不能因路径以 /host 开头就自动定性。
+        en: Every file, device, or object access is first resolved in the process namespace, then mapped to host canonical
+          resource and sensitivity, and finally checked against pre-state policy and actual result. A container reading its
+          own rootfs /etc/passwd is a counterexample; the same command reaching host passwd, cron, or kubeconfig is crossing.
+          Where inode or handle is unavailable, mount tree, container root, path, node, and file hash form a downgraded join
+          with ambiguity exposed. Mountinfo and container-to-host path maps require preservation before a short-lived Pod
+          is deleted, and a path beginning with /host is not automatically malicious.
+stealth_mechanisms:
+- mechanism_ref: NM-DO
+  role: primary
+  summary:
+    zh: namespace-relative 名称保留数据，却遮蔽目标的规范宿主身份
+    en: Namespace-relative naming preserves data while obscuring the target's canonical host identity
+  analysis:
+    paragraphs:
+    - zh: 攻击者选择或构造 alias，使 container process 对普通路径、盘符、句柄或 device node 执行读写，而底层解析落到宿主对象。行为设计改变路径到资源的映射，不改变可见命令；痕迹包含 process、operation
+        和 namespace-relative name，却不包含或不连接 host canonical identity。防守方即使收集了 audit PATH 或 file event，也会因不知道对象位于 container root、overlay、bind
+        source 还是 host root 而错误理解影响范围，形成 Data Obscuration。container/mount namespace、mapping version、inode/file ID/handle 和
+        host integrity event 能还原。Siloscape 与 REF-000351 直接支持，confidence 为 high。
+      en: The adversary selects or constructs an alias so a container process reads or writes an ordinary path, drive, handle,
+        or device node whose underlying resolution lands on a host object. The behavior design changes path-to-resource mapping
+        without changing the visible command. The trace contains process, operation, and namespace-relative name but omits
+        or fails to join host canonical identity. Even after collecting an audit PATH or file event, defenders misunderstand
+        impact because they cannot tell whether the object belongs to container root, overlay, bind source, or host root,
+        creating Data Obscuration. Container and mount namespace, mapping version, inode or file ID or handle, and host-integrity
+        events recover it. Siloscape and REF-000351 directly support the conclusion, so confidence is high.
+  evidence_refs:
+  - REF-000347
+  - REF-000349
+  - REF-000351
+  confidence: high
+- mechanism_ref: NM-BT
+  role: secondary
+  summary:
+    zh: 直接宿主资源效果发生时不出现新的宿主执行主体
+    en: Direct host-resource effect occurs without a new host execution actor
+  analysis:
+    paragraphs:
+    - zh: 攻击者让原 container process 经 alias 完成宿主读写并避免启动独立 host process。行为设计把显式“逃逸后 shell”改为 container-origin file/device/object
+        access；痕迹从主机进程树上的新异常节点变成只在 syscall/file telemetry 中可见的跨 root/namespace 边。仅监控 host process creation 或把所有 container
+        file event 限定为容器影响的防守方看不到实际 boundary effect，形成 Behavioral Transparency。host canonical mapping、敏感 resource operation
+        与 later consumer result 的连接可以显现；TeamTNT host-root mount 与 Kubernetes hostPath 语义支持，confidence 为 high。
+      en: The adversary has the original container process produce a host read or write through an alias and avoids a distinct
+        host process. The design changes an explicit post-escape shell into container-originated file, device, or object access.
+        The trace changes from a new anomalous node in the host process tree into a cross-root or namespace edge visible only
+        in syscall or file telemetry. Defenders monitoring host process creation only or treating every container file event
+        as container-limited miss the boundary effect, creating Behavioral Transparency. Canonical host mapping, sensitive-resource
+        operation, and later consumer-result joins expose it. TeamTNT's host-root mount and Kubernetes hostPath semantics
+        support high confidence.
+  evidence_refs:
+  - REF-000347
+  - REF-000350
+  - REF-000351
+  confidence: high
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000098
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000099
+evidence:
+  claim_refs:
+  - CLM-000554
+  - CLM-000556
+  case_refs:
+  - CASE-000127
+  - CASE-000128
+  reference_refs:
+  - REF-000213
+  - REF-000345
+  - REF-000347
+  - REF-000348
+  - REF-000349
+  - REF-000350
+  - REF-000351
+research:
+  limitations:
+    paragraphs:
+    - zh: Linux hostPath/device 与 Windows global symbolic link 有官方语义、实战案例和实验检测研究共同支撑，能够高置信定义 stable key 与防御差异；但 file event
+        中 canonical identity 的可得性随 kernel、audit/eBPF sensor、overlay driver、Windows ETW/EDR 与 runtime 变化。缺少 inode/file ID 或历史
+        mount state 时，只能以 path/hash/node 做概率连接，不能把所有同名访问判为宿主对象。
+      en: Linux hostPath or device behavior and Windows global symbolic links have joint support from official semantics,
+        activity cases, and experimental detection research, allowing high-confidence definition of the stable key and defense
+        difference. Availability of canonical identity in file events varies by kernel, audit or eBPF sensor, overlay driver,
+        Windows ETW or EDR, and runtime. Without inode or file ID or historical mount state, only probabilistic joins through
+        path, hash, and node are possible, and same-named accesses cannot all be classified as host objects.
+    - zh: 合法 observability、backup、storage、device 和 incident-response workloads 广泛使用 host mappings，单个危险路径会有高误报。Siloscape 强力证明
+        Windows alias，TeamTNT 强力证明 Linux host-root mapping，但 VM shared folder、registry/named object、GPU/device 与 leaked descriptor
+        的跨实现推广仍需各自验证 canonical mapping 与攻击者控制。若结果由 daemon 而非原 process 执行，应同时或改用 NJS-0101-002，避免把所有间接宿主结果归入本项。
+      en: Legitimate observability, backup, storage, device, and incident-response workloads widely use host mappings, so
+        a dangerous path alone creates high false positives. Siloscape strongly establishes a Windows alias and TeamTNT a
+        Linux host-root mapping, but cross-implementation generalization to VM shared folders, registry or named objects,
+        GPUs or devices, and leaked descriptors requires validation of canonical mapping and adversary control. When a daemon
+        rather than the original process executes the result, NJS-0101-002 applies additionally or instead, avoiding absorption
+        of every indirect host outcome into this child.
+lifecycle:
+  status: review
+  version: 0.2.0
+  created: '2026-09-13'
+  modified: '2026-09-19'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []
+lineage:
+  attck_subtechnique_inherited: false

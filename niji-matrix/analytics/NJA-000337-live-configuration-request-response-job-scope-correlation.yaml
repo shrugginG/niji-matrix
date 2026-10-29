@@ -1,0 +1,153 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000337
+strategy_ref: DET-000254
+name:
+  zh: 实时配置请求—响应—任务范围关联
+  en: Live Configuration Request-Response-Job Scope Correlation
+summary:
+  zh: 按对象、主体、会话与结果字段实现“实时配置请求—响应—任务范围关联”。
+  en: Implement Live Configuration Request-Response-Job Scope Correlation with object, principal, session, and outcome fields.
+domains:
+- enterprise
+platforms:
+- Network Devices
+- Network Management Systems
+logic:
+  paragraphs:
+  - zh: 先为每种已部署管理接口验证可观测层级。按 device_id、principal_id、source_manager_id、session_id/request_id 和时间连接成功/失败认证、配置读取请求、服务端完成状态、response_bytes/value_count
+      及客户端保存的 output_object_id/content_hash。将结果分成 auth_only、request_only、successful_response、verified_configuration_content
+      四级：认证或请求不能升级为 Collection；无错误响应与非零返回只能成为返回候选；只有解析出的配置对象、命令输出、配置文件或与受控样本/设备快照匹配的哈希才能确认内容取得。
+    en: First validate observable layers for every deployed management interface. Join successful or failed authentication,
+      configuration-read request, server completion status, response bytes or value count, and client-saved output object
+      ID or content hash by device ID, principal ID, source manager ID, session or request ID, and time. Classify results
+      as auth_only, request_only, successful_response, or verified_configuration_content. Authentication or request cannot
+      be upgraded to Collection. An error-free response with nonzero returned quantity is only a response candidate. Confirm
+      content acquisition only through parsed configuration objects, command output, configuration files, or hashes matched
+      to a controlled sample or device snapshot.
+  - zh: 对 successful_response 和 verified_configuration_content 与 NMS/备份/合规任务清单核对 job_id、发起人、审批时段、允许设备、允许配置对象和预期结果目的地。未知外部来源是一个分支；对
+      T1602_CHILD_TRUSTED_CONTEXT，重点输出熟悉服务身份/管理节点下的无 job_id、职责外设备或对象、临时交互会话、返回量偏离或结果被写向非批准位置。若命令记账不覆盖所用 API，则改用 API/RPC 服务审计、NMS
+      客户端日志与流量元数据补齐，不把“没有 CLI 命令”当作无行为。
+    en: Reconcile successful_response and verified_configuration_content with NMS, backup, or compliance job inventory using
+      job ID, initiator, approval interval, allowed devices, allowed configuration objects, and expected result destination.
+      Unknown external sources form one branch. For T1602_CHILD_TRUSTED_CONTEXT, prioritize a familiar service identity or
+      manager with no job ID, out-of-duty device or object, ad hoc interactive session, deviating returned quantity, or output
+      written to an unapproved location. When command accounting does not cover the API, use API or RPC service audit, NMS
+      client logs, and traffic metadata instead of interpreting absence of a CLI command as absence of behavior.
+data_requirements:
+- source_type: network-device-authentication-and-session
+  name:
+    zh: 网络设备认证与管理会话
+    en: Network-device Authentication and Management Session
+  channel: Device AAA/TACACS+/RADIUS/syslog or vendor management-session audit validated per platform
+  required_fields:
+  - timestamp
+  - device_id
+  - principal_id
+  - source_address
+  - source_manager_id
+  - session_id
+  - protocol
+  - authentication_result
+- source_type: configuration-read-transaction
+  name:
+    zh: 配置读取请求与完成事务
+    en: Configuration-read Request and Completion Transaction
+  channel: Device CLI accounting, SNMP transaction sensor, NETCONF/RESTCONF service audit, or NMS client transaction log
+  required_fields:
+  - timestamp
+  - device_id
+  - principal_id
+  - session_id
+  - request_id
+  - operation
+  - target_datastore_or_object
+  - filter_or_command
+  - completion_status
+  - error_code
+- source_type: configuration-response-outcome
+  name:
+    zh: 配置响应与返回结果
+    en: Configuration Response and Returned Outcome
+  channel: Server or client transaction log; packet content only where lawful and not encrypted
+  required_fields:
+  - timestamp
+  - device_id
+  - request_id
+  - completion_status
+  - response_bytes
+  - value_count
+  - output_object_id
+  - content_hash_or_parser_result
+- source_type: approved-management-job
+  name:
+    zh: 批准的管理备份与合规任务
+    en: Approved Management Backup and Compliance Job
+  channel: NMS, configuration backup, scheduler, change-management, and ticket system
+  required_fields:
+  - job_id
+  - initiator
+  - principal_id
+  - source_manager_id
+  - approved_device_scope
+  - approved_object_scope
+  - approval_start
+  - approval_end
+  - expected_destination
+  - owner
+observables:
+- zh: 认证成功后出现配置读取请求但无成功响应或内容产物，仅构成企图层级
+  en: A configuration-read request after successful authentication without a successful response or content artifact remains
+    attempt level
+- zh: 熟悉管理主体和来源返回配置内容，却没有匹配 job_id 或超出批准设备/对象范围
+  en: A familiar management principal and source return configuration content without a matching job ID or beyond approved
+    device or object scope
+- zh: 返回量、对象集合或结果目的地偏离同设备角色与作业类型基线
+  en: Returned quantity, object set, or result destination deviates from the same device role and job type
+correlation:
+  window:
+    zh: 单请求从认证前十五分钟到完成后三十分钟；管理主体、设备和作业基线至少三十日，并覆盖月度合规与灾备任务周期。
+    en: Fifteen minutes before authentication through thirty minutes after completion for one request; at least thirty days
+      for management-principal, device, and job baselines, extended to monthly compliance and recovery cycles.
+  dimensions:
+  - device_id
+  - principal_id
+  - source_manager_id
+  - session_id
+  - request_id
+  - job_id
+  - target_datastore_or_object
+  - output_object_id
+  - time
+false_positives:
+- zh: 批准的配置备份、NMS 轮询、变更前后差异采集、设备上线、故障排除、合规扫描、应急恢复和厂商支持会读取相同内容，且应急任务可能先执行后补工单。
+  en: Approved configuration backup, NMS polling, pre/post-change difference collection, device onboarding, troubleshooting,
+    compliance scans, emergency recovery, and vendor support read the same content, and emergency work may precede ticket
+    completion.
+blind_spots:
+- zh: 设备只记写操作、CLI 命令记账不覆盖 API、SNMPv3/SSH 加密正文、共享服务账户、NMS 不记录结果对象或仅有采样流量时，无法完成全部层级。response_bytes 不能证明其语义是配置，且 UDP SNMP 丢包会破坏请求响应连接。
+  en: Full layering fails when devices log only writes, CLI command accounting excludes APIs, SNMPv3 or SSH encrypts content,
+    service accounts are shared, NMS omits result objects, or traffic is sampled. Response bytes do not prove configuration
+    semantics, and UDP SNMP loss can break request-response joins.
+tuning_guidance:
+  paragraphs:
+  - zh: 按设备角色、软件版本、管理接口、service principal、来源管理器、作业类型和批准对象集合建立版本化基线；允许项绑定具体 job_id、设备/对象范围、时间和结果位置，绝不永久放行“管理网段”“read-only”或备份账户。对无法内容验证的环境分别输出响应候选与确认内容，避免用大于零字节阈值制造确定性。
+    en: Build versioned baselines by device role, software release, management interface, service principal, manager source,
+      job type, and approved object set. Bind an exception to a specific job ID, device and object scope, time, and result
+      destination, never permanently allowlist a management subnet, read-only label, or backup account. Where content cannot
+      be validated, output response candidates separately from confirmed content rather than manufacture certainty from a
+      nonzero-byte threshold.
+evidence_refs:
+- REF-001119
+- REF-000792
+- REF-001124
+- REF-001125
+- REF-001122
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-10-05'
+  modified: '2026-10-05'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

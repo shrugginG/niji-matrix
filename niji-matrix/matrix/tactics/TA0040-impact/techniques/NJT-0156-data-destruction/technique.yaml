@@ -1,0 +1,172 @@
+schema_version: 2.0.0
+type: technique
+id: NJT-0156
+name:
+  zh: 数据销毁
+  en: Data Destruction
+summary:
+  zh: 攻击者使业务数据失去原有用途，并利用破坏决策与后续服务执行的分离增加归因难度。
+  en: Adversaries make business data unusable and separate the destructive decision from later service execution
+    to complicate attribution.
+aliases: []
+classification:
+  tactic_refs:
+  - TA0040
+  origin:
+    kind: attack-adapted
+    source_attack_id: T1485
+    source_attack_version: '19.1'
+  decision_ref: DEC-TA0040-T1485
+definition_and_concept:
+  paragraphs:
+  - zh: 数据销毁是攻击者删除或覆写可识别的文件、数据对象或其有效内容，使业务数据不能继续按原用途读取和处理的影响行为。其结果可以是仍有旧版本可恢复的当前视图缺失，也可以是现存副本无法补救的内容损坏；具体删除命令、扩展名和存储产品都不是概念单位。
+    en: Data Destruction removes or overwrites identifiable files, objects, or useful content so business data cannot
+      continue to be read or processed as intended. The result may be absence from the current view with an older
+      version still recoverable, or content damage that surviving copies cannot repair. A deletion command, extension,
+      or storage product is not the conceptual unit.
+  - zh: 本矩阵关注攻击者怎样让破坏的原始决策与守方首先看到的数据损失脱节。直接批量删除和覆写界定父行为，但只有其实施方式有可支持的匿迹因果链时才属于正式匿迹研究对象；夜间执行、使用系统命令或备份薄弱本身不足以证明这种设计。
+    en: The Niji subject is how an adversary separates the original destructive decision from the loss first observed
+      by defenders. Direct bulk deletion and overwrite define the parent behavior, but only an implementation with
+      a supported stealth causal chain enters the formal stealth analysis. Nighttime execution, native commands,
+      or weak backup alone do not establish that design.
+stealth_characteristics:
+  paragraphs:
+  - zh: 攻击者若先改变数据保留规则，再由存储服务异步执行对象过期，单次控制面写入会变成稍后由服务主体产生的大量结果事件。只看对象数据事件或一个短窗口的防守方可能把正常到期当作原因，无法从每条对象事件直接找到写规则的人；这种分离改变的是归因路径，不会让数据损失本身消失。
+    en: When an adversary first changes retention rules and a storage service later expires objects asynchronously,
+      one control-plane write becomes many later result events under a service principal. A defender watching only
+      object data events or one short window may treat routine expiry as the cause and cannot identify the rule
+      writer from each object event. The split changes the attribution path; it does not erase the loss.
+  - zh: 规则差分、配置变更身份、生命周期通知、桶与对象键、删除标记、受保护版本和业务读取失败仍可串联。若控制面配置快照与服务结果被长期关联，匿迹优势会缩小；直接密集删除或覆写通常另有明显文件访问和业务中断信号，不能被推定具有同样观察分离。
+    en: Rule diffs, configuration-change identity, lifecycle notifications, bucket and object keys, delete markers,
+      protected versions, and failed business reads remain joinable. Long-horizon correlation between configuration
+      snapshots and service outcomes weakens the stealth effect. Concentrated direct deletion or overwrite usually
+      has conspicuous file-access and service-disruption signals and cannot be assumed to create the same observation
+      split.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 纳入攻击者使业务文件或对象失去用途并能证明破坏实施改变守方观察方式的行为。判断损失时要查明对象版本：删除标记可能只隐藏当前视图，旧版本仍可恢复；非版本化对象到期或内容覆写则可能产生更重损失。对恢复程度的判断须与攻击者意图和匿迹效果分开记录。
+    en: 'Include adversary actions that make business files or objects unusable and have a demonstrable change to
+      defender observation. Determine version state before describing loss: a delete marker may only hide the current
+      view while an older version remains, whereas unversioned expiry or content overwrite may cause greater loss.
+      Record recoverability separately from adversary intent and stealth effect.'
+  - zh: 删除攻击工具或日志以清理痕迹归 TA0005；加密且以密钥控制阻碍读取归 T1486；磁盘扇区或引导结构擦除归 T1561；快照和恢复副本抑制归 T1490；数据仍可用但值遭篡改归 T1565。获批保留期届满、容量清理、误删和备份轮转可能产生相似事件，必须结合审批、变更主体、规则覆盖和业务结果识别。
+    en: Deleting attacker tools or logs to clean traces belongs to TA0005; encryption denying reading through key
+      custody belongs to T1486; disk-sector or boot-structure wiping to T1561; snapshot and recovery-copy suppression
+      to T1490; and malicious changes to still-usable values to T1565. Approved retention expiry, capacity cleanup,
+      accidental deletion, and backup rotation can resemble these events, so classification needs approval, change
+      actor, rule scope, and business outcome.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: 在控制业务数据桶的生命周期配置后，攻击者可扩大删除规则的前缀或标签范围，或缩短当前及非当前版本的保留期，让服务在下一轮评估中清除符合条件的对象。该路径适用于无需逐一调用对象删除 API、却能等待服务执行的破坏；异步调度、版本控制与对象锁决定实际影响。
+      en: After gaining control over a business-data bucket's lifecycle configuration, an adversary can broaden
+        a deletion rule's prefix or tag scope or shorten current and noncurrent version retention, letting the service
+        remove eligible objects at a later evaluation. This path suits destruction without per-object delete calls
+        when the actor can wait for service execution. Asynchronous scheduling, versioning, and Object Lock determine
+        the actual impact.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者需要修改目标桶生命周期规则的权限、对关键对象范围的了解以及让规则保持生效的时间。在 AWS 实例中这要求生命周期配置权限而非逐对象删除权限。错误的过滤条件、配置被及时还原、受保护旧版本或保留锁都会缩小损失，也使单凭对象缺失难以证明永久毁损。
+        en: The adversary needs permission to alter the target bucket's lifecycle rule, knowledge of critical object
+          scope, and time for the rule to remain active. In the AWS instance this requires lifecycle-configuration
+          authority rather than per-object delete permission. Wrong filters, prompt rollback, protected prior versions,
+          or retention locks reduce loss and make permanent destruction harder to infer from object absence alone.
+    defender_model:
+      paragraphs:
+      - zh: 防守方可取得控制面管理事件、保存前后生命周期规则、对象过期通知或 EventBridge 结果、对象版本及业务读取情况。按桶、规则、过滤器、身份和时间跨平面关联才能从服务主体回溯原始写入者；若未保留旧规则或仅监测用户发起的对象
+          API，归因链会断裂。通知未开启和服务执行延迟也是明确的观察限制。
+        en: Defenders can collect management events, before-and-after lifecycle rules, object-expiry notifications
+          or EventBridge outcomes, object versions, and business-read results. Joining bucket, rule, filter, identity,
+          and time across planes is needed to trace a service-principal outcome back to the writer. Missing historical
+          rules or monitoring only user-initiated object APIs breaks that lineage; disabled notifications and service
+          delay are further visibility limits.
+stealth_mechanisms:
+- mechanism_ref: NM-BT
+  role: primary
+  summary:
+    zh: 服务执行将规则写入者与对象损失事件分离
+    en: Service execution separates the rule writer from object-loss events
+  analysis:
+    paragraphs:
+    - zh: 攻击者改写对象到期规则，把破坏决策留在配置事件中，随后存储服务按自身调度和身份生成对象删除或标记事件。对象侧监测看到服务执行而缺少原操作者和规则差分，单平面分析因而难以解释损失的发起原因；连接管理事件、历史规则与结果事件可重新恢复这条因果链。
+      en: An adversary rewrites an object-expiry rule, leaving the destructive decision in a configuration event.
+        The storage service later produces deletion or marker events on its own schedule and under its own identity.
+        Object-side monitoring sees service execution without the original actor or rule diff, making the initiating
+        cause harder to explain from one plane. Joining management events, historical rules, and outcomes restores
+        the chain.
+  evidence_refs:
+  - REF-000648
+  - REF-000649
+  - REF-000650
+  - REF-000651
+  - REF-000513
+  confidence: medium
+subtechnique_taxonomy:
+  narrative:
+    paragraphs:
+    - zh: 当前原生分类只保留委托执行式数据销毁：其变量是破坏规则写入者与数据删除执行者在身份、时间及遥测平面上的分离。ATT&CK 的生命周期功能提供实例，但子技术边界不按云平台或规则名称划分；直接删除、覆写及删除对象类型属于父级行为，尚无证据证明其他独立匿迹轴。
+      en: The current native taxonomy retains only Delegated-Execution Data Destruction. Its variable is separation
+        of the destructive rule writer from the data-deletion executor across identity, time, and telemetry plane.
+        ATT&CK's lifecycle feature supplies an example, but neither platform nor rule name defines the child. Direct
+        deletion, overwrite, and object type remain parent behavior without evidence for another independent stealth
+        axis.
+    - zh: 选择性保留关键目标已有 NJT-0117 负责，来宾传感器隔离已有 NJS-0111-004 负责；慢速销毁和保留路径的覆写仍待结论级证据。一个真实事件可能结合这些行为，但组合不应消除各自不同的直接对象和防守关联方法。
+      en: NJT-0117 owns selective preservation, and NJS-0111-004 owns guest sensor isolation. Slow destruction and
+        namespace-preserving overwrite remain deferred pending conclusion-level evidence. One incident can combine
+        these behaviors, but co-occurrence does not erase their different direct objects and defensive joins.
+  coverage: established
+  subtechnique_refs:
+  - NJS-0156-001
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000173
+    - DET-000174
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000158
+evidence:
+  claim_refs:
+  - CLM-000778
+  - CLM-000779
+  - CLM-000780
+  case_refs: []
+  reference_refs:
+  - REF-000647
+  - REF-000648
+  - REF-000649
+  - REF-000650
+  - REF-000651
+  - REF-000652
+  - REF-000653
+  - REF-000654
+  - REF-000655
+  - REF-000656
+  - REF-000657
+  - REF-000379
+  - REF-000513
+research:
+  limitations:
+    paragraphs:
+    - zh: 官方资料确证生命周期规则权限、异步执行和事件形态，Palo Alto Networks 的威胁分析支持间接删除如何绕开仅看对象访问的监测；现有公开资料没有把某个真实受害者完整追溯为恶意规则写入、服务过期和业务不可用。故该子技术的恶意实例为受约束的攻击路径推断，不能填造受害案例。
+      en: Official documentation establishes lifecycle authority, asynchronous execution, and event shapes, while
+        Palo Alto Networks' threat analysis supports how indirect deletion evades object-access-only monitoring.
+        Public evidence does not trace one real victim end to end from malicious rule write through service expiry
+        to business outage. The malicious instance is therefore a bounded attack-path inference, not a fabricated
+        victim case.
+    - zh: 实际删除时点、可恢复性和漏检与否取决于桶配置、版本控制、对象锁、通知和跨平面日志留存。4663 删除权限事件也可能反映重命名，必须用完成事件或对象状态核实；父级 Windows 文件分析不能被当作云生命周期子项的直接证据。
+      en: Actual deletion timing, recovery, and missed detection depend on bucket configuration, versioning, Object
+        Lock, notifications, and cross-plane log retention. A Windows 4663 delete-access event may also indicate
+        rename and needs a completion event or object-state check. The parent-level Windows file analytic is not
+        direct evidence for the cloud lifecycle child.
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-09-22'
+  modified: '2026-09-22'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

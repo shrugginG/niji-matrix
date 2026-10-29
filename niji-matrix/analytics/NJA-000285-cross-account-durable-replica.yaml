@@ -1,0 +1,147 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000285
+strategy_ref: DET-000228
+name:
+  zh: 源快照授权—目标副本物化关联
+  en: Source Snapshot Grant–Destination Replica Materialization Correlation
+summary:
+  zh: 连接源快照/对象、跨账户 share/copy 和目标账户中新对象的持久化结果。
+  en: Join a source snapshot or object, cross-account share or copy, and the materialized destination object.
+domains:
+- enterprise
+platforms:
+- IaaS
+logic:
+  paragraphs:
+  - zh: 对 snapshot/image/backup create、share/permission、KMS grant、copy/restore/volume create 和 revoke/delete 事件保存
+      event-time 资源版本。按 source object/snapshot ID、target account、request/event ID、时间和 provider shared-resource event
+      连接 createVolumePermission 或等价授权到 SharedSnapshotCopyInitiated、SharedSnapshotVolumeCreated、CopySnapshot completion
+      或目标 new object ID。目标账户不在组织/DR/安全备份 allowlist 时先报告 cross-account-exposure；copy initiated 为 receipt-in-progress；new
+      object/volume 或 provider completion 才为 durable-replica-confirmed。源 revoke/delete 不关闭已确认副本。
+    en: Preserve event-time resource versions for snapshot, image, or backup create; share or permission; KMS grant;
+      copy, restore, or volume create; and revoke or delete. Join createVolumePermission or equivalent authorization
+      to SharedSnapshotCopyInitiated, SharedSnapshotVolumeCreated, CopySnapshot completion, or destination new object
+      ID by source object or snapshot ID, target account, request or event ID, time, and provider shared-resource
+      event. When the target account is absent from organization, DR, or security-backup allowlists, report cross-account-exposure
+      first; copy initiated is receipt-in-progress; only a new object or volume or provider completion is durable-replica-confirmed.
+      Source revoke or delete does not close a confirmed replica.
+data_requirements:
+- source_type: cloud-resource-control-audit
+  name:
+    zh: snapshot、backup 与跨账户权限审计
+    en: Snapshot, backup, and cross-account permission audit
+  channel: AWS CloudTrail, Azure Activity, GCP Admin Activity, or equivalent
+  required_fields:
+  - timestamp
+  - provider
+  - source-account-or-tenant
+  - actor-id
+  - session-or-app
+  - event-name
+  - request-id
+  - source-object-id
+  - object-type
+  - target-account-or-tenant
+  - old-permissions
+  - new-permissions
+  - kms-key-or-grant
+  - result
+- source_type: provider-shared-resource-event
+  name:
+    zh: 提供方共享资源复制或恢复结果
+    en: Provider shared-resource copy or restore outcome
+  channel: SharedSnapshotCopyInitiated, SharedSnapshotVolumeCreated, copy completion, or equivalent
+  required_fields:
+  - timestamp
+  - provider
+  - source-account
+  - source-object-id
+  - destination-account
+  - destination-object-id-if-available
+  - operation
+  - request-or-event-id
+  - completion-state
+  - bytes-or-size-if-available
+- source_type: cloud-resource-inventory
+  name:
+    zh: 源与目标资源身份、owner 和敏感度清单
+    en: Source and destination resource identity, owner, and sensitivity inventory
+  channel: CSPM, asset inventory, backup catalog, and organization account registry
+  required_fields:
+  - provider
+  - account-or-tenant
+  - object-id
+  - object-type
+  - owner
+  - source-lineage
+  - encryption-key
+  - sensitivity
+  - tags
+  - creation-time
+  - state
+- source_type: approved-cross-account-transfer
+  name:
+    zh: 批准灾备、迁移和取证副本清单
+    en: Approved DR, migration, and forensic-copy inventory
+  channel: change, backup, legal, and security governance
+  required_fields:
+  - source-account
+  - source-object-scope
+  - destination-account
+  - owner
+  - purpose
+  - kms-scope
+  - valid-from
+  - valid-to
+  - ticket-id
+  - expected-new-object-pattern
+observables:
+- zh: 跨账户 snapshot/share/copy/backup 操作指向未批准账户或租户
+  en: A cross-account snapshot, share, copy, or backup operation targets an unapproved account or tenant
+- zh: 目标账户形成新对象 ID，源侧撤销后仍存在或可访问
+  en: A new destination object ID remains or is accessible after source-side revocation
+correlation:
+  window:
+    zh: 以三十日覆盖授权、复制、目标物化和源侧撤销；对交互式复制使用二十四小时分支。
+    en: Use thirty days for grant, copy, destination materialization, and source revocation, with a twenty-four-hour
+      branch for interactive copy.
+  dimensions:
+  - provider
+  - source-account
+  - source-object-id
+  - destination-account
+  - destination-object-id
+  - request-or-event-id
+  - kms-key-or-grant
+  - ticket-id
+false_positives:
+- zh: 批准灾备、并购迁移、托管服务和跨账户备份
+  en: Approved disaster recovery, merger migration, managed services, and cross-account backup
+blind_spots:
+- zh: 防守方无法读取目标账户审计或对象最终状态
+  en: The defender cannot read target-account audit or final object state
+- zh: 最终一致性、加密密钥或 provider 内部复制延迟结果验证
+  en: Eventual consistency, encryption keys, or provider-internal copying delays outcome validation
+tuning_guidance:
+  paragraphs:
+  - zh: 维护组织、DR、备份、取证和合作 account allowlist，并绑定 source resource scope、KMS 和 expected new-object pattern；未知目标账户、广源
+      snapshot、无工单、copy 后快速 revoke/delete 提高严重度。不要把所有跨账户备份列为误报，仍检查 owner、目的、标签和到期。
+    en: Maintain organization, DR, backup, forensic, and partner account allowlists bound to source-resource scope,
+      KMS, and expected new-object pattern. Raise severity for unknown target accounts, broad source snapshots,
+      no ticket, and rapid revoke or delete after copy. Do not suppress all cross-account backup; continue checking
+      owner, purpose, tags, and expiry.
+evidence_refs:
+- REF-000948
+- REF-000949
+- REF-000524
+- REF-000698
+- REF-000874
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-10-04'
+  modified: '2026-10-04'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

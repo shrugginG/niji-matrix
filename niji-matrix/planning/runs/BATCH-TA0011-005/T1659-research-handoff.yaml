@@ -1,0 +1,757 @@
+handoff_schema_version: '2.0.0'
+type: technique-research-handoff
+batch_ref: BATCH-TA0011-005
+work_item_ref: WORK-TA0011-T1659
+temporary_key_prefix: B5-T1659
+candidate:
+  source_type: attack
+  source_attack_id: T1659
+  name:
+    zh: 在线路径内容注入
+    en: Online-Path Content Injection
+recommendation:
+  decision: retain
+  confidence: high
+  original_attack_subtechniques_imported: false
+  canonical_resolution_recommendation: reuse-and-rewrite-existing
+  resulting_technique_reuse_ref: NJT-0052
+  rationale:
+    paragraphs:
+      - zh: >-
+          ATT&CK Enterprise 19.1 将同一 T1659 父技术同时映射到 TA0001 与 TA0011，并明确写明受控在线传输路径既可用于首次访问，也可向已经受控系统持续投递额外载荷和其他数据。ESET 对 MoustachedBouncer 的现场研究不仅记录按目标网络注入 DNS、HTTP 与 SMB 响应完成首次感染，还记录植入后的定时任务持续从路径局部的 SMB share 读取命令文件、把输出写回 share、取得插件并形成约一秒延迟的反向 shell。父行为与稳定路径变量未因战术阶段改变，因此 TA0011 应 retain 并复用 NJT-0052，而非复制父技术。
+        en: >-
+          ATT&CK Enterprise 19.1 maps the same T1659 parent to both TA0001 and TA0011 and explicitly states that compromised online transfer paths can provide initial access and continuously deliver additional payloads or other data to already compromised systems. ESET's field research on MoustachedBouncer documents not only target-network injection of DNS, HTTP, and SMB responses for first compromise, but also post-compromise scheduled tasks repeatedly reading command files from path-local SMB shares, writing output back to those shares, retrieving plugins, and forming a reverse shell with roughly one-second latency. The parent behavior and stable path variables do not change with tactic phase, so TA0011 should retain and reuse NJT-0052 rather than duplicate it.
+      - zh: >-
+          复用必须伴随父级与三个子项的逐字段重写。现有正式正文把 definition、scope、scenario、attacker/defender model、mechanism analysis 和 limitations 全部锚定在“首个入口”，并在 scope 中明确排除 C2；只增加 TA0011 tactic_ref 会制造自相矛盾。建议把父级改为阶段中性的“攻击者在受控传输路径中按请求注入内容，使接收端接受源站未发送的对象/回复”，再分别以首次立足点或持续命令/结果作为战术结果。三个既有 Niji 变量继续唯一拥有分类；新增 C2-only 子项未发现独立缺口。
+        en: >-
+          Reuse requires field-by-field rewriting of the parent and all three children. Current canonical definition, scope, scenario, attacker and defender models, mechanism analyses, and limitations all anchor on first entry, and the scope explicitly excludes C2. Adding only a TA0011 tactic reference would create a contradiction. Rewrite the parent as stage-neutral adversary injection of request-specific content on a controlled transfer path that causes a receiver to accept an object or response not sent by the origin, with either first foothold or continuing command-and-result exchange as the tactic outcome. The three existing Niji variables remain unique owners of the taxonomy; research found no independently supported C2-only child gap.
+proposed_content:
+  summary:
+    zh: 攻击者在受控在线传输路径中动态注入源站未发送的内容，使目标接收伪造响应，并用于建立入口或持续传递命令、载荷与结果。
+    en: An adversary dynamically injects origin-unsent content on a controlled online transfer path so a target accepts a forged response used either to establish access or to continue commands, payloads, and results.
+  definition_and_concept:
+    paragraphs:
+      - zh: >-
+          在线路径内容注入是攻击者观察或控制客户端与合法服务之间的数据传输，在不要求持久修改源站的情况下，合成、替换或插入针对当前请求的 DNS、HTTP、SMB 或等价响应，使接收端把攻击者内容当作该在线事务的一部分处理。直接行为对象是请求与接收响应之间被操纵的传输路径及响应差分，而不是恶意网站、单个载荷或后继执行本身。
+        en: >-
+          Online-Path Content Injection is adversary observation or control of data transfer between a client and a legitimate service, followed by synthesis, replacement, or insertion of a DNS, HTTP, SMB, or equivalent response for the current request without requiring persistent origin modification. The direct behavioral object is the manipulated transfer path and the difference between the requested and received response, rather than a malicious website, one payload, or successor execution itself.
+      - zh: >-
+          同一行为可产生两个战术结果。若注入响应使原本未受控主机首次执行、认证或建立通信，则属于 TA0001；若接收主机已经受控，注入路径反复提供任务、插件、数据或承载命令—结果回路，则属于 TA0011。判断锚点包括原始请求、源站/独立视点应答、目标实际收到的对象、攻击者控制条件以及目标处理结果。产品、ISP、DPI 设备、协议与文件类型只是实现条件。
+        en: >-
+          The same behavior can produce two tactic outcomes. An injected response causing the first execution, authentication, or communication on a previously uncontrolled host belongs to TA0001. Where the receiving host is already compromised and the injected path repeatedly supplies tasks, plug-ins, data, or a command-result loop, it belongs to TA0011. Classification anchors are the original request, origin or independent-vantage response, object actually received by the target, attacker-controlled condition, and target processing outcome. Product, ISP, DPI device, protocol, and file type are implementation conditions.
+  stealth_characteristics:
+    paragraphs:
+      - zh: >-
+          内容注入使恶意对象的可见来源与真实生成者分离。目标端仍访问熟悉 URL、IP 或共享路径，源站可能完全正常且没有对应日志；选择性门控让未匹配的探针和多数用户得到正常响应，竞速注入让目标只接受先到的伪造包，幻影服务又使某个 DNS/SMB/HTTP 端点只存在于受控路由视图。单视点信誉、源站取证或一次复现因此可能全部为阴性。
+        en: >-
+          Content injection separates the visible source of a malicious object from its real generator. The target still accesses a familiar URL, IP, or share path, while the origin can remain normal and hold no matching log. Selective gating gives unmatched probes and most users a normal response, racing injection causes the target to accept only the forged packet that arrives first, and phantom-service projection makes a DNS, SMB, or HTTP endpoint exist only in the controlled routing view. Reputation, origin forensics, or one-vantage reproduction can therefore all be negative.
+      - zh: >-
+          残余痕迹包括相同请求在目标、独立出口和源站之间的响应摘要差异，重复 TCP 序号但不同载荷，异常 DNS/HTTP/SMB 响应时间与路径，只在目标视图出现的解析/服务结果，以及目标收到内容后的文件、计划任务、命令读取、输出写回和插件执行。持续 C2 会在多轮请求与结果中重复这些关系，比首次注入提供更长的关联机会；TLS、攻击者控制终止点、短时门控和缺少独立视点仍会形成盲区。
+        en: >-
+          Residual traces include response-digest differences for the same request across target, independent egress, and origin, duplicate TCP sequence numbers with different payloads, anomalous timing and path for DNS, HTTP, or SMB responses, resolution or service results present only in the target view, and files, scheduled tasks, command reads, output writes, and plug-in execution after target receipt. Continuing C2 repeats these relationships across task and result cycles and offers a longer correlation opportunity than first injection. TLS, adversary-controlled termination, short-lived gating, and absent independent vantage remain blind spots.
+  scope_boundary_definition:
+    paragraphs:
+      - zh: >-
+          纳入要求证明客户端发出在线请求、攻击者控制的路径产生源站未发送或不一致的响应、目标接受或处理该响应，并形成首次入口或持续控制结果。TA0011 的高置信门还要求已经受控的目标通过注入路径取得任务/插件/控制数据，或至少一次可复核命令—结果回路；只有新文件到达时属于 T1105 的到达结果并可并列，不能仅凭下载认定持续 C2。合法 captive portal、CDN/Anycast、A/B 测试、个性化响应、企业安全代理和故障页是反例。
+        en: >-
+          Inclusion requires an online client request, an attacker-controlled path producing a response not sent by or inconsistent with the origin, target acceptance or processing of that response, and either a first-entry or continuing-control outcome. High-confidence TA0011 additionally requires an already compromised target to obtain tasking, plug-ins, or control data through the injected path, or at least one reproducible command-result loop. A newly arrived file can co-classify as T1105 outcome but does not by itself establish continuing C2. Legitimate captive portals, CDN or Anycast variation, A/B testing, personalized responses, enterprise security proxies, and error pages are counterexamples.
+      - zh: >-
+          T1090/NJT-0206 负责中介转发和路径对端变化，T1572 负责完整内层会话封装；仅有代理或隧道而没有伪造响应不属本项。T1102 负责外部 Web 服务资源本身承担命令交换，T1105 负责工具到达，NJT-0152 负责可见消息内容的噪声、载体或服务契约伪装；这些可与注入并列但不能替代“源站未发送的路径响应”。普通 CDN 修改、压缩、缓存和合法反恶意软件注入需按所有者、策略、签名与变更记录排除。
+        en: >-
+          T1090 and NJT-0206 own intermediary forwarding and changed path peers, while T1572 owns encapsulation of an intact inner session. A proxy or tunnel without a forged response is outside this technique. T1102 owns external Web-service resources used for command exchange, T1105 owns tool arrival, and NJT-0152 owns noise, carrier, or service-contract disguise in visible messages. They can coexist with injection but do not replace proof of a path response not sent by the origin. Ordinary CDN modification, compression, caching, and legitimate security injection require exclusion by owner, policy, signature, and change record.
+  application_scenarios_and_threat_model:
+    application_scenarios:
+      paragraphs:
+        - zh: >-
+            初始访问场景中，ISP 或上游路径只对匹配组织/来源的 captive-portal 请求注入假更新页面并把用户导向恶意安装包。持续 C2 场景中，已安装的 MoustachedBouncer/Disco 组件每分钟读取一个看似互联网 SMB share 的命令文件并写回输出；ESET 判断这些 IP 不由攻击者实际控制，SMB 回复在受控 ISP 路径上即时注入。相同路径还投递截图、PowerShell 和代理插件，使内容注入从入口延伸到重复任务与结果交换。
+          en: >-
+            In Initial Access, an ISP or upstream path injects a fake update page only for captive-portal requests from selected organizations and redirects users to a malicious installer. In continuing C2, installed MoustachedBouncer or Disco components read command files every minute from an apparently Internet-hosted SMB share and write output back. ESET assesses that the public IPs are not actually controlled by the actor and that SMB responses are injected on the controlled ISP path. The same path delivers screenshot, PowerShell, and proxy plug-ins, extending content injection from entry into repeated task-and-result exchange.
+    threat_model:
+      attacker_model:
+        paragraphs:
+          - zh: >-
+              攻击者需要持续观察目标请求并在响应到达前控制路径中的注入点，或控制能合成 DNS/HTTP/SMB 服务视图的中间设备。目标/请求门控还需要来源、路由、URL、Cookie 或抽样选择器；竞速需要及时获知序列/事务状态并先于源站应答；幻影服务需要同时控制解析和服务响应的一致性。持续 C2 还需让植入按稳定路径轮询、处理任务并回传结果，且承受路径变化、加密、VPN、提供方处置和独立视点探测。
+            en: >-
+              The adversary needs continuing observation of target requests and an injection point that can alter the path before the response arrives, or an intermediary able to synthesize a DNS, HTTP, or SMB service view. Target or request gating additionally needs source, route, URL, cookie, or sampling selectors. Racing requires timely sequence or transaction state and a reply preceding the origin. Phantom service requires consistent control of resolution and service responses. Continuing C2 also requires an implant to poll the stable path, process tasking, and return results while tolerating path change, encryption, VPNs, provider enforcement, and independent-vantage probes.
+      defender_model:
+        paragraphs:
+          - zh: >-
+              防守方需要目标端原始请求/响应与进程结果、独立网络出口的相同请求、真实源站或供应方访问日志、DNS/路由/代理记录，以及业务个性化基线。TA0011 还需连接反复轮询、共享文件读写、命令/输出对象、计划任务和插件执行。稳定关联键包括 device/process、request fingerprint、TCP seq/ack 或 transaction ID、URL/host/share path、response hash、vantage、route、command/result object 和 time。
+            en: >-
+              Defenders need the target's raw request and response plus process outcome, the same request from an independent network egress, true-origin or provider access logs, DNS, route, and proxy records, and a baseline for legitimate personalization. TA0011 additionally needs joins across repeated polling, share-file reads and writes, command and output objects, scheduled tasks, and plug-in execution. Stable keys include device or process, request fingerprint, TCP sequence and acknowledgment or transaction ID, URL, host, or share path, response hash, vantage, route, command or result object, and time.
+          - zh: >-
+              没有源站/独立视点时，浏览器/端点只能证明接收和后继结果，不能证明内容是在路径中注入；没有端点时，多视点差分只能证明响应完整性异常，不能证明 C2。加密流量只有在攻击者不控制终止点且证书/信任正确验证时才能阻止中间注入；被控根证书、合法拦截代理、终端代理和明文 SMB/HTTP 会改变观察。结论应按“路径差分”“目标接受”“C2 结果”三个证据级别输出。
+            en: >-
+              Without origin or independent vantage, browser or endpoint telemetry proves receipt and successor outcome but not path injection. Without endpoint evidence, a multivantage difference proves response-integrity anomaly but not C2. Encryption blocks middle injection only where the attacker lacks termination control and certificates or trust are correctly validated; compromised roots, authorized intercepting proxies, endpoint agents, and plaintext SMB or HTTP alter observation. Findings should retain separate evidence levels for path difference, target acceptance, and C2 outcome.
+  stealth_mechanisms:
+    - mechanism_ref: NM-ST
+      role: primary
+      summary:
+        zh: 选择性路径注入把同一控制链分散到少数目标和视点
+        en: Selective path injection disperses one control chain across a small target and vantage set
+      analysis:
+        paragraphs:
+          - zh: >-
+              攻击者只在匹配来源、路由或请求条件时注入任务/服务响应，使源站、非目标用户和普通研究探针继续看到正常内容；C2 命令、结果和插件痕迹仅出现在少数目标路径与时段。单视点或短窗无法复现，同一控制链被分散到 ISP、目标端点、伪造服务和源站日志，需要跨视点重建，形成时空释痕。MoustachedBouncer 对少数使馆网络的门控及多轮 SMB 控制直接支持该链。
+            en: >-
+              The adversary injects tasking or service responses only when source, route, or request conditions match, leaving the origin, non-target users, and ordinary research probes with normal content. C2 command, result, and plug-in traces appear only on a small set of target paths and times. One vantage or short window cannot reproduce the event, and the control chain is dispersed across ISP, endpoint, phantom service, and origin logs, producing Spatiotemporal Trace Dilution. MoustachedBouncer gating to a few embassy networks and repeated SMB control directly support the chain.
+      evidence_keys:
+        - REF-000085
+        - REF-000096
+      confidence: high
+    - mechanism_ref: NM-BT
+      role: secondary
+      summary:
+        zh: 源站视角缺失被路径生成的命令与服务响应
+        en: The origin vantage lacks commands and service responses generated on the path
+      analysis:
+        paragraphs:
+          - zh: >-
+              路径设备在源站之外合成响应，目标接受并处理命令或插件，而源站及其日志没有对应对象；只依赖源站完整性和信誉的防守逻辑看不到关键控制动作。目标、路径和端点仍有请求响应、内容和结果痕迹，扩大观察面可恢复差异，形成行为透明。ESET 所述不实际控制公共 IP 却经注入 SMB 提供反向 shell 的情形是直接实例。
+            en: >-
+              A path device synthesizes a response outside the origin, the target accepts and processes commands or plug-ins, and the origin and its logs have no matching object. Defensive logic relying on origin integrity and reputation misses the critical control action. Target, path, and endpoint still retain request-response, content, and outcome traces recoverable through a broader observation model, producing Behavioral Transparency. ESET's injected SMB reverse shell through public IPs not actually controlled by the actor is a direct instance.
+      evidence_keys:
+        - REF-000096
+      confidence: high
+    - mechanism_ref: NM-FD
+      role: secondary
+      summary:
+        zh: 合法请求目标与路径局部服务外观掩盖攻击者生成内容
+        en: Legitimate requested targets and path-local service appearance conceal attacker-generated content
+      analysis:
+        paragraphs:
+          - zh: >-
+              注入响应沿用用户或植入体原本请求的域名、IP、URL 或共享路径，并可呈现为更新、DNS 解析或 SMB 服务；粗粒度规则把目标信誉和熟悉协议当作内容来源，误将攻击者响应归为正常服务。证书、响应摘要、真实源站 receipt、路径路由和后继动作可以破坏这种特征伪装。该机理只在响应确实借用合法/常见服务外观时成立，不由注入本身自动推出。
+            en: >-
+              An injected response reuses the domain, IP, URL, or share path originally requested by a user or implant and can appear as an update, DNS resolution, or SMB service. Coarse rules treat destination reputation and familiar protocol as content provenance and misclassify the adversary response as normal service. Certificates, response digests, true-origin receipt, path routing, and successor action can break the disguise. This mechanism applies only where the response actually borrows legitimate or common service appearance and is not automatic for every injection.
+      evidence_keys:
+        - REF-000096
+        - REF-000097
+      confidence: medium
+  subtechnique_taxonomy:
+    narrative:
+      paragraphs:
+        - zh: >-
+            继续复用三个 Niji 原生变量，但把正文改为战术中性。目标与请求门控注入控制“哪些目标/请求收到攻击者响应”，适用于入口和持续 C2；竞速式伪造响应注入控制“伪造包是否以有效会话状态抢先于源站”，变量本身阶段中性，但当前独立 C2 事件证据不足；路径局部幻影服务投射控制“恶意解析/服务是否只在目标路由视图存在”，MoustachedBouncer 的注入 SMB reverse shell 为直接 C2 证据。三者分别需要群体/视点差分、包序列竞速和解析—服务—路由一致性防御。
+          en: >-
+            Reuse the three Niji-native variables but rewrite them as tactic-neutral. Target-and-Request-Gated Injection controls which targets or requests receive the adversary response and applies to both entry and continuing C2. Racing Forged-Response Injection controls whether a forged packet with valid session state precedes the origin; the variable is stage-neutral, but independent C2 incident evidence remains insufficient. Path-Local Phantom Service Projection controls whether malicious resolution or service exists only in the target routing view, with MoustachedBouncer's injected SMB reverse shell providing direct C2 evidence. They require population or vantage differential, packet-sequence race, and resolution-to-service-to-route consistency defenses respectively.
+        - zh: >-
+            不新增 C2-only 子项。命令与结果是否持续属于父级 TA0011 结果门，而非新的匿迹变量；额外载荷到达可并列 T1105，消息编码/加密/伪装、代理转发和协议隧道由相邻对象拥有。父级及 NJS-0052-001/002/003 必须全部删除“截止首个立足点/排除后续通信”的硬边界，改为根据 tactic outcome 分流，同时保留产品、协议和 ISP 名称不得定义子项。
+          en: >-
+            Create no C2-only child. Continuing commands and results are the parent's TA0011 outcome gate rather than another stealth variable. Additional payload arrival can co-classify as T1105, while message encoding, encryption or disguise, proxy forwarding, and protocol tunneling remain with adjacent objects. The parent and NJS-0052-001/002/003 must all remove hard boundaries ending at first foothold or excluding later communication and instead branch by tactic outcome, while retaining the rule that product, protocol, and ISP name do not define children.
+    coverage: established
+    reused_subtechnique_refs:
+      - NJS-0052-001
+      - NJS-0052-002
+      - NJS-0052-003
+proposed_subtechniques: []
+cross_tactic_child_applicability:
+  - child_ref: NJS-0052-001
+    ta0011_status: supported
+    confidence: high
+    c2_evidence:
+      zh: ESET 记录只对少数目标网络注入 DNS/HTTP/SMB；同一受控路径在植入后按稳定 share/path 反复投递插件与命令并回收输出。
+      en: ESET documents DNS, HTTP, and SMB injection for a small set of target networks; after compromise the same controlled path repeatedly delivers plug-ins and commands and retrieves output through stable shares and paths.
+    required_rewrite:
+      zh: 所有 first-entry/foothold/entry-condition 表述改为接收目标或请求条件，并允许 TA0001 首次结果或 TA0011 持续控制结果。
+      en: Replace every first-entry, foothold, and entry-condition statement with receiver or request conditions and allow either TA0001 first-result or TA0011 continuing-control outcome.
+  - child_ref: NJS-0052-002
+    ta0011_status: evidence-deferred
+    confidence: hypothesis
+    c2_evidence:
+      zh: REF-000098 技术复现选择器、有效 TCP 序列和竞速伪造响应，充分支持变量与入口应用；当前研究未找到结论级公开事件证明该竞速机制被用于已受控植入的重复命令—结果交换。
+      en: REF-000098 technically reproduces selectors, valid TCP sequence state, and a racing forged response and adequately supports the variable and its entry use. This research found no conclusion-level public incident proving repeated command-result exchange for an already compromised implant through that race.
+    required_rewrite:
+      zh: 正文改为阶段中性，但 TA0011 场景必须标为研究假设；正式事件只有恢复注入 C2 响应与后继命令结果时才可映射本子项。
+      en: Rewrite prose as stage-neutral but keep the TA0011 scenario explicitly hypothetical; map an event only after recovering an injected C2 response and successor command outcome.
+  - child_ref: NJS-0052-003
+    ta0011_status: supported
+    confidence: high
+    c2_evidence:
+      zh: ESET 记录不存在于开放互联网的解析/SMB 服务在目标路径中被合成，已受控主机的任务每分钟读写命令/输出文件并形成反向 shell。
+      en: ESET documents resolution and SMB services absent from the open Internet but synthesized in the target path, with tasks on compromised hosts reading and writing command and output files every minute to form a reverse shell.
+    required_rewrite:
+      zh: 定义、范围、场景、攻防模型和机理改为路径局部服务/解析结果可服务首次投递或持续 C2，不再排除立足点后的通信。
+      en: Rewrite definition, boundary, scenario, threat models, and mechanisms so path-local service or resolution can support first delivery or continuing C2 and no longer exclude post-foothold communication.
+reuse_rewrite_audit:
+  parent_ref: NJT-0052
+  parent_fields:
+    summary:
+      action: revise
+      reason:
+        zh: 现有摘要只写动态注入和正常源站，但未表达持续通信；新摘要应同时覆盖入口和 C2。
+        en: The current summary states dynamic injection and a normal origin but omits continuing communication; revise it to cover entry and C2.
+    definition_and_concept:
+      action: replace
+      reason:
+        zh: 现有定义把直接目标限定为 Initial Access 的第一个立足点，必须改为阶段中性请求—响应差并明确双战术结果。
+        en: The current definition limits the direct objective to the first Initial Access foothold and must become a stage-neutral request-response differential with two tactic outcomes.
+    stealth_characteristics:
+      action: replace
+      reason:
+        zh: 现有正文以“入口痕迹”笼统描述，需写明源站无记录、多视点响应差和重复 C2 周期残迹。
+        en: Current prose generically describes entry traces and must state absent origin records, multivantage response differences, and repeated C2-cycle residue.
+    scope_boundary_definition:
+      action: replace
+      reason:
+        zh: 当前明确截止立足点并排除 C2，与 TA0011 复用直接冲突；必须以请求、源站差分、目标接受和 tactic outcome 为门。
+        en: The current field explicitly ends at foothold and excludes C2, directly conflicting with TA0011 reuse; gate on request, origin difference, target acceptance, and tactic outcome instead.
+    application_scenarios:
+      action: replace
+      reason:
+        zh: 当前只有首次入口场景；加入 MoustachedBouncer 注入 SMB 命令/输出与插件的持续 C2 场景。
+        en: The current field contains only first entry; add MoustachedBouncer repeated injected SMB command, output, and plug-in C2.
+    attacker_model:
+      action: replace
+      reason:
+        zh: 当前混入身份、物理和供应链通用模板；改为请求观察、路径注入、选择器、竞速/服务合成和持续轮询能力。
+        en: Current prose contains generic identity, physical, and supply-chain language; replace it with request observation, path injection, selectors, racing or service synthesis, and continuing polling capabilities.
+    defender_model:
+      action: replace
+      reason:
+        zh: 当前是通用入口跨层模板；改为目标/独立出口/真实源站/路径/端点五视角和 C2 结果分级。
+        en: Replace the generic entry template with target, independent egress, true origin, path, and endpoint vantages plus graded C2 outcomes.
+    stealth_mechanisms:
+      action: replace
+      reason:
+        zh: 三项机理均使用相同“已证实子技术通过入口条件”模板；重写为选择性稀释、源站观察空白和服务外观归因差，并校准各自证据。
+        en: All three mechanisms use the same entry-condition template; rewrite as selective dilution, origin-vantage absence, and service-appearance provenance difference with calibrated evidence.
+    subtechnique_taxonomy:
+      action: revise
+      reason:
+        zh: 三个变量可保留，但叙述需阶段中性并单列 NJS-0052-002 的 C2 证据缺口。
+        en: Retain all three variables but make the narrative stage-neutral and record the C2 evidence gap for NJS-0052-002.
+    defense:
+      action: extend
+      reason:
+        zh: 保留入口 DET/MIT，同时增加专用 C2 DET/NJA/MIT；不能让浏览器入口分析冒充持续 C2 覆盖。
+        en: Keep entry DET and MIT while adding a dedicated C2 DET, NJA, and MIT; browser-entry analysis cannot stand in for continuing C2 coverage.
+    evidence:
+      action: extend
+      reason:
+        zh: 复用 REF-000096 但扩展 locator/Claims/Case 到注入 SMB reverse shell；替换 CLM-000237 的 first-foothold 限定。
+        en: Reuse REF-000096 but extend locator, claims, and case to the injected SMB reverse shell; replace CLM-000237's first-foothold limitation.
+    research_limitations:
+      action: replace
+      reason:
+        zh: 分开入口证据、直接 C2 证据和竞速子项 C2 假设，不能沿用笼统入口限制。
+        en: Separate entry evidence, direct C2 evidence, and the racing-child C2 hypothesis instead of retaining generic entry limitations.
+  child_fields:
+    common_rewrite_fields:
+      - definition_and_concept
+      - stealth_characteristics
+      - scope_boundary_definition
+      - application_scenarios
+      - attacker_model
+      - defender_model
+      - stealth_mechanisms
+      - research.limitations
+    common_reason:
+      zh: 三个子项上述字段均包含 first entry、foothold、entry condition 或排除立足点后通信，必须逐项重写；名称与稳定变量可保留。
+      en: These fields in all three children contain first-entry, foothold, entry-condition, or post-foothold exclusion language and require individual rewrite; names and stable variables may remain.
+defense_candidates:
+  detection_strategies:
+    - temporary_key: B5-T1659-DET-C2-INJECTION
+      resolution_recommendation: create
+      name:
+        zh: 注入响应—持续 C2 结果多视点关联
+        en: Injected-Response–Continuing-C2 Multivantage Correlation
+      objective:
+        zh: 比较目标、独立出口与真实源站对同一请求的响应，识别门控、竞速或路径局部服务注入，并连接已受控端的重复任务、插件和命令—结果回路。
+        en: Compare target, independent-egress, and true-origin responses to the same request, identify gated, racing, or path-local service injection, and join it to repeated tasking, plug-ins, and command-result loops on an already compromised endpoint.
+      targets:
+        - NJT-0052
+        - NJS-0052-001
+        - NJS-0052-002
+        - NJS-0052-003
+      domains:
+        - enterprise
+      analytic_keys:
+        - B5-T1659-NJA-C2-INJECTION
+      evidence_keys:
+        - REF-000085
+        - REF-000096
+        - REF-000097
+        - REF-000098
+        - REF-000632
+        - REF-000634
+        - REF-000474
+        - REF-000475
+        - REF-000598
+      duplicate_resolution:
+        zh: DET-000051/NJA-000025 以浏览器入口和首个结果为身份，并同时覆盖 NJT-0053；把其扩展为持续 C2 会改变目标、窗口、结果门和误报。保留原对象用于 TA0001，create 新 DET/NJA 并在同一 NJT/NJS 上并列引用。
+        en: DET-000051 and NJA-000025 are identified by browser entry and first outcome and also cover NJT-0053. Extending them to continuing C2 would change objective, window, outcome gates, and false positives. Keep them for TA0001 and create a new DET and NJA referenced by the same NJT and NJS objects.
+  detection_analytics:
+    - temporary_key: B5-T1659-NJA-C2-INJECTION
+      strategy_key: B5-T1659-DET-C2-INJECTION
+      resolution_recommendation: create
+      name:
+        zh: 多视点响应差—目标接受—C2 循环分析
+        en: Multivantage Response Differential–Target Acceptance–C2 Loop Analytic
+      platforms:
+        - Windows
+        - Linux
+        - macOS
+        - Network
+      logic:
+        paragraphs:
+          - zh: >-
+              为目标端每次 DNS、HTTP、SMB 或等价请求生成 request_fingerprint，包含客户端/进程、host/path/share、方法/操作、事务或 TCP 状态及时间。将目标收到的 response_hash、status、headers、DNS answer 或 SMB object 与同窗独立出口探针、真实源站 receipt/response、代理/路径记录比较。若目标响应与源站不一致且源站无 matching receipt，保留 path_response_differential；若端点进程实际读取/执行该对象，提升为 accepted_injected_response。
+            en: >-
+              Generate request_fingerprint for every DNS, HTTP, SMB, or equivalent target request from client or process, host, path or share, method or operation, transaction or TCP state, and time. Compare the target's response_hash, status, headers, DNS answer, or SMB object with an independent-egress probe, true-origin receipt and response, and proxy or path records in the same window. Retain path_response_differential when the target response differs and the origin has no matching receipt. Raise to accepted_injected_response when the endpoint process reads or executes the object.
+          - zh: >-
+              对目标/请求门控，计算同资源在目标群、路由、Cookie/参数及时间上的差异并要求注入只稳定命中特定集合；对竞速，寻找同五元组和请求的重复 TCP sequence/ack 或 transaction ID 异载荷、到达顺序及目标实际接受者；对幻影服务，要求目标解析/连接的服务在开放互联网或独立路径不存在、请求未到达声称源站，而路径侧仍返回可用内容。随后关联同一 device/process/task 在二十四小时内的命令文件读取、输出写回、插件/子进程和重复轮询。
+            en: >-
+              For target or request gating, calculate resource differences across target population, route, cookie or parameter, and time and require stable injection only into a selected set. For racing, find different payloads with duplicate TCP sequence and acknowledgment state or transaction ID for the same flow and request, arrival order, and which response the target accepted. For phantom service, require resolution or service reachable from the target but absent through an open-Internet or independent path, no request at the claimed origin, and usable content returned on-path. Then join command-file reads, output writes, plug-ins or child processes, and repeated polling by the same device, process, or task within twenty-four hours.
+          - zh: >-
+              高置信 TA0011 输出要求 path_response_differential、target acceptance 与 continuing C2 outcome 三门齐全，并观察至少一次命令—结果闭环或两次方向一致的任务/插件周期。只有恶意文件首次执行时交给 DET-000051/NJA-000025 作为入口；只有新文件到达时并列 T1105；只有响应差异而无端点结果时保持完整性异常。NJS-0052-002 在没有真实 C2 竞速案例前不得由形态阈值自动映射。
+            en: >-
+              High-confidence TA0011 output requires all three gates: path_response_differential, target acceptance, and continuing C2 outcome, plus at least one command-result loop or two directionally consistent task or plug-in cycles. A first malicious execution hands off to DET-000051 and NJA-000025 as entry. A new file arrival alone co-classifies with T1105. A response difference without endpoint outcome remains an integrity anomaly. NJS-0052-002 must not be automatically mapped from shape thresholds while no real C2 racing case is available.
+      data_requirements:
+        - source_type: target-request-response
+          name:
+            zh: 目标端请求、响应与接收对象
+            en: Target Request, Response, and Received Object
+          channel: packet capture, proxy, Zeek HTTP/DNS/SMB, browser or application telemetry where authorized
+          required_fields:
+            - event_time
+            - vantage_id
+            - device_id
+            - process_start_key_when_available
+            - flow_or_transaction_id
+            - source_and_destination
+            - request_host_or_name
+            - request_path_or_share
+            - request_method_or_operation
+            - tcp_seq_ack_when_available
+            - response_status_or_dns_rcode
+            - response_headers_or_answers
+            - response_object_hash
+            - response_arrival_order
+        - source_type: origin-and-independent-vantage
+          name:
+            zh: 真实源站与独立出口对照
+            en: True-Origin and Independent-Egress Comparison
+          channel: origin access logs, provider receipt, independent probe, alternate egress or trusted VPN
+          required_fields:
+            - event_time
+            - vantage_id
+            - request_fingerprint
+            - origin_receipt
+            - origin_response_hash
+            - response_status
+            - dns_answer_or_service_reachability
+            - certificate_or_server_identity
+            - route_or_provider
+        - source_type: endpoint-command-and-result
+          name:
+            zh: 注入对象消费、命令与结果
+            en: Injected-Object Consumption, Command, and Result
+          channel: EDR, process/file/task audit, Windows Event 5145 for SMB where enabled
+          required_fields:
+            - event_time
+            - device_id
+            - process_start_key
+            - image
+            - parent_process_key
+            - scheduled_task_or_service
+            - object_path
+            - object_hash_when_available
+            - read_write_execute_action
+            - command_or_plugin_identity
+            - result_path_or_hash
+            - successor_network_destination
+        - source_type: path-control-and-route
+          name:
+            zh: 代理、ISP、路由与解析路径
+            en: Proxy, ISP, Route, and Resolution Path
+          channel: managed proxy, resolver, router, VPN, ISP or provider audit where available
+          required_fields:
+            - event_time
+            - path_or_device_id
+            - client_or_route_scope
+            - request_match_condition_when_available
+            - upstream_destination
+            - response_source
+            - policy_or_config_version
+            - actor_or_owner
+        - source_type: legitimate-content-variation-baseline
+          name:
+            zh: 合法内容差异和安全注入清单
+            en: Legitimate Content Variation and Security-Injection Inventory
+          channel: CDN, application, captive portal, proxy, security and change management
+          required_fields:
+            - owner
+            - service
+            - variant_condition
+            - expected_response_hash_or_schema
+            - security_injector
+            - change_ticket
+            - valid_from
+            - valid_to
+      raw_to_normalized_fields:
+        - raw: Zeek or proxy ts, uid, client, host, uri or SMB share and operation
+          normalized: event_time, flow_or_transaction_id, client_id and request_fingerprint
+        - raw: TCP sequence and acknowledgment plus packet payload hash
+          normalized: session_state_key, response_variant_hash and arrival_order
+        - raw: HTTP response status, headers, body or file hash
+          normalized: response_status, response_metadata and response_object_hash
+        - raw: DNS query, answer, rcode and resolver identity
+          normalized: request_name, response_endpoint and response_source_vantage
+        - raw: origin access log receipt and response object
+          normalized: origin_receipt and origin_response_hash
+        - raw: DeviceFileEvents or Event 5145 path, hash, action and process/user
+          normalized: injected_object_consumption and command_or_result_object
+        - raw: DeviceProcessEvents process unique key, command line and parent
+          normalized: process_start_key and successor_action
+        - raw: scheduled task/service cycle and repeated file accesses
+          normalized: c2_cycle_id, cycle_direction and cycle_count
+      observables:
+        - zh: 目标收到与真实源站/独立视点不同的响应，且声称源站没有对应请求或对象
+          en: The target receives a response differing from true origin or independent vantage and the claimed origin lacks the matching request or object
+        - zh: 同请求存在有效会话状态的异载荷竞速响应，目标接受伪造版本
+          en: The same request receives racing different-payload responses with valid session state and the target accepts the forged version
+        - zh: 只在目标路径存在的 DNS/SMB/HTTP 服务反复传递任务并接收结果
+          en: A DNS, SMB, or HTTP service existing only on the target path repeatedly delivers tasks and receives results
+      correlation:
+        window:
+          zh: 单请求竞速使用完整 TCP/事务寿命；独立视点比较默认五分钟；C2 循环默认二十四小时并按植入轮询延长至七日，原始摘要至少保留三十日。
+          en: Use the full TCP or transaction lifetime for one race, five minutes by default for independent-vantage comparison, and twenty-four hours for the C2 loop with extension to seven days based on implant polling; retain raw digests for at least thirty days.
+        dimensions:
+          - device_id
+          - process_start_key
+          - request_fingerprint
+          - session_state_key
+          - flow_or_transaction_id
+          - host_url_or_share
+          - response_variant_hash
+          - vantage_id
+          - route_or_provider
+          - command_or_result_object
+          - c2_cycle_id
+          - time
+      false_positives:
+        - zh: CDN/Anycast、A/B 测试、动态个性化、captive portal、企业代理/防病毒注入、缓存重验证、split DNS、合法 SMB 镜像和灾备
+          en: CDN or Anycast, A/B testing, dynamic personalization, captive portals, enterprise proxy or antivirus injection, cache revalidation, split DNS, legitimate SMB mirrors, and disaster recovery
+      blind_spots:
+        - zh: TLS 或 SMB 加密且没有合法终止视角、攻击者控制信任根/终止点、无源站日志、门控窗口短于探针、ISP 不共享日志或端点代理缺失
+          en: TLS or SMB encryption without a lawful termination vantage, adversary control of trust root or termination, absent origin logs, a gate shorter than probe cadence, unavailable ISP logs, or missing endpoint agent
+        - zh: CDN 合法个性化无稳定响应摘要，NAT/代理破坏客户端身份，命令在内存消费不落盘或结果走另一通道
+          en: Legitimate CDN personalization lacks a stable response digest, NAT or proxy breaks client identity, commands are consumed in memory without files, or results use another channel
+      tuning_guidance:
+        paragraphs:
+          - zh: >-
+              以服务 owner、发布版本、CDN 规则、代理注入、目标群和变更期限建立 response-variant 基线。高置信必须闭合三门并排除合法 variation；域名信誉、单个 hash 差异、重复序号或浏览后执行均只触发复核。对隐私敏感正文优先保存摘要、schema 和签名验证结果，必要的原件按最小权限和期限隔离保留。
+            en: >-
+              Baseline response variants by service owner, release version, CDN rule, proxy injection, target population, and change validity. High confidence requires all three gates and exclusion of legitimate variation. Domain reputation, one hash difference, duplicate sequence numbers, or post-browse execution only starts review. For privacy-sensitive content, prefer digests, schemas, and signature-validation results and isolate necessary originals under least privilege and retention limits.
+      evidence_keys:
+        - REF-000096
+        - REF-000097
+        - REF-000098
+        - REF-000632
+        - REF-000634
+        - REF-000474
+        - REF-000475
+        - REF-000598
+      logic_status: implementable_design_not_validated_on_local_data
+  mitigations:
+    - temporary_key: B5-T1659-MIT-C2-RESPONSE-INTEGRITY
+      resolution_recommendation: create
+      name:
+        zh: 持续响应真实性与独立路径验证
+        en: Continuing Response Authenticity and Independent-Path Validation
+      control_purpose:
+        zh: 让已受控端只接受可验证来源、会话状态和新鲜度的任务/载荷，并通过不受同一路径控制的出口或源站证据验证关键响应。
+        en: Make compromised endpoints accept tasking or payloads only with verifiable origin, session state, and freshness and validate critical responses through an egress or origin evidence outside the same controlled path.
+      measures:
+        - key: authenticated-task-and-result-objects
+          control_type: preventive
+          action:
+            zh: 对管理、更新、代理和离线任务通道使用端到端 TLS/mTLS 或应用层签名，并把任务号、nonce、目标身份、到期与结果引用纳入签名验证；验证失败时不执行内容并保留证据。
+            en: Use end-to-end TLS or mTLS and application-layer signatures for management, update, agent, and task channels, signing task number, nonce, target identity, expiry, and result reference. Do not execute content after validation failure and preserve evidence.
+        - key: independent-path-and-origin-validation
+          control_type: exposure-reduction
+          action:
+            zh: 关键外联经受信 VPN/代理/resolver 离开本地高风险路径，或使用不同运营商/云探针与真实源站比较解析、证书、响应摘要和 receipt；禁止从互联网或未认证路径使用明文 SMB/HTTP 管理任务。
+            en: Route critical egress through a trusted VPN, proxy, or resolver outside the local high-risk path, or compare resolution, certificate, response digest, and receipt through another carrier or cloud probe and the true origin. Prohibit plaintext SMB or HTTP management tasking from Internet or unauthenticated paths.
+        - key: response-integrity-and-cycle-audit
+          control_type: detective-support
+          action:
+            zh: 为每个任务/响应保留 request fingerprint、源站 receipt、目标响应摘要、验证结果、端点消费和结果对象，使用 canary/独立视点定期检测选择性注入，并覆盖最长合法轮询周期。
+            en: Retain request fingerprint, origin receipt, target response digest, validation result, endpoint consumption, and result object for every task or response. Use canary or independent vantages to test selective injection and retain through the longest legitimate polling cycle.
+      applications:
+        - target_ref: NJT-0052
+          use:
+            zh: 对已受控端的任务、插件和控制数据要求端到端来源验证与新鲜度，禁止把目的域/IP 或熟悉协议当作内容授权；关键路径同时保留独立视点和源站 receipt。首次入口仍并列使用 MIT-000050 的浏览器/TLS/SRI 控制。
+            en: Require end-to-end origin and freshness validation for tasking, plug-ins, and control data on compromised endpoints and never treat destination domain or IP or a familiar protocol as content authorization. Retain independent-vantage and origin receipt for critical paths. Continue using MIT-000050 browser, TLS, and SRI controls for first entry.
+          expected_effect:
+            zh: 路径设备即使能生成语法正确响应，也需伪造端到端任务身份或控制独立验证路径，注入内容在执行前可被拒绝并可审计。
+            en: A path device generating syntactically valid responses must also forge end-to-end task identity or control the independent validation path; injected content can be rejected and audited before execution.
+          limitations:
+            zh: 旧植入和通用协议可能没有签名机制，密钥或更新基础设施被控会失效；VPN、独立运营商和正文留存增加成本、隐私和可用性风险。
+            en: Legacy implants and generic protocols may lack signatures, and compromise of keys or update infrastructure defeats validation. VPNs, independent carriers, and content retention add cost, privacy, and availability risk.
+        - target_ref: NJS-0052-001
+          use:
+            zh: 用不同来源/路由的 canary 与目标群定期发起相同请求，比较响应摘要和源站 receipt；任务签名绑定 target ID 和 nonce，避免攻击者仅对命中目标生成可执行响应。
+            en: Issue the same requests from canaries and target populations using different origins or routes, comparing response digests and origin receipts. Bind task signatures to target ID and nonce so the adversary cannot generate executable responses only for matched targets.
+          expected_effect:
+            zh: 选择性门控不再让所有非目标视点保持无证据，目标专属内容与签名/发布清单不符时暴露。
+            en: Selective gating no longer leaves every non-target vantage without evidence, and target-only content becomes visible when it conflicts with signatures or release manifests.
+          limitations:
+            zh: 极短门控、对 canary 识别、合法个性化和区域 CDN 可能绕过或混淆比较；需要真实用户隐私保护和路由多样性。
+            en: Very short gates, canary identification, legitimate personalization, and regional CDNs can evade or confuse comparison; real-user privacy protection and route diversity are required.
+        - target_ref: NJS-0052-002
+          use:
+            zh: 强制使用正确验证的 TLS/QUIC 或消息签名，使先到但未认证的响应不可消费；在可见明文路径保存重复 seq/ack 异载荷和到达顺序，并在边界阻断无签名任务。
+            en: Enforce correctly validated TLS or QUIC or message signatures so an earlier unauthenticated response cannot be consumed. On visible plaintext paths preserve different-payload duplicate sequence and acknowledgment state plus arrival order and block unsigned tasking at the boundary.
+          expected_effect:
+            zh: 竞速优势不再等同内容接受，伪造响应必须同时突破会话真实性。
+            en: Winning a race no longer means content acceptance because the forged response must also defeat session authenticity.
+          limitations:
+            zh: 攻击者控制信任根、TLS 终止代理或端点时仍可签发/修改内容；UDP/旧协议可能没有内置真实性，公开 C2 竞速案例证据仍不足。
+            en: An adversary controlling a trust root, TLS termination proxy, or endpoint can still issue or alter content. UDP and legacy protocols may lack native authenticity, and public C2 racing-case evidence remains insufficient.
+        - target_ref: NJS-0052-003
+          use:
+            zh: 关键解析使用受管 resolver 与受信 VPN，服务端必须通过证书、应用签名或固定身份验证；把解析答案、路由、真正源站 receipt 与 SMB/HTTP 内容摘要绑定，禁止从开放互联网使用未认证 SMB 任务路径。
+            en: Use managed resolvers and a trusted VPN for critical resolution and require service certificates, application signatures, or pinned identities. Bind resolution answer, route, true-origin receipt, and SMB or HTTP content digest and prohibit unauthenticated SMB task paths from the open Internet.
+          expected_effect:
+            zh: 仅在目标路径存在的幻影服务无法凭可达性与熟悉协议获得信任，解析和内容必须通过独立身份验证。
+            en: A phantom service existing only on the target path cannot gain trust through reachability and familiar protocol alone; resolution and content must pass independent identity validation.
+          limitations:
+            zh: split DNS、私有服务、灾备和代理本来可能只在局部路径存在，需要按 owner 与变更清单建立基线；VPN 端或 resolver 被控仍会失败。
+            en: Split DNS, private services, disaster recovery, and proxies can legitimately exist only on a local path and need owner and change baselines. Compromise of the VPN endpoint or resolver still defeats the control.
+      evidence_keys:
+        - REF-000085
+        - REF-000096
+        - REF-000097
+        - REF-000098
+        - REF-000632
+        - REF-000634
+existing_library_reuse:
+  reference_refs:
+    - REF-000085
+    - REF-000096
+    - REF-000097
+    - REF-000098
+    - REF-000632
+    - REF-000634
+    - REF-000474
+    - REF-000475
+    - REF-000598
+  claim_refs:
+    - CLM-000197
+    - CLM-000198
+    - CLM-000199
+  case_refs: []
+  strategy_refs:
+    - DET-000051
+  analytic_refs:
+    - NJA-000025
+  mitigation_refs:
+    - MIT-000050
+  relationship_refs: []
+  notes:
+    zh: >-
+      NJT-0052 与三个 NJS 的变量可跨战术复用，但全部读者正文需重写，不是机械 tactic_ref 扩展。DET-000051/NJA-000025 和 MIT-000050 保留 TA0001 浏览器入口身份；持续 C2 需 create 新 DET/NJA/MIT 并在同一正式主体上追加引用。REF-000096 直接复用，但 locator/notes 应扩展到注入 SMB、定时命令/输出和反向 shell。CLM-000197/198/199 仍支持变量存在；CLM-000237 明确限定首个立足点，必须 split/replace 为阶段中性父级 Claim，不能直接扩 subject_refs。
+    en: >-
+      NJT-0052 and its three NJS variables can be reused across tactics, but all reader-facing prose needs rewrite rather than a mechanical tactic_ref extension. DET-000051, NJA-000025, and MIT-000050 keep their TA0001 browser-entry identity. Continuing C2 requires a new DET, NJA, and MIT added to the same formal subjects. Reuse REF-000096 directly but extend its locator and notes to injected SMB, scheduled command and output, and reverse shell. CLM-000197, 198, and 199 continue to support variable existence. CLM-000237 explicitly limits the parent to first foothold and must be split or replaced by a stage-neutral parent claim rather than extended.
+library_candidates:
+  references: []
+  claims:
+    - key: B5-T1659-CLM-PARENT-DUAL-TACTIC
+      statement:
+        zh: T1659 的直接对象是受控在线路径生成源站未发送的请求响应；该行为可通过首次立足点产生 TA0001 结果，也可在已受控端反复投递任务/插件和回收结果产生 TA0011 结果。
+        en: T1659 directly concerns a controlled online path generating a request response not sent by the origin; it can produce a TA0001 first-foothold outcome or a TA0011 outcome by repeatedly delivering tasks or plug-ins and returning results on an already compromised endpoint.
+      evidence_keys:
+        - REF-000085
+        - REF-000096
+      evidence_mode: official-parent-plus-field-observation
+      resolution_recommendation: create-split-from-CLM-000237
+    - key: B5-T1659-CLM-C2-GATED
+      statement:
+        zh: MoustachedBouncer 对少数目标网络选择性注入内容，并在植入后继续借注入 SMB 路径传递插件、命令和输出，支持 NJS-0052-001 在 TA0011 的直接应用。
+        en: MoustachedBouncer selectively injected content for a small set of target networks and continued using the injected SMB path after compromise for plug-ins, commands, and output, directly supporting NJS-0052-001 in TA0011.
+      evidence_keys:
+        - REF-000096
+      evidence_mode: field-observation-with-attribution-limits
+      resolution_recommendation: create
+    - key: B5-T1659-CLM-C2-PHANTOM
+      statement:
+        zh: MoustachedBouncer 让不存在于开放互联网且不由攻击者拥有的 IP 在目标路由视图中提供注入 SMB 服务，并以命令文件和输出文件形成反向 shell，支持 NJS-0052-003 的 TA0011 应用。
+        en: MoustachedBouncer made IPs absent as attacker-owned services on the open Internet provide injected SMB in the target routing view and formed a reverse shell through command and output files, supporting NJS-0052-003 in TA0011.
+      evidence_keys:
+        - REF-000096
+      evidence_mode: field-observation-plus-explicit-researcher-assessment
+      resolution_recommendation: create
+    - key: B5-T1659-CLM-C2-RACING-GAP
+      statement:
+        zh: 竞速伪造响应是稳定且已技术复现的注入变量，但当前公开材料未提供已受控植入通过竞速响应完成重复 C2 命令—结果的结论级案例，TA0011 适用性保持 hypothesis。
+        en: Racing forged response is a stable and technically reproduced injection variable, but current public material lacks a conclusion-level case of an already compromised implant completing repeated C2 command-result exchange through racing responses, so TA0011 applicability remains a hypothesis.
+      evidence_keys:
+        - REF-000098
+      evidence_mode: explicit-evidence-gap
+      resolution_recommendation: create
+  cases:
+    - key: B5-T1659-CASE-MOUSTACHEDBOUNCER-C2
+      name:
+        zh: MoustachedBouncer 路径注入 SMB 反向 shell
+        en: MoustachedBouncer Path-Injected SMB Reverse Shell
+      actor_or_campaign: MoustachedBouncer or Disco and SharpDisco campaigns
+      time_range: '2020-2022'
+      central_facts:
+        zh: ESET 观察目标网络中的植入定时任务每分钟从 SMB share 读取命令、把输出写回 paired file，并取得截图、PowerShell 和代理插件；研究者判断公网 IP 并非攻击者控制的真实服务，SMB 回复在 ISP/AitM 路径中即时注入。
+        en: ESET observed scheduled tasks on target networks reading commands from SMB shares every minute, writing output to paired files, and obtaining screenshot, PowerShell, and proxy plug-ins. Researchers assess that the public IPs were not real actor-controlled services and SMB responses were injected on the ISP or AitM path.
+      evidence_keys:
+        - REF-000096
+      confidence: high
+      scope_limit:
+        zh: ESET 明确观察端点行为与目标网络选择性，但对 SORM/ISP 设备的具体控制主体为低置信评估，部分 SMB 服务器控制细节为推断；案例证明路径局部 C2，不证明所有响应包的设备级来源。
+        en: ESET directly observed endpoint behavior and target-network selectivity, but the exact actor control of SORM or ISP devices is a low-confidence assessment and some SMB server-control details are inferred. The case establishes path-local C2, not device-level provenance for every response packet.
+  detection_strategies:
+    - B5-T1659-DET-C2-INJECTION
+  detection_analytics:
+    - B5-T1659-NJA-C2-INJECTION
+  mitigations:
+    - B5-T1659-MIT-C2-RESPONSE-INTEGRITY
+  relationships: []
+research:
+  taxonomy_breadth_review:
+    attack_subtechnique_count: 0
+    attack_subtechnique_ids: []
+    represented_dimensions: []
+    breadth_trigger: ordinary
+    coverage_resolutions: []
+    candidate_stealth_axes_examined:
+      - axis: target_or_request_selection
+        result: reuse-existing
+        owner_ref: NJS-0052-001
+        c2_support: direct
+      - axis: forged_response_race
+        result: reuse-existing-with-c2-evidence-deferred
+        owner_ref: NJS-0052-002
+        c2_support: hypothesis
+      - axis: path_local_resolution_or_service_projection
+        result: reuse-existing
+        owner_ref: NJS-0052-003
+        c2_support: direct
+      - axis: repeated_command_result_cycle
+        result: parent-outcome-gate
+        reason: The cycle distinguishes TA0011 outcome but does not independently change injection traces or defense
+      - axis: injected_payload_file_type_or_protocol
+        result: not-stealth-distinct
+      - axis: proxy_or_tunnel_transport
+        result: adjacent-technique
+        owners:
+          - NJT-0206
+          - T1572
+      - axis: message_encoding_encryption_or_disguise
+        result: adjacent-technique
+        owners:
+          - T1132
+          - T1573
+          - NJT-0152
+    second_pass_required: false
+    second_pass_completed: false
+    proposed_niji_child_count: 0
+    reused_niji_child_count: 3
+    breadth_gap_explained: true
+    reviewer_notes:
+      zh: >-
+        固定基线无 ATT&CK 子项。开放检验未发现超出现有三个稳定注入变量的 C2-only 分类；重复命令/结果属于战术结果门，文件/协议/工具不是变量，相邻路径和消息属性已有所有者。NJS-0052-002 的 TA0011 证据缺口必须在正式集成摘要和限制中保留。
+      en: >-
+        The fixed baseline has no ATT&CK children. Open inquiry found no C2-only taxonomy beyond the three existing stable injection variables. Repeated command and result is a tactic outcome gate, file, protocol, and tool are not variables, and adjacent path and message properties have existing owners. Preserve the NJS-0052-002 TA0011 evidence gap in canonical integration notes and limitations.
+  evidence_coverage:
+    parent_behavior_keys:
+      - REF-000085
+      - REF-000096
+    boundary_keys:
+      - REF-000085
+      - REF-000096
+      - REF-000097
+      - REF-000098
+    mechanism_support:
+      - mechanism: NM-ST
+        keys:
+          - REF-000096
+        level: direct-target-selectivity-and-repeated-path-activity
+      - mechanism: NM-BT
+        keys:
+          - REF-000096
+        level: direct-endpoint-activity-plus-source-absence-assessment
+      - mechanism: NM-FD
+        keys:
+          - REF-000096
+          - REF-000097
+        level: service-appearance-inference-from-direct-injection
+    child_existence_support:
+      - child_ref: NJS-0052-001
+        keys:
+          - REF-000096
+          - REF-000097
+          - REF-000098
+        ta0011_level: direct-via-REF-000096
+      - child_ref: NJS-0052-002
+        keys:
+          - REF-000098
+        ta0011_level: hypothesis-no-independent-c2-case
+      - child_ref: NJS-0052-003
+        keys:
+          - REF-000096
+        ta0011_level: direct
+    defense_field_support:
+      - source: REF-000632
+        support: HTTP uid, request, response, host, URI, status and body length or file linkage fields
+      - source: REF-000634
+        support: connection uid, endpoint tuple, state, byte and packet fields for response race and path lineage
+      - source: REF-000474
+        support: Windows network-share object access fields where audit is enabled
+      - source: REF-000475
+        support: endpoint file path, hash and initiating-process fields with incomplete-hash limitation
+      - source: REF-000598
+        support: endpoint process, parent and command-line fields
+    unsupported_or_deferred:
+      - No public conclusion-level incident was found for repeated C2 command-result exchange through a racing forged response after foothold.
+      - ESET assesses rather than directly proves which lawful-intercept or ISP system MoustachedBouncer controlled.
+      - TLS or SMB encryption without a lawful termination vantage prevents content comparison and may leave only endpoint outcomes.
+      - There is no universal response-hash, delay, sequence-duplicate, population-difference, or cycle-count threshold separating malicious injection from legitimate CDN or personalization.
+  content_depth_review:
+    compared_with_njt_0001: true
+    field_responsibilities_complete: true
+    candidate_specific_prose: true
+    repeated_prose_reviewed: true
+    notes:
+      zh: >-
+        本交接提供完整父级双语替换稿和父/子逐字段审计，但未把三个子项的完整正式正文复制到 staging；主 Agent 正式复用时必须逐 NJS 独立重写审计列出的八个字段，并保持各变量不同场景、威胁模型、机理和限制。现有跨候选换名模板正文不能只做字符串替换。
+      en: >-
+        This handoff provides a complete bilingual parent replacement and a parent or child field audit, but does not duplicate all three complete canonical child texts in staging. During formal reuse, the primary agent must independently rewrite the eight audited fields for every NJS with variable-specific scenarios, threat models, mechanisms, and limitations. Existing name-substitution prose cannot be repaired through string replacement alone.
+  automation_review:
+    canonical_prose_bulk_generated: false
+    mechanical_uses:
+      - staging YAML serialization
+      - YAML parse verification
+      - evidence-key consistency check
+      - existing-field phrase audit
+      - shared-library lookup
+  limitations:
+    paragraphs:
+      - zh: >-
+          REF-000096 是唯一同时给出选择性路径注入和植入后反向 shell/插件交换的直接 C2 来源。ESET 遥测直接支持端点任务、命令/输出文件及目标组织范围，但对具体 ISP/SORM 注入设备和某些公网 IP 的真实控制作出不同置信度评估。正式 Case 与 Claim 必须把端点观察、路径推断和主体归因分开，不能把整个基础设施链写成同一强度的现场事实。
+        en: >-
+          REF-000096 is the only direct source in this review combining selective path injection with a post-compromise reverse shell and plug-in exchange. ESET telemetry directly supports endpoint tasking, command and output files, and targeted organizations, while its assessment of the exact ISP or SORM injection device and control of some public IPs has varying confidence. Canonical cases and claims must separate endpoint observation, path inference, and actor attribution rather than present the whole infrastructure chain at one field-observation strength.
+      - zh: >-
+          现有 NJT/NJS 正文与 DET/NJA/MIT 大量使用首次入口和浏览器入口假设。复用父级 ID 可避免重复技术，但会触发较大语义版本修订、双战术 decision 一致性、全部子项正文、Claim、Defense 和 Web 导航复核。尤其 NJS-0052-002 变量虽成立，TA0011 应用仍为 hypothesis；若 schema 无法表达 tactic-specific child evidence，主 Agent 应在父级 taxonomy 与限制中明确呈现，而非假装三项同等 C2 证据。
+        en: >-
+          Existing NJT and NJS prose and DET, NJA, and MIT assume first entry and browser entry extensively. Reusing the parent ID avoids duplication but triggers a substantial semantic-version revision and review of dual-tactic decisions, every child field, claims, defenses, and Web navigation. NJS-0052-002 is a valid variable while its TA0011 application remains a hypothesis. If the schema cannot express tactic-specific child evidence, the primary agent should expose the difference in parent taxonomy and limitations rather than present equal C2 evidence for all three.
+      - zh: >-
+          多视点内容比较具有隐私、带宽和可重复性成本。CDN/Anycast、区域个性化、安全代理、split DNS、captive portal 和合法 SMB 镜像可产生真实差异；TLS、受控信任根或短门控又可能阻止复现。新 Analytic 的三门结果和窗口为可实施设计，必须在本地数据上校验字段、保留、源站 receipt 与正常变化，不以单一 URL/hash/序号定性。
+        en: >-
+          Multivantage content comparison has privacy, bandwidth, and reproducibility costs. CDN or Anycast, regional personalization, security proxies, split DNS, captive portals, and legitimate SMB mirrors can create real differences, while TLS, a controlled trust root, or a short gate can prevent reproduction. The new analytic's three outcome gates and windows are an implementable design requiring local validation of fields, retention, origin receipt, and normal variation. One URL, hash, or sequence number is not dispositive.
+  rejected_mechanisms: []
+  open_questions:
+    - Can the schema express tactic-specific evidence confidence for reused children, especially NJS-0052-002 under TA0011?
+    - Should the reused NJT-0052 decision_ref remain DEC-TA0001-T1659 while DEC-TA0011-T1659 points to it, or does the classification schema require a relationship or provenance extension?
+    - Can ESET or another primary source provide packet-level evidence that a forged racing response carried post-compromise C2 rather than first-stage payload delivery?
+    - Which origin/provider systems expose request receipts and response hashes at retention lengths sufficient for repeated C2 polling?
+integration:
+  status: pending
+  resolutions: []

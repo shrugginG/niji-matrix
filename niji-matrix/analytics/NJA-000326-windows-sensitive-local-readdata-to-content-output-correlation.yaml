@@ -1,0 +1,132 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000326
+strategy_ref: DET-000249
+name:
+  zh: Windows 敏感本地 ReadData 到内容输出关联
+  en: Windows Sensitive Local ReadData-to-Content-Output Correlation
+summary:
+  zh: 按对象、主体、会话与结果字段实现“Windows 敏感本地 ReadData 到内容输出关联”。
+  en: Implement Windows Sensitive Local ReadData-to-Content-Output Correlation with object, principal, session, and outcome
+    fields.
+domains:
+- enterprise
+platforms:
+- Windows
+logic:
+  paragraphs:
+  - zh: 先为经数据 owner 确认的高价值本地目录、数据库导出区与派生存储配置成功 ReadData SACL，并验证 4663 实际产生。筛选 ObjectType=File 且 Accesses/AccessMask 表示 FILE_READ_DATA
+      的事件，排除只有 ListDirectory、ReadAttributes 或失败句柄的记录；按 device、SubjectUserSid、SubjectLogonId、ProcessId 与 4688/EDR 的进程启动实例连接。随后在三十分钟内寻找同一进程或可证子进程创建的输出文件、应用导出结果、临时副本或出站发送。只有
+      ReadData 加可验证内容结果才输出 collection-supported；只有读取输出 local-content-read-observed；只有列举回退 discovery-only。与批准备份、索引、EDR、反恶意软件、迁移、电子发现和取证的匹配必须同时满足主体、签名、作业
+      ID、覆盖路径与有效窗口。
+    en: Configure successful ReadData SACLs on high-value local directories, database export areas, and derivative stores
+      confirmed by data owners, then verify that 4663 is actually emitted. Select ObjectType=File records whose Accesses or
+      AccessMask represents FILE_READ_DATA and exclude records showing only ListDirectory, ReadAttributes, or a failed handle.
+      Join by device, SubjectUserSid, SubjectLogonId, and ProcessId to the process instance from 4688 or verified EDR telemetry.
+      Within thirty minutes, seek an output file, application export result, temporary copy, or outbound send by the same
+      process or a proven child. Emit collection-supported only for ReadData plus a verified content result, local-content-read-observed
+      for a read alone, and discovery-only for enumeration alone. An approved backup, indexer, EDR, antimalware, migration,
+      e-discovery, or forensic exception must match principal, signer, job ID, covered paths, and validity window together.
+data_requirements:
+- source_type: windows-file-read-audit
+  name:
+    zh: 经验证的Windows File Read Audit数据
+    en: Windows File Read Audit
+  channel: Security/4663 with targeted SACL
+  required_fields:
+  - timestamp
+  - device_id
+  - subject_user_sid
+  - subject_logon_id
+  - object_type
+  - object_name
+  - access_list
+  - access_mask
+  - process_id
+  - process_name
+- source_type: windows-process-lineage
+  name:
+    zh: 经验证的Windows Process Lineage数据
+    en: Windows Process Lineage
+  channel: Security/4688 or verified EDR equivalent
+  required_fields:
+  - timestamp
+  - device_id
+  - process_id
+  - process_start_id
+  - parent_process_id
+  - image
+  - command_line
+  - signer
+  - user_sid
+- source_type: endpoint-file-or-egress-outcome
+  name:
+    zh: 经验证的Endpoint File Or Egress Outcome数据
+    en: Endpoint File Or Egress Outcome
+  channel: DeviceFileEvents or verified endpoint/network equivalent
+  required_fields:
+  - timestamp
+  - device_id
+  - initiating_process_id
+  - action_type
+  - destination_path_or_address
+  - file_name
+  - available_hash
+- source_type: authorized-reader-inventory
+  name:
+    zh: 经验证的Authorized Reader Inventory数据
+    en: Authorized Reader Inventory
+  channel: null
+  required_fields:
+  - principal_id
+  - process_signer
+  - process_hash_or_path
+  - job_id
+  - approved_paths
+  - approval_window
+  - owner
+observables:
+- zh: 非批准进程对高价值对象实际使用 ReadData，而非只列举或读属性
+  en: An unapproved process exercises ReadData against a high-value object rather than merely enumerating or reading attributes
+- zh: 同一进程谱系在读取后形成可验证输出、临时副本或外送结果
+  en: The same process lineage creates a verifiable output, temporary copy, or transfer result after the read
+correlation:
+  window:
+    zh: 同一进程谱系从 ReadData 到输出默认三十分钟；保留主体和路径三十天基线，并按应用导出耗时校准。
+    en: Pilot thirty minutes from ReadData to output for one process lineage, retain thirty days of per-principal and per-path
+      baseline, and adapt both to application export duration.
+  dimensions:
+  - timestamp
+  - device_id
+  - subject_logon_id
+  - object_name
+  - process_id
+  - process_start_id
+  - job_id
+false_positives:
+- zh: 批准的备份、端点安全、索引、打印、数据库维护、迁移、电子发现、事件响应和取证会读取敏感内容并产生结果。
+  en: Approved backup, endpoint security, indexing, printing, database maintenance, software migration, e-discovery, incident
+    response, and digital forensics can read sensitive content and create outputs.
+blind_spots:
+- zh: 未配置匹配 SACL 时没有 4663；内存或应用内部读取可能无文件事件，端点文件表不是完整读取记录，结果也可能只在内存或加密流中。
+  en: Event 4663 is absent without a matching SACL; memory-only or application-internal reads may lack a file event; endpoint
+    file tables are not universal read records; output can remain in memory or an encrypted stream.
+tuning_guidance:
+  paragraphs:
+  - zh: 只对 owner 批准的敏感路径配置 SACL，要求 FILE_READ_DATA，以主体、签名、作业、路径和时间共同限定例外；无法确认内容结果时保留独立状态。
+    en: Scope SACLs to owner-approved sensitive paths, require FILE_READ_DATA, version exceptions by principal, signer, job,
+      path, and time, and retain a separate state when content outcome is unconfirmed.
+evidence_refs:
+- REF-000379
+- REF-000475
+- REF-000868
+- REF-001079
+- REF-001076
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-10-05'
+  modified: '2026-10-05'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

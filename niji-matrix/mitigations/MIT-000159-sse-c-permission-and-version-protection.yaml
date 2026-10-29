@@ -1,0 +1,100 @@
+schema_version: 2.0.0
+type: mitigation
+id: MIT-000159
+name:
+  zh: 客户密钥写入许可与对象版本保护
+  en: Customer-Key Write Permission and Object-Version Protection
+summary:
+  zh: 保持无需使用 SSE-C 的桶处于阻止状态，收窄例外和配置权限，并保护旧版本以降低恶意重加密影响。
+  en: Keep buckets without an SSE-C need blocked, narrow exceptions and configuration rights, and protect prior
+    versions to reduce malicious re-encryption impact.
+description:
+  paragraphs:
+  - zh: 此控制针对攻击者借有效凭据把现有对象覆写成只受其客户密钥保护的当前版本。先维持 S3 已提供的 SSE-C 默认阻止状态，对确需 SSE-C 的应用单独管理许可和身份；再用受保护旧版本与恢复测试降低当前版本被改写后的损失。阻止
+      SSE-C 不是通用加密禁令，也不能替代对象写权限治理。
+    en: This control addresses an actor using valid credentials to overwrite existing objects with a current version
+      protected only by the actor's customer key. Preserve S3's existing default SSE-C block, govern permission
+      and identity separately for applications that truly need SSE-C, and use protected prior versions and restore
+      tests to reduce damage after current-version overwrite. Blocking SSE-C is not a general encryption ban and
+      does not replace object-write governance.
+domains:
+- enterprise
+measures:
+- key: preserve-sse-c-block
+  name:
+    zh: 保持客户密钥写入阻止
+    en: Preserve Customer-Key Write Block
+  description:
+    paragraphs:
+    - zh: 清点各桶 BlockedEncryptionTypes；对无业务需要的桶维持 SSE-C 阻止，并限制可以通过 PutBucketEncryption 移除该阻止的身份。对既有例外配置附加审批与定期复核。
+      en: Inventory BlockedEncryptionTypes by bucket. Keep SSE-C blocked where there is no business need and restrict
+        identities that can remove the block through PutBucketEncryption. Approve and periodically review existing
+        exceptions.
+  control_type: preventive
+- key: scope-sse-c-exceptions
+  name:
+    zh: 收窄客户密钥应用例外
+    en: Narrow Customer-Key Application Exceptions
+  description:
+    paragraphs:
+    - zh: 确需 SSE-C 的应用应使用短期身份、最小对象复制与写入范围，以及针对客户密钥算法条件的桶或组织拒绝策略例外。
+      en: Applications that truly require SSE-C should use short-lived identities, minimal copy and write scope,
+        and narrowly governed exceptions to bucket or organization deny policies conditioned on customer-key algorithms.
+  control_type: preventive
+- key: protected-prior-object-versions
+  name:
+    zh: 保护先前对象版本
+    en: Protect Prior Object Versions
+  description:
+    paragraphs:
+    - zh: 对重要对象启用版本控制和适当的对象锁或独立备份，并演练从攻击者密钥覆写后的旧版本恢复业务读取。
+      en: Use versioning with appropriate Object Lock or independent backup for critical objects and exercise restoration
+        of business reads from prior versions after attacker-key overwrite.
+  control_type: containment
+applications:
+- target_ref: NJT-0157
+  use:
+    paragraphs:
+    - zh: 对关键对象存储实行客户密钥使用清单和最小对象写入权限，并与端点业务数据的独立恢复策略配合；只有确需该加密模式的应用才获得例外。
+      en: For critical object stores, maintain a customer-key use inventory and least object-write rights alongside
+        independent recovery for endpoint business data; grant exceptions only to applications that need this encryption
+        mode.
+  expected_effect:
+    paragraphs:
+    - zh: 限制对象当前版本被攻击者密钥覆写的机会，并在已覆写时提供旧版本恢复路径。
+      en: Reduce opportunities for attacker-key overwrites of current object versions and preserve a prior-version
+        recovery path if overwrite occurs.
+  limitations:
+    paragraphs:
+    - zh: 此控制不阻止攻击者先在客户端加密再上传内容，也不覆盖文件服务器上的局部加密；旧版本可恢复不代表当前读请求没有中断。
+      en: This control does not stop an attacker encrypting content client-side before upload or cover sparse encryption
+        on file servers. Recoverable prior versions do not mean current reads were uninterrupted.
+- target_ref: NJS-0157-002
+  use:
+    paragraphs:
+    - zh: 在目标桶确认 SSE-C 默认阻止状态并限制移除阻止的配置权限；对获批 SSE-C 应用限定身份、源和键前缀，再用对象锁保护先前版本。
+      en: Verify the target bucket's default SSE-C block and restrict authority to remove it. Scope approved SSE-C
+        apps by identity, source, and key prefix, then protect prior object versions with Object Lock.
+  expected_effect:
+    paragraphs:
+    - zh: 带攻击者客户密钥的 CopyObject 覆写在阻止或拒绝策略处失败；受保护旧版本仍可用于恢复，同时配置例外留下审计前驱。
+      en: CopyObject overwrites under an attacker-provided customer key fail at the block or deny policy; protected
+        prior versions remain recoverable, and configuration exceptions leave an audit precursor.
+  limitations:
+    paragraphs:
+    - zh: 2026 年后的新桶常已默认阻止，不能把此控制当作额外新增覆盖；获批例外被盗用、配置权被攻破或客户先加密内容后上传仍可造成损失。
+      en: Many new buckets already block SSE-C by default after 2026, so this measure is not extra coverage there.
+        Compromised approved exceptions, stolen configuration authority, or client-side encrypted uploads can still
+        cause loss.
+evidence_refs:
+- REF-000660
+- REF-000663
+- REF-000654
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-09-22'
+  modified: '2026-09-22'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

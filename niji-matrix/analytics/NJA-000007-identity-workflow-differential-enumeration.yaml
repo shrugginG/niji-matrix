@@ -1,0 +1,67 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000007
+strategy_ref: DET-000033
+name:
+  zh: 身份工作流差异枚举关联分析
+  en: Identity-Workflow Differential Enumeration Correlation Analytic
+summary:
+  zh: 聚类身份工作流中的高扇出未完成事务和响应差异比较，识别以普通失败外观实施的账户与验证属性推断。
+  en: Cluster high-fan-out incomplete transactions and response-difference comparisons across identity workflows to identify account and verification-attribute inference presented as ordinary failure.
+domains: [enterprise]
+platforms: [Cloud Identity, SaaS, Web Application]
+logic:
+  paragraphs:
+  - zh: 将登录、注册、密码恢复、联合身份和 MFA 事件规范化到统一流程模型，记录所请求身份、来源、客户端特征、响应类别、内容长度、跳转、呈现的验证方式、时延和是否完成。分别计算单来源与跨来源在短窗口和长窗口内的身份扇出、重复请求和跨功能序列，并识别攻击者可能用于比较有效与无效身份的稳定响应簇。只有差异比较、高扇出或跨功能重复与大量未完成流程共同出现时才提高风险，成功认证或重置应转交后续访问检测而不是作为本分析的必要条件。
+    en: Normalize login, registration, password-recovery, federation, and MFA events into a common flow model recording requested identity, origin, client features, response class, content length, redirects, offered verification methods, latency, and completion state. Compute identity fan-out, repeated requests, and cross-function sequences over short and long windows for individual and grouped origins, and identify stable response clusters that may be used to compare valid and invalid identities. Raise risk only when differential comparison, high fan-out, or cross-function repetition co-occurs with many incomplete flows; successful authentication or reset should transfer to downstream access detection rather than be required by this analytic.
+data_requirements:
+- source_type: identity-service-audit
+  name:
+    zh: 身份服务事务审计
+    en: Identity-service transaction audit
+  channel: null
+  required_fields: [timestamp, workflow, account_identifier, source_ip, response_class, response_size, redirect_target, latency_ms, flow_state, client_fingerprint]
+- source_type: identity-risk-context
+  name:
+    zh: 身份风险与授权批量活动上下文
+    en: Identity-risk and authorized bulk-activity context
+  channel: null
+  required_fields: [account_identifier, account_type, risk_tier, authorized_activity, activity_window]
+observables:
+- zh: 单一或可关联来源在多个身份上产生大量未完成流程
+  en: One or correlated origins create many incomplete flows across identities
+- zh: 有效与无效身份对应不同响应类别、长度、跳转、验证方式或处理时延
+  en: Valid and invalid identities produce different response classes, lengths, redirects, verification methods, or processing latency
+- zh: 同一客户端特征依次遍历登录、注册、恢复或 MFA 功能
+  en: The same client fingerprint traverses login, registration, recovery, or MFA functions in sequence
+correlation:
+  window:
+    zh: 使用分钟级窗口识别差异比较，并使用七日至三十日窗口恢复低频跨功能枚举；具体长度按合法用户错误和批量开户基线调整。
+    en: Use minute-scale windows for differential comparison and seven-to-thirty-day windows to recover low-rate cross-function enumeration, tuning duration to legitimate user-error and bulk-onboarding baselines.
+  dimensions: [source, client_fingerprint, account, workflow, response_cluster, completion_state, time]
+false_positives:
+- zh: 用户忘记账号、密码或恢复方式造成的重复失败
+  en: Repeated failures caused by users forgetting accounts, passwords, or recovery methods
+- zh: 经授权的批量开户、身份迁移、目录同步和帮助台测试
+  en: Authorized bulk onboarding, identity migration, directory synchronization, and help-desk testing
+- zh: 自动化客户端兼容性问题造成的跨功能重试
+  en: Cross-function retries caused by automated-client compatibility issues
+blind_spots:
+- zh: 身份服务没有记录统一响应类别、验证方式或流程完成状态
+  en: Identity services do not log normalized response classes, verification methods, or flow-completion state
+- zh: 攻击者把少量请求分散到无法关联的来源和超出留存期的时间范围
+  en: The adversary distributes a small number of requests across unlinkable origins and time beyond retention
+- zh: CDN、身份代理或 SaaS 提供方隐藏原始来源和客户端特征
+  en: A CDN, identity proxy, or SaaS provider obscures original source and client features
+tuning_guidance:
+  paragraphs:
+  - zh: 应按账户类型、身份风险、地区和业务流程分别建立失败及未完成率基线，并明确标记合法批量活动的账户、时间和功能范围。响应等价化上线后仍应保留内部判定信号供关联使用；白名单只能压低已知活动的权重，不能删除跨功能序列或高价值身份上的异常覆盖。
+    en: Establish separate failure and incompletion baselines by account type, identity risk, geography, and business workflow, and explicitly mark the identities, times, and functions of authorized bulk activity. After external response equalization, retain internal decision signals for correlation; allow rules may reduce the weight of known activity but must not erase cross-function sequences or anomalous coverage of high-value identities.
+evidence_refs: [REF-000033, REF-000034, REF-000035]
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-09-09'
+  modified: '2026-09-09'
+  contributors: [Niji Matrix Research]
+  reviewers: []

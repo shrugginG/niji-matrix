@@ -1,0 +1,114 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000311
+strategy_ref: DET-000240
+name:
+  zh: 未解析 UDP 自定义会话关联
+  en: Unparsed UDP Custom-Session Correlation
+summary:
+  zh: 从未解析 UDP 与进程 socket 恢复自定义控制会话。
+  en: Recover custom control sessions from unparsed UDP and process sockets.
+domains:
+- enterprise
+platforms:
+- Windows
+- Linux
+- Network Devices
+logic:
+  paragraphs:
+  - zh: '>- 从未被批准应用解析器识别的双向 UDP 流中，按 Community ID/五元组、方向和时间保留每个数据报的长度及可见头部。寻找客户端首次短握手后服务端回复引用客户端随机 ID、后续 type/sequence
+      递增且有效负载往返的序列，并把发起设备映射到创建 SOCK_DGRAM 的进程与后继执行。ShadowPad 的 8 字节 type/session_src_id/session_dst_id 关系可作协议确认；端口 53/443、固定
+      16 字节初包或随机填充均不可单独定性。'
+    en: '>- For bidirectional UDP flows not identified by an approved application parser, retain each datagram''s length
+      and visible header keyed by Community ID or five-tuple, direction, and time. Seek a sequence where a short client
+      handshake receives a server reply referencing the client''s random ID, followed by incrementing type or sequence
+      and bidirectional payloads. Map the initiating device to the SOCK_DGRAM process and successor execution. ShadowPad''s
+      eight-byte type, session_src_id, and session_dst_id relationship can confirm that protocol; port 53 or 443, a fixed
+      16-byte first packet, or random padding cannot establish C2 alone.'
+data_requirements:
+- source_type: flow-and-packet-sensor
+  name:
+    zh: ('flow_and_packet_sensor', 'flow_and_packet_sensor')
+    en: ('flow_and_packet_sensor', 'flow_and_packet_sensor')
+  channel: Zeek conn.log plus packet metadata/PCAP or equivalent
+  required_fields:
+  - ts
+  - uid_or_community_id
+  - src_ip
+  - src_port
+  - dest_ip
+  - dest_port
+  - proto
+  - direction
+  - datagram_len
+  - packet_ref
+  - app_proto
+- source_type: endpoint-socket
+  name:
+    zh: ('endpoint_socket', 'endpoint_socket')
+    en: ('endpoint_socket', 'endpoint_socket')
+  channel: Linux Audit/eBPF or EDR socket telemetry
+  required_fields:
+  - timestamp
+  - host_id
+  - pid
+  - exe
+  - address_family
+  - socket_type
+  - local_endpoint
+  - remote_endpoint
+  - success
+- source_type: endpoint-process
+  name:
+    zh: ('endpoint_process', 'endpoint_process')
+    en: ('endpoint_process', 'endpoint_process')
+  channel: null
+  required_fields:
+  - timestamp
+  - host_id
+  - process_entity_id
+  - parent_entity_id
+  - executable
+  - command_line
+observables:
+- zh: 未解析双向 UDP 呈现自定义类型、session ID 或序列推进
+  en: Unparsed bidirectional UDP shows custom types, session IDs, or sequence progression
+- zh: 回复回显客户端标识并在分组后出现端点动作
+  en: Replies echo a client identifier and endpoint action follows the datagram
+correlation:
+  window:
+    zh: 初始三十分钟或两个本地应用轮询周期，并保留二十四小时观察低频复现。
+    en: An initial thirty minutes or two local application polling cycles, retaining twenty-four hours for low-frequency
+      recurrence.
+  dimensions:
+  - host_id
+  - uid_or_community_id
+  - endpoint_pair
+  - custom_session_id
+  - process_entity_id
+  - time
+false_positives:
+- zh: 未启用解析器的新协议、游戏/VoIP、VPN 或工业遥测
+  en: New protocols without enabled parsers, games or VoIP, VPNs, or industrial telemetry
+blind_spots:
+- zh: 非对称路由、加密首部、抽样 flow 或内核 socket
+  en: Asymmetric routing, encrypted headers, sampled flow, or a kernel socket
+tuning_guidance:
+  paragraphs:
+  - zh: '>- 用软件清单、签名、设备角色、批准目的地和可验证协议握手建立允许画像；未知 UDP 首先进入协议识别队列，只有自定义双向状态加端点结果才提升。更新解析器后重新评估“未解析”条件，防止将新合法协议长期视为异常。'
+    en: '>- Build approved profiles from software inventory, signature, device role, destination, and verifiable protocol
+      handshake. Route unknown UDP first to protocol identification and elevate only with custom bidirectional state
+      plus endpoint outcome. Reassess the unparsed condition after parser updates so a new legitimate protocol is not
+      treated as permanently anomalous.'
+evidence_refs:
+- REF-001035
+- REF-000634
+- REF-001042
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-10-04'
+  modified: '2026-10-04'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

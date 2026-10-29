@@ -1,0 +1,123 @@
+schema_version: 2.0.0
+type: evasion-subtechnique
+id: NJS-0154-001
+parent_ref: NJT-0154
+name:
+  zh: 单元限额切块外传
+  en: Per-Unit Capped Chunk Exfiltration
+summary:
+  zh: 攻击者把同一数据集拆为受控大小的多个发送单元，降低单次上传的可见体积，并可能绕过只看单事件的阈值。
+  en: An adversary splits one data set into controlled-size delivery units, reducing visible volume per upload and
+    potentially evading a per-event threshold.
+aliases: []
+lineage:
+  attck_subtechnique_inherited: false
+definition_and_concept:
+  paragraphs:
+  - zh: 单元限额切块外传是外传规模约束的一种实现：攻击者选择文件分卷、上传对象或应用层请求的最大负载，将本可一次送出的数据按多个单元传输，并在接收端保持顺序或重组能力。其目的仍是完成数据外传，分类变量是每个可计量发送单元的大小上限，而不是文件格式、协议分片或具体上传工具。
+    en: Per-Unit Capped Chunk Exfiltration is a form of exfiltration volume shaping in which the attacker sets a
+      maximum file-volume, upload-object, or application-request payload, transfers data that could otherwise be
+      sent at once in multiple units, and preserves sequence or reassembly at the receiver. Its objective remains
+      data exfiltration. The classification variable is the size ceiling of each measurable delivery unit, not a
+      file format, protocol fragment, or upload tool.
+stealth_characteristics:
+  paragraphs:
+  - zh: 单元限额切块外传使原本会以一个大对象出现的数据量分布在多次较小上传中；只比较单请求或单文件大小的规则可能看不到整体数据集。该实施同时增加了请求次数、重复尺寸、连续对象名或偏移量，防守方可通过较长时间和共同目的地恢复关系。ESET
+      记录 LunarWeb 在压缩后输出超过 1.33 MB 时按 384–512 KB 的随机部分发送，但没有证明其随机化是为了规避阈值。
+    en: Per-Unit Capped Chunk Exfiltration distributes data that would appear as one large object across smaller
+      uploads, so a rule comparing only one request or file size can miss the whole data set. It also increases
+      request count and may leave repeated size, sequential object-name, or offset traces that a defender can reconnect
+      over time and destination. ESET observed LunarWeb send output over 1.33 MB in random 384–512 KB parts, but
+      did not establish that the randomization was chosen to evade a threshold.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 纳入有证据表明攻击者控制外传单元上限、多个单元属于同一数据集且该选择影响防守局部观察的行为。正常 TCP 分段、云 API 要求的分片、应用协议上限、合法大文件断点续传或只是先归档成多个容器，都不能单独成立；只有分卷服务于外传单元控制时才越过
+      NJT-0133 的归档边界。若主要变量是单位时间发送量，则归兄弟项；若主要变量是时钟窗口，则检查 T1029。
+    en: Scope requires evidence of attacker control over an outbound unit ceiling, a relationship among units of
+      one data set, and a resulting change to local defender observation. Normal TCP segmentation, cloud API mandated
+      chunks, application protocol limits, legitimate resumable upload, or merely creating several archives is insufficient.
+      Volumes cross the NJT-0133 archival boundary only when sized for outbound delivery. A rate budget belongs
+      to the sibling; clock-window selection should be assessed under T1029.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: 攻击者在收集或归档完成后，经可重复提交对象的 Web、云或 C2 接口外传较大数据集时，可选择每个请求或对象的上限，令接收端按标识、顺序或偏移恢复内容。CISA 记录 Play 将受害数据分段并用 WinSCP
+        转移，ESET 的 LunarWeb 逆向则直接展示按输出长度切块的代码行为；两者的防守阈值规避意图均不能单独由来源证实。
+      en: After collection or archiving, an adversary sending a larger data set over a repeatable web, cloud, or
+        C2 interface may cap each request or object and have the receiver reconstruct content by identifier, order,
+        or offset. CISA reports Play segmenting victim data before WinSCP transfer, and ESET's LunarWeb analysis
+        directly shows output-length-driven chunks. Neither source independently proves intent to evade a defender's
+        size threshold.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者需要读取完整数据、选择分卷大小或应用请求负载，并持有能接收多次发送且完成重组的端点。较多请求会增加认证、失败重试和对象管理成本；只有知道或估计某些单事件阈值时，上限选择才具有明确的匿迹收益。
+        en: The attacker needs access to the full data, control of volume size or application request payload, and
+          a receiver that can accept repeated sends and reconstruct them. More requests increase authentication,
+          retry, and object-management costs. A chosen ceiling has a clear stealth advantage only relative to known
+          or estimated single-event thresholds.
+    defender_model:
+      paragraphs:
+      - zh: 防守方若可见代理上传日志、解密后的 HTTP 请求体长度或目标服务对象审计，就能按主机、用户、目的地、路径和短序列聚合小单元。仅有 Zeek conn.log 时可累计连接字节，却不能把 TCP 包长或单个连接大小直接等同应用级切块；TLS
+          未解密时，具体请求与对象边界可能不可见。
+        en: A defender with proxy upload logs, decrypted HTTP request-body lengths, or destination-service object
+          audit can aggregate small units by host, user, destination, path, and sequence. Zeek conn.log alone can
+          sum connection bytes but cannot equate TCP packet or connection size with application chunks. When TLS
+          is not inspected, request and object boundaries may remain unavailable.
+stealth_mechanisms:
+- mechanism_ref: NM-ST
+  role: primary
+  summary:
+    zh: 将大对象拆成多个低于单次计量阈值的外传单元
+    en: Split a large object into delivery units below per-event accounting thresholds
+  analysis:
+    paragraphs:
+    - zh: 攻击者把一个大数据集拆为多个受控上限的发送单元，使每次可见上传量变小；若防守规则仅按单事件大小告警，各单元可能低于该规则的阈值，而接收端仍可重组整体。局部告警可能减弱，重复请求、累计字节与序列关系却增加。ESET
+        证明真实恶意传输采用分块，具体绕过效果仍需与目标环境的规则对照。
+      en: The attacker divides a large data set into units with controlled ceilings, reducing each visible upload.
+        If a defender rule alerts only on one event size, individual units may fall below its threshold while the
+        receiver reconstructs the whole. Local alerts can weaken, but repeated requests, cumulative bytes and sequence
+        relationships increase. ESET documents real malicious chunked transfer; bypass of a particular control still
+        requires comparison with the target rule.
+  evidence_refs:
+  - REF-000638
+  - REF-000639
+  confidence: medium
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000171
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000156
+evidence:
+  claim_refs:
+  - CLM-000771
+  - CLM-000773
+  case_refs:
+  - CASE-000213
+  reference_refs:
+  - REF-000638
+  - REF-000639
+  - REF-000632
+  - REF-000634
+research:
+  limitations:
+    paragraphs:
+    - zh: ATT&CK 的 T1030 说明可用于规避传输量阈值，但 Play 与 LunarWeb 原始资料主要证明发生了分段，不提供具体阈值、被绕过的产品或告警前后对照。LuminousMoth 绕过的 5 MB
+        限额可能是服务兼容性限制，故不据此提升匿迹置信度。需要从外传上下文与防守规则共同验证有意限额，不能从大小重复单独判定恶意。
+      en: ATT&CK says the technique can evade transfer-size alerts, but primary Play and LunarWeb reporting mainly
+        proves segmentation and gives no specific defender threshold, bypassed product, or before-and-after alert
+        comparison. LuminousMoth's 5 MB limit may be a service compatibility ceiling, so it does not raise stealth
+        confidence. Intentional capping needs exfiltration context and defender-rule evidence; repeated sizes alone
+        do not establish malicious use.
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-09-22'
+  modified: '2026-09-22'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

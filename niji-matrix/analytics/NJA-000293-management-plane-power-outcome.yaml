@@ -1,0 +1,110 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000293
+strategy_ref: DET-000232
+name:
+  zh: 管理面电源动作—目标可用性结果分析
+  en: Management-Plane Power Action–Target Availability Analytic
+summary:
+  zh: 输出 hypervisor/cloud actor 和 power action 到 VM/设备离线与业务中断的跨平面链。
+  en: Emit cross-plane lineage from hypervisor or cloud actor and power action to VM or device offline and business
+    interruption.
+domains:
+- enterprise
+platforms:
+- ESXi
+- IaaS
+logic:
+  paragraphs:
+  - zh: 从 vSphere/cloud audit 采集 event key/chainId/auditId、createdTime、userName/principal、source、host、VM/target、power
+      action、message、request ID 和 result；连接 session/role/approval 和资产 inventory。
+    en: Collect event key, chainId, auditId, time, user or principal, source, host, VM or target, power action, message,
+      request ID, and result from vSphere or cloud audit and join session, role, approval, and asset inventory.
+  - zh: 在两分钟验证 target power state 和 guest heartbeat/网络消失，三十分钟连接业务 probe 与用户影响；后继 VMDK 加密另映射 NJT-0157。只有 host/网络失联而无成功
+      power event 不确认。
+    en: Within two minutes verify target power state and guest heartbeat or network disappearance and within thirty
+      join business probe and user impact. Later VMDK encryption maps separately to NJT-0157. Host or network loss
+      without a successful power event does not confirm.
+data_requirements:
+- source_type: management-power-event
+  name:
+    zh: 虚拟化/云电源事件
+    en: Virtualization or cloud power events
+  channel: vSphere Events or cloud audit
+  required_fields:
+  - event.time
+  - event.key
+  - chain.id
+  - audit.id
+  - principal.id
+  - source.ip
+  - host.id
+  - target.id
+  - power.action
+  - request.id
+  - result
+- source_type: target-power-state
+  name:
+    zh: 目标电源与 heartbeat
+    en: Target power and heartbeat
+  channel: null
+  required_fields:
+  - event.time
+  - target.id
+  - host.id
+  - power.state
+  - guest.heartbeat
+  - network.state
+  - boot.id
+- source_type: business-health
+  name:
+    zh: 业务健康与审批
+    en: Business health and approval
+  channel: null
+  required_fields:
+  - target.id
+  - owner.id
+  - approval.id
+  - probe.success
+  - user.impact
+observables:
+- zh: 未经批准主体从目标外控制面成功 power off/reboot
+  en: An unapproved principal successfully powers off or reboots from an out-of-target plane
+- zh: 管理面结果与 guest heartbeat/业务可用性丢失闭合
+  en: Management outcome closes with lost guest heartbeat and business availability
+correlation:
+  window:
+    zh: power event 到 target state 两分钟，业务影响三十分钟。
+    en: Use two minutes from power event to target state and thirty for business impact.
+  dimensions:
+  - principal.id
+  - host.id
+  - target.id
+  - chain.id
+  - audit.id
+  - request.id
+  - event.time
+false_positives:
+- zh: 批准运维、HA/failover、DR、容量迁移、宿主维护和自动恢复
+  en: Approved operations, HA or failover, DR, capacity migration, host maintenance, and auto recovery
+blind_spots:
+- zh: guest-only telemetry、控制面日志未保留、共享管理员、链 ID 丢失或 host crash 模拟 power off
+  en: Guest-only telemetry, absent control-plane retention, shared admins, lost chain IDs, or host crash resembling
+    power off
+tuning_guidance:
+  paragraphs:
+  - zh: 按 target class 限制 power roles，要求 JIT/MFA/审批并保留不可变审计；成功事件必须与实际 target state 匹配，不按 guest heartbeat alone 响应。
+    en: Limit power roles by target class, require JIT, MFA, and approval, and retain immutable audit. Match successful
+      events to actual target state and never respond from guest heartbeat alone.
+evidence_refs:
+- REF-000981
+- REF-000982
+- REF-000983
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-10-04'
+  modified: '2026-10-04'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

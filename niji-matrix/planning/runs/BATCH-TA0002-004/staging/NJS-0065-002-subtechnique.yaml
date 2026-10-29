@@ -1,0 +1,58 @@
+schema_version: "2.0.0"
+type: evasion-subtechnique
+id: NJS-0065-002
+parent_ref: NJT-0065
+name: {zh: 短驻内联命令执行, en: Transient Inline-Command Execution}
+summary: {zh: 攻击者把主要可执行语义置于命令参数、标准输入、管道、远端字符串或内存流，使文件系统没有可长期复核的一一对应脚本。, en: Adversaries place primary executable semantics in command arguments standard input pipelines remote strings or memory streams so the file system has no durable one-to-one script artifact.}
+aliases: [Fileless Interpreter Execution]
+lineage: {attck_subtechnique_inherited: false}
+definition_and_concept:
+  paragraphs:
+  - zh: 短驻内联命令执行固定“语义载体寿命”变量：解释器的主要逻辑通过参数、stdin、管道、下载字符串、环境状态或内存流提供，未形成可在执行后独立保留和复核的脚本文件。直接结果是指令被解析并运行，独立匿迹效果是文件视角与延迟取证失去主要语义。
+    en: Transient Inline-Command Execution fixes a semantic-carrier-lifetime variable. Primary logic reaches the interpreter through arguments, standard input, a pipeline, downloaded string, environment state, or memory stream without a script that remains independently reviewable after execution. The direct outcome is parsed and running instructions, while the independent stealth effect is loss of primary semantics from file-centric and delayed investigation.
+  - zh: 内联不等于长度短，也不要求完全无磁盘写入；解释器或后继载荷可以写文件，只要决定当前执行的主要指令没有稳定脚本制品。反之，先落地完整脚本再执行后删除属于制品移除，不能仅凭“最终无文件”进入本子技术。
+    en: Inline does not mean short in length and does not require zero disk writes. The interpreter or later payload may write files as long as primary instructions governing the current execution have no durable script artifact. Conversely, writing a complete script first and deleting it afterward is artifact removal and does not qualify merely because no file remains at investigation time.
+stealth_characteristics:
+  paragraphs:
+  - zh: 文件扫描、允许脚本仓库和事后磁盘采集可能只见解释器与结果。FIN8 通过 stdin 让 PowerShell 命令行仅保留 `-`；PEAKLIGHT 在内存流中解密、解压并执行 PowerShell 代码，说明完整语义可以避开命令行或磁盘单一视角。短驻性把检测依赖推向实时内容采集、运行时审计和结果关联。
+    en: File scanning, approved-script repositories, and post-incident disk acquisition may retain only the interpreter and outcomes. FIN8 used standard input so the PowerShell command line retained only `-`; PEAKLIGHT decrypted, decompressed, and executed PowerShell in a memory stream. Complete semantics can therefore avoid command-line-only or disk-only views, shifting detection to real-time content, runtime audit, and outcome correlation.
+  - zh: Script Block Logging、AMSI、CPython audit event、完整进程参数、网络代理响应与后继进程仍能留下残余。短驻载体只是缩短采集时机，不会天然遮蔽内容；组织若实时记录语义、保护敏感字段并延长保留，匿迹收益明显下降。
+    en: Script Block Logging, AMSI, CPython audit events, complete process arguments, proxy responses, and successor processes remain residuals. A transient carrier shortens the acquisition opportunity but does not inherently obscure content. Real-time semantic logging, sensitive-field protection, and longer retention materially reduce the benefit.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 必须证明攻击者控制的主要语义位于短驻载体，并使组织实际可用的文件或延迟采集面缺少可复核内容。普通一行命令若完整记录且没有观察影响，只是父技术实现；编码、压缩或加密造成的不可解释性属于另一变量；正常父体带来的伪装归 NJS-0065-001，两者可并存但不得互相替代证据。
+    en: Evidence must show adversary-controlled primary semantics in a transient carrier and consequent loss of reviewable content from the organization's actual file or delayed-acquisition surface. A one-line command that is fully recorded with no observation effect is only a parent implementation. Opacity caused by encoding, compression, or encryption is separate. Camouflage from a normal parent belongs to NJS-0065-001; both can coexist but evidence for one cannot substitute for the other.
+  - zh: 远端脚本若完整保存到磁盘后执行，不属于本子项；通过网络取得字符串后立即解释可属于本子项，同时还可能构成工具传输或 C2 行为。判定点是执行时主要语义的载体与保留寿命，而不是载荷来源。
+    en: A remote script saved completely to disk before execution is outside this child. Retrieving a string and immediately interpreting it may qualify while also constituting transfer or command-and-control behavior. The decision point is the carrier and retention lifetime of primary semantics at execution, not payload origin.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: 适用于宏、Web shell、远程管理器或前级载荷只能传递字符串，攻击者希望立即执行下载内容、内存模块或短命令而不建立独立脚本文件的场景。对只检查磁盘脚本、截断命令行或不保留运行时日志的环境尤其有效。
+      en: This applies when a macro, web shell, remote manager, or prior-stage payload can pass strings and the adversary wants to execute downloaded content, an in-memory module, or a compact command without creating a separate script. It is most effective where controls inspect only disk scripts, truncate command lines, or do not retain runtime logs.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者需要可向解释器提供参数、stdin、管道或内存内容，并处理长度、转义和版本限制。内容扫描、AMSI、Script Block、audit hook 或实时 stdin 采集会显著削弱效果，复杂一行命令也更容易因语法错误暴露。
+        en: The adversary needs a path to supply arguments, standard input, a pipeline, or memory content and must handle length, quoting, and version constraints. Content inspection, AMSI, Script Block, audit hooks, or real-time standard-input capture materially weakens the effect, while complex one-liners risk exposing syntax failures.
+    defender_model:
+      paragraphs:
+      - zh: 防守方必须在进程存活时采集完整输入或运行时语义，并把网络取得、内存/模块活动和后继进程绑定到解释器实例。只在数小时后检查磁盘无法恢复已消失载体；完整内容日志又可能含凭据，需要加密、字段级访问和受控保留。
+        en: Defenders must collect complete input or runtime semantics while the process lives and bind network retrieval, memory or module activity, and successor processes to the interpreter instance. Disk inspection hours later cannot recover an expired carrier. Full-content logs can contain credentials and require encryption, field-level access, and controlled retention.
+stealth_mechanisms:
+- mechanism_ref: NM-BT
+  role: primary
+  summary: {zh: 主要语义位于文件与延迟采集覆盖之外, en: Primary semantics reside outside file and delayed-acquisition coverage}
+  analysis:
+    paragraphs:
+    - zh: 载体随进程、管道或缓冲区消失，使文件视角只观察到解释器或后继结果，关键行为落在原有覆盖之外而形成行为透明。FIN8 的 stdin 技术直接移除 PowerShell 参数中的命令，PEAKLIGHT 的内存流移除独立脚本需求；PowerShell 与 CPython 官方审计面同时说明实时语义采集仍可恢复残余，因此高置信度描述的是观察断点而不是绝对不可见。
+      en: The carrier expires with the process, pipeline, or buffer so a file-centric view observes only the interpreter or later outcome, leaving critical behavior outside existing coverage and producing Behavioral Transparency. FIN8's standard-input method removed the command from PowerShell arguments and PEAKLIGHT's memory stream removed the standalone script. Official PowerShell and CPython audit surfaces show real-time semantic collection can recover residuals, so high confidence describes an observation break rather than absolute invisibility.
+  evidence_refs: [REF-000196, REF-000197, REF-000198, REF-000199]
+  confidence: high
+defense: {detections: {coverage: available, strategy_refs: [DET-000078]}, mitigations: {coverage: available, mitigation_refs: [MIT-000078]}}
+evidence: {claim_refs: [CLM-000256, CLM-000390, CLM-000394], case_refs: [CASE-000067, CASE-000068], reference_refs: [REF-000196, REF-000197, REF-000198, REF-000199]}
+research:
+  limitations:
+    paragraphs:
+    - zh: 两个案例均以 PowerShell 为中心；跨语言推广仅基于等价短驻载体与运行时审计语义。合法安装器和自动化也常以内联方式运行，载体形态不能单独归因。日志可能因隐私、成本或秘密泄露风险而不保存完整输入，检测需允许哈希、敏感字段保护与受控访问。
+      en: Both incidents center on PowerShell. Cross-language generalization is limited to equivalent transient carriers and runtime-audit semantics. Legitimate installers and automation also run inline, so carrier shape alone cannot attribute maliciousness. Logs may omit full input for privacy, cost, or secret-exposure reasons, requiring hashing, sensitive-field protection, and controlled access.
+lifecycle: {status: review, version: 1.1.0, created: '2026-09-10', modified: '2026-09-12', contributors: [Niji Matrix Research], reviewers: []}

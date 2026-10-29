@@ -1,0 +1,44 @@
+schema_version: "2.0.0"
+type: mitigation
+id: MIT-000079
+name: {zh: 云命令权限、内容与来宾谱系治理, en: Cloud Command Authority Content and Guest-Lineage Governance}
+summary: {zh: 以最小命令权限、JIT 审批、不可变脚本/文档、受限目标和强制来宾回传降低管理通道匿迹。, en: Reduce management-channel stealth through least command authority JIT approval immutable scripts or documents constrained targets and mandatory guest return lineage.}
+description:
+  paragraphs:
+  - zh: 本缓解保留 Run Command、Systems Manager 和 VM Extension 的合法运维价值，但把调用权限与普通 VM 管理权限分离，使用 JIT/PIM、资源标签条件、命令文档白名单、不可变脚本哈希、目标上限和维护审批限制每次执行。命令服务必须把请求/相关 ID、内容身份和目标写入集中审计，来宾代理必须回传任务 ID、脚本哈希、状态与结果。
+    en: This mitigation preserves legitimate Run Command, Systems Manager, and VM Extension operations but separates command authority from ordinary VM administration and uses JIT or PIM, resource-tag conditions, document allowlists, immutable script hashes, target limits, and maintenance approval for each execution. The command service writes request or correlation ID, content identity, and targets to centralized audit, while the guest agent returns task ID, script hash, status, and outcome.
+  - zh: 控制目标是同时缩小可调用通道的主体与范围、阻止批准名称下内容静默变化、让控制面与来宾结果不可分离，并使所有维护例外可追溯。发现异常时先冻结主体与脚本来源、停止未执行目标、保存命令和代理状态，再撤销会话并调查所有已成功实例；不能只删除来宾载荷。
+    en: The objective is to narrow principals and scope, prevent silent content change under an approved name, make control and guest outcome inseparable, and attribute every maintenance exception. On anomaly freeze the principal and script source, stop unexecuted targets, preserve command and agent state, then revoke sessions and investigate every successful instance. Deleting only the guest payload is insufficient.
+domains: [enterprise]
+measures:
+- key: command-authority-jit
+  name: {zh: 命令动作独立最小权限与 JIT, en: Separate Least Command Authority and JIT}
+  description: {paragraphs: [{zh: 将 RunCommand/SendCommand/Extension 写权限与普通资源管理角色拆分，按账号、标签、实例和时限授予，并对跨租户委托及批量目标要求强认证和双人审批。, en: Separate RunCommand SendCommand or Extension write authority from ordinary resource management grant by account tag instance and time and require strong authentication plus dual approval for cross-tenant delegation and fleet targets.}]}
+  control_type: preventive
+- key: immutable-command-content
+  name: {zh: 不可变命令文档与脚本身份, en: Immutable Command Document and Script Identity}
+  description: {paragraphs: [{zh: 固定文档/扩展版本、脚本 digest 与批准仓库内容，禁止只按 URL 或名称放行；参数模板、输出位置与敏感字段处理进入审批。, en: Pin document or extension version script digest and approved repository content and prohibit allowances based only on URL or name; include parameter templates output location and sensitive-field handling in approval.}]}
+  control_type: preventive
+- key: command-guest-lineage
+  name: {zh: 控制面—来宾强制谱系, en: Mandatory Control-Plane-to-Guest Lineage}
+  description: {paragraphs: [{zh: 将不可复用 execution ID 传给代理和端点日志，集中保留请求、目标解析、代理状态、脚本哈希、输出和后继进程，失败/超时/未执行同样记录。, en: Propagate a non-reusable execution ID into agent and endpoint logs and centrally retain request resolved targets agent state script hash output and successor processes including failed timed-out and unexecuted states.}]}
+  control_type: detective-support
+- key: fleet-command-response
+  name: {zh: 批量命令证据化遏制, en: Evidence-Preserving Fleet Command Containment}
+  description: {paragraphs: [{zh: 异常时立即暂停剩余目标、撤销调用会话并冻结文档/脚本版本；保存每实例结果后隔离已执行节点、轮换受影响身份并从批准基线恢复。, en: On anomaly pause remaining targets revoke the invocation session and freeze document or script version; after preserving per-instance outcomes isolate executed nodes rotate affected identities and restore from an approved baseline.}]}
+  control_type: containment
+applications:
+- target_ref: NJT-0064
+  use: {paragraphs: [{zh: 对每次云管理命令同时实施独立权限、内容固定、目标约束和跨层 execution ID，形成主体—请求—脚本—实例—代理—结果记录。定期验证日志保留与代理回传，并审查未执行或无输出的目标。, en: Apply separate authority content pinning target constraints and cross-plane execution ID to every cloud administration command creating a principal-request-script-instance-agent-outcome record. Regularly validate retention and agent return and review unexecuted or outputless targets.}]}
+  expected_effect: {paragraphs: [{zh: 减少可滥用主体和脚本，迫使恶意任务留下审批、内容或结果差异，并消除控制面与端点团队之间的默认归因断点。, en: Reduces borrowable principals and scripts forces malicious tasks to leave approval content or outcome differences and removes the default attribution break between cloud and endpoint teams.}]}
+  limitations: {paragraphs: [{zh: 应急恢复可能需要快速广泛权限，代理离线会阻止回传；被攻陷审批者与脚本仓库仍可产生一致记录，需独立身份和内容完整性监控。, en: Emergency recovery may need rapid broad authority and offline agents prevent return; compromised approvers and script repositories can still produce consistent records requiring independent identity and content-integrity monitoring.}]}
+- target_ref: NJS-0064-001
+  use: {paragraphs: [{zh: 要求控制请求 ID 或签名 execution token 写入代理任务与端点事件，集中保存目标解析、状态和输出；无法原生传递时，以实例和内容哈希建立受测降级映射并标注置信度。, en: Require control request ID or signed execution token in agent tasks and endpoint events and centrally retain resolved targets states and output; when native propagation is unavailable use a tested degraded mapping by instance and content hash with confidence marked.}]}
+  expected_effect: {paragraphs: [{zh: 使远端主体和来宾结果成为可验证同一事务，单一团队可重建因果，直接削弱行为透明。, en: Makes remote principal and guest outcome a verifiable transaction enabling one team to reconstruct causality and directly weakening Behavioral Transparency.}]}
+  limitations: {paragraphs: [{zh: 旧代理、跨租户 API 和第三方管理层可能不传递 ID；时间关联在批量与排队情况下可能碰撞，必须保留原始日志。, en: Legacy agents cross-tenant APIs and third-party management layers may not propagate IDs; time joins can collide under fleet queues and require raw-log retention.}]}
+- target_ref: NJS-0064-002
+  use: {paragraphs: [{zh: 允许维护任务必须绑定主体、不可变文档/脚本、标签解析后的目标、窗口、变更单与预期结果；任何内容或范围变化触发新审批，不能永久放行代理、仓库或服务主体。, en: Approved maintenance binds principal immutable document or script resolved target set window change record and expected outcome; any content or scope change triggers new approval and agents repositories or service principals are never permanently allowed.}]}
+  expected_effect: {paragraphs: [{zh: 让攻击者难以仅借正常服务外观进入基线，必须控制更多独立审批或完整性面并留下差异。, en: Prevents normal service appearance alone from entering the baseline and forces control of more independent approval or integrity surfaces with observable differences.}]}
+  limitations: {paragraphs: [{zh: 动态故障处理和自动扩缩容目标可能预先未知；需使用受约束模板和事后确认，避免静态流程妨碍恢复。, en: Dynamic incident handling and autoscaling targets may be unknown in advance and need constrained templates plus post-hoc confirmation so static workflow does not block recovery.}]}
+evidence_refs: [REF-000110, REF-000203, REF-000204, REF-000206, REF-000207]
+lifecycle: {status: review, version: 0.1.0, created: '2026-09-12', modified: '2026-09-12', contributors: [Niji Matrix Research], reviewers: []}

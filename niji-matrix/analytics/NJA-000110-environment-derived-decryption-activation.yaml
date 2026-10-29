@@ -1,0 +1,107 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000110
+strategy_ref: DET-000124
+name:
+  zh: 环境派生解密激活分析
+  en: Environment-Derived Decryption Activation Analytic
+summary:
+  zh: 输出环境材料、密码派生、密文恢复和恶意后继之间的因果链。
+  en: Produce a causal chain among environmental material, cryptographic derivation, ciphertext recovery, and malicious successor.
+domains:
+- enterprise
+platforms:
+- Windows
+- Linux
+- macOS
+logic:
+  paragraphs:
+  - zh: 按进程 start key 和密文对象聚合环境值读取与规范化、KDF 或重复散列参数、密钥或句柄标识、密文区间、解密与完整性结果、明文内存写入，以及随后解码、映射、线程启动、文件或网络动作。对相同样本与密文重放单变量环境候选；当输入变化稳定改变解密结果，且成功恢复后出现恶意后继时输出 environment_derived_crypto_activation。只有散列、一般配置解密或失败结果时保持未决。
+    en: By process start key and ciphertext object, aggregate environment-value reads and normalization, KDF or repeated-hash
+      parameters, key or handle identity, ciphertext extent, decryption and integrity result, plaintext memory writes, and
+      subsequent decoding, mapping, thread start, file, or network actions. Replay one-variable environment candidates for
+      the same sample and ciphertext. Emit environment_derived_crypto_activation when input changes consistently alter the
+      decryption result and a malicious successor follows successful recovery. Remain indeterminate for hashing alone, ordinary
+      configuration decryption, or failure-only observations.
+data_requirements:
+- source_type: environment-and-derivation-telemetry
+  name:
+    zh: 环境输入与密码派生遥测
+    en: Environment input and cryptographic derivation telemetry
+  channel: null
+  required_fields:
+  - event.timestamp
+  - host.id
+  - process.start_key
+  - sample.hash
+  - environment.attribute_type
+  - environment.value_hash
+  - normalization.id
+  - derivation.algorithm
+  - derivation.iterations
+  - derivation.salt_hash
+  - key.handle
+- source_type: ciphertext-decryption-outcome
+  name:
+    zh: 密文、解密与后继结果
+    en: Ciphertext, decryption, and successor outcome
+  channel: null
+  required_fields:
+  - event.timestamp
+  - process.start_key
+  - ciphertext.object_hash
+  - ciphertext.extent
+  - cipher.algorithm
+  - key.handle
+  - decryption.result
+  - integrity.result
+  - plaintext.region_id
+  - successor.action
+  - successor.object_hash
+observables:
+- zh: 环境值读取后出现高成本派生，并立即尝试解密固定密文区段
+  en: A costly derivation follows environment-value reads and immediately precedes decryption of a fixed ciphertext extent
+- zh: 只有特定环境候选产生有效明文、完整性成功和恶意后继动作
+  en: Only a specific environment candidate produces valid plaintext, integrity success, and a malicious successor action
+correlation:
+  window:
+    zh: 覆盖同一进程运行内环境读取、派生、密文恢复和首个后继动作；若载荷跨进程传递，则以内容哈希和谱系标识延伸到首次消费，并按沙箱任务生命周期记录具体上限。
+    en: Cover environment read, derivation, ciphertext recovery, and the first successor action within one process run. If
+      the payload crosses a process boundary, extend through first consumption using content hash and lineage identity and
+      record the concrete upper bound from the sandbox-job lifecycle.
+  dimensions:
+  - host.id
+  - process.start_key
+  - sample.hash
+  - environment.attribute_type
+  - normalization.id
+  - derivation.algorithm
+  - ciphertext.object_hash
+  - key.handle
+  - plaintext.region_id
+false_positives:
+- zh: DRM、设备绑定许可、企业密钥封装、合法环境密钥解封和软件完整性保护
+  en: DRM, device-bound licensing, enterprise key wrapping, legitimate environment-bound key unsealing, and software integrity
+    protection
+blind_spots:
+- zh: 自定义或内联密码实现、硬件安全模块内派生、服务端提供部分密钥、缺少正确环境候选或内存内容不可见
+  en: Custom or inlined cryptography, derivation inside a hardware security module, partial key material supplied by a server,
+    no correct environment candidate, or invisible memory content
+tuning_guidance:
+  paragraphs:
+  - zh: 按签名、发布者、受保护产品和密文对象建立合法环境绑定基线。严重度要求环境输入对解密结果的可重复影响以及成功后的可疑后继，不以单个密码 API、散列轮数或失败解密告警；敏感环境值只保留稳定散列与规范化版本。
+    en: Baseline legitimate environment binding by signature, publisher, protected product, and ciphertext object. Require
+      repeatable influence of environmental input on decryption result and a suspicious successor after success for severity;
+      do not alert on one cryptographic API, iteration count, or failed decryption. Retain only a stable hash and normalization
+      version for sensitive environment values.
+evidence_refs:
+- REF-000390
+- REF-000421
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-09-21'
+  modified: '2026-09-21'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

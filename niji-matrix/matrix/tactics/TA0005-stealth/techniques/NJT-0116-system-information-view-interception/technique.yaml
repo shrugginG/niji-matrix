@@ -1,0 +1,113 @@
+schema_version: 2.0.0
+type: technique
+id: NJT-0116
+name:
+  zh: 系统信息视图拦截
+  en: System-Information View Interception
+summary:
+  zh: 攻击者过滤系统信息查询路径或使查询背衬状态与真实执行对象脱钩，让上层工具获得省略或伪造的进程、文件、网络、服务或驱动视图。
+  en: Adversaries filter system-information query paths or detach query-backing state from real executing objects so higher-level tools receive an omitted or falsified view of processes, files, networking, services, or drivers.
+aliases:
+- Rootkit
+- T1014
+classification:
+  tactic_refs:
+  - TA0005
+  origin:
+    kind: attack-adapted
+    source_attack_id: T1014
+    source_attack_version: '19.1'
+  decision_ref: DEC-TA0005-T1014
+definition_and_concept:
+  paragraphs:
+  - zh: 系统信息视图拦截是攻击者控制操作系统或设备向调用者提供状态的路径：一类实现拦截 API、系统调用或序列输出并过滤返回集合，另一类直接修改仅供枚举或报告的对象链、长度、类型或缓存状态，使正确查询也得到与真实执行对象脱钩的结果。直接目的在于控制防守方取得的系统视图，而不是一般内核驻留、API hook 或数据结构写入。
+    en: System-Information View Interception is adversary control of the path through which an operating system or device supplies state to callers. One implementation intercepts APIs, system calls, or sequence output and filters the returned set; another directly changes object lists, lengths, types, or cached state used only for enumeration or reporting so even correct query code receives a result detached from real executing objects. Its immediate purpose is to control the system view obtained by defenders rather than perform kernel residence, API hooking, or data-structure writes generally.
+  - zh: 用户态、内核、hypervisor、固件和设备只是可部署层级。概念锚是真实资源或活动、生成可见视图的查询路径或背衬状态、返回给观察者的结果以及两者差分。只有资源仍存在或活动、而观察视图被攻击者有意省略或伪造时成立。
+    en: User space, kernel, hypervisor, firmware, and devices are deployment levels. The conceptual anchor is the real resource or activity, the query path or backing state that produces the visible view, the result returned to the observer, and their differential. The technique applies only when the resource remains present or active while the adversary deliberately omits or falsifies the observed view.
+stealth_characteristics:
+  paragraphs:
+  - zh: 系统信息视图拦截让用户和安全工具取得内部一致却不完整或类型错误的列表。共享查询路径被过滤时，ps、netstat、文件浏览器或多个安全工具可能共同遗漏同一对象；查询背衬状态被脱钩时，未修改的查询代码也会忠实返回被篡改的枚举链或元数据。防守方因而可能把仍在执行、通信或持久化的资源判断为不存在或无害。
+    en: System-Information View Interception gives users and security tools an internally consistent but incomplete or mistyped list. When a shared query path is filtered, ps, netstat, file browsers, or several security tools can all omit the same object. When query-backing state is detached, unmodified query code faithfully returns the altered enumeration chain or metadata. Defenders can therefore judge a resource that is still executing, communicating, or persisting to be absent or benign.
+  - zh: 真实进程线程、socket、磁盘或注册表原始结构、内核内存对象、控制设备、hook 来源、模块加载与网络结果仍会留痕。交叉比较独立视图、验证静态代码和动态结构完整性或从可信离线介质检查可以恢复状态；如果攻击者同时控制最低可信层和旁路传感器，差分会进一步缩小。
+    en: Real process threads, sockets, raw disk or Registry structures, kernel-memory objects, control devices, hook provenance, module loads, and network outcomes remain observable. Comparing independent views, validating static-code and dynamic-structure integrity, or inspecting from trusted offline media can recover state. If the adversary also controls the lowest trusted layer and side-channel sensors, the differential narrows further.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 纳入攻击者过滤系统信息查询返回值，或修改只负责呈现/枚举的背衬状态，使真实组件在上层视图中缺失、长度或类型被伪造，而隐藏组件继续活动的行为。判定需要同一对象在独立存在性证据与观察结果之间形成可复现差分，并把差分连接到攻击者控制的路径或结构变化。
+    en: Scope includes adversary filtering of returned system-information results or modification of backing state used for presentation or enumeration so a real component is omitted or has falsified length or type in a higher-level view while continuing to operate. Classification requires a reproducible differential between independent existence evidence and the observed result for the same object and a connection to an adversary-controlled path or structure change.
+  - zh: 合法安全软件过滤、兼容性垫片、调试器、性能监控、事务期间自然创建/删除以及只提供持久化的固件是反例或相邻行为。对象完全移入替代地址空间归 NJT-0111，删除日志归 NJT-0112，系统二进制或库劫持归各自相邻技术；进程、文件、端口、平台和驻留层级本身不构成子技术。
+    en: Legitimate security filtering, compatibility shims, debuggers, performance monitoring, natural creation or deletion during a scan, and firmware providing persistence alone are counterexamples or adjacent behavior. Moving an object entirely into an alternate address space belongs to NJT-0111, deleting logs to NJT-0112, and binary or library hijacking to their adjacent techniques. Process, file, port, platform, and residence level do not define children.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: 根套件可 hook 目录枚举、进程列表或网络序列函数，从返回集合中过滤矿工、后门与 C2 端口；也可直接把进程从仅供枚举的内核活动链脱钩，或让 Registry API 报告与原始 hive 不一致的长度和类型。前者适合依赖共同接口的多个工具，后者即使查询代码未被修改也能隐藏对象。
+      en: A rootkit may hook directory enumeration, process lists, or network sequence functions and filter miners, backdoors, and C2 ports from returned sets. It can instead detach a process from a kernel active list used only for enumeration or cause Registry APIs to report lengths and types that differ from the raw hive. The former affects multiple tools sharing an interface, while the latter hides objects even when query code itself is unmodified.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者需要在目标观察接口以下执行代码或修改动态结构，并理解查询调用链、对象选择器、内核版本和结构不变量。hook 必须保持参数、并发与错误语义，背衬状态修改必须避免破坏真实资源执行；错误实现会产生崩溃、列表损坏、端口冲突或跨视图异常。签名加载、可信启动、内核控制流和动态结构完整性会提高成本。
+        en: The adversary needs execution below the target observation interface or authority to modify dynamic structures and knowledge of query call chains, object selectors, kernel versions, and structural invariants. Hooks must preserve parameter, concurrency, and error semantics, while backing-state changes must avoid breaking real resource execution. Mistakes cause crashes, list corruption, port conflicts, or cross-view anomalies. Signed loading, trusted boot, kernel control-flow integrity, and dynamic-structure integrity raise the cost.
+    defender_model:
+      paragraphs:
+      - zh: 防守方可比较 API 返回集合、原始文件系统或 hive、内核内存对象、hypervisor、网络流与管理面，并分别验证代码/函数指针和动态对象链不变量。采样必须避免把正常创建删除误作隐藏；若所有传感器共享同一背衬列表、可信下层不可访问或攻击者已控制 hypervisor/固件，则独立事实源不足。
+        en: Defenders can compare API return sets, raw file-system or hive data, kernel-memory objects, hypervisor state, network flow, and management-plane state and separately validate code or function pointers and invariants of dynamic object lists. Sampling must avoid mistaking normal creation or deletion for hiding. Independent truth is insufficient when every sensor shares one backing list, a trusted lower layer is inaccessible, or the adversary controls the hypervisor or firmware.
+stealth_mechanisms:
+- mechanism_ref: NM-BT
+  role: primary
+  summary:
+    zh: 被拦截信息接口把真实组件隔离在上层视图之外
+    en: An intercepted information interface isolates real components from higher-level views
+  analysis:
+    paragraphs:
+    - zh: 攻击者修改查询路径，痕迹从真实系统状态分裂为下层对象与上层伪造结果；防守方在共享接口边界看不到组件与活动，形成行为透明。
+      en: The adversary modifies the query path, splitting traces into a lower-layer object and a falsified higher-level result.
+        Defenders cannot see the component and activity at the shared interface boundary, producing Behavioral Transparency.
+  evidence_refs:
+  - REF-000401
+  - REF-000309
+  - REF-000433
+  confidence: high
+subtechnique_taxonomy:
+  narrative:
+    paragraphs:
+    - zh: 子技术按“错误视图在何处形成”划分。NJS-0116-001“查询路径结果过滤”在 API、系统调用或序列生成路径返回前移除选定条目，需要验证代码、函数指针、调用链和返回集合；NJS-0116-002“查询背衬状态脱钩”直接改变枚举链、报告缓存或元数据，使未修改的查询代码也得到与真实执行对象分离的视图，需要验证动态结构不变量与独立对象存在性。
+      en: Children are divided by where the false view is formed. NJS-0116-001 Query-Path Result Filtering removes selected entries before an API, system call, or sequence-generation path returns and requires validation of code, function pointers, call lineage, and returned sets. NJS-0116-002 Query-Backing State Detachment directly changes enumeration lists, reporting caches, or metadata so unmodified query code also receives a view separated from real executing objects and requires validation of dynamic-structure invariants and independent object existence.
+    - zh: 用户态、内核、hypervisor、固件和设备是实现层级，进程、文件、连接、服务和驱动是目标对象，都不能单独定义兄弟项。同一根套件可组合两种变量；分类依据形成错误视图的控制点及可实施防御，而不是驻留深度。
+      en: User space, kernel, hypervisor, firmware, and devices are implementation levels, while processes, files, connections, services, and drivers are target objects; neither defines a sibling alone. One rootkit can combine both variables. Classification follows the control point that forms the false view and its implementable defense rather than residence depth.
+  coverage: established
+  subtechnique_refs:
+  - NJS-0116-001
+  - NJS-0116-002
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000113
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000114
+evidence:
+  claim_refs:
+  - CLM-000607
+  - CLM-000608
+  - CLM-000643
+  - CLM-000644
+  case_refs:
+  - CASE-000155
+  reference_refs:
+  - REF-000401
+  - REF-000309
+  - REF-000433
+research:
+  limitations:
+    paragraphs:
+    - zh: XorDdos 直接证明查询路径过滤，RootkitRevealer 与根套件研究直接证明 API/raw 差分、类型或长度错报及查询背衬状态脱钩，因此父行为与二分边界为高置信。不同平台的对象 ID、内核结构与最低可信层并不一致；一次快照差分也可能由正常并发创建删除产生，必须使用稳定对象、重复采样、完整性变化和后继行为共同定性。
+      en: XorDdos directly establishes query-path filtering, while RootkitRevealer and rootkit research directly establish API-to-raw differentials, type or length misreporting, and detachment of query-backing state, giving high confidence to the parent behavior and two-way boundary. Object identities, kernel structures, and lowest trusted layers differ by platform. A one-snapshot differential can also arise from normal concurrent creation or deletion, so classification requires stable objects, repeated sampling, integrity changes, and successor behavior together.
+lifecycle:
+  status: review
+  version: 0.2.0
+  created: '2026-09-19'
+  modified: '2026-09-21'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

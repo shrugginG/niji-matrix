@@ -1,0 +1,98 @@
+schema_version: "2.0.0"
+type: evasion-subtechnique
+id: NJS-0063-002
+parent_ref: NJT-0063
+name:
+  zh: 长驻作业延迟激活
+  en: Long-Lived Job Deferred Activation
+summary:
+  zh: 攻击者把程序绑定到 BITS transferred 或 error 状态并故意保留未完成作业，利用重试、登录恢复和跨重启寿命分离作业创建与实际执行。
+  en: The adversary binds a program to BITS transferred or error state and deliberately leaves the job unfinalized, using retry, logon recovery, and post-reboot lifetime to separate job creation from actual execution.
+aliases: []
+lineage:
+  attck_subtechnique_inherited: false
+definition_and_concept:
+  paragraphs:
+    - zh: 长驻作业延迟激活是 BITS 后台作业执行中以持久状态承担未来触发的一种实现。攻击者通过 SetNotifyCmdLine 和通知标志，把完整程序路径及参数绑定到 transferred 或 error 状态，并故意不调用 Complete 或 Cancel，或者构造会进入可重试错误的传输。BITS 在状态满足时以调用者用户上下文通过 CreateProcessAsUser 启动程序；若程序失败且没有结束作业，服务还会在 minimum retry delay 后重新尝试。其直接目标是让作业创建者退出以后仍由 BITS 状态机延迟或重复启动攻击者代码。
+      en: Long-Lived Job Deferred Activation is an implementation of BITS Background-Job Execution in which persistent state carries a future trigger. Through SetNotifyCmdLine and notification flags, the adversary binds a full program path and arguments to transferred or error state and deliberately omits Complete or Cancel, or constructs a transfer that enters a retryable error. BITS launches the program through CreateProcessAsUser in the calling user's context when the state condition is met. If the program fails without finalizing the job, the service can try again after the minimum retry delay. The direct objective is to let the BITS state machine defer or repeat adversary code after the creating process exits.
+    - zh: 本子技术固定的是“状态通知加有意保留的作业寿命”，而不是任何长时间存在的 BITS 作业。延迟可以来自等待网络或用户重新登录、transient error 重试、error 通知、transferred 后未确认，或主机重启后的作业恢复；执行条件仍必须由同一作业定义保存。若未来执行由通用日历或事件调度器保存，则归 T1053；若只是服务随系统启动而运行，则归 T1569 或相邻 Persistence 对象。
+      en: The fixed variable is state notification combined with deliberately retained job lifetime, not any BITS job that happens to exist for a long time. Delay may arise from waiting for network or user logon, transient-error retry, error notification, an unacknowledged transferred state, or job recovery after host reboot, but the same job definition must retain the execution condition. If a general calendar or event scheduler retains future execution, the behavior belongs to T1053. A service merely starting with the system belongs to T1569 or an adjacent Persistence object.
+stealth_characteristics:
+  paragraphs:
+    - zh: 长驻作业延迟激活把创建命令、作业状态和通知程序启动分布到不同时间与进程来源。创建 bitsadmin、PowerShell 或 COM 客户端可以在数秒内退出，而最终程序可能在网络恢复、传输完成、错误升级、用户重新登录或系统重启以后由 BITS 服务启动。届时短期进程树只显示服务宿主和用户上下文程序，早期创建事件可能已经超出 EDR 或 SIEM 保留窗口，防守方因而难以把迟到执行追溯到原始主体。
+      en: Long-Lived Job Deferred Activation distributes the creating command, job state, and notification-program launch across different times and process origins. The creating bitsadmin, PowerShell, or COM client can exit within seconds, while the final program may be launched by BITS after network recovery, transfer completion, error escalation, user logon, or system reboot. At that point a short-lived process tree shows only the service host and user-context program, and the earlier creation event may have aged out of EDR or SIEM retention, making the delayed execution difficult to trace to its original principal.
+    - zh: 该子技术还可利用错误条件产生与成功传输不同的痕迹。Mandiant 观察到攻击者指向不存在的本地 URL，使作业进入错误状态并反复尝试通知命令；UBoatRAT 则在传输完成后执行程序并让未完成作业跨重启周期性运行。残余证据包括持久作业 GUID、所有者、创建与修改时间、重试参数、通知标志、完整程序路径、错误代码、BITS-Client 事件、QMGR 活动或删除记录以及重复后继进程。只要这些数据跨期保留，延迟不会消除因果关系。
+      en: The child can also use error conditions to produce traces different from successful transfer. Mandiant observed an adversary point a job at a nonexistent local URL so it entered error state and repeatedly attempted its notification command; UBoatRAT executed a program after transfer and left the unfinalized job to run periodically across reboot. Residual evidence includes persistent job GUID, owner, creation and modification times, retry parameters, notification flags, full program path, error code, BITS-Client events, active or deleted QMGR records, and repeated successor processes. Delay does not remove causality when those data are retained across time.
+scope_boundary_definition:
+  paragraphs:
+    - zh: 本子技术纳入攻击者配置 transferred 或 error 状态通知程序，并有意维持作业处于可等待、可重试或未确认状态，以便创建者退出、会话变化或主机重启后启动或再次启动程序的行为。纳入判定至少需要通知程序或等价回调、非最终作业状态和后续执行结果三者之间的关联；单独观察长寿命、错误或服务子进程都不足以定性。
+      en: This child includes adversary configuration of a transferred- or error-state notification program together with deliberate maintenance of a waiting, retryable, or unacknowledged job so a program starts or starts again after creator exit, session change, or host reboot. Inclusion requires a relationship among notification program or equivalent callback, non-final job state, and subsequent execution outcome. Long lifetime, error, or a service child process observed alone is insufficient.
+    - zh: 本子技术排除因断网、用户离线、维护停机或合法更新失败而自然形成的长期 BITS 作业，排除已经 Complete 或 Cancel 且不会再次触发的最终作业，也排除计划任务、服务启动和其他持久化机制保存的未来执行。若攻击者只选择后台优先级以融入正常传输而没有利用状态寿命，则属于 NJS-0063-001；两项同时使用时应分别记录各自机理和证据。
+      en: This child excludes long-lived BITS jobs arising naturally from network outage, offline users, maintenance downtime, or legitimate update failure; final jobs that have been completed or canceled and cannot trigger again; and future execution retained by scheduled tasks, service start, or another persistence mechanism. If the adversary only selects background priority to blend with normal transfer without exploiting state lifetime, the behavior belongs to NJS-0063-001. When both children are used, each mechanism and its evidence must be recorded separately.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+      - zh: 攻击者在需要把初始入侵或载荷投放与实际程序启动拉开、希望创建者进程快速消失，或预期目标网络和登录状态间歇变化时使用本子技术。常见实现是让真实传输完成后执行通知程序，或使用无效、暂不可达的 URL 进入错误路径并依靠重试再次启动；未完成作业可以在重启后继续承担触发。后继程序可以是后门、加载器或恢复组件，但本子技术截止于 BITS 依据保存状态启动该程序。
+        en: An adversary uses this child when separating initial compromise or payload staging from actual program launch, allowing the creator process to disappear quickly, or anticipating intermittent target network and logon conditions. Common implementations execute a notification program after a real transfer completes or use an invalid or temporarily unreachable URL to enter an error path and rely on retry for another launch. An unfinalized job can continue carrying the trigger after reboot. The successor may be a backdoor, loader, or recovery component, but this child ends when BITS launches that program from retained state.
+  threat_model:
+    attacker_model:
+      paragraphs:
+        - zh: 攻击者需要以可执行通知程序的用户上下文创建或修改作业，设置完整程序路径、参数和 transferred 或 error 通知标志，并控制作业是否 Complete、Cancel、Suspend 或保持可重试状态。攻击者必须预测用户登录、网络恢复、文件可用性、minimum retry delay、no progress timeout 和组织的 JobInactivityTimeout；服务账户上下文不能执行命令行回调，权限或文件路径变化也可能使通知失败。长等待提高生存机会，同时增加作业被盘点和清理的时间。
+          en: The adversary needs to create or modify the job in a user context capable of executing a notification program, configure a full program path, arguments, and transferred or error notification flags, and control whether the job is completed, canceled, suspended, or left retryable. The adversary must predict user logon, network recovery, file availability, minimum retry delay, no-progress timeout, and organizational JobInactivityTimeout. Service-account contexts cannot execute command-line callbacks, and permission or path changes may cause notification failure. Long waits increase survival opportunity but also give defenders more time to inventory and remove the job.
+    defender_model:
+      paragraphs:
+        - zh: 防守方需要跨会话与重启保留作业创建、修改、错误、完成和通知事件，并从当前枚举或 QMGR 取证获得 GUID、所有者、时间、状态、URL、文件、通知命令、参数与重试属性。分析必须把迟到或重复的服务后继进程映射回相同作业，而不能永久信任 BITS 服务父进程。若事件日志轮转、数据库记录被覆盖、作业已被删除且没有原始采集，或通知在最长保留期以后发生，因果链会出现不可恢复缺口。
+          en: The defender needs cross-session and cross-reboot retention of job creation, modification, error, completion, and notification events and must obtain GUID, owner, times, state, URL, files, notification command, arguments, and retry properties from live enumeration or QMGR forensics. Analysis must map delayed or repeated service successor processes back to the same job rather than permanently trusting BITS service parentage. Causality can become irrecoverable if event logs roll over, database records are overwritten, the job is deleted without prior collection, or notification occurs beyond the longest retained history.
+stealth_mechanisms:
+  - mechanism_ref: NM-ST
+    role: primary
+    summary:
+      zh: 状态等待重试和重启分离创建与程序启动
+      en: State waiting retry and reboot separate creation from program launch
+    analysis:
+      paragraphs:
+        - zh: 攻击者把通知程序和触发条件写入持久作业，并让 BITS 在 queued、transient error、error 或 transferred 等非最终状态中继续维护它。网络与登录条件、重试计时和重启边界可以把作业创建、状态变化和程序启动分散到远超普通检测窗口的时间范围，局部调查只看到原始设置或迟到结果之一，形成时空释痕。
+          en: The adversary writes a notification program and trigger condition into persistent job state and lets BITS continue maintaining it in a non-final state such as queued, transient error, error, or transferred. Network and logon conditions, retry timing, and reboot boundaries can disperse job creation, state change, and program launch over a horizon far longer than ordinary detection windows. A local investigation then sees either the original setup or the delayed outcome, producing Spatiotemporal Trace Dilution.
+        - zh: UBoatRAT 直接展示了未完成作业跨重启周期性执行，KEGTAP 案例展示了无效 URL 进入错误状态并反复尝试通知程序。效果仍受默认九十日 inactivity timeout、用户上下文、文件路径和策略约束；作业 GUID、时间与状态历史是抵消时间分离的核心关联键。
+          en: UBoatRAT directly demonstrates periodic execution from an unfinalized job across reboot, while the KEGTAP case demonstrates an invalid URL entering error state and repeatedly attempting the notification program. The effect remains constrained by the default ninety-day inactivity timeout, user context, file path, and policy. Job GUID, time, and state history are the principal correlation keys that counter the temporal separation.
+    evidence_refs: [REF-000136, REF-000138, REF-000140, REF-000141]
+    confidence: high
+  - mechanism_ref: NM-BT
+    role: secondary
+    summary:
+      zh: 服务通知进程遮断已退出的原始创建者
+      en: Service notification process obscures the exited original creator
+    analysis:
+      paragraphs:
+        - zh: 当状态条件满足时，BITS 通过 CreateProcessAsUser 启动通知程序；原始创建命令可能早已退出，当前进程谱系只保留服务宿主、通知程序和用户上下文。若检测只检查直接父进程或普通启动项，便无法看到保存在 QMGR 中的程序、参数和作业所有者关系，关键触发语义落在常规观察之外，形成行为透明。
+          en: When the state condition is met, BITS launches the notification program through CreateProcessAsUser. The original creation command may have exited long before, leaving current process lineage with only the service host, notification program, and user context. Detection limited to the immediate parent or conventional autoruns cannot see the program, arguments, and job-owner relationship retained in QMGR, so critical trigger semantics fall outside routine observation and produce Behavioral Transparency.
+        - zh: Mandiant 证明 BITS-Client 事件与 QMGR 字段能够把服务启动的 KEGTAP 重新连接到 System update 作业，Microsoft 接口也明确通知只能在 transferred 或 error 条件下运行，并受用户上下文限制。这些残余信息意味着扩大 BITS 专用遥测和数据库解析后，来源遮断并非不可恢复。
+          en: Mandiant demonstrates that BITS-Client events and QMGR fields can reconnect service-launched KEGTAP to the System update job, while Microsoft documentation makes clear that notification runs only on transferred or error conditions and is constrained by user context. This residual information means the provenance break is recoverable when BITS-specific telemetry and database parsing are available.
+    evidence_refs: [REF-000137, REF-000141]
+    confidence: high
+defense:
+  detections:
+    coverage: available
+    strategy_refs: [DET-000057]
+  mitigations:
+    coverage: available
+    mitigation_refs: [MIT-000056]
+evidence:
+  claim_refs: [CLM-000250, CLM-000308, CLM-000309, CLM-000312, CLM-000313, CLM-000314, CLM-000315]
+  case_refs: [CASE-000053, CASE-000054]
+  reference_refs: [REF-000115, REF-000136, REF-000137, REF-000138, REF-000140, REF-000141, REF-000142]
+research:
+  limitations:
+    paragraphs:
+      - zh: Microsoft 文档直接规定通知状态、CreateProcessAsUser 用户上下文、失败重试、Complete 或 Cancel 语义和默认作业寿命；UBoatRAT 与 KEGTAP 调查又直接观察到跨重启或错误触发执行，因此该子技术具有高置信度。案例主要证明成功传输通知和刻意错误通知两种实现，不能推断所有长期 BITS 作业都用于恶意重复执行。
+        en: Microsoft documentation directly specifies notification states, CreateProcessAsUser user context, failure retry, Complete or Cancel semantics, and default job lifetime. The UBoatRAT and KEGTAP investigations directly observe post-reboot or error-triggered execution, supporting high confidence in this child. The cases principally establish successful-transfer notification and deliberately error-triggered notification; they do not imply that every long-lived BITS job performs malicious repeated execution.
+      - zh: 正常更新、管理员恢复和不稳定网络会产生长期或错误作业，某些应用还会合法注册通知程序。判定必须证明攻击者控制程序、参数、URL 或作业终结行为，并观察恶意执行结果。服务账户不能使用命令行回调、管理员 TakeOwnership 会移除通知、策略可能提前取消作业，这些条件都会限制适用性；未来 Windows 版本改变 QMGR 或事件格式时必须重新验证检测字段。
+        en: Legitimate updates, administrator recovery, and unstable networks create long-lived or errored jobs, and some applications legitimately register notification programs. Classification must establish adversary control of program, arguments, URL, or job finalization behavior and observe a malicious execution outcome. Service accounts cannot use command-line callbacks, administrator TakeOwnership removes notification, and policy may cancel the job early, all limiting applicability. Detection fields must be revalidated when future Windows versions change QMGR or event formats.
+lifecycle:
+  status: review
+  version: "1.1.0"
+  created: "2026-09-10"
+  modified: "2026-09-10"
+  contributors:
+    - Niji Matrix Research
+  reviewers: []

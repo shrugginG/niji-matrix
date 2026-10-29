@@ -1,0 +1,110 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000188
+strategy_ref: DET-000172
+name:
+  zh: 待发—周期出站长窗关联
+  en: Queued-to-Periodic Egress Long-Window Correlation
+summary:
+  zh: 输出具有重复外传节律、异常目标或进程及待发区线索的候选事件。
+  en: Emit candidate recurrent egress with an unusual destination or process and available pending-area evidence.
+domains:
+- enterprise
+platforms:
+- Windows
+- Linux
+- macOS
+logic:
+  paragraphs:
+  - zh: 在滚动 14–30 日内按源主机、外部目的地及可得的发起进程聚合出站流，计算有明显原发字节的上传事件间隔、周期稳定性、工作日模式和每次发送前的本地待发文件增长。优先报告至少三个相似周期及同一未批准目的地、同一可疑进程或敏感数据访问之一共同出现的序列；把“仅小字节心跳”保留为
+      C2 节律线索。若可见待发队列，检验先增长后上传及上传后收缩，不以固定的十分钟或固定字节阈值定义恶意。
+    en: Over a rolling 14–30 days, group outbound flows by source host, external destination, and initiating process
+      where available. Compute intervals, periodic stability, workday pattern, and local pending-file growth before
+      upload events with meaningful originator bytes. Prioritize sequences with at least three comparable cycles
+      plus one of an unapproved destination, suspicious process, or sensitive-data access; retain tiny-byte heartbeats
+      as C2 cadence leads only. Where a pending queue is visible, test growth before upload and contraction afterward.
+      Neither a ten-minute interval nor a fixed byte threshold defines malice.
+data_requirements:
+- source_type: network-flow
+  name:
+    zh: Zeek 连接流日志
+    en: Zeek connection flow log
+  channel: Zeek conn.log
+  required_fields:
+  - ts
+  - id.orig_h
+  - id.resp_h
+  - id.resp_p
+  - duration
+  - orig_bytes
+  - resp_bytes
+- source_type: endpoint-network-event
+  name:
+    zh: 发起进程网络事件
+    en: Initiating-process network event
+  channel: Microsoft Defender XDR DeviceNetworkEvents
+  required_fields:
+  - timestamp
+  - device-id
+  - remote-ip
+  - initiating-process-unique-id
+  - initiating-process-file-name
+- source_type: approved-transfer-job
+  name:
+    zh: 已批准外传作业清单
+    en: Approved outbound transfer-job inventory
+  channel: null
+  required_fields:
+  - asset-id
+  - destination
+  - process
+  - owner
+  - cadence
+observables:
+- zh: 同源同目的有量出站在多个周期重现，并与进程或待发区增长及清空相连。
+  en: Meaningful outbound bytes recur for one source and destination across cycles and join to a process or pending-area
+    growth and draining.
+correlation:
+  window:
+    zh: 以十四至三十日覆盖至少三个相似释放周期；按实际合法作业周期与日志保留调整。
+    en: Cover at least three comparable release cycles over fourteen to thirty days, adjusted to approved job periods
+      and log retention.
+  dimensions:
+  - source-device
+  - destination
+  - initiating-process
+  - approved-job-id
+false_positives:
+- zh: 备份或复制工具按小时上传到外部存储
+  en: Backup or replication tools uploading to external storage hourly
+- zh: 软件遥测与运维日志周期批量发送
+  en: Software telemetry and operations logs sent in periodic batches
+- zh: 邮件队列与云同步在等待后成批排空
+  en: Mail queues or cloud sync draining batches after a wait
+blind_spots:
+- zh: NAT 或共享代理无法稳定回连到源进程
+  en: NAT or shared proxy cannot be reliably mapped back to a source process
+- zh: 加密与无文件遥测无法确认上传内容或本地队列
+  en: Encryption and missing file telemetry prevent confirmation of content or a local queue
+- zh: 观察期不足三个周期或攻击者改变间隔
+  en: Fewer than three observed cycles or adversary-changed intervals
+tuning_guidance:
+  paragraphs:
+  - zh: 按主机角色和已批准传输作业建立目的地、时段、进程及字节分布基线；允许列入白名单的作业继续接受异常新目的地或新数据源检查，不把整类备份进程完全排除。
+    en: Baseline destinations, hours, processes, and byte distributions by host role and approved transfer job;
+      even allowlisted jobs remain subject to new-destination and new-data-source checks rather than excluding all
+      backup processes.
+evidence_refs:
+- REF-000644
+- REF-000645
+- REF-000634
+- REF-000604
+- REF-000643
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-09-22'
+  modified: '2026-09-22'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

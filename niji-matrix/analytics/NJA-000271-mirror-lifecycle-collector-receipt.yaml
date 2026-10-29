@@ -1,0 +1,135 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000271
+strategy_ref: DET-000220
+name:
+  zh: 镜像生命周期—源流—收集器接收关联
+  en: Mirror Lifecycle–Source Flow–Collector Receipt Correlation
+summary:
+  zh: 把镜像配置生命周期与独立 collector 的实际接收连接。
+  en: Join mirror-configuration lifecycle to actual receipt at an independent collector.
+domains:
+- enterprise
+platforms:
+- IaaS
+- Network Devices
+logic:
+  paragraphs:
+  - zh: 对 mirror create、patch、enable、disable 和 delete 保存事件时 old/new state，规范 actor、source resources、filter、collector
+      与 request/mirror ID。将镜像有效期同源流目录相交，再连接 collector interface 的 packet/byte receipt。未经批准的镜像先报告 replica-capability；有匹配接收时升为
+      replica-received；只有受限内容评估或可证明的敏感源范围才报告 sensitive-replica-risk。对象删除后的空现态不能关闭历史告警。
+    en: Preserve event-time old and new state for mirror create, patch, enable, disable, and delete and normalize
+      actor, source resources, filter, collector, and request or mirror ID. Intersect mirror validity with source-flow
+      inventory and join collector-interface packet and byte receipt. Report an unapproved mirror first as replica-capability,
+      raise to replica-received on matching receipt, and report sensitive-replica-risk only with restricted content
+      assessment or a demonstrably sensitive source scope. Empty current state after deletion does not close historical
+      findings.
+data_requirements:
+- source_type: mirror-control-plane-audit
+  name:
+    zh: 镜像控制面审计
+    en: Mirror control-plane audit
+  channel: cloud Admin Activity, switch AAA/configuration log, or equivalent
+  required_fields:
+  - timestamp
+  - platform
+  - tenant-or-network
+  - request-id
+  - actor-id
+  - operation
+  - mirror-id
+  - source-resources
+  - filter
+  - collector-target
+  - old-state
+  - new-state
+  - outcome
+- source_type: mirror-collector-flow
+  name:
+    zh: 镜像收集器接收流
+    en: Mirror collector receipt flow
+  channel: VPC flow, switch telemetry, collector interface counters, or equivalent
+  required_fields:
+  - timestamp
+  - tenant-or-network
+  - mirror-id-or-encapsulation-key
+  - source-resource
+  - collector-target
+  - collector-interface
+  - packet-count
+  - byte-count
+  - flow-id
+- source_type: source-flow-inventory
+  name:
+    zh: 源流范围目录
+    en: Source-flow scope inventory
+  channel: flow metadata and asset classification
+  required_fields:
+  - timestamp
+  - source-resource
+  - flow-id
+  - source
+  - destination
+  - protocol-family
+  - data-or-service-classification
+- source_type: mirror-approval-inventory
+  name:
+    zh: 批准镜像清单
+    en: Approved mirror inventory
+  channel: change management
+  required_fields:
+  - ticket-id
+  - mirror-id
+  - owner
+  - source-scope
+  - filter-scope
+  - collector-target
+  - valid-from
+  - valid-to
+  - data-purpose
+  - retention-policy
+observables:
+- zh: 镜像对象创建或修改后，collector 接口出现匹配源范围的字节
+  en: A mirror object is created or changed and matching source-scope bytes arrive at the collector
+- zh: 源端点保持原会话，控制面新增复制边且随后被删除
+  en: The source endpoint preserves the original session while a control-plane copy edge appears and is later removed
+correlation:
+  window:
+    zh: 覆盖镜像资源整个有效期，并在创建前后各保留三十分钟流量。
+    en: Cover the full mirror-resource lifetime and retain thirty minutes of traffic before creation and after deletion.
+  dimensions:
+  - platform
+  - tenant-or-network
+  - request-id
+  - mirror-id
+  - actor-id
+  - source-resource
+  - filter
+  - collector-target
+  - flow-id
+  - ticket-id
+false_positives:
+- zh: 批准的 NDR、故障诊断、容量分析和合规镜像
+  en: Approved NDR, troubleshooting, capacity analysis, and compliance mirroring
+blind_spots:
+- zh: 物理 TAP、固件复制或提供方内部镜像没有租户控制面日志
+  en: Physical taps, firmware copying, or provider-internal mirrors lack tenant control-plane logs
+- zh: 只见配置而没有 collector receipt 时不能确认完成外传
+  en: Configuration without collector receipt cannot establish completed exfiltration
+tuning_guidance:
+  paragraphs:
+  - zh: 为每个批准镜像固定 owner、source/filter、collector、用途、到期和保留策略；跨项目目标、广源范围和无自动到期提高严重度。内容确认留在受限取证环境，通用分析只处理资源与流元数据。
+    en: Pin owner, source and filter, collector, purpose, expiration, and retention for every approved mirror; raise
+      severity for cross-project targets, broad source scope, and no automatic expiry. Keep content confirmation
+      in a restricted forensic environment while general analytics process resource and flow metadata only.
+evidence_refs:
+- REF-000792
+- REF-000795
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-10-04'
+  modified: '2026-10-04'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

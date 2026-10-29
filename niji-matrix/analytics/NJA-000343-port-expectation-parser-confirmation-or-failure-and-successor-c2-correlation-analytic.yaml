@@ -1,0 +1,235 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000343
+strategy_ref: DET-000257
+name:
+  zh: 端口预期、解析确认/失败与后继 C2 关联分析
+  en: Port Expectation Parser Confirmation or Failure and Successor C2 Correlation Analytic
+summary:
+  zh: 分级输出未登记端口、协议错配、误放行或解析偏移，并仅在后继 C2 成立时确认技术。
+  en: Emit unregistered-port, semantic mismatch, mistaken allowance, and parser-displacement states, confirming the technique
+    only with successor C2.
+domains:
+- enterprise
+platforms:
+- Network
+- Windows
+- Linux
+logic:
+  paragraphs:
+  - zh: 对每个 session 用 source/destination role、destination identity、transport、port、rule 与时间查找 versioned expected_service；无登记时输出
+      unregistered_port 而非 mismatch。actual semantics 优先使用 Zeek confirmed service、Suricata app_proto directional fields、firewall
+      Application 或协议仿真 handshake；port number 永不直接赋值 actual。若 actual 与 expected 不同输出 semantic_mismatch。若 firewall action=allow
+      且 matched rule/service 只基于 port 或 nonstandard flag/application-default 不匹配，输出 port_policy_allowance；若 expected analyzer
+      failure、service null/unknown、directional app mismatch 或 semantic transaction 缺失，输出 parser_displacement。最后连接同 process
+      的 command/result/child/file、重复 bidirectional beacon 或可验证 C2 response；只有 mismatch + defensive effect + successor C2 同时成立才输出
+      mismatch_c2_confirmed。
+    en: For every session, find a versioned expected_service using source and destination role, destination identity, transport,
+      port, rule, and time. Emit unregistered_port rather than mismatch where no registration exists. Prefer Zeek confirmed
+      service, Suricata app_proto directional fields, firewall Application, or protocol-emulation handshake for actual semantics;
+      never assign actual from port number. Emit semantic_mismatch when actual differs from expected. Emit port_policy_allowance
+      when firewall action is allow and the matched rule or service is port-only or the nonstandard flag and application-default
+      relationship disagrees. Emit parser_displacement when the expected analyzer fails, service is null or unknown, directional
+      applications disagree, or semantic transactions are absent. Finally join commands, results, children, or files from
+      the same process, a repeated bidirectional beacon, or a validated C2 response. Emit mismatch_c2_confirmed only when
+      mismatch, defensive effect, and successor C2 all coexist.
+data_requirements:
+- source_type: zeek-connection
+  name:
+    zh: Zeek 连接记录
+    en: Zeek Connection Records
+  channel: Zeek conn.log
+  required_fields:
+  - event_time
+  - network_session_id
+  - source_ip
+  - source_port
+  - destination_ip
+  - destination_port
+  - transport
+  - detected_services
+  - duration
+  - bytes_to_server
+  - bytes_to_client
+  - connection_state
+  - missing_bytes
+  - transport_history
+  - packets_to_server
+  - packets_to_client
+- source_type: zeek-analyzer
+  name:
+    zh: Zeek 解析器状态
+    en: Zeek Analyzer State
+  channel: Zeek analyzer.log and protocol transaction logs
+  required_fields:
+  - event_time
+  - analyzer_kind
+  - attempted_analyzer
+  - network_session_id
+  - source_ip
+  - source_port
+  - destination_ip
+  - destination_port
+  - transport
+  - parser_failure_reason
+- source_type: suricata-eve
+  name:
+    zh: Suricata EVE 应用层事件
+    en: Suricata EVE Application Events
+  channel: Suricata EVE flow/anomaly/alert
+  required_fields:
+  - event_time
+  - network_session_id
+  - source_ip
+  - source_port
+  - destination_ip
+  - destination_port
+  - transport
+  - detected_application
+  - original_application
+  - expected_parser_application
+  - application_to_server
+  - application_to_client
+  - sensor_event_type
+  - direction
+  - sensor_action
+  - signature_id
+  - parser_anomaly
+  - bytes_to_server
+  - bytes_to_client
+- source_type: application-aware-firewall
+  name:
+    zh: 应用感知防火墙策略记录
+    en: Application-Aware Firewall Policy Records
+  channel: NGFW/App-ID traffic log
+  required_fields:
+  - receive_time
+  - event_time
+  - source_ip
+  - destination_ip
+  - policy_rule
+  - principal_id
+  - firewall_application
+  - source_zone
+  - destination_zone
+  - firewall_session_id
+  - source_port
+  - destination_port
+  - policy_flags
+  - transport
+  - policy_action
+  - bytes_to_server
+  - bytes_to_client
+  - session_end_reason
+  - policy_rule_id
+  - application_changes
+  - nonstandard_port_flag
+- source_type: endpoint-process-network-outcome
+  name:
+    zh: 端点进程 网络与结果
+    en: Endpoint Process Network and Outcome
+  channel: Microsoft Defender XDR DeviceNetworkEvents/Sysmon plus process and file events
+  required_fields:
+  - event_time
+  - device_id
+  - destination_ip
+  - destination_port
+  - remote_host
+  - transport
+  - process_start_key
+  - process_image
+  - command_line
+  - c2_outcome_type
+  - outcome_process
+  - object_path
+- source_type: expected-service-policy
+  name:
+    zh: 服务预期与策略登记
+    en: Expected-Service and Policy Registry
+  channel: CMDB, firewall policy, proxy/parser configuration, and custom-service registry
+  required_fields:
+  - policy_version
+  - source_role
+  - destination_role
+  - destination_identity
+  - transport
+  - destination_port
+  - expected_service
+  - allowed_application
+  - parser_profile
+  - policy_rule_id
+  - service_owner
+  - approved_purpose
+  - valid_from
+  - valid_to
+observables:
+- zh: 内容解析器在环境预期不同服务的端口确认 HTTP SSH 或另一应用
+  en: A payload-aware parser confirms HTTP, SSH, or another application on a port expected for a different service
+- zh: 443 或 53 的预期 TLS 或 DNS 解析失败而自定义双向会话继续
+  en: The expected TLS or DNS parser fails on 443 or 53 while custom bidirectional traffic continues
+- zh: 端口规则放行但应用识别或独立解析器报告其他或未知协议
+  en: A port rule allows a session while App-ID or an independent parser reports another or unknown application
+- zh: 同一端点进程维持错配流并产生命令结果或后继动作
+  en: The same endpoint process maintains the mismatched flow and produces a command, result, or follow-on action
+correlation:
+  window:
+    zh: 会话至端点结果默认十五分钟，周期性信标或协议仿真回复扩展至二十四小时；策略版本必须覆盖事件发生时刻。
+    en: Join sessions to endpoint outcomes within fifteen minutes by default and recurring beacons or protocol-emulation responses
+      within twenty-four hours; the policy version must be valid at event time.
+  dimensions:
+  - network_session_id
+  - firewall_session_id
+  - device_id
+  - process_start_key
+  - source_role
+  - destination_identity
+  - destination_port
+  - expected_service
+  - detected_application
+  - attempted_analyzer
+  - policy_rule_id
+  - policy_version
+  - c2_outcome_id
+  - time
+false_positives:
+- zh: 已登记自定义服务与厂商管理端口
+  en: Registered custom services and vendor management ports
+- zh: 开发测试 服务网格 端口共享与迁移例外
+  en: Development tests, service meshes, port sharing, and migration exceptions
+- zh: STARTTLS 代理 TLS 终止与解析器误判
+  en: STARTTLS, proxies, TLS termination, and parser misclassification
+blind_spots:
+- zh: 加密或未支持的专有协议及负载采样
+  en: Encrypted or unsupported proprietary protocols and sampled payloads
+- zh: 短流 单向流 DPD 关闭或缺少解析签名
+  en: Short or one-way flows, disabled DPD, or missing parser signatures
+- zh: NAT 代理遮蔽目标及缺少端点进程遥测
+  en: NAT or proxy obscuring the destination and missing endpoint process telemetry
+tuning_guidance:
+  paragraphs:
+  - zh: expected_service 必须来自当地 inventory/policy 与 owner，不用 IANA 单独定性。为合法 custom service 登记 exact source/destination/application/parser/port/purpose/expiry。unknown/failed
+      只启动调查，需 C2 outcome 或 validated protocol response 升级。对 443/53 不设全局例外；按 role 与 destination baseline。定期以批准测试流量验证 DPD/App-ID/parser
+      coverage 和 field mapping。
+    en: expected_service must come from local inventory and policy with an owner, never IANA alone. Register exact source,
+      destination, application, parser, port, purpose, and expiry for legitimate custom services. Unknown or failed starts
+      investigation only and requires a C2 outcome or validated protocol response for escalation. Do not globally exempt 443
+      or 53; baseline by role and destination. Regularly validate DPD, App-ID, parser coverage, and field mappings with approved
+      test traffic.
+evidence_refs:
+- REF-001132
+- REF-001133
+- REF-001134
+- REF-001136
+- REF-001137
+- REF-001138
+- REF-001140
+- REF-000604
+- REF-000230
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-10-05'
+  modified: '2026-10-05'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

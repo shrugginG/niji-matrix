@@ -1,0 +1,129 @@
+schema_version: 2.0.0
+type: evasion-subtechnique
+id: NJS-0154-002
+parent_ref: NJT-0154
+name:
+  zh: 时间窗限额外传
+  en: Time-Window Capped Exfiltration
+summary:
+  zh: 攻击者约束持续外传在短时间窗口内的发送量，使峰值较低而完成时间延长。
+  en: An adversary constrains outbound bytes during short windows of a continuing exfiltration, lowering peaks while
+    extending completion time.
+aliases: []
+lineage:
+  attck_subtechnique_inherited: false
+definition_and_concept:
+  paragraphs:
+  - zh: 时间窗限额外传是攻击者对持续外传施加字节每秒或其他滚动时间窗预算，以读取或发送节流方式调节吞吐。此处稳定变量是单位时间发送量上限；是否使用 Rclone、StealBit 或其他程序只是实现，设置开始时刻或周期性运行则属
+      T1029 的时间选择。
+    en: Time-Window Capped Exfiltration is the attacker-imposed budget of bytes per second or another rolling window
+      on a continuing outbound transfer, implemented by throttling reads or sends. The stable variable is the cap
+      on sent volume per time unit. Rclone, StealBit, or another program is an implementation; choosing a start
+      time or periodic recurrence belongs to T1029's clock choice.
+stealth_characteristics:
+  paragraphs:
+  - zh: 时间窗限额外传压低瞬时或短窗出站峰值，使按某个速率上限触发的监测可能不再报警；总外传量并未降低，只是出现于更长的时段。持续低速、重复相似窗量和异常进程到同一外部目标的长期联系仍可观察，且更长运行时间提高任务被中断或事后追溯的机会。
+    en: Time-Window Capped Exfiltration lowers instantaneous or short-window outbound peaks, potentially avoiding
+      monitoring keyed to a rate threshold. Total exfiltrated volume does not shrink; it appears across a longer
+      period. Sustained low throughput, repeated similar window totals, and a long-lived link from an unusual process
+      to one external destination remain observable, while longer runtime increases interruption and later attribution
+      opportunities.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 纳入攻击者为降低传输量告警而控制外传读取或发送速率，或在入侵外传语境下显式设置并实际形成可观测限额。服务端限流、拥塞、链路质量、普通备份限速和未形成出站数据传送的睡眠都排除。若限额随一天中特定时段变化，可同时评估
+      T1029；若每个对象还受大小上限约束，可同时评估兄弟子项。
+    en: Scope includes attacker control of exfiltration read or send rate to reduce volume-alert exposure, or an
+      explicitly configured cap that produces such a trace in an intrusion context. Server throttling, congestion,
+      link quality, approved backup shaping, and sleeps without outbound delivery are excluded. A cap scheduled
+      by time of day may also warrant T1029; a separate size ceiling on each object may also warrant the sibling
+      child.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: 攻击者需要从共享目录或端点外传大量资料，却希望避免网络出口短时高峰时，可把云传输工具的上传带宽固定在较低值。DFIR Report 的真实入侵记录 Rclone --bwlimit 10M；Cybereason
+        逆向确认 StealBit 的 -net/-once 可按十五秒预算延迟文件读取，并明确把该功能与规避监测远端发送量联系起来。
+      en: An adversary moving a large set from a share or endpoint while avoiding a short egress spike can set a
+        low upload rate in a cloud-transfer tool. The DFIR Report records Rclone --bwlimit 10M in a real intrusion.
+        Cybereason confirmed by reverse engineering that StealBit's -net/-once options delay file reads against
+        a 15-second budget and explicitly associated the feature with evasion of sent-volume monitoring.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者须有持续访问权、可运行较久的外传进程及可修改的读取或发送节流参数。速率预算低于短窗阈值时可能延长至数小时或数日，要求接收端容忍中断与续传；若攻击者无法在长时间保持会话或目标路径，限速反而降低成功率。
+        en: The attacker needs sustained access, an outbound process that can run long enough, and control over
+          read or send throttling. A budget below a short-window alert may extend the operation to hours or days
+          and requires the receiver to tolerate interruptions and resumption. If access or the destination cannot
+          persist, capping can reduce success rather than improve stealth.
+    defender_model:
+      paragraphs:
+      - zh: 防守方需从同一主机与目标的流量记录重建时间桶出站字节，并尽量用进程启动参数及连接归属确认是谁实施限速。Zeek conn.log 的 orig_bytes 支持连接级方向字节，但跨越长连接的精细速率需要周期计数器、流中间记录或代理遥测；只凭最终
+          conn.log 无法重建内部十五秒曲线。Microsoft DeviceNetworkEvents 可以提供进程关联，通常不提供本分析所需出站字节量。
+        en: The defender needs directional byte counts for a host-destination pair in time buckets and should use
+          process command lines and connection attribution to identify who imposed the cap. Zeek conn.log orig_bytes
+          supports per-connection directional totals, but fine-grained rate within one long connection needs periodic
+          counters, interim flow records, or proxy telemetry; a final conn.log cannot reconstruct its internal 15-second
+          curve. Microsoft DeviceNetworkEvents can link a process to a connection but does not normally provide
+          the outbound byte counts this analytic requires.
+stealth_mechanisms:
+- mechanism_ref: NM-ST
+  role: primary
+  summary:
+    zh: 将大外传量稀释到更长的低峰值时间序列
+    en: Dilute a large outbound volume across a longer low-peak time series
+  analysis:
+    paragraphs:
+    - zh: 攻击者限制读取或发送量，使短时间段的出站峰值下降，而相同数据总量在更多窗口内逐步到达目标。短窗高带宽规则因每窗信号较弱而可能失效，防守方必须跨窗累积并核对长期目的地和进程。StealBit 原始逆向直接描述为规避按时间统计发送量的检测；DFIR
+        事件仅证明真实入侵选择了 Rclone 带宽限制。
+      en: The attacker throttles reads or sends, reducing the outbound peak in each short interval while the same
+        total reaches the receiver over more windows. Short-window high-bandwidth rules may miss weaker local signals,
+        forcing the defender to accumulate across windows and examine long-lived process and destination context.
+        StealBit's primary reverse engineering explicitly describes evasion of sent-volume-over-time detection;
+        the DFIR case proves only that intruders selected Rclone bandwidth limiting.
+  evidence_refs:
+  - REF-000641
+  - REF-000640
+  - REF-000642
+  confidence: high
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000171
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000156
+evidence:
+  claim_refs:
+  - CLM-000772
+  - CLM-000773
+  case_refs:
+  - CASE-000214
+  reference_refs:
+  - REF-000638
+  - REF-000640
+  - REF-000641
+  - REF-000642
+  - REF-000632
+  - REF-000634
+  - REF-000604
+  - REF-000664
+  - REF-000230
+research:
+  limitations:
+    paragraphs:
+    - zh: StealBit 逆向支持设计能力和作者所述规避目标，却未公开某企业监测规则及真实告警下降；DFIR 的 Rclone --bwlimit 10M 也可能兼顾稳定性或链路占用。不同计量来源对长连接、TLS
+        与代理拆分的时间粒度不同，实施分析前须验证字段和采样，不应把任何低速连接自动归为恶意限额。
+      en: StealBit reverse engineering supports the capability and its stated evasion purpose but does not publish
+        an enterprise rule or observed alert reduction. The DFIR Rclone --bwlimit 10M choice could also reflect
+        stability or link-use concerns. Telemetry sources differ in granularity across long connections, TLS, and
+        proxies, so an implementation must validate fields and sampling rather than labeling every slow connection
+        as malicious capping.
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-09-22'
+  modified: '2026-09-22'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

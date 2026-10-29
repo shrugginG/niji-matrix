@@ -1,0 +1,81 @@
+schema_version: "2.0.0"
+type: technique
+id: NJT-0072
+name: {zh: 匿迹化进程间通信执行, en: Stealth-Conforming Inter-Process Execution}
+summary: {zh: 攻击者通过 COM、DDE、XPC、pipe/socket 或等价 IPC 请求让另一个本地进程执行代码或命令，并利用受信 broker 来源或短驻消息降低请求者归因与事后恢复能力。, en: Adversaries use COM DDE XPC pipes or sockets or equivalent IPC requests to have another local process execute code or commands and reduce requester attribution or later reconstruction through trusted broker provenance or transient messages.}
+aliases: [Inter-Process Communication]
+classification:
+  tactic_refs: [TA0002]
+  origin: {kind: attack-adapted, source_attack_id: T1559, source_attack_version: '19.1'}
+  decision_ref: DEC-TA0002-T1559
+definition_and_concept:
+  paragraphs:
+  - zh: 匿迹化进程间通信执行是攻击者作为 IPC 客户端或消息生产者，向同一主机上的 COM server、Office DDE 对端、XPC service、命名/匿名 pipe、Unix socket、Mach port 或等价 endpoint 发送攻击者控制的对象、方法、字段、参数或数据，使接收进程启动代码、命令、脚本、线程或具有执行效果的高权限操作。直接目标是借另一个进程完成执行，同时把请求者、控制语义和可见结果分散到 IPC 两端。
+    en: Stealth-Conforming Inter-Process Execution makes an adversary an IPC client or message producer that sends an attacker-controlled object method field argument or data to a local COM server Office DDE peer XPC service named or anonymous pipe Unix socket Mach port or equivalent endpoint, causing the receiving process to start code commands scripts threads or privileged operations with execution effect. Its direct objective is execution by another process while distributing requester control semantics and visible outcome across both IPC endpoints.
+  - zh: 概念锚是“客户端身份—IPC endpoint/object/method—请求—server/broker—执行结果”，不是协议名称或所有进程间数据交换。pipe 只传输已执行命令的 stdout、模块只交换心跳或进程只同步状态而没有由消息推动的新执行，不属于本技术。跨主机 DCOM/SMB pipe 还涉及远程服务与横向移动；本对象只描述本地 IPC 执行段。由 broker 后继 shell 解析命令时可同时标记 NJT-0065。
+    en: The conceptual anchor is client identity, IPC endpoint object or method, request, server or broker, and execution outcome, not a protocol name or every inter-process data exchange. A pipe carrying only stdout from an already running command, modules exchanging heartbeats, or synchronization without message-driven execution is outside this technique. Cross-host DCOM or SMB pipes also involve remote services and lateral movement; this object covers only the local IPC execution segment. A broker's later shell parsing may also instantiate NJT-0065.
+stealth_characteristics:
+  paragraphs:
+  - zh: 核心匿迹矛盾是攻击者必须把足够控制语义交给接收者并产生结果，却希望进程/文件视角只看到受信 Office、Finder、XPC daemon 或 COM server 执行，IPC 视角又只看到一个短暂连接或消息。Microsoft DDE 事件显示恶意字段通过合法 Office 跨应用功能启动命令；UNC1069 的 DEEPBREATH 借 Finder Full Disk Access 操作受保护 TCC 路径。可见执行来源因此从攻击者客户端转移到高信任 broker。
+    en: The central stealth tension is that an adversary must give the receiver enough control semantics to produce an outcome while process or file views show only trusted Office Finder XPC daemon or COM server execution and the IPC view shows only a short connection or message. Microsoft DDE incidents show malicious fields launching commands through legitimate Office cross-application functionality, while UNC1069 DEEPBREATH used Finder Full Disk Access for protected TCC operations. Visible execution provenance therefore shifts from the adversary client to a high-trust broker.
+  - zh: 方法调用、DDE conversation、XPC message、pipe buffer 或 socket frame 可只在内存/短日志中存在，连接结束后延迟取证只剩 broker 子进程、文件或网络结果。残余包括客户端 PID/签名/entitlement、server endpoint、object/CLSID、method、请求 hash、连接时间、Sysmon pipe create/connect、broker 调用栈、子进程和资源结果。DDE 安全提示、XPC peer 代码签名与运行时关联能缩小匿迹；完全记录消息内容时短驻变量显著削弱。
+    en: A method call DDE conversation XPC message pipe buffer or socket frame may exist only in memory or short-retention logs, leaving delayed acquisition with broker child processes files or network outcomes after connection closes. Residuals include client PID signature or entitlement server endpoint object or CLSID method request hash connection time Sysmon pipe create or connect broker call stack child process and resource outcome. DDE protections XPC peer code-signing and runtime correlation narrow stealth; complete message-content capture materially weakens the transient variable.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 纳入攻击者控制本地 IPC 请求并由接收进程实际产生执行效果的行为，要求至少识别客户端或请求来源、IPC endpoint/object/method、broker 和结果；仅存在 COM/XPC/pipe 或一次连接不足。直接加载 DLL 而没有进程间请求归模块加载/执行流劫持；进程注入虽可能使用句柄和线程 API，但若没有 IPC 消息驱动，不因跨进程就进入本技术。
+    en: Scope includes adversary control of a local IPC request that causes the receiver to produce an execution effect and requires at least client or request origin endpoint object or method broker and outcome. Presence of COM XPC pipe or a connection alone is insufficient. Direct DLL loading without an inter-process request belongs to module loading or execution-flow hijack. Process injection may use handles and thread APIs but does not qualify merely for crossing processes without message-driven execution.
+  - zh: DCOM/远程 pipe 的跨主机建立与身份认证由远程服务/横向移动对象承担，本技术可标记目标主机内部 server 执行段。合法 Office 数据链接、Finder 自动化、XPC helper、浏览器 native messaging、软件更新、辅助功能和服务 RPC 会产生同形高频事件；只有请求来源/内容、调用权限、目标方法与结果共同表明攻击者有意利用观察断点时成立。
+    en: Cross-host establishment and authentication of DCOM or remote pipes belongs to remote-service or lateral-movement objects, while this technique can mark the local server execution segment on the target. Legitimate Office data links Finder automation XPC helpers browser native messaging software updates accessibility and service RPC create high-volume equivalent events. Classification requires request origin or content call authority target method and outcome jointly showing deliberate use of the observation break.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: 攻击者已在终端获得代码执行或能诱导用户打开带 IPC 字段的文档后，选择一个已运行且拥有更高信任、权限、网络或数据访问的 broker，让其启动命令、修改受保护数据、加载内容或执行 helper。该路径适合防守规则依赖父进程、签名或落地脚本，而 IPC 方法和请求内容没有集中审计的环境。
+      en: After obtaining endpoint code execution or inducing a user to open a document containing an IPC field, an adversary selects a running broker with greater trust privilege network or data access and has it launch a command modify protected data load content or execute a helper. The path suits environments where rules depend on parent process signature or disk scripts while IPC methods and request content lack centralized audit.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者需要发现可调用 endpoint、了解 object/protocol 和参数、满足或绕过客户端身份与 entitlement 检查，并控制消息时序。DDE 可能需要用户确认/关闭保护模式；COM/XPC helper 可能要求签名、ACL、sandbox entitlement 或特定会话；pipe/socket 需要名称和权限。错误参数和失败连接会留下异常，broker 崩溃也会暴露。
+        en: The adversary needs discovery of a callable endpoint knowledge of object or protocol and arguments satisfaction or bypass of client identity and entitlement checks and control of message timing. DDE may require user confirmation or disabling Protected View. COM or XPC helpers may require signing ACL sandbox entitlement or a specific session, while pipes or sockets require names and permissions. Bad arguments and failed connections leave anomalies and broker crashes expose activity.
+    defender_model:
+      paragraphs:
+      - zh: 防守方模型假定可取得客户端/server 进程实体、签名/entitlement/用户、endpoint/object/method、连接与消息摘要、broker 调用栈/子进程、文件/网络结果和平台策略状态。Sysmon 可记录命名管道但不覆盖全部方法语义；macOS Endpoint Security/Unified Log 或应用审计需补充 XPC/Apple Events；COM/DDE 可能需要 ETW、Office 事件和进程链。缺少消息保留时只能以时间和结果推断，置信度下降。
+        en: The defender model assumes client and server process identity signature entitlement or user endpoint object or method connection and message digest broker call stack or child process file or network outcome and platform policy state. Sysmon records named pipes but not all method semantics. macOS Endpoint Security or Unified Log or application audit must supplement XPC and Apple Events, while COM or DDE may need ETW Office events and process lineage. Without message retention only time and outcome inference remains and confidence decreases.
+stealth_mechanisms:
+- mechanism_ref: NM-FD
+  role: primary
+  summary: {zh: 受信 broker 承担可见执行并替代真实请求者来源, en: A trusted broker performs visible execution and substitutes for the true requester provenance}
+  analysis:
+    paragraphs:
+    - zh: 客户端把执行请求交给具有合法签名、权限或应用身份的 server，文件/进程结果由 broker 产生，单点分类把恶意动作与正常 broker 功能共享特征，形成特征伪装。Office DDE 和 DEEPBREATH/Finder 是直接现场证据，Migraine 研究补充 XPC 结构，支持 high。客户端—endpoint—方法—broker—结果联合仍可反证。
+      en: The client hands an execution request to a server with legitimate signature privilege or application identity, and the broker creates file or process outcomes. Point classification then groups malicious action with normal broker functionality, producing Feature Disguise. Office DDE and DEEPBREATH or Finder are direct field evidence and Migraine adds XPC structure, supporting high confidence. A client-endpoint-method-broker-outcome join remains disconfirming.
+  evidence_refs: [REF-000227, REF-000229, REF-000232]
+  confidence: high
+- mechanism_ref: NM-BT
+  role: secondary
+  summary: {zh: 控制语义短驻于 IPC 消息而事后只剩 broker 结果, en: Control semantics are transient in IPC messages while only broker outcomes remain later}
+  analysis:
+    paragraphs:
+    - zh: 方法、字段、message 或 pipe buffer 在会话结束后不形成持久执行对象，若传感器只记录连接或未保存内容，关键请求落在有效监控之外而结果仍发生，形成行为透明。DDE 官方一次性消息语义和 Sysmon 仅记录 pipe create/connect 的边界支持该因果，置信度 high；实时消息摘要、完整会话与结果关联能够恢复。
+      en: Methods fields messages or pipe buffers form no durable execution object after the session. If sensors retain only connection or omit content, the critical request falls outside effective monitoring while outcomes occur, producing Behavioral Transparency. Official one-time DDE semantics and the Sysmon boundary of pipe create or connect support this chain at high confidence. Real-time message digests complete sessions and outcome correlation can restore it.
+  evidence_refs: [REF-000227, REF-000228, REF-000230, REF-000231]
+  confidence: high
+subtechnique_taxonomy:
+  narrative:
+    paragraphs:
+    - zh: NJS-0072-001 固定“执行者来源替代”：请求可持久记录，但可见动作由受信 broker 产生，检测核心是客户端到 broker 的因果。NJS-0072-002 固定“请求载体短驻”：broker 可以不受信，但控制语义只在短消息/会话存在，检测核心是实时内容保留。持久 COM 请求可满足前者而不满足后者；短驻 pipe 向自有恶意 server 发送命令可满足后者而不借受信来源，故互不包含。
+      en: "NJS-0072-001 fixes executor-provenance substitution: a request may be durably logged but the trusted broker creates visible action and detection centers on client-to-broker causality. NJS-0072-002 fixes transient request carriage: the broker need not be trusted but control semantics exist only in a short message or session and detection centers on real-time retention. A durable COM request can satisfy the former without the latter, while a transient pipe to an adversary's own server can satisfy the latter without trusted provenance, so neither contains the other."
+    - zh: 固定基线的 COM、DDE、XPC 三个 ATT&CK 子项均可贡献上述变量，但协议/平台不导入 Niji 分类。远程 IPC 的跨主机段归相邻远程服务，单纯数据交换或命令输出 pipe 因没有消息驱动执行而属于 parent-core 或排除。
+      en: The fixed-baseline COM DDE and XPC ATT&CK children can contribute to these variables but protocol and platform are not imported into Niji taxonomy. The cross-host segment of remote IPC belongs to adjacent remote services, while ordinary data exchange or pipes carrying command output without message-driven execution are parent-core or excluded.
+  coverage: established
+  subtechnique_refs: [NJS-0072-001, NJS-0072-002]
+defense: {detections: {coverage: available, strategy_refs: [DET-000083]}, mitigations: {coverage: available, mitigation_refs: [MIT-000084]}}
+evidence:
+  claim_refs: [CLM-000274, CLM-000275, CLM-000276, CLM-000424, CLM-000425, CLM-000426, CLM-000427, CLM-000428, CLM-000429]
+  case_refs: [CASE-000079, CASE-000080]
+  reference_refs: [REF-000124, REF-000227, REF-000228, REF-000229, REF-000230, REF-000231, REF-000232]
+research:
+  limitations:
+    paragraphs:
+    - zh: 现场证据分别覆盖 Windows Office DDE 与 macOS Finder/AppleScript，XPC broker 由漏洞研究而非确认野外利用补强，COM 主要依赖 ATT&CK/平台结构。跨协议统一只限于客户端请求—broker—执行结果的等价因果，不假定相同字段。许多合法 IPC 高频且消息含敏感内容，完整采集受性能与隐私限制；没有请求内容时只能做中等置信关联。
+      en: Field evidence covers Windows Office DDE and macOS Finder or AppleScript, while XPC brokerage is strengthened by vulnerability research rather than confirmed exploitation and COM relies mainly on ATT&CK and platform structure. Cross-protocol unification is limited to equivalent client-request-broker-outcome causality without assuming identical fields. Legitimate IPC is high-volume and messages can be sensitive, limiting complete collection for performance and privacy; without request content correlation remains medium confidence.
+lifecycle: {status: review, version: 1.1.0, created: '2026-09-10', modified: '2026-09-12', contributors: [Niji Matrix Research], reviewers: []}

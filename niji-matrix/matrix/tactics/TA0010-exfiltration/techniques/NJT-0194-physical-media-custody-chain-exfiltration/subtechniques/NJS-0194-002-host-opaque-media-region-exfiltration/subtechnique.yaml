@@ -1,0 +1,145 @@
+schema_version: 2.0.0
+type: evasion-subtechnique
+id: NJS-0194-002
+parent_ref: NJT-0194
+name:
+  zh: 宿主不可见介质区域外传
+  en: Host-Opaque Media-Region Exfiltration
+summary:
+  zh: 攻击者把被盗数据写入操作系统普通文件视图不识别的介质区域，使认可设备仍可携带文件级 DLP 和清单看不到的内容。
+  en: An adversary writes stolen data to a media region not recognized by the operating system's ordinary file view,
+    allowing a recognized device to carry content invisible to file-level DLP and manifests.
+aliases: []
+lineage:
+  attck_subtechnique_inherited: false
+definition_and_concept:
+  paragraphs:
+  - zh: 宿主不可见介质区域外传是物理介质保管链外传的一种实现：攻击者通过原始设备访问把数据放入声明分区之外的保留扇区、非标准分区或自定义虚拟文件系统，接收侧以专用解析器取回。直接目标仍是物理交付数据；子项变量是数据地址是否脱离宿主普通文件对象与声明布局，而不是使用加密、某一文件系统或某种
+      USB 控制器。
+    en: Host-Opaque Media-Region Exfiltration is a form of physical-media custody exfiltration in which the attacker
+      uses raw-device access to place data in reserved sectors outside declared partitions, a nonstandard partition,
+      or a custom virtual file system, then retrieves it with a dedicated parser. The direct objective remains physical
+      data delivery. The child variable is whether data addressing leaves ordinary host file objects and the declared
+      layout, not encryption, one file system, or a particular USB controller.
+stealth_characteristics:
+  paragraphs:
+  - zh: 宿主不可见介质区域外传使介质总容量、分区边界与原始扇区发生变化，而普通目录列表、文件创建审计和按可见对象执行的 DLP 可能没有对应记录。ProjectSauron 缩小 USB 可见分区，在磁盘末端保留数百
+      MB 并建立 Windows 不识别的加密自定义 VFS；研究者还明确指出，真实认可 USB 的 DeviceID 会让只阻止未知设备的控制失效。残余痕迹包括原始磁盘句柄、异常分区差额、未声明区域的非零或高熵块、容量变化和专用解析代码。
+    en: Host-Opaque Media-Region Exfiltration changes total capacity, partition boundaries, and raw sectors without
+      necessarily creating corresponding directory entries, file-create audit, or visible-object DLP records. ProjectSauron
+      reduced the visible USB partition, reserved hundreds of megabytes at the disk tail, and built an encrypted
+      custom VFS unrecognized by Windows. Researchers also state that the genuine recognized USB DeviceID defeated
+      controls blocking only unknown devices. Residual traces include raw-disk handles, anomalous partition gaps,
+      nonzero or high-entropy blocks in undeclared regions, capacity change, and dedicated parser code.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 纳入要求数据被写入普通宿主文件视图之外的介质区域，且该介质随后通过物理保管链离开或接续；隐藏属性文件、普通隐藏目录、加密容器和未分配空间中偶然残留内容不自动成立。若行为只进行原始卷读写以绕过文件系统而没有物理介质交付，由
+      NJT-0108 承担；若隐藏文件仍是可枚举文件对象，则检查工件可见性与数据遮蔽技术。
+    en: Inclusion requires data written to a media region outside the ordinary host file view and later departure
+      or continuation of that medium through physical custody. Hidden-attribute files, ordinary hidden directories,
+      encrypted containers, and incidental remnants in unallocated space do not qualify automatically. Raw volume
+      access without physical media delivery belongs to NJT-0108. Hidden content that remains an enumerable file
+      object should be assessed under artifact-visibility and data-obscuration techniques.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: 攻击者在可访问获准维护盘时，可先调整可见分区大小，在保留尾部区域建立自定义存储并让隔离区植入体写入被窃数据；介质仍以原设备身份进入和离开，接收侧工具再解析隐藏区域。ProjectSauron 的公开报告直接记录该设计用于把隔离网数据移动到联网系统，并指出普通操作系统和部分
+        DLP 看不到该区域。
+      en: When an attacker can access an approved maintenance drive, they can reduce the visible partition, establish
+        custom storage in a reserved tail region, and have an implant in the isolated zone write stolen data there.
+        The medium enters and leaves under its original device identity, and receiver-side tooling later parses
+        the hidden region. Public ProjectSauron reporting directly documents this design for moving air-gapped data
+        to connected systems and states that the ordinary operating system and some DLP controls did not see the
+        region.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者需要对物理磁盘或卷的原始写权限、介质几何和分区布局知识、不会破坏正常可见分区的写入逻辑，以及接收端兼容解析器。管理员权限、驱动或底层 API 访问可能成为前提；介质重建分区、完整擦除、只读硬件、容量和布局基线及原始区域扫描都会破坏或暴露该路径。
+        en: The attacker needs raw write authority to the physical disk or volume, knowledge of media geometry and
+          partition layout, write logic that preserves the normal visible partition, and a compatible receiver-side
+          parser. Administrative authority, a driver, or low-level API access may be prerequisites. Repartitioning,
+          full sanitization, read-only hardware, capacity and layout baselines, and raw-region inspection can destroy
+          or expose the path.
+    defender_model:
+      paragraphs:
+      - zh: 防守方不能只依赖文件创建和目录清单，而需在受管检查站记录物理容量、扇区大小、分区起止、可见卷总量、未声明区域摘要和介质资产身份，并在跨区前后比较；端点 EDR 若能记录原始设备句柄、进程、偏移、长度与写入方向可提供源侧证据。硬件固件隐藏区、USB
+          桥接控制器谎报容量或没有原始 I/O 归因时会形成盲区。
+        en: The defender cannot rely only on file creation and directory manifests. A managed checkpoint must record
+          physical capacity, sector size, partition starts and ends, visible-volume total, undeclared-region digest,
+          and media asset identity and compare them before and after zone crossing. Endpoint EDR can add source
+          evidence when it records raw-device handle, process, offset, length, and write direction. Firmware-hidden
+          areas, USB bridge controllers that misreport capacity, or raw I/O without process attribution create blind
+          spots.
+stealth_mechanisms:
+- mechanism_ref: NM-BT
+  role: primary
+  summary:
+    zh: 声明布局外区域跨越文件级观察边界
+    en: Regions outside the declared layout cross the file-level observation boundary
+  analysis:
+    paragraphs:
+    - zh: 攻击者以原始磁盘视图写入操作系统不挂载的区域，痕迹从文件路径和对象审计转成分区差额、扇区偏移与底层 I/O；文件级 DLP 即使允许或监视该设备，也没有被窃对象可判定。ProjectSauron 的隐藏
+        VFS 和公开的 DLP 绕过说明直接支持行为到观察缺口的链条。原始布局检查与进程归属可以恢复可见性，但不自动解释加密内容。
+      en: The attacker writes through a raw disk view into a region the operating system does not mount, changing
+        traces from file paths and object audit to partition gaps, sector offsets, and low-level I/O. File-level
+        DLP has no stolen object to evaluate even when it allows or monitors the device. ProjectSauron's hidden
+        VFS and documented DLP bypass directly support the behavior-to-observation-gap chain. Raw layout inspection
+        and process attribution can restore visibility but do not automatically interpret encrypted content.
+  evidence_refs:
+  - REF-000917
+  - REF-000419
+  confidence: high
+- mechanism_ref: NM-FD
+  role: secondary
+  summary:
+    zh: 认可设备身份掩盖声明布局外载荷
+    en: Recognized device identity masks payload outside the declared layout
+  analysis:
+    paragraphs:
+    - zh: 攻击者保留一枚真实获认可 USB 的 DeviceID 和可见分区外观，却在未声明区域携带数据，使只按设备信誉或是否未知作判断的控制把它归为正常介质。ProjectSauron 报告明确指出这一身份复用绕过未知设备阻断；比较组织资产清单、物理容量、分区表和区域摘要可以破坏伪装。认可身份本身不是恶意，必须同布局差异和数据链结合。
+      en: The attacker preserves the DeviceID and visible-partition appearance of a genuinely recognized USB while
+        carrying data in an undeclared region, causing controls based only on device reputation or unknown-device
+        status to classify it as normal media. ProjectSauron explicitly states that this identity reuse bypassed
+        unknown-device blocking. Comparing asset inventory, physical capacity, partition table, and region digest
+        can break the disguise. A recognized identity is not malicious by itself and must be joined to layout difference
+        and the data chain.
+  evidence_refs:
+  - REF-000917
+  - REF-000597
+  confidence: high
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000225
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000053
+evidence:
+  claim_refs:
+  - CLM-000953
+  - CLM-000954
+  case_refs:
+  - CASE-000278
+  reference_refs:
+  - REF-000917
+  - REF-000419
+  - REF-000597
+research:
+  limitations:
+    paragraphs:
+    - zh: ProjectSauron 提供已注册攻击、专用模块和存储布局的直接研究，并明确声称部分 DLP 绕过；公开材料未给出受害者原始扇区镜像、逐次介质转运日志或不同 DLP 产品的测试结果。子项可高置信定义隐藏区域与认可身份差异，但检测阈值、熵和布局规则必须在组织已知设备上本地验证。
+      en: ProjectSauron provides direct research on registered attacks, the dedicated module, and storage layout
+        and explicitly states bypass of some DLP controls. Public material does not provide victim raw-sector images,
+        per-trip media logs, or comparative tests across DLP products. The child can define hidden-region and recognized-identity
+        differentials with high confidence, while layout, entropy, and alert rules require local validation on known
+        organizational devices.
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-10-04'
+  modified: '2026-10-04'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

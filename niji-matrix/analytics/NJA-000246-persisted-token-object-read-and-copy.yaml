@@ -1,0 +1,158 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000246
+strategy_ref: DET-000206
+name:
+  zh: 持久 Token 对象—Reader—材料返回关联
+  en: Persisted Token Object–Reader–Material Return Correlation
+summary:
+  zh: 连接持久 token 对象、未批准 reader、完整值返回与复制产物。
+  en: Join a persisted token object, unapproved reader, complete-value return, and copied artifact.
+domains:
+- enterprise
+platforms: []
+logic:
+  paragraphs:
+  - zh: 从 token artifact inventory 取得 object ID/path/version、owner、expected readers、mount、audience/scope 和 TTL，连接 file open/read、Secret
+      get、repository read 或 cache access 的 actor/process/container/job、bytes 和结果。再连接本地材料分类与复制/归档/第二输出。只有完整材料返回给攻击者控制 reader
+      时报告取得；路径枚举、permission check、denied read 或 token name 只报告 exposure/attempt。
+    en: Start from a token-artifact inventory containing object ID or path and version, owner, expected readers, mount, audience
+      or scope, and TTL. Join file open or read, Secret get, repository read, or cache access to actor, process, container
+      or job, bytes, and outcome, then to local material classification and copying, archive, or second output. Report acquisition
+      only when complete material returns to an adversary-controlled reader. Path enumeration, permission check, denied read,
+      or token name remains exposure or attempt.
+data_requirements:
+- source_type: token-artifact-inventory
+  name:
+    zh: Token 持久对象与挂载清单
+    en: Persisted token object and mount inventory
+  channel: filesystem, secret manager, Kubernetes, CI/CD, or repository inventory
+  required_fields:
+  - snapshot_time
+  - object_id
+  - object_version
+  - path_or_key
+  - token_class
+  - owner
+  - expected_readers
+  - workload_or_namespace
+  - mount_id
+  - audience
+  - scope
+  - issued_at
+  - expires_at
+  - rotation_id
+- source_type: token-object-read
+  name:
+    zh: 文件、Secret、仓库或 Cache 读取
+    en: File, Secret, repository, or cache read
+  channel: host, container, cloud audit, or application object access
+  required_fields:
+  - timestamp
+  - object_id
+  - object_version
+  - actor_id
+  - process_start_key
+  - container_or_job_id
+  - operation
+  - bytes_returned
+  - outcome
+  - request_id
+- source_type: token-copy-artifact
+  name:
+    zh: Token 复制、归档与第二输出
+    en: Token copy, archive, and second output
+  channel: file, process, DLP, and egress telemetry
+  required_fields:
+  - timestamp
+  - process_start_key
+  - source_object_id
+  - output_artifact_id
+  - output_hash
+  - destination
+  - bytes
+  - operation
+  - outcome
+- source_type: restricted-token-material-assessment
+  name:
+    zh: 受限 Token 材料与可用性评估
+    en: Restricted token material and usability assessment
+  channel: local privacy-controlled assessment
+  required_fields:
+  - case_id
+  - request_or_artifact_id
+  - token_class
+  - token_reference_or_hmac_fingerprint
+  - complete_material
+  - valid_at_acquisition
+  - audience
+  - scope
+  - refresh_capable
+  - sender_constrained
+  - bound_key_obtained
+  - reviewer_id
+  - raw_token_retained
+- source_type: object-read-approval
+  name:
+    zh: 令牌对象批准 Reader 与用途
+    en: Approved token-object readers and purpose
+  channel: workload, application, and change management
+  required_fields:
+  - object_id
+  - reader_identity_or_digest
+  - workload_or_job
+  - purpose
+  - valid_from
+  - valid_to
+  - owner
+  - change_id
+observables:
+- zh: 不在 expected reader 清单的进程或容器读取 service account token、CI token 或持久 cache 并立即生成归档/外连
+  en: A process or container outside expected readers reads a service-account token, CI token, or durable cache and immediately
+    creates an archive or egress
+- zh: 同一恶意 job 跨多个 token object/path 扫描并取得非零 bytes，读取范围与业务用途不符
+  en: One malicious job scans multiple token objects or paths and receives nonzero bytes outside its business purpose
+correlation:
+  window:
+    zh: 从对象首次 read 前十五分钟覆盖复制、归档、删除和外传后二十四小时；按 object version、process start key、job 与 artifact hash 关联，token 生命周期用于可用性分级。
+    en: Start fifteen minutes before first object read and span copying, archive, deletion, and twenty-four hours after egress.
+      Join by object version, process start key, job, and artifact hash, using token lifetime for usability grading.
+  dimensions:
+  - object_id
+  - object_version
+  - path_or_key
+  - actor_id
+  - process_start_key
+  - container_or_job_id
+  - workload_or_namespace
+  - token_fingerprint
+  - output_artifact_id
+  - destination
+  - time
+false_positives:
+- zh: 正常 SDK、kubelet、sidecar、backup、secret scanner、DLP、轮换作业、事件响应和支持工具
+  en: Normal SDKs, kubelet, sidecars, backups, secret scanners, DLP, rotation jobs, incident response, and support tools
+blind_spots:
+- zh: 无 object-read audit、root/kernel 绕过、shared mount 无 reader 身份、token 被同进程直接消费、短寿对象在采集前删除，以及本地分类器不能识别 opaque token
+  en: Missing object-read audit, root or kernel bypass, shared mounts without reader identity, direct same-process consumption,
+    short-lived objects deleted before collection, and local classifiers unable to recognize opaque tokens
+tuning_guidance:
+  paragraphs:
+  - zh: 对每个 token object 建立 exact reader identity/digest、namespace/job、时间和用途，不按通用 path 永久白名单。优先关闭不需要的 automount 并以良性 SDK 读取验证
+      bytes/outcome 字段。扫描器只返回 token class 与 HMAC fingerprint；无完整材料证据时保持 read_risk。
+    en: Establish exact reader identity or digest, namespace or job, time, and purpose for every token object rather than
+      permanently allowing a generic path. Disable unnecessary automount first and validate bytes and outcome fields with
+      benign SDK reads. Scanners return only token class and HMAC fingerprint. Without complete material evidence, retain
+      read_risk.
+evidence_refs:
+- REF-000813
+- REF-000811
+- REF-000814
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-09-27'
+  modified: '2026-09-27'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

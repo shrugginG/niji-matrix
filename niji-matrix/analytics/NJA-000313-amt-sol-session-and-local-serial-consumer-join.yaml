@@ -1,0 +1,119 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000313
+strategy_ref: DET-000241
+name:
+  zh: AMT SOL 会话与本地串口消费者关联
+  en: AMT SOL Session and Local Serial Consumer Join
+summary:
+  zh: 连接 AMT SOL 会话、管理主体与本地虚拟串口后果。
+  en: Join AMT SOL sessions, management principals, and local virtual-serial outcomes.
+domains:
+- enterprise
+platforms:
+- Windows
+logic:
+  paragraphs:
+  - zh: '>- 从资产与 AMT 管理系统取得 device_uuid、provisioning state、SOL enabled、授权管理员/控制台及维护窗口；读取 AMT Access Monitor/Audit Log
+      的 event group/application ID、event ID、initiating user 与 time，并关联 LMS Windows Application 日志的 Intel ME App/Remote
+      Diagnostics 1201（SOL 建立）和 1202（结束）。在同一设备和会话时段查找未批准进程打开 AMT SOL 虚拟 COM 端口、异常文件读写或执行。来源无法保证所有版本或部署都把会话送入 Windows
+      日志，故没有固件审计时只能报告配置风险，不能否定隐藏会话。'
+    en: '>- Obtain device_uuid, provisioning state, SOL enabled state, authorized administrator or console, and maintenance
+      windows from asset and AMT management systems. Read AMT Access Monitor or Audit Log application or event group,
+      event ID, initiating user, and time and correlate Intel ME App or Remote Diagnostics events 1201 for SOL established
+      and 1202 for SOL ended from the LMS Windows Application log. On the same device and session interval, seek an unapproved
+      process opening the AMT SOL virtual COM port, unusual file activity, or execution. Sources do not guarantee every
+      version or deployment forwards sessions to Windows logs, so without firmware audit the result is a configuration
+      risk rather than proof that no hidden session occurred.'
+data_requirements:
+- source_type: amt-inventory
+  name:
+    zh: ('amt_inventory', 'amt_inventory')
+    en: ('amt_inventory', 'amt_inventory')
+  channel: Intel AMT management console/asset inventory
+  required_fields:
+  - device_uuid
+  - provisioning_state
+  - sol_enabled
+  - authorized_principal
+  - management_console
+  - policy_version
+- source_type: amt-audit
+  name:
+    zh: ('amt_audit', 'amt_audit')
+    en: ('amt_audit', 'amt_audit')
+  channel: Intel AMT Access Monitor/Audit Log
+  required_fields:
+  - timestamp
+  - device_uuid
+  - application_id_or_event_group
+  - event_id
+  - initiating_user
+  - result
+- source_type: local-amt-event
+  name:
+    zh: ('local_amt_event', 'local_amt_event')
+    en: ('local_amt_event', 'local_amt_event')
+  channel: Windows Application log via Intel LMS when deployed
+  required_fields:
+  - timestamp
+  - computer
+  - provider
+  - event_id
+  - message
+- source_type: endpoint-process-file
+  name:
+    zh: ('endpoint_process_file', 'endpoint_process_file')
+    en: ('endpoint_process_file', 'endpoint_process_file')
+  channel: null
+  required_fields:
+  - timestamp
+  - computer
+  - process_entity_id
+  - executable
+  - device_path_or_com_port
+  - file_path
+  - operation
+observables:
+- zh: 策略外启用 SOL、无工单审计事件或未知 AMT 主体
+  en: SOL enabled outside policy, audit without a ticket, or an unknown AMT principal
+- zh: SOL 期间本地虚拟串口消费者执行文件传输或命令
+  en: A local virtual-serial consumer performs file transfer or command activity during SOL
+correlation:
+  window:
+    zh: 使用准确 SOL 起止加十分钟，并跨组织变更复核期保留固件审计。
+    en: Use the exact SOL session plus ten minutes and retain firmware audit through the organizational change-review
+      period.
+  dimensions:
+  - device_uuid
+  - computer
+  - initiating_user
+  - management_console
+  - event_id
+  - process_entity_id
+  - time
+false_positives:
+- zh: 批准远程维修、系统部署、事件恢复或厂商支持
+  en: Approved remote repair, system deployment, incident recovery, or vendor support
+blind_spots:
+- zh: AMT 未审计、LMS 缺失或管理控制台已失陷
+  en: AMT audit is absent, LMS is unavailable, or the management console is compromised
+tuning_guidance:
+  paragraphs:
+  - zh: '>- 对 SOL 使用者、控制台、设备组和维护票据做精确允许；保留 1201/1202 与固件审计，即使本地用户无提示。紧急维护允许需限时并复核文件/进程结果，不能长期白名单全部 IT 管理账户。'
+    en: '>- Allow SOL precisely by user, console, device group, and maintenance ticket and retain events 1201 and 1202
+      plus firmware audit even when no local user prompt exists. Emergency-maintenance allowances should expire and be
+      reviewed against file and process outcomes rather than permanently allowing every IT administrator.'
+evidence_refs:
+- REF-001036
+- REF-001045
+- REF-001046
+- REF-001047
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-10-04'
+  modified: '2026-10-04'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

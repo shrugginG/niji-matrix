@@ -1,0 +1,118 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000295
+strategy_ref: DET-000233
+name:
+  zh: 授权图边撤除到资源拒绝分析
+  en: Authorization-Graph Edge Eviction to Resource Denial Analytic
+summary:
+  zh: 输出关键 role/group/delegation/owner 边被撤除并导致合法主体资源 deny 的谱系。
+  en: Emit lineage where a critical role, group, delegation, or owner edge is removed and causes resource denial for
+    the legitimate principal.
+domains:
+- enterprise
+platforms:
+- SaaS
+logic:
+  paragraphs:
+  - zh: 从 directoryAudit 和周期图快照识别角色/组/委托/owner/policy edge delete/update，保存 initiator、target、old/new、correlation、result
+      和 approval；按 tenant、principal、edge ID 在 30 分钟收敛 propagation。
+    en: Identify role, group, delegation, owner, or policy-edge delete or update from directoryAudit and graph snapshots,
+      preserving initiator, target, old and new state, correlation, result, and approval; converge propagation by
+      tenant, principal, and edge ID over thirty minutes.
+  - zh: 连接合法主体认证成功后资源访问 deny、缺失 role claims、owner/admin 操作失败与 break-glass 测试。24 小时内确认持续 access loss；边在变更前不存在或正常到期则不确认。
+    en: Join resource-access denial after successful authentication, missing role claims, failed owner or admin operation,
+      and break-glass test. Confirm persistent access loss over 24 hours; do not confirm if the edge did not exist
+      before or expired normally.
+data_requirements:
+- source_type: directory-audit
+  name:
+    zh: 目录授权变更审计
+    en: Directory authorization-change audit
+  channel: Microsoft Graph directoryAudit
+  required_fields:
+  - event.time
+  - tenant.id
+  - initiator.id
+  - target.id
+  - activity.name
+  - operation.type
+  - result
+  - correlation.id
+  - property.name
+  - value.old
+  - value.new
+  - approval.id
+- source_type: authorization-graph
+  name:
+    zh: 授权图前后快照
+    en: Authorization graph before and after snapshots
+  channel: null
+  required_fields:
+  - snapshot.time
+  - tenant.id
+  - principal.id
+  - edge.id
+  - edge.type
+  - resource.id
+  - valid.from
+  - valid.to
+- source_type: resource-access-outcome
+  name:
+    zh: 资源访问与 break-glass 结果
+    en: Resource access and break-glass outcomes
+  channel: null
+  required_fields:
+  - event.time
+  - tenant.id
+  - principal.id
+  - resource.id
+  - authentication.result
+  - authorization.result
+  - failure.reason
+  - role.claims
+  - breakglass.test.result
+observables:
+- zh: 关键授权边无审批撤除后合法主体认证成功但资源 deny
+  en: A critical edge is removed without approval and the legitimate principal authenticates but is denied
+- zh: owner/admin 操作失败且 break-glass/恢复路径不足
+  en: Owner or admin operations fail and break-glass or recovery is insufficient
+correlation:
+  window:
+    zh: edge propagation 30 分钟，持续 loss 24 小时，关键图/审计保留 90 天。
+    en: Use 30 minutes for edge propagation, 24 hours for persistent loss, and 90 days for critical graph and audit
+      retention.
+  dimensions:
+  - tenant.id
+  - principal.id
+  - edge.id
+  - edge.type
+  - resource.id
+  - initiator.id
+  - event.time
+false_positives:
+- zh: offboarding、PIM/JIT 到期、岗位调整、least privilege 清理、fraud response 和资源退役
+  en: Offboarding, PIM or JIT expiry, role change, least-privilege cleanup, fraud response, and resource retirement
+blind_spots:
+- zh: 图快照不完整、传播延迟、嵌套组、外部 IdP、资源日志缺失或审批被控制
+  en: Incomplete graph snapshots, propagation delay, nested groups, external IdP, absent resource logs, or compromised
+    approval
+tuning_guidance:
+  paragraphs:
+  - zh: 关键 owner/Global Admin/恢复边要求双人审批、PIM 和不可变审计；按 edge expiry 排除正常到期。确认需具体 edge-before、delete 和 resource deny，不用账户标签推断。
+    en: Require dual approval, PIM, and immutable audit for critical owner, Global Admin, and recovery edges; exclude
+      normal expiry using edge validity. Confirmation needs a specific prior edge, deletion, and resource denial rather
+      than account labels.
+evidence_refs:
+- REF-000103
+- REF-000985
+- REF-000986
+- REF-000987
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-10-04'
+  modified: '2026-10-04'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

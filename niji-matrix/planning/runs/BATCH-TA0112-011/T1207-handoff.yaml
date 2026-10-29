@@ -1,0 +1,108 @@
+handoff_schema_version: "2.0.0"
+type: technique-research-handoff
+batch_ref: BATCH-TA0112-011
+work_item_ref: WORK-TA0112-T1207
+temporary_key_prefix: DI11-T1207
+candidate: {source_type: attack, source_attack_id: T1207, name: {zh: 伪造域控制器, en: Rogue Domain Controller}}
+recommendation:
+  decision: adapt
+  confidence: high
+  rationale:
+    paragraphs:
+      - zh: 固定 T1207 直接支持攻击者把未批准主机注册或呈现为域控制器，并通过合法目录复制协议注入目录变更；防御削弱来自写入来源被置换为受信复制身份，原始变更不会在正常来源 DC 上生成预期日志。Niji 将对象收窄为复制来源身份—DRS 事务—合法 DC 接受—目录对象结果的闭环，避免把 Mimikatz、DCShadow、DC 设备或任意 AD 修改当作技术边界。
+        en: Fixed T1207 directly supports an adversary registering or presenting an unapproved host as a domain controller and injecting directory changes through legitimate replication protocols. Defensive impairment comes from replacing the write origin with a trusted replication identity so expected source-DC logging is never produced. Niji narrows the object to the closed chain from replication-source identity through a DRS transaction and legitimate-DC acceptance to a directory-object outcome rather than treating Mimikatz, DCShadow, a DC device, or any Active Directory change as the boundary.
+proposed_content:
+  summary: {zh: 攻击者伪造或复用目录复制权威，使恶意目录更改以受信 DC 复制来源被接受并绕开正常写入日志链。, en: Adversaries forge or reuse directory-replication authority so malicious directory changes are accepted as trusted DC replication and bypass the normal write-origin logging chain.}
+  definition_and_concept:
+    paragraphs:
+      - zh: 直接对象是未批准 controller identity 获得复制资格并成为目录更改的 originating DSA，使合法 DC 把更改作为复制状态吸收；仅注册、仅网络请求或仅对象变化都不足。
+        en: The direct object is an unapproved controller identity acquiring replication standing and becoming the originating DSA for a directory change that legitimate DCs absorb as replicated state. Registration alone, a network request alone, or an object change alone is insufficient.
+  stealth_characteristics:
+    paragraphs:
+      - zh: LDAP/RPC、SPN、server/nTDSDSA 和 DRSUAPI 都是正常 DC 功能，恶意变化进入相同消费路径；异常被拆散到注册对象、短期 SPN、非 DC 主机复制、originating DSA GUID 和目标对象元数据，正常基于来源 DC 写入日志的 SIEM 会失去关键事件。
+        en: LDAP or RPC, SPNs, server and nTDSDSA objects, and DRSUAPI are normal DC functions, and malicious changes enter the same consumption path. The anomaly is split across registration objects, short-lived SPNs, replication from a non-DC host, the originating DSA GUID, and target-object metadata, while a SIEM relying on source-DC write logs loses the key event.
+  scope_boundary_definition:
+    paragraphs:
+      - zh: 纳入要求未批准复制身份、实际 DRS push/replication、合法 DC 接受和目录结果闭环；正常 promotion/demotion、灾备恢复和站点迁移按批准 inventory/工单/生命周期排除。DCSync 拉取秘密、一般 AD 内容修改和事后元数据删除由相邻对象负责。
+        en: Inclusion requires closure across an unapproved replication identity, an actual DRS push or replication transaction, legitimate-DC acceptance, and a directory outcome. Approved inventory, tickets, and lifecycle exclude normal promotion or demotion, disaster recovery, and site migration. DCSync secret retrieval, generic AD content changes, and post-hoc metadata deletion have adjacent owners.
+  application_scenarios_and_threat_model:
+    application_scenarios:
+      paragraphs:
+        - zh: 已取得高权限或复制权的攻击者可在成员工作站上临时建立 DC 身份，向账户、ACL、SIDHistory、schema 或凭据属性推送变化，再撤销注册，以建立后门或掩盖来源。
+          en: An adversary with high privilege or replication rights can temporarily establish a DC identity on a member workstation, push changes to accounts, ACLs, SIDHistory, schema, or credential attributes, and remove the registration to establish a backdoor or obscure origin.
+    threat_model:
+      attacker_model:
+        paragraphs:
+          - zh: 攻击者需要足以建立/复用 controller registration 和执行 DRS 的权限、域拓扑知识、SYSTEM/服务能力及可达合法 DC；快速生命周期减少暴露，却要求同步两类会话并避免复制错误。
+            en: The adversary needs authority to create or reuse controller registration and perform DRS operations, domain-topology knowledge, SYSTEM or service capability, and reachability to a legitimate DC. A short lifecycle reduces exposure but requires coordination of two sessions and avoidance of replication errors.
+      defender_model:
+        paragraphs:
+          - zh: 防守方维护批准 DC/DSA/SPN/主机 inventory，取得配置分区对象版本、LDAP writer、Kerberos/SPN、DRSUAPI/RPC、事件 4928/4929、复制元数据和目标对象 old-new；只依赖目标对象或来源 DC 的普通审计会漏失来源差。
+            en: Defenders maintain approved DC, DSA, SPN, and host inventory and obtain Configuration-partition object versions, LDAP writer, Kerberos or SPN, DRSUAPI or RPC, events 4928 or 4929, replication metadata, and target-object old and new state. Reliance only on the target object or ordinary source-DC audit misses the origin difference.
+  stealth_mechanisms:
+    - mechanism_ref: NM-BT
+      role: primary
+      summary: {zh: 恶意目录写入以受信复制来源进入合法 DC, en: Malicious directory writes enter legitimate DCs as trusted replication}
+      analysis:
+        paragraphs:
+          - zh: 攻击者把变更的来源身份和传输语义伪装成正常 DSA 复制，合法 DC 执行与普通复制相同的接受路径；预期在真实来源 DC 生成的写入事件不存在，防守只有把注册、DRS 来源和复制元数据跨观察面关联才能恢复攻击者写入。
+            en: The adversary presents the change origin and transport semantics as normal DSA replication, causing a legitimate DC to follow the ordinary replication acceptance path. The write event expected on a genuine source DC does not exist, and defenders recover adversary authorship only by correlating registration, DRS source, and replication metadata across observation planes.
+      evidence_keys: [DI11-T1207-REF-01, DI11-T1207-REF-03, DI11-T1207-REF-04]
+      confidence: high
+proposed_subtechniques: []
+defense_candidates:
+  detection_strategies:
+    - {temporary_key: DI11-T1207-DET-01, objective: approved controller identity to registration lifecycle to DRS transaction to directory outcome lineage}
+  detection_analytics:
+    - {temporary_key: DI11-T1207-NJA-01, implementation: controller registration and rapid lifecycle differential}
+    - {temporary_key: DI11-T1207-NJA-02, implementation: non-DC DRS origin and replicated object outcome correlation}
+  mitigations:
+    - {temporary_key: DI11-T1207-MIT-01, purpose: govern controller enrollment replication authority network paths and independent directory evidence}
+existing_library_reuse: {reference_refs: [], claim_refs: [], case_refs: [], strategy_refs: [], analytic_refs: [], mitigation_refs: [], relationship_refs: []}
+library_candidates:
+  references:
+    - {temporary_key: DI11-T1207-REF-01, identity: attack:v19:T1207, disposition: create}
+    - {temporary_key: DI11-T1207-REF-02, identity: microsoft:MS-DRSR-overview, disposition: create}
+    - {temporary_key: DI11-T1207-REF-03, identity: microsoft:defender-identity-dcshadow-alerts, disposition: create}
+    - {temporary_key: DI11-T1207-REF-04, identity: github:tenable-UncoverDCShadow, disposition: create}
+    - {temporary_key: DI11-T1207-REF-05, identity: microsoft:event-4929, disposition: create}
+    - {temporary_key: DI11-T1207-REF-06, identity: microsoft:defender-identity-cef-dcshadow, disposition: create}
+  claims: []
+  cases: []
+  detection_strategies: []
+  detection_analytics: []
+  mitigations: []
+  relationships: []
+research:
+  taxonomy_breadth_review:
+    attack_subtechnique_count: 0
+    attack_subtechnique_ids: []
+    represented_dimensions: [controller registration, replication-origin displacement, directory-object injection, metadata cleanup]
+    breadth_trigger: ordinary-open-search
+    coverage_resolutions: []
+    candidate_stealth_axes_examined: [ephemeral new registration, dormant registration reuse, non-DC DRS origin, rapid registration cleanup, originating-DSA metadata alteration]
+    second_pass_required: false
+    second_pass_completed: false
+    proposed_niji_child_count: 0
+    breadth_gap_explained: true
+    reviewer_notes: {zh: 新建 registration、DRS push 和快速撤销是同一窄父行为的顺序阶段，拆分会失去完成闭环；inactive registration 复用只有父页陈述，缺少足以建立独立防御模型的直接案例，暂延迟；元数据清理属于证据擦除。, en: New registration, DRS push, and rapid removal are sequential stages of one narrow parent behavior, and splitting them would lose completion closure. Reuse of an inactive registration is stated on the parent page but lacks a direct case sufficient for a separate defensive model and is deferred. Metadata cleanup belongs to evidence erasure.}
+  evidence_coverage:
+    parent_behavior_keys: [DI11-T1207-REF-01, DI11-T1207-REF-03, DI11-T1207-REF-04]
+    boundary_keys: [DI11-T1207-REF-01, DI11-T1207-REF-02]
+    mechanism_support: [DI11-T1207-REF-01, DI11-T1207-REF-03, DI11-T1207-REF-04]
+    child_existence_support: []
+    unsupported_or_deferred: [dormant controller registration reuse as a separate child, in-the-wild campaign case, replication metadata cleanup as this parent rather than evidence erasure]
+  content_depth_review: {compared_with_njt_0001: true, field_responsibilities_complete: true, candidate_specific_prose: true, repeated_prose_reviewed: true, notes: {zh: 父项需要完整解释身份注册、复制消费、来源日志缺口、正常 promotion 反例和权限模型；零子项来自窄闭环而非停止搜索。, en: The parent must fully explain identity registration, replication consumption, the source-log gap, legitimate-promotion counterexamples, and the privilege model. Zero children follows from the narrow closure rather than stopping taxonomy search.}}
+  automation_review: {canonical_prose_bulk_generated: false, mechanical_uses: [validation, allocation, bundle]}
+  limitations:
+    paragraphs:
+      - zh: ATT&CK、Microsoft 与 UncoverDCShadow 直接支持技术语义和研究复现，但没有公开在野事件可验证完整注册—复制—结果链；检测字段在不同 Windows/审计策略和传感器版本中并不齐全，需本地 promotion 与 DCShadow canary 校准。
+        en: ATT&CK, Microsoft, and UncoverDCShadow directly support technique semantics and research reproduction, but no public in-the-wild event validates the complete registration-to-replication-to-outcome chain. Detection fields vary by Windows version, audit policy, and sensor version and require local promotion and DCShadow canary calibration.
+  rejected_mechanisms:
+    - {mechanism_ref: NM-FD, reason: legitimate DC features contribute to appearance but the stable causal effect is displacement of write observation to the replication path}
+    - {mechanism_ref: NM-ST, reason: short lifecycle is an implementation constraint and detection clue rather than the parent stealth cause}
+  open_questions: []
+integration:
+  status: complete
+  resolutions:
+    - {disposition: create, objects: [NJT-0171, REF-000748, REF-000749, REF-000750, REF-000751, REF-000752, REF-000753, CLM-000845, CLM-000846, CLM-000847, CLM-000848, DET-000198, NJA-000227, NJA-000228, MIT-000181]}

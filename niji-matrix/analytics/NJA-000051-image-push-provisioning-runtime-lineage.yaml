@@ -1,0 +1,52 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000051
+strategy_ref: DET-000072
+name: {zh: 镜像身份—内容—实例谱系分析, en: Image Identity-Content-Instance Lineage Analytic}
+summary: {zh: 版本化 tag 与 digest，将镜像写入和签名/SBOM 差异连接到以后消费实例的首个结果。, en: "Version tags and digests and join image writes plus signature or SBOM differences to the first outcome of later consuming instances."}
+domains: [enterprise]
+platforms: [Containers, IaaS]
+logic:
+  paragraphs:
+  - zh: 对每个 registry/image ID 保存 tag-to-digest 时间线、manifest/layer digest、签名、SBOM、builder、push actor、接口和审批。标记由非常见主体 push/retag、签名主体或 SBOM 变化、现有 tag 指向新 digest，以及未在批准流水线产生的镜像；只根据名称不定性。
+    en: Preserve a tag-to-digest timeline, manifest or layer digests, signature, SBOM, builder, push actor, interface, and approval for every registry or image ID. Mark push or retag by an uncommon principal, signer or SBOM change, an established tag resolving to a new digest, and an image outside the approved pipeline. Do not classify by name alone.
+  - zh: 将 deployment revision、launch template、image pull 和 instance start 记录的实际 digest 回连到镜像版本，再观察启动后一小时的进程、网络、账户和配置结果。可变引用要求 workload 声明未变而 digest 变化；未来置备要求镜像修改早于扩缩容/恢复且异常只在消费实例出现。缺少实际 digest 时降低置信度。
+    en: Join the actual digest recorded by deployment revision, launch template, image pull, and instance start to the image version, then observe process, network, account, and configuration outcomes during the first hour. Mutable reference requires an unchanged workload declaration with a changed digest. Future provisioning requires image modification before scaling or recovery and anomaly only in consuming instances. Reduce confidence when actual digest is absent.
+data_requirements:
+- source_type: image-registry-control
+  name: {zh: 镜像创建、修改、推送与标签事件, en: Image creation modification push and tag events}
+  channel: null
+  required_fields: [timestamp, registry_or_catalog_id, image_name, tag, digest, manifest_digest, actor_id, operation, outcome]
+- source_type: image-trust-metadata
+  name: {zh: 镜像签名、SBOM 与构建来源, en: Image signature SBOM and build provenance}
+  channel: null
+  required_fields: [digest, signer, signature_result, sbom_id, builder_id, source_revision, approval_id]
+- source_type: provisioning-and-image-pull
+  name: {zh: 置备模板、Pull 与实例启动, en: Provisioning template pull and instance start}
+  channel: null
+  required_fields: [timestamp, tenant_or_cluster_id, workload_or_template_id, declared_image, resolved_digest, instance_id, node_id, operation, outcome]
+- source_type: instance-first-outcome
+  name: {zh: 实例首次进程、网络与配置结果, en: Instance first process network and configuration outcomes}
+  channel: null
+  required_fields: [timestamp, instance_id, resolved_digest, process_or_service, network_destination, account_change, configuration_change, outcome]
+observables:
+- {zh: 既有生产 tag 在 workload 规范不变时解析到由非常见主体推送的新 digest, en: An established production tag resolves to a new digest pushed by an uncommon principal while the workload specification remains unchanged}
+- {zh: 未批准镜像修改后数日，扩容或恢复实例消费该 digest 并出现共同异常结果, en: Days after an unapproved image modification a scaled or recovered instance consumes that digest and shows a shared anomalous outcome}
+- {zh: 镜像签名主体、SBOM 或 builder 与上一批准版本不一致，且所有消费实例出现同源行为, en: Image signer SBOM or builder differs from the prior approved version and all consuming instances show a common behavior}
+correlation:
+  window: {zh: 从镜像 push 到 tag 失效或首次九十日，实例启动后首个结果使用一小时窗口。, en: "Span image push through tag retirement or the first ninety days and use one hour after instance start for first outcome."}
+  dimensions: [registry_or_catalog, image_name, tag, digest, builder, signer, actor, workload_or_template, instance, node, approval, time]
+false_positives:
+- {zh: 正常发布、紧急修复、回滚、金镜更新、扩缩容和灾备恢复, en: Normal release emergency repair rollback golden-image update scaling and disaster recovery}
+blind_spots:
+- {zh: registry 不保留 tag 历史、实例不报告实际 digest 或签名/SBOM 不可用, en: Registry lacks tag history instances omit actual digest or signature and SBOM are unavailable}
+- {zh: 被攻陷 builder 与签名者产生完全一致的可信元数据, en: A compromised builder and signer produce internally consistent trusted metadata}
+tuning_guidance:
+  paragraphs:
+  - zh: 按 registry、repository、环境、builder、signer 和发布窗口建立基线；允许项绑定具体 digest 与审批，不对白名单 tag 永久放行。把未消费恶意候选、已消费无异常和已消费有异常分级输出。
+    en: Baseline registry, repository, environment, builder, signer, and release window. Bind allowances to a concrete digest and approval rather than permanently allowing a tag. Tier outputs as unconsumed suspicious image, consumed without anomaly, and consumed with anomaly.
+  - zh: 所有置备日志应记录 resolved digest；对 mutable tag 强制保存变更历史，对延迟激活至少保留九十日。相同 digest 的多实例共同异常提高置信度，但共享合法初始化也可能同形，应比较批准启动清单。
+    en: Require every provisioning log to record resolved digest, retain change history for mutable tags, and keep at least ninety days for delayed activation. A common anomaly across instances sharing a digest raises confidence, but shared legitimate initialization can look identical and must be compared with approved startup inventory.
+evidence_refs: [REF-000185, REF-000186]
+lifecycle: {status: review, version: 0.1.0, created: '2026-09-11', modified: '2026-09-11', contributors: [Niji Matrix Research], reviewers: []}
+

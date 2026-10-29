@@ -1,0 +1,135 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000161
+strategy_ref: DET-000153
+name:
+  zh: 解锁工作流与导出配置联查
+  en: Unlock Workflow and Export Configuration Join
+summary:
+  zh: 识别保管应用被预置改动后产生的导出工件，并仅在内容证据充分时确认秘密返回。
+  en: Identify vault export artifacts after a prepositioned application change and confirm secret return only with sufficient content evidence.
+domains:
+- enterprise
+platforms:
+- Windows
+- macOS
+logic:
+  paragraphs:
+  - zh: 先建立保管应用的批准配置、插件与可执行文件清单，按主机、用户和 hash 标记未授权写入；把变更者与后续启动应用的真实用户分别保留。七日内查找该应用或子进程产生的新 CSV、JSON 或其他导出工件，再通过进程谱系连接网络外联。只有配置写入输出 preparation_only；有相同保管库与进程链的导出文件输出
+      export_artifact_observed；文件扩展名或产品事件本身不能证明包含明文口令。
+    en: Inventory approved vault configuration, plugins, and executables, flagging unauthorized writes by host, user, and hash while preserving
+      the writer separately from the real user who later launches the app. Within seven days, find new CSV, JSON, or other export artifacts from
+      that app or child and join egress through process lineage. A write alone yields preparation_only; a matching vault and process export file
+      yields export_artifact_observed. File extension or product event alone does not prove that it contains plaintext passwords.
+  - zh: 只有经受控 DLP 或应急取证确认工件含可用秘密，才输出 secret_return_confirmed；同源传输再输出 exfil_correlated。Bitwarden 组织库导出事件可佐证用户和库，但客户端可生成加密 JSON，不能把导出等同明文。批准迁移、备份或应急恢复也会导出，需核对审批范围与目的地；若内容验证不可用，保留较低证据层级，不从后续登录倒推该工件已解密。
+    en: Emit secret_return_confirmed only when controlled DLP or incident forensics verifies usable secret material in the artifact; same-source
+      transfer then adds exfil_correlated. A Bitwarden organization export event can corroborate actor and vault, but the client may create encrypted
+      JSON, so export is not equivalent to plaintext. Approved migration, backup, and emergency recovery also export. Compare approval scope and
+      destination, and retain the lower evidence level if content verification is unavailable rather than inferring decryption from a later login.
+data_requirements:
+- source_type: endpoint-vault-config
+  name:
+    zh: 保管应用配置与进程写入
+    en: Vault-application configuration and process writes
+  channel: EDR file and process telemetry
+  required_fields:
+  - timestamp
+  - host_id
+  - user_id
+  - process_guid
+  - parent_process_guid
+  - image_path
+  - signer
+  - file_path
+  - file_hash
+  - operation
+- source_type: endpoint-export-artifact
+  name:
+    zh: 明文导出文件创建
+    en: Plaintext export artifact creation
+  channel: EDR file telemetry
+  required_fields:
+  - timestamp
+  - host_id
+  - process_guid
+  - output_path
+  - file_type
+  - bytes_written
+- source_type: endpoint-egress
+  name:
+    zh: 导出后进程网络外联
+    en: Post-export process egress
+  channel: EDR network telemetry
+  required_fields:
+  - timestamp
+  - host_id
+  - process_guid
+  - destination
+  - bytes_out
+- source_type: approved-vault-change
+  name:
+    zh: 获批保管库维护变更
+    en: Approved vault-maintenance changes
+  channel: null
+  required_fields:
+  - config_path
+  - approval_id
+  - owner_id
+  - valid_from
+  - valid_to
+  - expected_output
+- source_type: guarded-export-verification
+  name:
+    zh: 受控导出内容核验
+    en: Guarded export-content verification
+  channel: DLP or incident-response secure artifact review
+  required_fields:
+  - artifact_hash
+  - contains_usable_secret
+  - verification_method
+  - verifier_id
+observables:
+- zh: 非批准主体改写保管应用配置，真实应用随后创建导出工件
+  en: An unauthorized actor changes vault configuration and the genuine app later creates an export artifact
+- zh: 导出文件由同一进程谱系发送到未批准目的地
+  en: The export file is transferred by the same process lineage to an unapproved destination
+- zh: 受控内容核验确认工件包含可用秘密
+  en: Controlled content verification confirms usable secrets in the artifact
+correlation:
+  window:
+    zh: 配置或插件变更后七日内寻找首次导出，并用此前三十日的正常导出作为基线。
+    en: Seek the first export within seven days after a configuration or plugin change and use the prior thirty days of normal exports as baseline.
+  dimensions:
+  - host_id
+  - user_id
+  - process_guid
+  - parent_process_guid
+  - file_path
+  - output_path
+  - timestamp
+false_positives:
+- zh: 获批迁移、格式转换、备份或应急恢复会改变配置并导出明文；软件升级也会更换签名文件。
+  en: Approved migration, format conversion, backup, or emergency recovery can change configuration and export plaintext; upgrades can also replace
+    signed files.
+blind_spots:
+- zh: 个人保管库不一定上报逐项或导出事件；若配置预置早于保留期或只在内存中复制，文件链可能断裂。
+  en: Personal vaults may not report item or export events; prepositioning before retention or memory-only copying can break the file lineage.
+tuning_guidance:
+  paragraphs:
+  - zh: 维护按产品版本、签名、批准配置路径和工单绑定的精确例外，不永久放行保管应用进程。先对新的明文导出与异常目的地提高优先级，再以用户活动和导出范围缩小误报；保留所有被降权的原始配置和导出事件供追溯。
+    en: Maintain precise exceptions bound to product version, signer, approved configuration path, and change ticket rather than permanently allowlisting
+      the vault process. Prioritize new plaintext output and unusual destinations, then use user activity and export scope to reduce false positives;
+      retain raw downgraded change and export events for reconstruction.
+evidence_refs:
+- REF-000552
+- REF-000554
+- REF-000555
+- REF-000366
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-09-22'
+  modified: '2026-09-23'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

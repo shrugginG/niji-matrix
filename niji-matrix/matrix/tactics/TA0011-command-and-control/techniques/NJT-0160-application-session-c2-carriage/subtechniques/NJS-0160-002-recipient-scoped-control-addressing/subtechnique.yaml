@@ -1,0 +1,136 @@
+schema_version: 2.0.0
+type: evasion-subtechnique
+id: NJS-0160-002
+parent_ref: NJT-0160
+name:
+  zh: 按接收者分区控制地址
+  en: Recipient-Scoped Control Addressing
+summary:
+  zh: 攻击者把命令投送地址从共享频道划分为每植入独立的主题或收件标识，使单地址观察无法聚合整组控制活动。
+  en: An actor divides command-delivery addresses from a shared channel into per-implant topics or recipient identifiers,
+    preventing one-address observation from aggregating the whole control set.
+aliases: []
+lineage:
+  attck_subtechnique_inherited: false
+definition_and_concept:
+  paragraphs:
+  - zh: 按接收者分区控制地址指攻击者让每个植入体在应用层消息路由空间使用独立的接收地址，并把下发命令与回传结果映射到这些地址，而非让所有植入共享一条可监视的频道。地址可以是 broker 主题或具备同等投递语义的队列/收件标识；子项定义的是分区变量和跨受害者观察差，而不是
+      MQTT 名称。IBM 直接记录 WailingCrab 从活动共享主题转向三个每客户端主题，ESET 独立记录 MQsTTang 的唯一客户端任务主题。
+    en: Recipient-Scoped Control Addressing means the actor gives each implant a separate receive address in an
+      application message-routing space and maps tasking and result return to those addresses rather than a single
+      observable channel shared by every implant. The address may be a broker topic or an equivalent queue or recipient
+      identifier; the child is defined by partitioning and cross-victim observation difference, not by MQTT. IBM
+      directly reports WailingCrab's shift from a shared campaign topic to three per-client topics, and ESET independently
+      reports MQsTTang's unique client task topic.
+stealth_characteristics:
+  paragraphs:
+  - zh: 按接收者分区控制地址仍让每条主题的局部记录保持完整，但只订阅旧共享主题或以共享主题为检索键的研究者看不到其他植入的下发与回传，活动被散到多个逻辑地址。WailingCrab 报告明确指出新版本移除了公共主题而降低外部观察者覆盖；MQsTTang
+      的客户端主题与服务器主题分开，提供了另一种角色分区。broker 层如有全量主题、客户端 ID 和发布时间，仍可恢复图关系；单凭随机数字主题不能判断恶意。
+    en: Recipient-Scoped Control Addressing can leave each local topic record intact, but an investigator subscribed
+      only to an old shared topic or searching by that topic misses delivery and return for other implants; activity
+      is distributed across logical addresses. IBM explicitly notes that WailingCrab's newer version removed the
+      communal topic and reduced outside observer visibility. MQsTTang separates client and server topics, providing
+      another routing partition. Full broker topic, client ID, and publication-time data can still restore the graph.
+      A random numeric topic by itself does not establish malice.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 本子项要求有受害者特定接收地址与共享频道、宽泛订阅或跨受害者汇总之间的可比较观察差；普通 IoT 每设备主题、邮件个人邮箱和正常作业队列均是反例。仅用 broker 隐藏真实控制 IP 属兄弟“协议中介分离控制端”；更改主题中的
+      Base64/XOR 或消息字段归 T1132/T1573/NJT-0152；故障后切到另一个 broker 属 NJT-0153。若来源只证明独立地址而无降低共享观察的推断基础，正式置信度应降为 hypothesis。
+    en: This child requires a victim-specific receive address and a demonstrable observation difference from a shared
+      channel, broad subscription, or cross-victim aggregate. Legitimate per-device IoT topics, personal mailboxes,
+      and ordinary job queues are counterexamples. Hiding the controller IP through a broker belongs to the sibling
+      Protocol-Intermediary Controller Separation. Base64, XOR, or field disguise in topic messages belongs to T1132,
+      T1573, or NJT-0152; switching brokers after failure belongs to NJT-0153. If a source proves only unique addresses
+      without a defensible shared-visibility difference, formal confidence should fall to hypothesis.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: 当植入规模从单机扩大到多机时，操作者可让注册阶段为每设备生成主题，控制端按标识向各主题发布任务。WailingCrab 新版在 HTTP 注册阶段共享三个标识，随后用不同主题收命令、发心跳和报告结果；MQsTTang
+        使用唯一客户端主题收命令并经服务器主题回报。分析必须把注册事件、主题订阅、入站发布与后继进程动作接成同一设备谱系。
+      en: As an implant set grows beyond one host, the operator can assign a topic per device during registration
+        and publish tasks by identifier. Newer WailingCrab shares three identifiers during HTTP registration, then
+        uses different topics for command receipt, check-in, and results. MQsTTang receives commands on a unique
+        client topic and reports through a server topic. Analysis needs to join registration, topic subscription,
+        inbound publication, and subsequent process action into one device lineage.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者需在植入与控制端协调唯一地址，可能经预置、HTTP 注册或 broker 元数据传递；地址越多，运营和授权管理越复杂，也增加 broker 侧异常图谱。随机主题名称只提高未知观察者发现其他植入的成本，不能阻止持有全量
+          broker 日志或宽泛订阅权限的防守方，也不替代加密。
+        en: The actor must coordinate unique addresses between implants and the controller, through preconfiguration,
+          HTTP registration, or broker metadata. More addresses complicate operation and authorization and create
+          a larger anomalous graph at the broker. Random topic names raise the cost for an uninformed outside observer
+          to find other implants, but do not defeat defenders with complete broker logs or broad subscription rights
+          and do not replace encryption.
+    defender_model:
+      paragraphs:
+      - zh: 防守方能取得受管 broker 的 client_id、username、source_ip、topic、action、timestamp 与授权决策，最好还能取得 HTTP 注册的连接 uid 和主机进程
+          GUID。以设备/进程和注册标识关联跨主题操作，再在命令发布后的本机执行和结果发布上确认控制关系。若 broker 在外部且无可用事件日志，主题分区通常无法在网关 TLS 元数据中区分，只能用端点与服务许可异常作为弱信号。
+        en: The defender can obtain client_id, username, source_ip, topic, action, timestamp, and authorization
+          decisions from a managed broker, ideally alongside HTTP registration connection UID and host process GUID.
+          Joining cross-topic operations by device, process, and registration identifier, then confirming execution
+          after task publication and result publication, establishes the control relationship. If the broker is
+          external and event logs are unavailable, gateway TLS metadata usually cannot distinguish topic partitioning;
+          endpoint and service-authorization anomalies remain weak signals.
+stealth_mechanisms:
+- mechanism_ref: NM-ST
+  role: primary
+  summary:
+    zh: 接收地址分区削弱共享频道关联
+    en: Recipient partitioning weakens shared-channel correlation
+  analysis:
+    paragraphs:
+    - zh: 注册时分配每植入地址，操作者把命令从共同主题移到这些地址；旧主题不再呈现全局活动，按单主题统计或采样只能看到局部。防守方须在 broker 全量日志中按客户端、注册标识和时间跨主题重建，因而逻辑空间分散提高关联成本；若拥有全量图谱且按设备关联，收益就会收缩。
+      en: Registration assigns per-implant addresses and the operator moves tasks from a communal topic to those
+        addresses. The old topic no longer represents global activity, so single-topic counting or sampling sees
+        only a fragment. Defenders must reconstruct across topics by client, registration identifier, and time in
+        complete broker logs; logical-space dispersion raises correlation cost. The benefit shrinks when a defender
+        has the full graph and device-based joins.
+  evidence_refs:
+  - REF-000679
+  - REF-000680
+  - REF-000683
+  confidence: medium
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000181
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000163
+evidence:
+  claim_refs:
+  - CLM-000792
+  - CLM-000795
+  case_refs:
+  - CASE-000220
+  - CASE-000221
+  reference_refs:
+  - REF-000625
+  - REF-000679
+  - REF-000680
+  - REF-000683
+  - REF-000684
+  - REF-000685
+  - REF-000686
+  - REF-000230
+research:
+  limitations:
+    paragraphs:
+    - zh: WailingCrab 的版本差直接支持共享主题覆盖缩减，MQsTTang 支持独立客户端主题，但尚未证明该分区在任何被入侵组织中实际绕过告警。协议允许正常每设备主题，故没有业务设备目录、全量 broker
+        审计与后继执行时，随机或唯一主题只能作为调查线索。邮箱或其他队列的同类分区仍需独立样本，不以 MQTT 两例自动推广。
+      en: WailingCrab's version change directly supports loss of shared-topic coverage, and MQsTTang supports unique
+        client topics, but neither proves the partition bypassed an alert in a particular victim organization. The
+        protocol permits legitimate per-device topics, so random or unique topics are leads only without a device
+        inventory, complete broker audit, and subsequent execution. Similar partitioning in mailboxes or other queues
+        needs independent samples and cannot be generalized automatically from two MQTT cases.
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-09-22'
+  modified: '2026-09-22'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

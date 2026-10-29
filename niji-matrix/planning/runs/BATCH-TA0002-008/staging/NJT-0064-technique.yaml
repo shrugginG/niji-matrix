@@ -1,0 +1,81 @@
+schema_version: "2.0.0"
+type: technique
+id: NJT-0064
+name: {zh: 匿迹化云管理命令执行, en: Stealth-Conforming Cloud Administration Command Execution}
+summary: {zh: 攻击者通过云控制面命令服务和常驻来宾代理执行脚本或程序，利用控制面—来宾观察分离及合法维护上下文降低识别与归因概率。, en: Adversaries execute scripts or programs through a cloud control-plane command service and resident guest agent using control-plane-to-guest observation separation and legitimate maintenance context to reduce detection and attribution.}
+aliases: [Cloud Administration Command]
+classification:
+  tactic_refs: [TA0002]
+  origin: {kind: attack-adapted, source_attack_id: T1651, source_attack_version: '19.1'}
+  decision_ref: DEC-TA0002-T1651
+definition_and_concept:
+  paragraphs:
+  - zh: 匿迹化云管理命令执行是攻击者调用云厂商提供的 VM Run Command、Systems Manager、Custom Script Extension 或等价服务，由控制平面把命令、文档或脚本交给目标来宾内常驻代理，并由代理启动 shell、脚本或程序的技术。直接目标是在不建立 RDP/SSH 等入站会话的情况下获得来宾执行；对象从经授权的控制面请求开始，到代理产生首个来宾执行结果为止。
+    en: Stealth-Conforming Cloud Administration Command Execution uses a provider VM Run Command, Systems Manager, Custom Script Extension, or equivalent service to deliver a command, document, or script from control plane to a resident guest agent, which starts a shell, script, or program. Its direct objective is guest execution without an inbound RDP or SSH session. The object begins with an authorized control-plane request and ends at the agent's first guest execution outcome.
+  - zh: 概念锚是“云主体—命令服务请求—目标实例—来宾代理—执行结果”的跨层因果链，而不是 Azure、AWS、CLI 或 PowerShell 名称。云 API 只更改资源而不在来宾运行命令归其他对象；普通远程登录不属于本技术；由解释器解析的来宾内命令可同时标记 NJT-0065，但不能替代本技术对控制面到来宾通道的描述。
+    en: The conceptual anchor is a cross-plane causal chain from cloud principal through command-service request, target instance, guest agent, and execution outcome, not an Azure, AWS, CLI, or PowerShell name. A cloud API that only changes resource state without executing inside a guest belongs elsewhere. Ordinary remote logon is outside scope. In-guest parsing can also instantiate NJT-0065 but does not replace this control-plane-to-guest channel object.
+stealth_characteristics:
+  paragraphs:
+  - zh: 核心匿迹矛盾是：攻击者必须留下经授权的云管理请求和来宾内执行，却希望云团队只看到正常管理操作、端点团队只看到受信代理派生进程。控制面保存 caller、role、source IP、operation、request/correlation ID 与目标，来宾保存代理、脚本内容、子进程和结果；两者若缺少共同实例、请求或时间键，合法局部不能自动还原恶意因果。NOBELIUM 案例明确要求把 AzureActivity 与 MDE 连接，直接证明该断点。
+    en: The central stealth tension is that an authorized cloud request and guest execution must exist while the adversary wants cloud teams to see ordinary management and endpoint teams to see a process descended from a trusted agent. Control plane retains caller, role, source IP, operation, request or correlation ID, and target, while the guest retains agent, script content, child process, and outcome. Without a shared instance, request, or time key, legitimate fragments do not automatically reconstruct malicious causality. NOBELIUM detection guidance explicitly joins AzureActivity and MDE, directly establishing the break.
+  - zh: 攻击者还可选择常见文档/扩展、维护身份、批准仓库、业务时段和与资产职责相符的目标集合，使请求接近补丁、诊断或配置任务；Azure 扩展挖矿案例显示恶意脚本确实可以沿正常 VM Agent 路径跨主机执行。匿迹不消除 CloudTrail/Activity Log、命令历史、脚本哈希、输出、代理日志与来宾进程。完整输出可能被截断或可选，故必须保存脚本身份和独立端点结果。
+    en: An adversary can choose a common document or extension, maintenance identity, approved repository, business window, and asset-aligned target set so the request resembles patching, diagnostics, or configuration. The Azure extension-mining case shows malicious scripts executing across hosts through the normal VM Agent path. Stealth does not erase CloudTrail or Activity Log, command history, script hashes, output, agent logs, or guest processes. Complete output may be truncated or optional, so script identity and independent endpoint outcomes must be retained.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 纳入云命令服务经已安装代理在一个或多个 VM/受管节点中实际启动攻击者控制指令的行为，要求至少关联云主体、动作、目标实例与来宾结果。仅获准调用 API、仅创建命令但代理未执行、或仅观察代理进程都不足以确认。命令经门户、CLI、SDK 或浏览器 Cloud Shell 发起只是接口差异。
+    en: Scope includes a cloud command service actually starting adversary-controlled instructions through an installed agent in one or more VMs or managed nodes, requiring at least cloud principal, action, target instance, and guest outcome. Permission to call an API, creation of a command the agent never executes, or observation of the agent process alone is insufficient. Portal, CLI, SDK, and browser Cloud Shell are interface differences.
+  - zh: 容器管理命令归 NJT-0066，ESXi Guest Operations 归 NJT-0068，通用软件部署套件归相应技术，普通 SSH/RDP 归远程服务。Custom Script Extension 在本技术中仅指作为云命令/扩展通道直接产生来宾执行，不按扩展产品另立子项。合法应急修复、规模配置、软件安装和自动化均可同形，必须保留审批与结果作为替代解释。
+    en: Container administration belongs to NJT-0066, ESXi Guest Operations to NJT-0068, generic deployment suites to their corresponding technique, and ordinary SSH or RDP to remote services. Custom Script Extension qualifies only as a cloud command or extension channel directly producing guest execution and does not form a product child. Legitimate emergency repair, fleet configuration, installation, and automation share the shape and require approval plus outcome as alternative explanations.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: 攻击者取得租户管理员、VM Contributor、委托管理员、服务主体或 Systems Manager 权限后，可在入站管理端口关闭的实例中执行发现、建立本地账户、下载载荷、配置服务或批量运行破坏命令。跨租户委托、应急运维和大规模节点管理使同一服务具有高合法基线，特别适合把恶意执行隐藏在维护队列。
+      en: After obtaining tenant administrator, VM Contributor, delegated administrator, service principal, or Systems Manager authority, an adversary can execute discovery, create a local account, download payloads, configure services, or run destructive commands at scale even when inbound management ports are closed. Cross-tenant delegation, emergency operations, and fleet management create a high legitimate baseline suitable for hiding malicious execution in maintenance queues.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者需要调用特定命令动作的 IAM 权限、可达且健康的来宾代理、兼容文档/脚本和目标选择能力。JIT/JEA、资源标签条件、命令文档白名单、审批、代理健康和输出配置限制覆盖；身份、源地址、脚本来源或目标集合偏离都可能暴露。来宾代理以 SYSTEM/root 运行会扩大结果，但不是匿迹成立条件。
+        en: The adversary needs IAM permission for the command action, a reachable healthy guest agent, compatible document or script, and target selection capability. JIT or JEA, resource-tag conditions, document allowlists, approval, agent health, and output configuration constrain coverage. Deviations in identity, source, script origin, or target set can expose the action. Agent execution as SYSTEM or root increases impact but is not a stealth condition.
+    defender_model:
+      paragraphs:
+      - zh: 防守方需保留云登录/IAM、Activity Log/CloudTrail、命令服务历史、request/correlation ID、目标解析、脚本/文档版本与输出，以及代理和端点进程/文件/网络。跨租户、跨账号和跨区域字段必须规范化；若控制面仅保留成功状态、输出只留末尾或端点不知道请求 ID，应以实例、代理、脚本哈希和窄时间窗进行次级关联并降低置信度。
+        en: Defenders need cloud sign-in and IAM, Activity Log or CloudTrail, command history, request or correlation ID, target resolution, script or document version and output, plus agent and endpoint process file and network telemetry. Cross-tenant account and region fields require normalization. If control plane retains only success, output retains only a tail, or endpoint lacks request ID, use instance, agent, script hash, and a narrow time window for secondary correlation at reduced confidence.
+stealth_mechanisms:
+- mechanism_ref: NM-BT
+  role: primary
+  summary: {zh: 控制面请求与来宾代理结果分处不同观察域, en: Control-plane request and guest-agent outcome reside in different observation domains}
+  analysis:
+    paragraphs:
+    - zh: 云审计说明谁对哪个资源请求命令，但未必保存完整来宾语义；端点显示代理或 SYSTEM 派生进程，却未必包含远端云主体。关键因果跨团队和数据源，任一局部视角可见却难以解释，形成行为透明。NOBELIUM 现场检测与 Azure/AWS 官方字段共同支持 high；request ID、实例 ID、脚本哈希、代理时间和结果仍能反证。
+      en: Cloud audit states who requested a command against which resource but may not retain complete guest semantics, while the endpoint shows an agent or SYSTEM-descended process without the remote cloud principal. Causality crosses teams and sources, making behavior visible yet locally unexplained and producing Behavioral Transparency. NOBELIUM field detection plus official Azure and AWS fields support high confidence; request ID, instance ID, script hash, agent time, and outcome remain disconfirming evidence.
+  evidence_refs: [REF-000110, REF-000204, REF-000205, REF-000206]
+  confidence: high
+- mechanism_ref: NM-FD
+  role: secondary
+  summary: {zh: 恶意命令借用批准维护动作与常驻代理特征, en: Malicious commands borrow approved maintenance-action and resident-agent features}
+  analysis:
+    paragraphs:
+    - zh: Run Command、Systems Manager 与 VM Extension 本就服务于诊断、配置和软件安装；攻击者选择同类身份、文档、时段和目标后，恶意请求与合法维护共享服务名、API 与代理父级，形成特征伪装。Azure 跨客户挖矿事件直接证明正常 Custom Script Extension 可承载恶意负载；罕见仓库、脚本内容、跨客户共同性和无审批目标仍是残余。
+      en: Run Command, Systems Manager, and VM Extensions exist for diagnostics, configuration, and installation. By selecting similar identities, documents, times, and targets, malicious requests share service name, API, and agent parent with maintenance, producing Feature Disguise. Cross-customer Azure mining directly demonstrates a normal Custom Script Extension carrying malicious payloads; rare repository, script content, cross-customer commonality, and unapproved targets remain residuals.
+  evidence_refs: [REF-000203, REF-000204, REF-000207]
+  confidence: high
+subtechnique_taxonomy:
+  narrative:
+    paragraphs:
+    - zh: NJS-0064-001 固定跨层痕迹分离，即远端主体与来宾结果被不同系统记录，检测核心是请求—实例—代理—结果关联；NJS-0064-002 固定维护情境伪装，即身份、动作、脚本来源、时段与目标接近批准基线，检测核心是上下文差分。完整关联可以恢复第一项但仍被第二项迷惑；异常身份可触发第二项反证却不自动连接来宾结果，故互不包含。
+      en: NJS-0064-001 fixes cross-plane trace separation, where remote principal and guest outcome are recorded by different systems and detection centers on request-instance-agent-outcome joins. NJS-0064-002 fixes maintenance-context camouflage, where identity, action, script origin, time, and target approach an approved baseline and detection centers on contextual difference. Complete joins can resolve the first yet remain fooled by the second; an anomalous identity can disconfirm the second without joining guest outcome, so neither contains the other.
+    - zh: ATT&CK 无子项；开放搜索没有按云厂商、门户/CLI/SDK、脚本语言或命令规模拆分。批量 fan-out 是父级基数，代理高权限是影响条件，均未形成独立匿迹变量。
+      en: ATT&CK has no children and open search did not partition by provider, portal CLI or SDK, script language, or command scale. Fleet fan-out is parent cardinality and agent privilege is an impact condition, neither forming an independent stealth variable.
+  coverage: established
+  subtechnique_refs: [NJS-0064-001, NJS-0064-002]
+defense: {detections: {coverage: available, strategy_refs: [DET-000079]}, mitigations: {coverage: available, mitigation_refs: [MIT-000079]}}
+evidence:
+  claim_refs: [CLM-000251, CLM-000252, CLM-000253, CLM-000395, CLM-000396, CLM-000397, CLM-000398, CLM-000399, CLM-000400]
+  case_refs: [CASE-000069, CASE-000070]
+  reference_refs: [REF-000116, REF-000110, REF-000203, REF-000204, REF-000205, REF-000206, REF-000207]
+research:
+  limitations:
+    paragraphs:
+    - zh: 现场案例集中于 Azure；AWS 官方文档证明等价的控制面请求、受管节点和 CloudTrail 残余，但不假定相同字段或代理父进程。命令历史与输出保留由服务和配置决定，成功控制面请求也可能因代理失败而没有执行。high 表示两类变量和因果链证据强，不表示罕见 Run Command 可单独归因。
+      en: Field cases concentrate on Azure. AWS documentation establishes equivalent control request, managed node, and CloudTrail residuals without assuming identical fields or agent parents. Command history and output retention depend on service and configuration, and a successful control request may lack execution after agent failure. High confidence denotes strong evidence for the variables and causal chain, not attribution from a rare Run Command alone.
+lifecycle: {status: review, version: 1.1.0, created: '2026-09-10', modified: '2026-09-12', contributors: [Niji Matrix Research], reviewers: []}

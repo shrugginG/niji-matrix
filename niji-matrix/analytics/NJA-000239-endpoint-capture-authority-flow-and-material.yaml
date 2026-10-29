@@ -1,0 +1,157 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000239
+strategy_ref: DET-000203
+name:
+  zh: 端点捕获权限—认证流—材料产物关联
+  en: Endpoint Capture Authority–Authentication Flow–Material Artifact Correlation
+summary:
+  zh: 关联主机抓包权限、进程与接口活动、认证流覆盖及分级材料结果。
+  en: Correlate host capture authority, process and interface activity, authentication-flow coverage, and graded material
+    outcome.
+domains:
+- enterprise
+platforms: []
+logic:
+  paragraphs:
+  - zh: 首先按 host 和 process start key 建立包捕获活动：进程或注入主体取得 CAP_NET_RAW/管理员捕获能力，创建 AF_PACKET/raw socket、调用捕获驱动或原生 Pktmon，并绑定 interface、filter
+      与起止时间。然后把有效区间与认证流目录相交，并连接 PCAP、ETL、二进制提取文件或内存取证产物。只有受限审查确认 artifact 含明文、可恢复证明或已具备恢复秘密时，输出“TA0006 材料已取得”；缺少材料评估时输出“未授权认证流观察面”，不能升级结果。
+    en: 'First construct packet-capture activity by host and process start key: a process or injected principal obtains CAP_NET_RAW
+      or administrator capture authority, creates an AF_PACKET or raw socket, invokes a capture driver or native Pktmon, and
+      binds interface, filter, start, and stop times. Intersect that interval with the authentication-flow inventory and join
+      PCAP, ETL, binary extraction files, or memory-forensic artifacts. Emit acquired TA0006 material only when restricted
+      review confirms plaintext, a recoverable proof, or possession of the recovery secret. Without material assessment, emit
+      unauthorized authentication-flow observation rather than upgrading the outcome.'
+data_requirements:
+- source_type: host-packet-capture-control
+  name:
+    zh: 主机包捕获权限与接口活动
+    en: Host packet-capture authority and interface activity
+  channel: kernel audit, EDR, ETW, or equivalent platform telemetry
+  required_fields:
+  - timestamp
+  - host_id
+  - process_start_key
+  - process_image
+  - executable_hash
+  - principal_id
+  - privilege_or_capability
+  - capture_api_or_socket_family
+  - interface_id
+  - filter_hash
+  - operation
+  - outcome
+- source_type: host-capture-artifact
+  name:
+    zh: 抓包与提取产物生命周期
+    en: Capture and extraction artifact lifecycle
+  channel: file, memory, and removable-storage telemetry
+  required_fields:
+  - timestamp
+  - host_id
+  - process_start_key
+  - artifact_id
+  - path_or_memory_region
+  - format_or_magic
+  - size
+  - content_hash
+  - create_or_delete
+  - destination
+- source_type: authentication-flow-inventory
+  name:
+    zh: 认证流与加密边界目录
+    en: Authentication-flow and encryption-boundary inventory
+  channel: identity, service, and network metadata
+  required_fields:
+  - timestamp
+  - host_id
+  - interface_id
+  - flow_id
+  - source
+  - destination
+  - protocol_family
+  - service_role
+  - material_class_expected
+  - encryption_or_obfuscation
+  - termination_boundary
+- source_type: restricted-material-assessment
+  name:
+    zh: 受限凭据材料评估
+    en: Restricted credential-material assessment
+  channel: privacy-controlled forensic review
+  required_fields:
+  - case_id
+  - artifact_id
+  - artifact_hash
+  - flow_id
+  - material_class
+  - plaintext_or_recoverable
+  - recovery_condition
+  - reviewer_id
+  - raw_secret_retained
+- source_type: capture-approval
+  name:
+    zh: 抓包批准与数据处理约束
+    en: Capture approval and data-handling constraints
+  channel: change and incident management
+  required_fields:
+  - ticket_id
+  - principal_id
+  - asset_scope
+  - interface_scope
+  - filter_scope
+  - valid_from
+  - valid_to
+  - output_destination
+  - purpose
+  - owner
+observables:
+- zh: 未批准进程获得包捕获权限并在同一有效期内观察认证服务流，随后生成 PCAP 或协议特定提取文件
+  en: An unapproved process obtains packet-capture authority, observes authentication-service traffic in the same interval,
+    and creates a PCAP or protocol-specific extraction artifact
+- zh: 认证服务主机上不属于已登记监控栈的进程绑定原始包接口，过滤器与认证端口或目标重合
+  en: A process outside the registered monitoring stack binds a raw-packet interface on an authentication host with a filter
+    overlapping authentication ports or peers
+correlation:
+  window:
+    zh: 从捕获权限或进程建立起覆盖 start 到 stop，并继续关联产物导出、删除或二十四小时；材料审查按 artifact hash 跨越事件调查全期。
+    en: Span capture authority or process creation through start and stop and continue through artifact export, deletion,
+      or twenty-four hours; material assessment follows artifact hash for the full investigation.
+  dimensions:
+  - host_id
+  - process_start_key
+  - principal_id
+  - interface_id
+  - filter_hash
+  - flow_id
+  - artifact_id
+  - ticket_id
+  - time
+false_positives:
+- zh: 获批故障诊断、NDR/EDR 传感器、事件响应取证、性能分析和协议测试
+  en: Approved troubleshooting, NDR or EDR sensors, incident-response forensics, performance analysis, and protocol testing
+blind_spots:
+- zh: 内核或捕获驱动被攻击者控制、内存内无文件提取、进程注入使 socket 归属失真、设备不提供接口审计，以及强加密使材料内容无法判定
+  en: Adversary-controlled kernel or capture driver, memory-only extraction, process injection that distorts socket ownership,
+    absent interface audit, and strong encryption that prevents material assessment
+tuning_guidance:
+  paragraphs:
+  - zh: 允许项必须绑定进程签名/hash、主体、接口、过滤器、资产范围、输出目标与到期时间；不能永久放行 tcpdump、Pktmon 或 root。先以认证服务器和高权限管理流建立低噪声试点，验证平台是否真实提供 socket family、interface
+      与 process start key。原始正文留在受限证据库，SIEM 只接收材料类别、artifact hash 和布尔结果。
+    en: Bind allowances to process signature or hash, principal, interface, filter, asset scope, output target, and expiration.
+      Do not permanently allow tcpdump, Pktmon, or root. Pilot on authentication servers and privileged management flows and
+      verify that the platform actually supplies socket family, interface, and process start key. Keep raw payload in a restricted
+      evidence store and send only material class, artifact hash, and boolean outcome to the SIEM.
+evidence_refs:
+- REF-000179
+- REF-000796
+- REF-000797
+- REF-000801
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-09-27'
+  modified: '2026-09-27'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

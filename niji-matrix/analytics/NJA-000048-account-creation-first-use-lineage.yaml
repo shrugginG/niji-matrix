@@ -1,0 +1,159 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000048
+strategy_ref: DET-000069
+name:
+  zh: 账户创建—初始权限—首次使用谱系分析
+  en: Account Creation-Initial Privilege-First Use Lineage Analytic
+summary:
+  zh: 规范身份创建、权限、审批与使用日志，按新 principal ID 恢复创建者到首个结果。
+  en: Normalize identity creation, privilege, approval, and use logs to recover creator-to-first-outcome lineage by new principal ID.
+domains:
+- enterprise
+platforms:
+- Containers
+- ESXi
+- IaaS
+- Identity Provider
+- Linux
+- Network Devices
+- Office Suite
+- SaaS
+- Windows
+- macOS
+logic:
+  paragraphs:
+  - zh: 识别此前不存在的 principal ID，记录创建者、接口、时间、初始认证材料、组/角色、作用域和审批，再连接首次成功/失败登录、token、远程访问和资源操作。若只有名称而无稳定 ID，结合租户/设备、SID/UID、创建时间和目标；创建前已存在则转 T1098。风险由非常见
+      creator、无审批、高权限、首次来源异常与快速敏感操作组合决定。
+    en: Identify a previously absent principal ID and record creator, interface, time, initial authentication material, group or role, scope,
+      and approval, then join first successful or failed sign-in, token, remote access, and resource action. When only a name exists, combine
+      tenant or device, SID or UID, creation time, and target; a pre-existing principal is referred to T1098. Risk combines uncommon creator,
+      missing approval, high privilege, anomalous first origin, and rapid sensitive action.
+  - zh: 窄范围分支计算新账户获准服务、资源、角色数量及三十日事件扇出，与同类专用账户和批准用途比较；少量活动只有在 owner/审批缺失、来源异常或持续入口结果同时存在时提高风险。跨控制面分支从云 activity、扩展部署或编排 operation 开始，按 tenant/subscription、workload、request/operation
+      ID、时间和预期用户名连接来宾 SID/UID、账户创建、首次远程认证与结果；没有精确 ID 时降低置信度。
+    en: The narrow-scope branch calculates permitted services, resources, roles, and thirty-day event fan-out for the new account and compares
+      them with peer dedicated accounts and approved purpose. Sparse activity raises risk only with missing owner or approval, anomalous origin,
+      or a continuing-entry outcome. The cross-control-plane branch begins with cloud activity, extension deployment, or orchestration operation
+      and joins guest SID or UID, account creation, first remote authentication, and outcome by tenant or subscription, workload, request or operation
+      ID, time, and expected username. Confidence falls without exact identifiers.
+data_requirements:
+- source_type: identity-account-lifecycle
+  name:
+    zh: 账户创建与权限审计
+    en: Account creation and privilege audit
+  channel: null
+  required_fields:
+  - timestamp
+  - tenant_or_device_id
+  - creator_id
+  - target_principal_id
+  - account_type
+  - initial_role_or_group
+  - operation
+  - outcome
+- source_type: identity-first-use
+  name:
+    zh: 认证、Token 与资源首次使用
+    en: Authentication, token, and resource first use
+  channel: null
+  required_fields:
+  - timestamp
+  - tenant_or_device_id
+  - principal_id
+  - session_or_token_id
+  - source
+  - device_id
+  - resource
+  - action
+  - outcome
+- source_type: account-change-approval
+  name:
+    zh: 账户审批与所有者记录
+    en: Account approval and owner record
+  channel: null
+  required_fields:
+  - change_id
+  - principal_id
+  - owner
+  - approver
+  - purpose
+  - validity_window
+  - status
+- source_type: management-plane-account-provisioning
+  name:
+    zh: 云与集中管理账户投放操作
+    en: Cloud and centralized-management account provisioning operations
+  channel: null
+  required_fields:
+  - timestamp
+  - tenant_or_subscription_id
+  - initiating_principal_id
+  - operation_id
+  - management_function
+  - target_workload_id
+  - requested_account_name
+  - outcome
+observables:
+- zh: 未批准主体创建新账户并立即授予远程或高权限角色
+  en: An unapproved actor creates a new account and immediately grants remote or privileged roles
+- zh: 新账户首次从异常来源登录并快速访问敏感资源
+  en: A new account first signs in from an anomalous origin and rapidly accesses sensitive resources
+- zh: 新账户仅获准访问一个服务或资源集合，并以低频率维持来自未批准来源的持续访问
+  en: A new account is limited to one service or resource set and maintains low-frequency continuing access from an unapproved origin
+- zh: 云扩展或集中管理操作后，下游工作负载出现时间和用户名匹配的新账户及首次远程认证
+  en: After a cloud extension or centralized-management operation, a downstream workload shows a time- and name-matched new account and first
+    remote authentication
+correlation:
+  window:
+    zh: 从创建到禁用/删除或首次三十日，首次使用重点二十四小时；使用九十日创建者和角色基线。
+    en: Extend from creation to disablement or deletion or the first thirty days, emphasizing first use within twenty-four hours and using ninety
+      days of creator and role baseline.
+  dimensions:
+  - tenant_or_device
+  - creator
+  - principal
+  - role_or_group
+  - session_or_token
+  - source
+  - device
+  - resource
+  - approval
+  - time
+  - management_operation
+  - target_workload
+  - authorization_scope
+  - activity_fanout
+false_positives:
+- zh: 入职、服务账户部署、测试、应急与供应商临时访问
+  en: Onboarding, service-account deployment, testing, emergency, and temporary vendor access
+- zh: 云 VM 凭据恢复、配置管理、镜像部署和设备编排合法创建本地管理员或服务账户
+  en: Cloud VM credential recovery, configuration management, image deployment, and device orchestration legitimately create local administrator
+    or service accounts
+blind_spots:
+- zh: 本地设备无创建审计、共享账户或日志只保留名称时关联受限
+  en: Correlation is limited when local devices lack creation audit, accounts are shared, or logs retain only names
+- zh: 上游管理日志不返回来宾 SID/UID、来宾代理不记录创建命令或团队不共享日志时，跨控制面关联只能依赖时间与目标
+  en: When upstream management logs omit guest SID or UID, guest agents omit creation commands, or teams do not share logs, cross-control-plane
+    correlation depends only on time and target
+tuning_guidance:
+  paragraphs:
+  - zh: 按创建接口、管理员、账户类型、角色、时间和业务流程建立基线；允许项绑定具体 principal、审批和到期，不永久放行管理员或自动化。未使用账户与已确认持久化分开输出。
+    en: Baseline creation interface, administrator, account type, role, time, and business workflow. Bind allows to a concrete principal, approval,
+      and expiry rather than permanently allowing administrators or automation. Output unused account separately from confirmed persistence.
+  - zh: 窄范围账户不能因权限少而自动放行，应把允许项绑定 owner、单一用途、资源集合、来源和复核期；低活动窗口至少覆盖三十日。跨控制面操作应为每个批准恢复/部署记录 initiator、operation、workload、预期账户和期限，并将管理操作与来宾事件的字段缺失显式计入置信度。
+    en: Do not automatically allow a narrow account because it has little privilege. Bind allowances to owner, single purpose, resource set, origin,
+      and review period and retain at least thirty days for low activity. For each approved cross-control-plane recovery or deployment, record
+      initiator, operation, workload, expected account, and validity, explicitly reducing confidence when management-to-guest fields are missing.
+evidence_refs:
+- REF-000146
+- REF-000165
+- REF-000166
+- REF-000167
+lifecycle:
+  status: review
+  version: 1.1.0
+  created: '2026-09-11'
+  modified: '2026-09-11'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

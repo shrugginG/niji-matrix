@@ -1,0 +1,127 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000126
+strategy_ref: DET-000117
+name:
+  zh: 数据包内容模式—过滤器—重定向谱系
+  en: Packet Content-Pattern–Filter–Diversion Lineage
+summary:
+  zh: 输出特殊单包字段或魔数、过滤器命中、隐藏 socket/进程与后继控制会话之间的链条。
+  en: Produce the chain among a special one-packet field or magic value filter match hidden socket or process and successor
+    control session.
+domains:
+- enterprise
+platforms:
+- Windows
+- Linux
+- Network Devices
+logic:
+  paragraphs:
+  - zh: 对入站包解析 TCP/UDP/ICMP 头、选项、sequence/ack 差值、载荷摘要与魔数，连接 WFP/BPF/raw-socket/filter 对象、命中规则、重定向前后端口、真实监听进程和响应/命令。一个稀有模式包命中过滤器并把正常端口流量引向隐藏
+      socket 或激活命令链时，输出 content_pattern_packet_activation。
+    en: Parse TCP, UDP, or ICMP headers, options, sequence-to-acknowledgment differences, payload digests, and magic
+      values from inbound packets and join WFP, BPF, raw-socket, or filter objects, matched rules, pre- and post-diversion
+      ports, real listening process, and response or commands. Emit content_pattern_packet_activation when one rare-pattern
+      packet matches a filter and diverts ordinary-port traffic to a hidden socket or activates a command chain.
+  - zh: 对 TA0003，分析为 matcher/filter 版本建立 carrier ID 与 boot ID 谱系，连接映像、RC/systemd、driver 或 module 的中断前状态、重启/配置变化、重新加载、首次后继特殊包和恢复会话。只有相同功能链跨中断闭合时输出 persistent_signal_gated_entry_confirmed；运行期一次激活不升级为 Persistence。
+    en: For TA0003 the analytic establishes carrier and boot lineage for matcher or filter versions and joins pre-interruption image RC or systemd driver or module state reboot or configuration change reload first successor special packet and restored session. It emits persistent_signal_gated_entry_confirmed only when the same functional chain closes across interruption and does not promote one runtime activation to Persistence.
+data_requirements:
+- source_type: packet-content-filter-and-socket
+  name:
+    zh: 全包内容、过滤器命中与 socket 谱系
+    en: Full-packet content filter match and socket lineage
+  channel: null
+  required_fields:
+  - event.timestamp
+  - source.ip
+  - destination.ip
+  - destination.port
+  - packet.protocol
+  - packet.flags
+  - packet.sequence
+  - packet.acknowledgment
+  - packet.options_hash
+  - payload.hash
+  - payload.magic_value
+  - filter.id
+  - filter.match_id
+  - diversion.target_port
+  - socket.id
+  - process.start_key
+  - session.id
+  - outcome
+- source_type: network-trigger-carrier-lifecycle
+  name:
+    zh: 网络触发载体、重载与启动谱系
+    en: Network-trigger carrier reload and boot lineage
+  channel: null
+  required_fields:
+  - event.timestamp
+  - device.id
+  - boot.id
+  - carrier.type
+  - carrier.id
+  - carrier.version
+  - load.event
+  - matcher.id
+  - filter.id
+  - interruption.type
+  - service.or.module.state
+observables:
+- zh: 发往正常开放端口的包包含固定字段或魔数并被内核过滤器转向未公开 socket
+  en: A packet to an ordinary open port contains a fixed field or magic value and is diverted by a kernel filter to an
+    undisclosed socket
+- zh: 特制 SYN 后出现非标准 SYN-ACK 字段与后继命令包
+  en: A crafted SYN receives nonstandard SYN-ACK fields followed by a command packet
+- zh: 重启或配置中断后同一载体重新加载 matcher，首次后继特殊包再次恢复隐藏会话
+  en: After reboot or configuration interruption the same carrier reloads the matcher and the first successor special packet restores the hidden session
+correlation:
+  window:
+    zh: 覆盖一个触发包、过滤器命中、即时重定向或响应及同一会话结果；具体期限依据过滤器处理和协议会话寿命设定。
+    en: Cover one trigger packet filter match immediate diversion or response and outcome in the same session. Set the
+      concrete limit from filter processing and protocol-session lifetime.
+  dimensions:
+  - source.ip
+  - destination.ip
+  - destination.port
+  - payload.hash
+  - filter.id
+  - diversion.target_port
+  - socket.id
+  - process.start_key
+  - boot.id
+  - carrier.id
+false_positives:
+- zh: 合法负载均衡、服务网格、DPI、防火墙内容规则、协议探测和网络安全设备
+  en: Legitimate load balancing service meshes DPI firewall content rules protocol detection and network-security appliances
+- zh: 合法内核 module、RC/systemd 网络服务和设备映像升级会在重启后重载过滤器
+  en: Legitimate kernel modules RC or systemd network services and device-image upgrades reload filters after reboot
+blind_spots:
+- zh: 加密或分片载荷、硬件卸载、边界丢包、过滤器对象不可见或只保留 NetFlow
+  en: Encrypted or fragmented payload hardware offload edge packet loss invisible filter objects or NetFlow-only retention
+- zh: 缺少 boot ID、映像/启动项历史或 module load telemetry 时无法证明跨中断连续性
+  en: Post-interruption continuity cannot be established without boot identity image or startup history or module-load telemetry
+tuning_guidance:
+  paragraphs:
+  - zh: 为合法过滤器绑定签名、owner、规则与目标 socket，保留触发前后端口和响应异常。严重度依赖内容命中、未知过滤器、隐藏目标与控制结果，不按魔数或异常 TCP 字段单独告警。
+    en: Bind legitimate filters to signing, owner, rule, and target socket and retain pre- and post-diversion ports and
+      response anomalies. Base severity on content match, unknown filter, hidden target, and control outcome rather than
+      a magic value or unusual TCP field alone.
+  - zh: 对持久化判断，把允许的载体绑定 image/module/package、启动机制、owner 与 boot 范围；重启后重新验证 matcher、filter 和目标 socket。只有 post-interruption signal 与恢复访问闭合时升级，载体重载或异常包单点保持未决。
+    en: For persistence bind allowed carriers to image module or package startup mechanism owner and boot scope and revalidate matcher filter and target socket after reboot. Escalate only when a post-interruption signal closes with restored access and keep carrier reload or anomalous packet alone unresolved.
+evidence_refs:
+- REF-000408
+- REF-000440
+- REF-000441
+- REF-000453
+- REF-001040
+- REF-001061
+- REF-000179
+lifecycle:
+  status: review
+  version: 0.2.0
+  created: '2026-09-21'
+  modified: '2026-10-22'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

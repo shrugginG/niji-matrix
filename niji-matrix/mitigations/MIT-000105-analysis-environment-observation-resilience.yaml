@@ -1,0 +1,113 @@
+schema_version: 2.0.0
+type: mitigation
+id: MIT-000105
+name:
+  zh: 分析环境观察韧性
+  en: Analysis-Environment Observation Resilience
+summary:
+  zh: 通过透明多视角插桩、调试状态差分和资源隔离，提高调试规避的成本并恢复被隐藏行为。
+  en: Raise the cost of debugger evasion and recover hidden behavior through transparent multi-view instrumentation, debug-state
+    differential, and resource isolation.
+description:
+  paragraphs:
+  - zh: 调试器规避通常无法由单一预防控制消除，因此本缓解降低观察面可识别性，并在用户态调试器之外保留内核、虚拟化或外部行为视角。对同一样本运行调试状态差分，限制异常与输出洪泛资源，并在隔离环境继续执行可疑分支。
+    en: Debugger evasion is rarely eliminated by one preventive control. This mitigation reduces distinguishability of observation
+      and preserves kernel, virtualization, or external behavior views beyond the user-mode debugger. Run the same sample
+      under debug-state differential, limit exception and output-flood resources, and continue suspicious branches in isolation.
+domains:
+- enterprise
+measures:
+- key: multi-view-instrumentation
+  name:
+    zh: 透明多视角插桩
+    en: Transparent Multi-View Instrumentation
+  description:
+    paragraphs:
+    - zh: 同时采集用户态、内核和外部文件网络结果，避免一个调试接口成为唯一事实源，并保持时间、异常和线程语义尽量一致。
+      en: Collect user-mode, kernel, and external file or network outcomes simultaneously so one debugger interface is not
+        the only source of truth and keep time, exception, and thread semantics as consistent as practical.
+  control_type: detective-support
+- key: differential-reexecution
+  name:
+    zh: 调试状态差分重执行
+    en: Debug-State Differential Re-execution
+  description:
+    paragraphs:
+    - zh: 在受控环境用不同调试可见性重复运行样本，比较控制流、解码、子进程和网络结果，并保存稳定差异。
+      en: Re-run a sample under controlled differences in debugger visibility and compare control flow, decoding, child processes,
+        and network outcomes while preserving stable differences.
+  control_type: detective-support
+- key: debug-channel-resource-bounds
+  name:
+    zh: 调试通道资源边界与有损可观测压缩
+    en: Debug-Channel Resource Bounds and Observable Lossy Compression
+  description:
+    paragraphs:
+    - zh: 对每进程和每线程调试事件设置隔离的队列、CPU、存储和显示预算，将重复模板压缩为汇总计数并保留丢失、采样和截断指标，同时优先保留控制流、子进程、文件和网络转折。
+      en: Isolate queue, CPU, storage, and display budgets per process and thread, compress repeated templates into aggregate
+        counts while preserving loss, sampling, and truncation indicators, and prioritize control-flow, child-process, file,
+        and network transitions.
+  control_type: containment
+applications:
+- target_ref: NJT-0106
+  use:
+    paragraphs:
+    - zh: 对可疑样本执行多视角与差分分析，限制调试输出和异常速率，同时允许隔离环境越过退出点继续观察。
+      en: Apply multi-view and differential analysis to suspicious samples, limit debug-output and exception rates, and allow
+        an isolated environment to continue beyond an exit point for observation.
+  expected_effect:
+    paragraphs:
+    - zh: 单一调试状态不再决定防守方可见路径，隐藏线程和输出噪声的影响被其他视角补偿，核心功能更可能被恢复。
+      en: One debugger state no longer determines the defender-visible path, other views compensate for hidden threads and
+        output noise, and core functionality is more likely to be recovered.
+  limitations:
+    paragraphs:
+    - zh: 高级恶意代码可检查多个观察层或只在真实环境激活；差分执行增加时间和基础设施成本，并可能因非确定行为产生误差。
+      en: Advanced malware may inspect multiple observation layers or activate only in a real environment. Differential execution
+        adds time and infrastructure cost and may produce error from nondeterministic behavior.
+- target_ref: NJS-0106-001
+  use:
+    paragraphs:
+    - zh: 使用多视角插桩隐藏单一调试器状态，并对同一样本执行调试开启、关闭和透明插桩重执行，保存退出、解码、子进程、文件和网络结果差异。
+      en: Use multiview instrumentation to conceal one debugger state and re-run the same sample under debugging-on, debugging-off,
+        and transparent instrumentation while preserving differences in exit, decoding, child processes, files, and networking.
+  expected_effect:
+    paragraphs:
+    - zh: 单一可见调试状态更难稳定否定后续路径，被保留载荷更可能在某一对照或外部观察面上出现。
+      en: One visible debugger state is less able to gate the successor path reliably, and a withheld payload is more likely
+        to appear in a control or external observation plane.
+  limitations:
+    paragraphs:
+    - zh: 样本可以同时检查多个用户态与内核信号，非确定行为也会污染差分；重执行必须在隔离环境完成。
+      en: Samples may check several user-mode and kernel signals at once, and nondeterminism can contaminate differential results.
+        Re-execution must remain isolated.
+- target_ref: NJS-0106-002
+  use:
+    paragraphs:
+    - zh: 为调试输出与异常事件设置每进程资源边界，将重复低价值模板压缩为计数，保留丢失和截断指标，并从内核、文件和网络视角继续采集核心状态转折。
+      en: Apply per-process resource bounds to debug output and exceptions, compress repeated low-value templates into counts,
+        preserve loss and truncation indicators, and continue collecting core state transitions from kernel, file, and network
+        views.
+  expected_effect:
+    paragraphs:
+    - zh: 噪声无法无界消耗分析通道，防守方仍保留输出总量、资源影响和高价值外部行为，可以恢复饱和因果。
+      en: Noise cannot consume the analysis channel without bound, while defenders retain output totals, resource effects,
+        and high-value external behavior needed to reconstruct saturation causality.
+  limitations:
+    paragraphs:
+    - zh: 限速或压缩可能丢失低频高价值调试数据，队列与丢失指标也因调试器实现而异；必须保留未压缩样本用于调优。
+      en: Rate limiting or compression may lose low-frequency high-value debug data, and queue and loss indicators vary by
+        debugger implementation. Uncompressed samples must be retained for tuning.
+evidence_refs:
+- REF-000386
+- REF-000414
+- REF-000415
+- REF-000416
+lifecycle:
+  status: review
+  version: 0.2.0
+  created: '2026-09-19'
+  modified: '2026-09-21'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

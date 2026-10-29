@@ -1,0 +1,130 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000283
+strategy_ref: DET-000227
+name:
+  zh: Webhook/集成配置至服务端交付关联
+  en: Webhook or Integration Configuration to Service-Side Delivery Correlation
+summary:
+  zh: 识别新建或变更的 SaaS Webhook/integration 将数据委托发送到未批准端点。
+  en: Identify a new or changed SaaS webhook or integration that delegates data delivery to an unapproved endpoint.
+domains:
+- enterprise
+platforms: []
+logic:
+  paragraphs:
+  - zh: 记录 webhook/integration/connector/app create、update、enable、disable、consent 与 credential 事件的 actor/user/service_principal、owner_tenant、app_id、scopes、source_object_scope、trigger、callback_url/domain、secret_hash、old/new
+      state、request/correlation ID、approval_id 和时间。与批准集成注册表比较，随后把敏感 mail/file/chat/repo event_id 连接到 provider delivery/callback
+      的 destination、status、bytes、retry 和 receiver request ID。输出 workflow_exposure、unauthorized_workflow、sensitive_trigger
+      与 delivery_confirmed；最后一级要求未经批准的配置或 scope、敏感触发和成功外部交付。配置与投递缺一时保留较低状态。
+    en: Record actor or user or service principal, owner tenant, app_id, scopes, source-object scope, trigger, callback
+      URL or domain, secret hash, old and new state, request or correlation ID, approval_id, and time for webhook,
+      integration, connector, or application create, update, enable, disable, consent, and credential events. Compare
+      them with an approved-integration registry, then join sensitive mail, file, chat, or repository event_id to
+      provider delivery or callback destination, status, bytes, retry, and receiver request ID. Emit workflow_exposure,
+      unauthorized_workflow, sensitive_trigger, and delivery_confirmed. The last requires unapproved configuration
+      or scope, a sensitive trigger, and successful outside delivery. Missing configuration or delivery preserves
+      a lower state.
+data_requirements:
+- source_type: saas-configuration-audit
+  name:
+    zh: SaaS Webhook、集成与应用审计
+    en: SaaS webhook integration and application audit
+  channel: provider audit API, Microsoft 365 Unified Audit Log or equivalent
+  required_fields:
+  - event-time
+  - tenant-id
+  - action
+  - actor-id
+  - actor-type
+  - app-or-service-principal-id
+  - owner-tenant-id
+  - scopes
+  - source-object-scope
+  - trigger
+  - callback-url-or-domain
+  - secret-hash
+  - old-state
+  - new-state
+  - request-or-correlation-id
+- source_type: saas-delivery-audit
+  name:
+    zh: 服务端 Webhook 投递结果
+    en: Service-side webhook delivery results
+  channel: provider webhook delivery log or receiver log
+  required_fields:
+  - event-time
+  - tenant-id
+  - integration-or-webhook-id
+  - trigger-event-id
+  - source-object-id
+  - destination
+  - request-id
+  - status
+  - bytes
+  - retry-count
+- source_type: integration-registry
+  name:
+    zh: 批准集成与回调清单
+    en: Approved integration and callback registry
+  channel: SaaS governance inventory
+  required_fields:
+  - tenant-id
+  - integration-or-webhook-id
+  - owner
+  - approved-app-id
+  - approved-scopes
+  - approved-source-scope
+  - approved-callback-domain
+  - approval-id
+  - expiry
+  - policy-version
+observables:
+- zh: Webhook、integration 或 workflow 创建/修改后出现服务端投递
+  en: A service-side delivery follows webhook, integration, or workflow creation or modification
+- zh: 目标 URL、创建主体、触发事件或发送字段不在批准自动化清单
+  en: Destination URL, creating principal, trigger event, or sent fields are outside the approved automation inventory
+correlation:
+  window:
+    zh: 覆盖 workflow/webhook 整个有效期，并在变更前后保留二十四小时触发与投递。
+    en: Cover the full workflow or webhook lifetime and retain twenty-four hours of triggers and delivery around
+      each change.
+  dimensions:
+  - tenant-id
+  - actor-or-service-principal
+  - integration-or-webhook-id
+  - app-id
+  - source-object-scope
+  - trigger-event-id
+  - callback-domain
+  - request-id
+  - approval-id
+  - time
+false_positives:
+- zh: 批准告警通知、CI/CD、工单、ChatOps 和审计导出
+  en: Approved alerting, CI/CD, ticketing, ChatOps, and audit export
+blind_spots:
+- zh: SaaS 不提供投递结果或请求体审计
+  en: The SaaS does not expose delivery outcome or request-body audit
+- zh: 攻击者复用既有批准 webhook 且只改变上游数据
+  en: The attacker reuses an approved webhook and changes only upstream data
+tuning_guidance:
+  paragraphs:
+  - zh: 以 owner、业务用途、精确 source scope、callback 域、应用发布者和到期建立批准基线；对 scope 扩大和 callback 改变视为新审批，不按应用名称全局放行。配置事件立即产生
+      exposure，只有 provider delivery 或接收端请求确认才升级结果；保留失败与重试，因为它们证明工作流仍在尝试。
+    en: Baseline owner, business purpose, exact source scope, callback domain, application publisher, and expiry.
+      Treat scope expansion and callback changes as new approval and never globally allow an application name. Configuration
+      immediately creates exposure, while only provider delivery or receiver-request confirmation upgrades outcome.
+      Retain failures and retries because they establish continuing workflow attempts.
+evidence_refs:
+- REF-000941
+- REF-000940
+- REF-000944
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-10-04'
+  modified: '2026-10-04'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

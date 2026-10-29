@@ -1,0 +1,125 @@
+schema_version: 2.0.0
+type: evasion-subtechnique
+id: NJS-0223-003
+parent_ref: NJT-0223
+name:
+  zh: 嵌套密码检查边界
+  en: Nested Cryptographic Inspection Boundary
+summary:
+  zh: 攻击者把自有消息密码层放在协议原生加密内，使成功解开 TLS/外层协议的检查点仍只能看到内层 ciphertext。
+  en: Adversaries place their own message cryptographic layer inside protocol-native encryption so inspection that successfully
+    decrypts TLS or the outer protocol still sees inner ciphertext.
+aliases: []
+lineage:
+  attck_subtechnique_inherited: false
+definition_and_concept:
+  paragraphs:
+  - zh: 嵌套密码检查边界是攻击者在 TLS/其他原生 secure carrier 已保护的 payload 内再放置独立 keying 的 encrypted envelope。直接目标是让解密 proxy、TLS keylog 或
+      server private key 只恢复 carrier plaintext，而 command/result 仍需 attacker-layer key。稳定变量是 plaintext boundary 位于第二层，而非 TLS/library
+      名称。
+    en: Nested Cryptographic Inspection Boundary means an actor places an independently keyed encrypted envelope inside a
+      payload already protected by TLS or another native secure carrier. The direct goal is having a decryption proxy, TLS
+      key log, or server private key recover only carrier plaintext while commands and results still need the attacker-layer
+      key. The stable variable is a second-layer plaintext boundary rather than TLS or library name.
+  - zh: Cyclops Blink 明确以 custom binary protocol underneath TLS 通信，并逐消息 AES-CBC 加密；NCSC 进一步恢复 wrapped key/IV、decrypted command
+      format 与 commands。这直接证明 TLS layer 和 attacker message layer 各自独立。
+    en: Cyclops Blink explicitly communicates with a custom binary protocol underneath TLS and encrypts each message with
+      AES-CBC. NCSC additionally recovered wrapped key and IV handling, decrypted command format, and commands, directly establishing
+      independent TLS and attacker message layers.
+stealth_characteristics:
+  paragraphs:
+  - zh: 嵌套密码检查边界让 TLS termination 后的 body 仍具高熵/固定 envelope 而非业务或命令语义，按“TLS 已解密”假定内容可检查的控制产生盲区。仍可观察 outer/inner length、message
+      boundary、wrapped key、process crypto calls 和 endpoint action；恢复 inner key 后可把两层 flow→message→command 串联。
+    en: Nested Cryptographic Inspection Boundary leaves a high-entropy or fixed-envelope body after TLS termination rather
+      than business or command semantics, creating a blind spot for controls that assume TLS decryption makes content inspectable.
+      Outer and inner lengths, message boundaries, wrapped keys, process cryptographic calls, and endpoint actions remain
+      observable. Recovering the inner key links flow to message to command across both layers.
+  - zh: 合法应用层 E2EE、messaging、financial envelope 和 client-side encryption 也在 TLS 内携带 ciphertext；没有批准应用目录、key custody 和 endpoint
+      result 时不能定性。TLS 1.3/ECH 还可能连 outer metadata 都收缩。
+    en: Legitimate application-layer end-to-end messaging, financial envelopes, and client-side encryption also carry ciphertext
+      inside TLS. Without an approved-application catalog, key custody, and endpoint result, classification is not possible.
+      TLS 1.3 or ECH can further reduce outer metadata.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 纳入要求 outer protocol decrypt 的证据、inner ciphertext、独立 inner key recovery 和解密后 C2。仅 TLS 或 VPN 排除；TLS inside tunnel 的完整内层
+      session topology 归 T1572，若 tunnel payload 另有 attacker message crypto 可并列。inner content 的 padding/carrier/service mimic
+      另归 NJT-0152。
+    en: Inclusion requires evidence of outer-protocol decryption, inner ciphertext, independent inner-key recovery, and C2
+      after inner decryption. TLS or VPN alone is excluded. An intact inner-session topology inside an encrypted tunnel belongs
+      to T1572; attacker message crypto inside the tunnel can coexist. Padding, carriers, or service mimicry of inner content
+      belongs separately to NJT-0152.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: 边界 TLS inspection 可解开 appliance 到 C2 的 HTTPS/TLS，却只得到包含 wrapped message key、IV 和 ciphertext 的 binary frame。调查需从
+        appliance sample/memory 或 controller material 恢复 inner key，才能识别 terminate、update C2、module load 等 commands。
+      en: Boundary TLS inspection can decrypt an appliance's HTTPS or TLS connection to C2 yet recover only a binary frame
+        with wrapped message key, IV, and ciphertext. Investigation needs appliance sample or memory or controller material
+        to recover the inner key before identifying terminate, C2-update, module-load, and other commands.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者需维护 carrier TLS 与 inner envelope 两套 state/keys 并处理重传/分片；收益是 TLS inspection 无法直接读命令，代价是可识别 envelope、重复 crypto
+          APIs 和更复杂错误面。
+        en: The actor must maintain two state and key systems for carrier TLS and the inner envelope and handle retransmission
+          and fragmentation. The benefit is that TLS inspection cannot directly read commands; the cost is an identifiable
+          envelope, repeated cryptographic APIs, and a more complex error surface.
+    defender_model:
+      paragraphs:
+      - zh: 防守方需区分 tls_decryption_status 与 inner_decryption_status，保存 outer flow/session、decrypted body ref、inner message/key
+          ID、process/crypto context 和 endpoint outcome。TLS key logging只适用于获批诊断/测试并保护合法 secrets，不能当作生产默认措施。
+        en: The defender must distinguish tls_decryption_status from inner_decryption_status and retain outer flow or session,
+          decrypted-body reference, inner message and key ID, process and cryptographic context, and endpoint outcome. TLS
+          key logging is limited to approved diagnosis or test with protection of legitimate secrets and is not a default
+          production measure.
+stealth_mechanisms:
+- mechanism_ref: NM-BT
+  role: primary
+  summary:
+    zh: 内层密码让 carrier 解密检查仍看不到控制明文
+    en: Inner cryptography keeps control plaintext outside carrier-decryption inspection
+  analysis:
+    paragraphs:
+    - zh: 攻击者在 TLS body 内加入独立 envelope，使 proxy 解决第一层后仍缺 inner key，真实 command 行为落在端点 runtime。Cyclops Blink 提供直接样本证据。记录 outer
+        body 与 inner recovery/endpoint outcome 可弥合盲区。
+      en: The actor adds an independent envelope inside the TLS body, leaving the proxy without the inner key after solving
+        the first layer and keeping command behavior in endpoint runtime. Cyclops Blink provides direct sample evidence. Recording
+        outer body, inner recovery, and endpoint outcome closes the gap.
+  evidence_refs:
+  - REF-001148
+  confidence: high
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000260
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000229
+evidence:
+  claim_refs:
+  - CLM-001111
+  case_refs:
+  - CASE-000341
+  reference_refs:
+  - REF-001148
+  - REF-001149
+  - REF-001150
+research:
+  limitations:
+    paragraphs:
+    - zh: Cyclops Blink 是高质量政府样本分析并明确给出两层与 command format，但单一家族不能证明所有 nested encryption 有相同 envelope 或检测差。RFC TLS/keylog 仅说明
+        carrier/key recovery 机制，不证明恶意 inner layer；生产 keylog 还存在严重 secret exposure 风险。
+      en: Cyclops Blink is a high-quality government sample analysis with explicit layers and command format, but one family
+        cannot establish a common envelope or detection differential for all nested encryption. TLS and key-log RFCs establish
+        carrier and recovery mechanics rather than a malicious inner layer, and production key logging creates serious secret-exposure
+        risk.
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-10-05'
+  modified: '2026-10-05'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

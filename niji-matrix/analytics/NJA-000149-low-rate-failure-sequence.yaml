@@ -1,0 +1,78 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000149
+strategy_ref: DET-000144
+name:
+  zh: 按身份重建低频失败序列
+  en: Reconstruct Low-Rate Failure Sequences by Principal
+summary:
+  zh: 以身份与应用重建跨日低频失败及后继认证阶段。
+  en: Reconstruct cross-day low-rate failures and later authentication stages by principal and application.
+domains:
+- enterprise
+platforms:
+- Identity Provider
+- Windows
+logic:
+  paragraphs:
+  - zh: 将同一实际验证器的事件按 tenant_id、stable_user_id、application_id 规范化，去除同一 request_id 的重复事件。按 event_time 对每一身份滑动 7 至 30 天，计数不同日期的密码失败、失败至挑战或成功转换、来源和客户端变动；与该身份过去
+      30 至 90 天的正常失败基线比较。仅在跨日重复且无批准测试或密码过期解释时升高风险，MFA 拒绝标成已匹配主凭据但未获资源，而非成功入侵。
+    en: Normalize events from the actual verifier by tenant_id, stable_user_id, and application_id, deduplicating repeated records by request_id.
+      In a rolling 7 to 30 days per principal, count password failures across distinct days, failure-to-challenge or success transitions, and
+      source and client changes; compare with that principal's 30 to 90 day normal-failure baseline. Raise risk only for repeated cross-day activity
+      without authorized testing or password-expiry explanation. Mark MFA denial as possible primary-secret match without resource access, not
+      successful intrusion.
+data_requirements:
+- source_type: identity-signin
+  name:
+    zh: 实际验证器认证日志
+    en: Actual-verifier sign-in logs
+  channel: Microsoft Entra SignInLogs or AD FS security logs
+  required_fields:
+  - tenant_id
+  - stable_user_id
+  - application_id
+  - event_time
+  - request_id
+  - source_ip
+  - result_code
+  - authentication_stage
+observables:
+- zh: 同一身份跨日密码失败且每个短窗口计数很低
+  en: Password failures recur for one principal across days while each short window has a low count
+- zh: 失败之后出现主秘密匹配、MFA 拒绝或真实资源访问
+  en: Later primary-secret match, MFA denial, or actual resource access follows the failures
+correlation:
+  window:
+    zh: 按身份滚动关联七至三十日，并使用此前三十至九十日正常失败分布作基线。
+    en: Correlate per principal over rolling seven to thirty days and use the preceding thirty to ninety days of normal failures as a baseline.
+  dimensions:
+  - tenant_id
+  - stable_user_id
+  - application_id
+  - event_time
+  - request_id
+false_positives:
+- zh: 忘记口令、密码过期和经授权的红队长期测试可能产生跨日失败。
+  en: Forgotten or expired passwords and authorized long-running red-team tests can create cross-day failures.
+blind_spots:
+- zh: 联合 IdP 未导出失败、保留期不足、非交互入口和缺少稳定账户标识会截断序列。
+  en: Missing federated-IdP failures, short retention, noninteractive entry points, or absent stable user IDs truncate the sequence.
+tuning_guidance:
+  paragraphs:
+  - zh: 从真实身份提供者核对结果码和认证阶段；按账户历史失败分布及应用基线调窗口，不把全局阈值机械套到服务账户或共享终端。维护批准测试的时间、目标与操作者白名单，并保留其原始事件供追溯。
+    en: Validate result-code and authentication-stage semantics at the actual IdP. Tune windows to account-history and application baselines rather
+      than imposing one threshold on service accounts or shared endpoints. Keep scoped authorized-test allowlists with time, target, and operator
+      while retaining raw events for audit.
+evidence_refs:
+- REF-000502
+- REF-000307
+- REF-000497
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-09-22'
+  modified: '2026-09-22'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

@@ -1,0 +1,86 @@
+schema_version: 2.0.0
+type: mitigation
+id: MIT-000104
+name:
+  zh: 容器构建访问与镜像谱系治理
+  en: Container Build Access and Image-Lineage Governance
+summary:
+  zh: 限制构建 API 调用和构建期网络，并要求本地镜像经过内容扫描、证明和批准后才能部署。
+  en: Restrict build API invocation and build-time networking and require locally generated images to pass content scanning,
+    attestation, and approval before deployment.
+description:
+  paragraphs:
+  - zh: 本缓解把构建服务视为高权限内容生成面，而不是只保护镜像注册表。组织限制守护进程套接字与远程 API，认证并授权每个调用者，隔离构建执行，约束上下文和网络来源，并把本地生成摘要纳入与外部镜像相同的扫描、签名和部署准入；同时保留构建输入到首次容器的不可变谱系。
+    en: This mitigation treats the build service as a privileged content-generation surface rather than protecting only the
+      image registry. Organizations restrict daemon sockets and remote APIs, authenticate and authorize every caller, isolate
+      build execution, constrain context and network sources, and place locally generated digests under the same scanning,
+      signing, and deployment admission as external images while retaining immutable lineage from build input to first container.
+domains:
+- enterprise
+measures:
+- key: authenticated-build-api
+  name:
+    zh: 构建 API 强认证与最小授权
+    en: Strong Authentication and Least Authorization for Build APIs
+  description:
+    paragraphs:
+    - zh: 默认使用本地受限套接字；远程访问通过 SSH 或双向 TLS，并由授权插件把主体绑定到允许的构建、项目、上下文来源和标签操作。禁止未认证 TCP 端口和广泛容器组成员资格。
+      en: Use a restricted local socket by default. Remote access uses SSH or mutual TLS, and authorization plugins bind principals
+        to permitted builds, projects, context sources, and tagging operations. Prohibit unauthenticated TCP ports and broad
+        container-group membership.
+  control_type: preventive
+- key: isolated-build-network
+  name:
+    zh: 隔离构建与网络来源限制
+    en: Isolated Builds and Restricted Network Sources
+  description:
+    paragraphs:
+    - zh: 在短生命周期隔离构建器中执行构建，限制外连到批准仓库和依赖代理，禁止任意远程 Dockerfile 或上下文，并记录每个步骤、输入摘要与缓存来源。
+      en: Execute builds in short-lived isolated builders, restrict egress to approved registries and dependency proxies,
+        prohibit arbitrary remote Dockerfiles or contexts, and record each step, input digest, and cache source.
+  control_type: exposure-reduction
+- key: local-image-admission
+  name:
+    zh: 本地镜像扫描与部署准入
+    en: Local Image Scanning and Deployment Admission
+  description:
+    paragraphs:
+    - zh: 对每个生成摘要执行逐层扫描和策略验证，生成与调用者、上下文、构建文件和流水线绑定的证明；编排器只部署满足签名、来源和批准策略的摘要。
+      en: Perform layer-by-layer scanning and policy validation for every resulting digest, produce an attestation bound to
+        caller, context, build file, and pipeline, and allow orchestrators to deploy only digests satisfying signature, provenance,
+        and approval policy.
+  control_type: preventive
+applications:
+- target_ref: NJT-0105
+  use:
+    paragraphs:
+    - zh: 将构建调用权限限制给登记流水线，隔离其网络和上下文来源，并让输出镜像在首次部署前进入统一扫描与证明。跨守护进程、构建器和编排器保存 build ID 与内容摘要连接。
+      en: Limit build invocation to registered pipelines, isolate their network and context sources, and place output images
+        into unified scanning and attestation before first deployment. Preserve build ID and content-digest joins across daemon,
+        builder, and orchestrator.
+  expected_effect:
+    paragraphs:
+    - zh: 攻击者更难利用开放构建 API，正常基础镜像不再自动把信任传递给新层，宿主生成镜像也不会绕过部署准入；构建到运行的因果可以恢复。
+      en: Attackers have greater difficulty abusing an open build API, benign base-image trust no longer transfers automatically
+        to new layers, locally generated images do not bypass deployment admission, and build-to-runtime causality can be
+        restored.
+  limitations:
+    paragraphs:
+    - zh: 构建证明和逐层扫描增加延迟与存储，动态依赖和缓存会使可重现性复杂；被攻陷的批准流水线仍可能生成表面合规的镜像，需要独立凭据、网络和运行行为控制。
+      en: Build attestation and layer scanning add latency and storage, while dynamic dependencies and caches complicate reproducibility.
+        A compromised approved pipeline may still create an apparently compliant image and requires independent credential,
+        network, and runtime-behavior controls.
+evidence_refs:
+- REF-000383
+- REF-000384
+- REF-000385
+- REF-000412
+- REF-000413
+lifecycle:
+  status: review
+  version: 0.2.0
+  created: '2026-09-19'
+  modified: '2026-09-21'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

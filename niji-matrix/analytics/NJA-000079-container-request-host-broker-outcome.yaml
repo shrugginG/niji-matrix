@@ -1,0 +1,113 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000079
+strategy_ref: DET-000098
+name:
+  zh: 容器请求—宿主 Broker—权限结果分析
+  en: Container Request-to-Host Broker and Authority-Outcome Analytic
+summary:
+  zh: 将容器或 guest 的 socket/API/callback 请求连接到宿主 daemon/helper 事务、新执行上下文和首个 host-only 结果，区分危险通道、未遂请求与成功来源转换。
+  en: Join a container or guest socket, API, or callback request to a host daemon or helper transaction, new execution context, and first host-only result, distinguishing dangerous channels, attempted requests, and successful provenance translation.
+domains: [enterprise]
+platforms: [Containers, Linux, Windows, ESXi]
+logic:
+  paragraphs:
+  - zh: >-
+      分析先建立可被隔离域触达的 host Broker channel 清单。对 UNIX socket、TCP/TLS API、CRI/gRPC、kubelet/hypervisor endpoint 与 host-consumed callback/control state，记录 node/host、service、socket inode/address、listener PID/start key、service account/token、rootless/rootful、authentication、method-level policy、allowed caller/workload、permitted parameters、callback consumer 与生效窗口。把 mounted/exposed channel 与实际调用分开；通道存在或 workload spec 可访问只输出 broker_channel_risk。
+    en: >-
+      The analytic first builds an inventory of host-broker channels reachable from isolated domains. For UNIX sockets, TCP or TLS APIs, CRI or gRPC, kubelet or hypervisor endpoints, and host-consumed callback or control state, it records node or host, service, socket inode or address, listener PID and start key, service account or token, rootless or rootful state, authentication, method-level policy, allowed caller or workload, permitted parameters, callback consumer, and validity window. Mounted or exposed channels remain separate from actual invocations; channel presence or reachability in a workload specification produces only broker_channel_risk.
+  - zh: >-
+      对每次调用，分析恢复 original caller：workload UID/container or VM ID、image digest、process start key、peer PID/UID/cgroup 或 API principal/certificate、source address、method/path、request body canonical hash、arguments、requested image/command/namespace/capability/mount/device、timestamp 与 request/trace ID。callback 分支保存 writer、old/new state、write time、expected consumer/condition。无法取得 body 时保留 size/content hash/parameter summary；只以近时间 daemon activity 相连时标记 provenance_gap，不推断已消费。
+    en: >-
+      For each invocation, the analytic recovers original caller: workload UID or container or VM ID, image digest, process start key, peer PID, UID, or cgroup or API principal or certificate, source address, method or path, canonical request-body hash, arguments, requested image, command, namespace, capability, mount, or device, timestamp, and request or trace ID. The callback branch preserves writer, old and new state, write time, intended consumer, and condition. Where body is unavailable, size, content hash, and parameter summary remain. A join based only on nearby daemon activity is labeled provenance_gap and does not imply consumption.
+  - zh: >-
+      随后把 request/state 连接到 Broker decision 与 transaction：accept/deny、daemon PID/start key、transaction/task/container/VM ID、resolved image digest、实际 security context/namespaces/capabilities/mounts/devices、helper path/hash/arguments、created process 与 start/end。API success 但没有 transaction 或 callback 未消费输出 broker_request_only；被拒输出 escape_attempt；创建上下文但其 effective authorization 不超过 caller pre-state 输出 no_authority_gain。transaction ID 不传到 child 时，使用 daemon lifecycle event、new object ID、resolved spec hash 和因果顺序形成降级边。
+    en: >-
+      The analytic then joins request or state to broker decision and transaction: accept or deny, daemon PID and start key, transaction, task, container, or VM ID, resolved image digest, actual security context, namespaces, capabilities, mounts, and devices, helper path, hash, and arguments, created process, and start and end. API success without a transaction or an unconsumed callback produces broker_request_only. Denial produces escape_attempt. A created context whose effective authorization does not exceed caller pre-state produces no_authority_gain. When transaction ID does not propagate to a child, daemon lifecycle events, new-object ID, resolved-spec hash, and causal order form a downgraded edge.
+  - zh: >-
+      最后为 original caller 与 broker-created context 计算授权差，并追踪 first host-only outcome。输入包括原 namespace/capability/resource/API set、Broker effective service/token、实际 host resource operation、authorization decision 和 side effect。只有 post-state 新增明确宿主权限，且同一 transaction 产生 pre-state expected deny、post-state observed allow 的首次操作，才输出 brokered_escape_confirmed。若新 workload 经 alias 访问 host object，消费 NJA-000078 的 host_resource_resolved/alias_escape_confirmed；若 Broker 直接执行 host command/file change，则使用 host process/resource event。工具、daemon ancestry 或 privileged flag 不填补缺层。
+    en: >-
+      Finally, the analytic calculates authority difference between original caller and broker-created context and follows the first host-only outcome. Inputs include original namespace, capability, resource, and API set; broker effective service or token; actual host-resource operation; authorization decision; and side effect. Only an explicit added host permission plus the first operation in the same transaction that pre-state would deny and post-state observes as allowed produces brokered_escape_confirmed. When a new workload reaches a host object through an alias, it consumes NJA-000078 host_resource_resolved or alias_escape_confirmed. When the broker directly runs a host command or changes a file, host process or resource events are used. Tooling, daemon ancestry, or a privileged flag never fills a missing layer.
+data_requirements:
+- source_type: broker-channel-inventory-and-policy
+  name: {zh: 宿主 Broker 通道、身份与策略, en: Host-broker channel identity and policy}
+  channel: null
+  required_fields: [timestamp, node_or_host_id, broker_service, listener_process_start_key, socket_inode_or_address, protocol, rootless_or_rootful, effective_service_identity, authentication_mode, method_policy, allowed_callers, allowed_parameter_template, callback_consumer, validity_window, owner_id]
+- source_type: container-socket-api-request
+  name: {zh: 容器 socket/API/gRPC 请求与 caller, en: Container socket API or gRPC request and caller}
+  channel: null
+  required_fields: [timestamp, node_or_host_id, workload_uid, container_or_vm_id, image_digest, caller_process_start_key, peer_pid_uid_or_cgroup, api_principal_or_certificate, source_address, socket_inode_or_destination, method_or_path, request_body_hash, parameter_summary, requested_image_command_namespaces_capabilities_mounts_devices, request_or_trace_id, response_status]
+- source_type: host-consumed-callback-state
+  name: {zh: 宿主消费 callback/control state, en: Host-consumed callback or control state}
+  channel: null
+  required_fields: [timestamp, node_or_host_id, writer_workload_and_process, object_or_control_state_id, old_state, new_state, write_result, expected_consumer, activation_condition, consume_time, consumer_process_start_key, transaction_id]
+- source_type: broker-runtime-helper-transaction
+  name: {zh: Broker、runtime 与 helper 事务, en: Broker runtime and helper transaction}
+  channel: null
+  required_fields: [timestamp, node_or_host_id, broker_service, daemon_process_start_key, request_or_trace_id, decision, transaction_task_container_or_vm_id, resolved_image_digest, resolved_spec_hash, effective_identity_or_token, namespaces, capabilities, mounts, devices, helper_path_hash_arguments, created_process_start_key, result, error]
+- source_type: host-process-resource-authorization-outcome
+  name: {zh: 宿主进程、资源授权与结果, en: Host process resource authorization and outcome}
+  channel: null
+  required_fields: [timestamp, node_or_host_id, transaction_or_new_context_id, process_start_key, parent_process_start_key, effective_identity_or_token, canonical_host_resource, operation, authorization_result, old_state, new_state, side_effect_id]
+- source_type: caller-and-broker-authority-model
+  name: {zh: Caller 与 Broker 前后权限模型, en: Caller and broker pre-state and post-state authority model}
+  channel: null
+  required_fields: [timestamp, caller_workload_or_principal_id, caller_prestate_authorization_set, broker_effective_authorization_set, added_host_permission, target_resource_or_operation, previous_expected_result, actual_result, request_transaction_and_outcome_join_status]
+- source_type: approved-broker-workflow-baseline
+  name: {zh: 批准的 Broker 调用工作流, en: Approved broker invocation workflow}
+  channel: null
+  required_fields: [approval_id, owner_id, caller_workload_uid, image_digest, caller_identity, broker_service, method, parameter_template, target_node_or_resource, expected_new_context, allowed_operations, validity_window]
+observables:
+- zh: 非批准 container process/peer 或 API principal 向 rootful runtime、kubelet、hypervisor 或 helper channel 提交 create/exec/mount/device/capability 请求。
+  en: An unapproved container process or peer or API principal submits create, exec, mount, device, or capability parameters to a rootful runtime, kubelet, hypervisor, or helper channel.
+- zh: 原 request body/hash 与 daemon transaction/new container/helper action 相连，但宿主进程树只显示正常 Broker。
+  en: The original request body or hash joins to a daemon transaction, new container, or helper action while the host process tree shows only a normal broker.
+- zh: callback/control state 由 container writer 修改，随后由 host helper 在不同时间和身份消费并产生宿主命令或文件结果。
+  en: Callback or control state is changed by a container writer and later consumed by a host helper under a different time and identity to produce a host command or file outcome.
+- zh: Broker 实际解析的 security context、namespace、capability、mount 或 device 超出 caller pre-state 与批准 parameter template。
+  en: The security context, namespace, capability, mount, or device actually resolved by the broker exceeds caller pre-state and the approved parameter template.
+- zh: 新上下文首次完成 caller pre-state 会 deny 的 canonical host operation，并与 request/transaction/side effect 形成完整链。
+  en: The new context first completes a canonical host operation that caller pre-state would deny and forms a complete request, transaction, and side-effect chain.
+- zh: mounted socket、API response 或 daemon child 存在却没有 transaction/host result，保持 broker_channel_risk、broker_request_only 或 provenance_gap。
+  en: A mounted socket, API response, or daemon child without a transaction or host result remains broker_channel_risk, broker_request_only, or provenance_gap.
+correlation:
+  window:
+    zh: >-
+      同步 API/socket 路径默认从 request 前十分钟覆盖到 transaction/new context 后二十四小时或首个 host result；callback 路径从 state write 前最后可信值覆盖到实际消费、结果和状态失效，最长按 control object 生命周期。原 workload 即使删除，其 peer/caller、request hash 与 runtime object ID 至少保留九十日。request/trace、transaction/new object 与 side-effect 键优先于固定时间邻近。
+    en: >-
+      For synchronous API or socket paths, begin ten minutes before the request and cover through twenty-four hours after the transaction or new context or the first host result. For callback paths, begin with the last trusted value before state write and cover actual consumption, result, and state expiry for the full control-object lifetime. Even after deletion of the original workload, retain peer or caller, request hash, and runtime object ID for at least ninety days. Request or trace, transaction or new object, and side-effect keys take precedence over fixed temporal proximity.
+  dimensions: [node_host_and_broker_service, socket_inode_address_or_control_object, original_workload_container_vm_and_image, caller_process_peer_or_api_principal, method_path_and_request_body_hash, requested_and_resolved_parameters, request_trace_and_transaction, new_container_vm_or_process, effective_identity_namespace_capabilities_and_mounts, canonical_host_resource_and_operation, prestate_poststate_authorization, result_and_side_effect, approval_owner_and_window, time]
+false_positives:
+- zh: CI/build runner、Docker-in-Docker、cluster autoscaler 与 deployment controller 会合法创建容器并传递 mount/capability 参数。
+  en: CI or build runners, Docker-in-Docker, cluster autoscalers, and deployment controllers legitimately create containers and pass mount or capability parameters.
+- zh: kubelet、CSI/device plugin、node agent 与安全/备份软件可能通过 runtime/helper 取得节点资源，但应有固定 workload identity、资源和 method。
+  en: Kubelet, CSI or device plugins, node agents, and security or backup software can obtain node resources through runtimes or helpers but should have fixed workload identity, resource, and method.
+- zh: debug、incident-response、node repair 与 virtualization administration 可能创建短期 privileged context，应有独立审批、人员会话与目标范围。
+  en: Debugging, incident response, node repair, and virtualization administration can create short-lived privileged contexts with independent approval, operator session, and target scope.
+- zh: rootless daemon 或用户级 runtime 可接受相同 create request，却没有相对 caller 的宿主权限增加。
+  en: A rootless daemon or user-scoped runtime can accept the same create request without increasing host authority relative to the caller.
+blind_spots:
+- zh: UNIX socket listener 不记录 peer PID/UID/cgroup 且 host sensor 不采集 connect/send 时，无法稳定识别原 container caller。
+  en: When a UNIX-socket listener omits peer PID, UID, or cgroup and host sensors do not capture connect or send, the original container caller cannot be identified reliably.
+- zh: API gateway/TLS termination 只保留共享 service principal、丢弃原 workload identity 或 request body 时，多租户来源会合并。
+  en: API gateways or TLS termination that preserve only a shared service principal and discard workload identity or request body merge multi-tenant provenance.
+- zh: runtime/helper 不传播 request/trace ID 到 transaction、new object 和 child process 时，只能使用 spec hash 与时间做降级连接。
+  en: If a runtime or helper does not propagate request or trace ID into transaction, new object, and child process, only degraded joins through specification hash and time remain.
+- zh: callback write 与 consume 相隔超过日志保留，或 attacker 取得宿主权限后删除 daemon/audit/state history，会切断来源链。
+  en: A callback write consumed after log retention expires, or deletion of daemon, audit, or state history after host compromise, severs provenance.
+tuning_guidance:
+  paragraphs:
+  - zh: >-
+      先按 channel inventory 识别所有能产生 host effect 的 Broker，并明确 rootful/rootless、effective identity、allowed callers、method 与 parameter template。对 UNIX socket 采集 peer PID/UID/cgroup 和 socket inode，对 API/gRPC 传播 workload identity、request/trace ID 和 canonical body hash，对 callback 保留 old/new、writer 与 consumer。共享账户或只记录 daemon PID 的实现应标为 coverage_degraded。
+    en: >-
+      Start with a channel inventory of every broker able to produce host effects and define rootful or rootless state, effective identity, allowed callers, methods, and parameter templates. Capture peer PID, UID, or cgroup and socket inode for UNIX sockets, propagate workload identity, request or trace ID, and canonical body hash for APIs or gRPC, and preserve old and new values, writer, and consumer for callbacks. Implementations with a shared account or daemon PID only are coverage_degraded.
+  - zh: >-
+      对 create/exec/mount/device/capability/helper 请求做 requested-versus-resolved diff；runtime 最终 spec 而不是客户端命令决定实际权限。分级输出 channel_risk、request_only、escape_attempt、provenance_gap、no_authority_gain、crossing_observed 和 brokered_escape_confirmed。只有 request→transaction→higher context→first host-only allow/result 全部成立才确认提权，不以 API 200、privileged flag 或 daemon child 补齐。
+    en: >-
+      Compare requested and resolved values for create, exec, mount, device, capability, and helper actions. The runtime's final specification rather than client command determines actual authority. Tier outputs as channel_risk, request_only, escape_attempt, provenance_gap, no_authority_gain, crossing_observed, and brokered_escape_confirmed. Confirm elevation only when request to transaction to higher context to first host-only allow and result is complete, never filling gaps with API 200, a privileged flag, or daemon child.
+  - zh: >-
+      allowlist 绑定 caller workload UID、resolved digest、peer/API identity、Broker、method、完整 parameter template、target node/resource、new context、operation、owner 与短窗口，并在 spec/image/certificate 变化时失效。禁止永久放行 dockerd、kubelet、root、CI service account 或某 socket。对未批准高风险参数可立即阻断，但响应前保存 request、daemon decision、transaction/new object 和 host result。
+    en: >-
+      Bind allowances to caller workload UID, resolved digest, peer or API identity, broker, method, complete parameter template, target node or resource, new context, operation, owner, and short window, expiring them on specification, image, or certificate change. Never permanently allow dockerd, kubelet, root, a CI service account, or a socket. Unapproved high-risk parameters can be blocked immediately, but preserve request, daemon decision, transaction or new object, and host result before response.
+evidence_refs: [REF-000345, REF-000346, REF-000347, REF-000350, REF-000352]
+lifecycle: {status: review, version: 0.1.0, created: '2026-09-13', modified: '2026-09-13', contributors: [Niji Matrix Research], reviewers: []}

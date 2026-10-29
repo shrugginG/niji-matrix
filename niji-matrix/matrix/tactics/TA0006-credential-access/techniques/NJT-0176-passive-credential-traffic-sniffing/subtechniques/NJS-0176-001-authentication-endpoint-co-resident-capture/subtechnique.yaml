@@ -1,0 +1,118 @@
+schema_version: 2.0.0
+type: evasion-subtechnique
+id: NJS-0176-001
+parent_ref: NJT-0176
+name:
+  zh: 认证端点共驻抓取
+  en: Authentication-Endpoint Co-resident Capture
+summary:
+  zh: 攻击者在参与认证交换的主机上直接捕获凭据流量，借端点本身的可见性或秘密恢复材料，同时不改变对端和网络路径。
+  en: An adversary captures credential traffic directly on a host participating in authentication and uses endpoint visibility
+    or secrets to recover material without changing the peer or network path.
+aliases: []
+lineage:
+  attck_subtechnique_inherited: false
+definition_and_concept:
+  paragraphs:
+  - zh: 认证端点共驻抓取指捕获逻辑运行在认证交换的发送端、接收端或验证端主机，并从该主机接口看到的原始报文中取得认证材料。该位置可与协议终止或共享秘密存储共驻，使路径外观察者只能看到的密文在端点上变得可恢复。分类依据是捕获位置与认证角色共驻，而不是
+      Linux、Windows、TACACS+、libpcap 或某个恶意样本。
+    en: Authentication-Endpoint Co-resident Capture places capture logic on the sending, receiving, or verifying host of an
+      authentication exchange and acquires material from packets visible to that host. Co-location with protocol termination
+      or shared-secret storage can make traffic recoverable that an outside observer sees only as ciphertext. The boundary
+      is co-residence between capture position and authentication role, not Linux, Windows, TACACS+, libpcap, or a malware
+      family.
+stealth_characteristics:
+  paragraphs:
+  - zh: 认证端点共驻抓取把恶意读取藏在原本就应处理该认证流的主机内，通信双方、路由和服务结果无需变化。主机仍留下进程、CAP_NET_RAW 或等价权限、AF_PACKET/捕获驱动、接口成员关系、过滤器以及写出文件；但认证日志单独看只显示一次正常处理。端点
+      EDR 缺失、认证设备黑盒化或攻击者取得内核权限时，观察差异更难恢复。
+    en: Authentication-Endpoint Co-resident Capture hides the read inside a host expected to process the authentication flow,
+      without changing peers, routing, or service outcome. The host still leaves process, CAP_NET_RAW or equivalent privilege,
+      AF_PACKET or capture-driver, interface-membership, filter, and output-file traces, while the authentication log alone
+      records ordinary handling. Missing EDR, a black-box authentication appliance, or adversary kernel authority makes the
+      difference harder to recover.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 纳入要求主机是认证流的真实发送、接收或验证参与者，并证明捕获接口覆盖该会话及材料可见或可恢复。修改认证程序在输入或验证函数中直接旁路复制秘密归 NJT-0169 或 NJS-0093-003 等输入/事务对象；只有从网络报文观察路径读取时才归本项。服务器上的普通
+      PCAP、性能诊断和授权故障排查必须以工单与过滤范围排除。
+    en: Inclusion requires that the host truly sends, receives, or verifies the authentication flow and that the capture surface
+      covers the session with visible or recoverable material. Modifying an authentication program to side-copy a secret directly
+      inside input or verification functions belongs to input or transaction objects such as NJT-0169 or NJS-0093-003. This
+      child applies only when the read occurs through the network-packet observation path. Routine server PCAP, performance
+      diagnostics, and authorized troubleshooting require exclusion through ticket and filter scope.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: UNC3886 在受侵 TACACS+ 服务器部署 LOOKOVER，并用 libpcap 筛选 TCP/49 报文、以 TKEY 解混淆认证正文。相同变量也可出现在 VPN、代理或身份服务主机：攻击者利用端点捕获能力观察本机真实会话，再把材料写入内存或受控文件；协议和产品变化不改变共驻位置。
+      en: UNC3886 deployed LOOKOVER on a compromised TACACS+ server, filtered TCP/49 through libpcap, and used TKEY to de-obfuscate
+        authentication bodies. The same variable can occur on VPN, proxy, or identity-service hosts when an adversary uses
+        endpoint capture capability to observe real local sessions and stage material in memory or a controlled file. Changes
+        in protocol or product do not change the co-resident position.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者需要控制认证端点上的高权限进程、服务账户、驱动或网络 capability，并知道要观察的接口、会话或协议特征。若依赖端点共享秘密，还需读取配置、内存或环境变量；LOOKOVER 的 TKEY 即为直接例证。严格最小权限、不可导出密钥、进程隔离和端点完整性会提高成本。
+        en: The adversary needs control of a privileged process, service identity, driver, or network capability on the authentication
+          endpoint and enough knowledge to select the interface, session, or protocol features. When recovery depends on an
+          endpoint shared secret, the actor must also read configuration, memory, or environment state; LOOKOVER's TKEY is
+          direct evidence. Least privilege, non-exportable keys, process isolation, and endpoint integrity raise the cost.
+    defender_model:
+      paragraphs:
+      - zh: 防守方需要把进程启动或注入、包套接字/驱动与接口状态、捕获文件以及认证服务会话连接到同一 host、process start key、interface 和 flow。只按 tcpdump 或 Wireshark 名称告警会漏掉自定义库与注入进程；只看原始套接字又会淹没于监控代理。确认材料时由受限取证流程输出材料类别和
+          artifact hash，不在通用日志中保存秘密。
+        en: Defenders need to join process creation or injection, packet socket or driver and interface state, capture files,
+          and authentication-service sessions on host, process start key, interface, and flow. Alerting on tcpdump or Wireshark
+          names misses custom libraries and injected processes, while raw-socket-only rules drown in monitoring agents. A
+          restricted forensic workflow should emit material class and artifact hash for confirmation without placing secrets
+          in general logs.
+stealth_mechanisms:
+- mechanism_ref: NM-BT
+  role: primary
+  summary:
+    zh: 在合法认证端点内部观察正常会话使读取不进入远端认证日志
+    en: Observe normal sessions inside a legitimate authentication endpoint so the read does not enter remote authentication
+      logs
+  analysis:
+    paragraphs:
+    - zh: 捕获逻辑与真实认证端点共驻并读取该端点原本就接收或发送的报文，因而不需要额外目的地或新认证事件。远端只看到正常会话，关键差异留在端点的套接字、代码、权限和输出产物。LOOKOVER 的端点部署、libpcap 处理及输出路径直接支持该因果链；样本崩溃限制了对持久结果的结论，不影响观察位置差异。
+      en: Capture logic co-resides with a real authentication endpoint and reads packets the host already sends or receives,
+        requiring no extra destination or new authentication event. The peer sees a normal session while the decisive differences
+        remain in endpoint sockets, code, privileges, and output artifacts. LOOKOVER's endpoint deployment, libpcap processing,
+        and output path directly support this chain. The sample crash limits conclusions about durable results but not the
+        observation-position difference.
+  confidence: medium
+  evidence_refs:
+  - REF-000179
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000203
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000186
+evidence:
+  claim_refs:
+  - CLM-000874
+  case_refs:
+  - CASE-000255
+  reference_refs:
+  - REF-000179
+  - REF-000796
+  - REF-000797
+research:
+  limitations:
+    paragraphs:
+    - zh: Mandiant 证明 LOOKOVER 已部署并配置处理真实 TACACS+ 报文，但报告指出其在加密提取凭据并写盘时崩溃，且没有证明后继账户使用。端点捕获与认证程序内直接秘密记录在实现上可能接近，必须依据数据是否来自网络报文观察而非函数参数或应用内对象进行边界判断。
+      en: Mandiant establishes that LOOKOVER was deployed and configured to process real TACACS+ packets, but reports a crash
+        while encrypting extracted credentials for disk output and does not establish successor account use. Endpoint packet
+        capture and direct secret logging inside an authentication program can look similar in implementation, so the boundary
+        must turn on whether data came from packet observation rather than function arguments or application objects.
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-09-27'
+  modified: '2026-09-27'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

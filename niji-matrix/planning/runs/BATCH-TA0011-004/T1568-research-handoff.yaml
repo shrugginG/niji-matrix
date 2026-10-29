@@ -1,0 +1,668 @@
+handoff_schema_version: '2.0.0'
+type: technique-research-handoff
+batch_ref: BATCH-TA0011-004
+work_item_ref: WORK-TA0011-T1568
+temporary_key_prefix: B4-T1568
+candidate:
+  source_type: attack
+  source_attack_id: T1568
+  name: {zh: 动态解析, en: Dynamic Resolution}
+recommendation:
+  decision: adapt
+  confidence: high
+  original_attack_subtechniques_imported: false
+  rationale:
+    paragraphs:
+      - zh: >-
+          Enterprise ATT&CK 19.1 的 T1568 锚定攻击者在运行时动态调整 C2 域名、IP 或端口。ESET 对 Gamaredon 的样本与基础设施研究显示工具自行解析频繁变更地址的域并随后按得到的 IP 联系 C2；Mandiant 的 POSHSPY 事件/样本分析显示植入从词表组合派生最多 550 个 C2 URL；CrowdStrike 的 Numbered Panda 分析显示恶意代码使用一个 DNS 应答的地址字节计算另一个 C2 通道的端口。三类证据都把运行时求值连接到后续 C2 消费。
+        en: >-
+          Enterprise ATT&CK 19.1 T1568 anchors adversary adjustment of C2 domains, IP addresses, or ports at runtime. ESET's Gamaredon sample and infrastructure research shows tools resolving domains whose addresses change frequently and then using the obtained IP to contact C2. Mandiant's POSHSPY incident and sample analysis shows an implant deriving as many as 550 C2 URLs from word lists. CrowdStrike's Numbered Panda analysis shows malware using address bytes from one DNS answer to calculate the port of another C2 channel. Each evidence class connects runtime evaluation to later C2 consumption.
+      - zh: >-
+          Niji 应作 adapt，因为 ATT&CK 子项按 Fast Flux、DGA 和 DNS Calculation 实现命名，且父级把失败后恢复 C2 作为常见用途。正式范围应收敛为攻击者控制的解析/计算值被同一植入实际消费为后续 C2 endpoint；域名随机、低 TTL、多 IP、DDNS、DNS 查询或失败换路本身都不足。子技术按“何处保存动态状态、如何把它转换成端点以及防守需要恢复何种映射”划分。
+        en: >-
+          Niji should adapt the source because ATT&CK children are named for Fast Flux, DGA, and DNS Calculation implementations and the parent treats post-failure C2 recovery as a common use. Formal scope should require an attacker-controlled resolved or computed value to be consumed by the same implant as a later C2 endpoint. A random-looking domain, low TTL, multiple IPs, DDNS, a DNS query, or failure-driven switching alone is insufficient. Children should be divided by where dynamic state resides, how it becomes an endpoint, and which mapping defenders must reconstruct.
+  scope_notes:
+    zh: >-
+      必须存在 locator 输入/状态、运行时求值、得到的 domain/IP/port 以及同设备/进程对该值或其可证变换的后继连接。只有基础设施历史、DNS 异常或算法能力而没有 endpoint consumption 时保持候选/能力结论。
+    en: >-
+      A locator input or state, runtime evaluation, resulting domain, IP, or port, and a successor connection by the same device or process to that value or a provable transformation are required. Infrastructure history, DNS anomaly, or algorithm capability without endpoint consumption remains a candidate or capability conclusion.
+proposed_content:
+  name: {zh: 运行时控制端点求取, en: Runtime C2 Endpoint Derivation}
+  summary:
+    zh: >-
+      攻击者让植入在运行时从变化的解析状态、共享生成规则或响应计算中求得当前 C2 域名、地址或端口，使静态阻断与跨端点关联快速失效。
+    en: >-
+      Adversaries have implants derive the current C2 domain, address, or port at runtime from changing resolver state, a shared generation rule, or response-based calculation, causing static blocking and cross-endpoint correlation to decay quickly.
+  definition_and_concept:
+    paragraphs:
+      - zh: >-
+          运行时控制端点求取指植入在执行期间不只读取一个固定 endpoint，而是通过查询攻击者可变更的名称状态、按共享种子/时间/词表生成候选 locator，或把解析响应转换成另一个 IP/port，随后使用结果建立 C2 连接。直接目的是把长期存在的植入与短期、可轮换的基础设施解耦，在单个域、IP 或端口被发现后继续改变可达控制端。
+        en: >-
+          Runtime C2 Endpoint Derivation means an implant does more than read one fixed endpoint. During execution it queries attacker-changeable naming state, generates candidate locators from a shared seed, time, or word list, or transforms a resolver response into another IP or port and then uses the result to establish C2. The direct purpose is decoupling a long-lived implant from short-lived, rotatable infrastructure so the reachable controller can change after one domain, IP, or port is discovered.
+      - zh: >-
+          判定单位是“求值—消费”链，而不是 DNS 工具或字符串外观。解析器直接返回的 IP 被进程连接、生成的 URL 成为实际请求目标，或响应字节计算出的 port 出现在后继 socket，才能确认本技术。普通域名解析、CDN 调度、服务发现、灾备、负载均衡、客户端随机子域、合法 DDNS 和证书轮换都能产生局部相似信号，必须结合进程、批准服务与控制结果排除。
+        en: >-
+          The unit of classification is an evaluation-to-consumption chain rather than a DNS tool or string appearance. The technique is confirmed when a process connects to the returned IP, a generated URL becomes an actual request target, or a port calculated from response bytes appears in a successor socket. Ordinary name resolution, CDN steering, service discovery, disaster recovery, load balancing, client-randomized subdomains, legitimate DDNS, and certificate rotation can produce partial lookalikes and require process, approved-service, and control-outcome exclusion.
+  stealth_characteristics:
+    paragraphs:
+      - zh: >-
+          动态求取把一个控制关系拆成随时间变化的 locator、解析应答和网络端点。按当前 IoC 阻断只覆盖一小段状态：同一名称可以稍后返回不同 IP；同一生成器可以产生尚未注册的候选；一个看似无害的 DNS A 值可以只作为计算端口的材料。防守若分别保留 DNS、连接和注册/证书历史却不按设备/进程和时间连接，无法判断哪个值被真正消费。
+        en: >-
+          Dynamic derivation splits one control relationship across locators, resolver answers, and network endpoints that change over time. Blocking a current IoC covers only one state slice: the same name can return another IP later, one generator can produce candidates not yet registered, and an apparently ordinary DNS A value can serve only as material for calculating a port. Defenders that retain DNS, connection, registration, and certificate history separately but do not join them by device, process, and time cannot determine which value was actually consumed.
+      - zh: >-
+          残余痕迹包括查询/应答顺序、rcode、answer/TTL、递归器客户端映射、ProcessGuid、后继 RemoteIP/port、被动 DNS first/last seen、RDAP 注册事件/名称服务器、证书日志与同一端点的控制结果。攻击者需要让解析/计算和可用基础设施同步；时钟偏差、缓存、抢注、sinkhole、错误 TTL、端口计算冲突及证书配置都会造成失败或可观察差异。
+        en: >-
+          Residual evidence includes query and answer order, rcode, answers and TTLs, recursive-resolver client mapping, ProcessGuid, successor RemoteIP and port, passive-DNS first and last seen, RDAP registration events and nameservers, certificate logs, and control outcomes at the same endpoint. The actor must synchronize resolution or calculation with available infrastructure. Clock skew, cache, pre-registration, sinkholing, incorrect TTL, port-calculation collision, and certificate configuration create failure or observable differentials.
+  scope_boundary_definition:
+    paragraphs:
+      - zh: >-
+          纳入要求攻击者能够改变或预测运行时端点状态，植入执行求值，并把得到值用于后继 C2。单纯使用动态 DNS 服务、域名有多个地址、域名新注册、TTL 短、查询失败多、名称高熵或连接到 CDN 都只是候选线索。只有被动 DNS 观察没有受害进程消费，或只有样本生成函数没有成功 endpoint 使用时，不得写成已完成 C2。
+        en: >-
+          Inclusion requires attacker ability to change or predict runtime endpoint state, implant evaluation, and later C2 use of the result. Merely using a dynamic-DNS service, resolving multiple addresses, having a newly registered domain, short TTL, many failures, a high-entropy name, or a CDN connection are candidate signals only. Passive-DNS observation without victim-process consumption, or a sample generator without successful endpoint use, cannot be written as completed C2.
+      - zh: >-
+          NJT-0153 负责主要路径失败/被阻断后启动备用选择；动态生成或轮换可以在正常每次连接中发生，也可以在失败后并列，但失败触发不属于本 taxonomy。NJT-0209 负责合法 Web 服务账号/对象存放 locator；服务对象若只返回当前地址，资源身份归 NJT-0209，端点变化/计算/消费归本项。NJT-0210 要求引导与操作通道承担不同阶段角色；一次 DNS/算法求值后连 C2 不自动成为多阶段，只有明确角色化交接时并列。
+        en: >-
+          NJT-0153 owns activation of a reserve choice after primary-path failure or blocking. Dynamic generation or rotation can occur on every normal connection or coexist after failure, but failure trigger is outside this taxonomy. NJT-0209 owns legitimate Web-service accounts or objects that store a locator. If a service object only returns a current address, NJT-0209 owns resource identity while this technique owns endpoint change, calculation, and consumption. NJT-0210 requires bootstrap and operational channels with distinct stage roles. One DNS or algorithm evaluation followed by C2 is not automatically multistage and co-classifies only with explicit role handoff.
+      - zh: >-
+          T1090/NJT-0206 负责解析地址背后的代理、中继或路由权威；应答池轮换不证明每个 IP 是代理。T1071/NJT-0160 负责 DNS 查询/应答事务及把命令/结果实际承载在 DNS 中；本项的 DNS 只求 locator/参数，命令在后续端点交换。T1571 负责协议/端口非典型配对，响应计算出的端口可并列但不改变本项的求值变量。
+        en: >-
+          T1090 or NJT-0206 owns proxies, relays, or route authority behind resolved addresses; answer-pool rotation does not prove every IP is a proxy. T1071 or NJT-0160 owns the DNS query and response transaction and actual carriage of commands or results inside DNS. Here DNS only derives a locator or parameter and commands are exchanged at the successor endpoint. T1571 owns atypical protocol-to-port pairing; a response-calculated port can coexist without changing this technique's derivation variable.
+  application_scenarios_and_threat_model:
+    application_scenarios:
+      paragraphs:
+        - zh: >-
+            攻击者可以让政府目标上的脚本定期解析一个稳定 C2 域，域的 A 记录每天多次切换；脚本将当前 IP 用于随后 HTTP/raw C2，因此单 IP 阻断很快过期。另一植入可按当前日期和词表组合候选 URL，在少量/大量候选中寻找操作者已启用的一个。第三种实现让一个 DNS 名称返回数值材料，植入用其字节计算连接另一个 C2 名称所需的端口。
+          en: >-
+            An actor can have a script on a government target periodically resolve one stable C2 domain whose A records change several times per day, then use the current IP for subsequent HTTP or raw C2 so one-IP blocking expires quickly. Another implant can combine the current date and word lists into candidate URLs and seek the one enabled by the operator. A third implementation can return numeric material from one DNS name and have the implant calculate the port used to connect to another C2 name.
+    threat_model:
+      attacker_model:
+        paragraphs:
+          - zh: >-
+              攻击者需要控制权威 DNS、注册/动态 DNS 账号、可预测生成规则或能发布计算材料的一侧，并使可用服务器、证书、端口和算法时间同步。生成大量候选增加注册成本与被动 DNS/CT 暴露，answer pool 轮换依赖可用节点，响应计算会留下稳定公式；sinkhole、域名抢注、时钟偏差和受管解析器策略会中断控制。
+            en: >-
+              The actor needs control over authoritative DNS, registration or dynamic-DNS accounts, a predictable generation rule, or a source that publishes calculation material and must synchronize available servers, certificates, ports, and algorithm time. Large candidate sets raise registration cost and passive-DNS or CT exposure, answer-pool rotation depends on live nodes, and response calculation leaves a stable formula. Sinkholes, defensive pre-registration, clock skew, and managed-resolver policy can interrupt control.
+      defender_model:
+        paragraphs:
+          - zh: >-
+              防守方假定可取得递归器/Zeek DNS 查询应答、端点 DNS/网络进程事件、未采样连接流、被动 DNS、RDAP 和证书日志，并用 host/device、ProcessGuid、query、answer、TTL、time、RemoteIP/port、SNI/cert 关联。只有威胁情报中的域/IP 而无受害消费时只能说明基础设施风险；只有端点连接而无解析历史时难以证明动态求取变量。
+            en: >-
+              The defender is assumed to obtain recursive-resolver or Zeek DNS queries and answers, endpoint DNS and network process events, unsampled connections, passive DNS, RDAP, and certificate logs and join by host or device, ProcessGuid, query, answer, TTL, time, RemoteIP and port, SNI, and certificate. A threat-intelligence domain or IP without victim consumption establishes infrastructure risk only. An endpoint connection without resolution history makes the dynamic-derivation variable difficult to prove.
+  stealth_mechanisms:
+    - mechanism_ref: NM-ST
+      role: primary
+      summary: {zh: 运行时 locator 变化把同一控制关系分散到时间与端点集合, en: Runtime locator changes distribute one control relationship across time and endpoint sets}
+      analysis:
+        paragraphs:
+          - zh: >-
+              攻击者轮换解析应答或生成候选，使每个域/IP/端口只承载控制链的一段时间；按单 IoC/短窗统计会把同一植入的连接拆成不相关片段。Gamaredon 的频繁地址变化与 POSHSPY 的 URL 组合直接支持时空分散。按同一设备/进程把 DNS、连接、注册和证书历史长窗聚合可恢复关系。
+            en: >-
+              The actor rotates resolver answers or generates candidates so each domain, IP, or port carries the control chain for only part of its lifetime. Single-IoC or short-window analysis splits one implant's connections into unrelated fragments. Gamaredon's frequent address changes and POSHSPY's URL combinations directly support spatiotemporal dispersion. Long-window aggregation of DNS, connection, registration, and certificate history by the same device and process can restore the relationship.
+      evidence_keys: [B4-T1568-REF-GAMAREDON, B4-T1568-REF-POSHSPY]
+      confidence: high
+    - mechanism_ref: NM-BT
+      role: secondary
+      summary: {zh: 求值规则使解析材料与实际连接端点之间缺少直接可见语义, en: Derivation rules remove directly visible semantics between resolver material and the actual connection endpoint}
+      analysis:
+        paragraphs:
+          - zh: >-
+              在共享生成规则或响应计算中，DNS/代理日志只显示候选字符串或普通地址，应答本身不说明后续 URL/port；解释逻辑存在于植入代码。Numbered Panda 的地址字节→端口公式直接证明这一差异，POSHSPY 的词表组合也要求恢复生成器。缺少样本/内存或重复映射时，关键语义落在常规日志理解之外；端点连接与逆向算法可恢复它。
+            en: >-
+              With a shared generation rule or response-based calculation, DNS or proxy logs show a candidate string or ordinary address but the answer itself does not state the later URL or port; interpretation resides in implant code. Numbered Panda's address-byte-to-port formula directly establishes this gap, while POSHSPY's word-list combinations also require generator recovery. Without sample or memory evidence or repeated mappings, key semantics fall outside ordinary log understanding. Endpoint connections and reversed algorithms can restore them.
+      evidence_keys: [B4-T1568-REF-NUMBERED-PANDA, B4-T1568-REF-POSHSPY]
+      confidence: high
+  subtechnique_taxonomy:
+    coverage: established
+    proposed_child_keys: [B4-T1568-SUB-ANSWER-ROTATION, B4-T1568-SUB-SHARED-GENERATION, B4-T1568-SUB-RESPONSE-SYNTHESIS]
+    narrative:
+      paragraphs:
+        - zh: >-
+            三项候选子技术按动态状态的位置和 defender 必须恢复的映射划分。解析应答端点轮换把当前 endpoint 存在权威/递归 DNS answer set，防守需做同名应答历史→连接消费；共享状态定位符生成把状态存在双方算法、时间/种子/词表，防守需恢复候选族→成功 endpoint；解析响应参数合成让应答只提供计算材料，防守需恢复 answer→变换→不同 IP/port 连接。
+          en: >-
+            Three candidate children are separated by the location of dynamic state and the mapping a defender must restore. Resolver-Answer Endpoint Rotation stores the current endpoint in authoritative or recursive DNS answer sets and requires a same-name answer-history-to-connection join. Shared-State Locator Generation stores state in an algorithm, time, seed, or word list shared by both sides and requires candidate-family-to-successful-endpoint reconstruction. Resolver-Response Parameter Synthesis uses an answer only as calculation material and requires answer-to-transformation-to-different-IP-or-port correlation.
+        - zh: >-
+            Fast Flux、DGA、DNS Calculation 名称不导入；域名格式、算法类型、DNS record、TTL、服务品牌和端口也不成项。三轴可共存，例如生成域又返回轮换 IP，或失败后启用生成器；并列时分别记录生成、应答轮换和 fallback 变量。
+          en: >-
+            Fast Flux, DGA, and DNS Calculation labels are not imported, and domain form, algorithm type, DNS record, TTL, service brand, and port do not define children. The three axes can coexist, such as a generated domain returning rotating IPs or a generator activated after failure. Concurrent classification records generation, answer rotation, and fallback variables separately.
+proposed_subtechniques:
+  - key: B4-T1568-SUB-ANSWER-ROTATION
+    name: {zh: 解析应答端点轮换, en: Resolver-Answer Endpoint Rotation}
+    summary:
+      zh: >-
+        攻击者持续改变一个逻辑名称的可用应答端点，植入每次使用当前解析结果，使单 IP 阻断与短窗基础设施关联快速过期。
+      en: >-
+        Adversaries continuously change the endpoints returned for one logical name and have implants use the current answer, causing single-IP blocking and short-window infrastructure correlation to expire quickly.
+    stable_variable: attacker_controlled_mutation_of_the_resolver_answer_set_consumed_as_the_current_endpoint
+    trace_change: one_query_name_maps_to_changing_addresses_or_name_server_paths_and_successor_connections_follow_current_answers
+    defender_observation_difference: requires_time_versioned_answer_history_plus_process_connection_consumption_instead_of_domain_or_IP_reputation_alone
+    prerequisites: controllable_authoritative_or_dynamic_DNS_state_live_endpoint_pool_and_implant_resolution_before_connection
+    evidence_keys: [B4-T1568-REF-GAMAREDON, B4-T1568-REF-DNS-TERMS-REUSE, B4-T1568-REF-ZEEK-DNS-REUSE]
+    confidence: high
+    definition_and_concept:
+      paragraphs:
+        - zh: >-
+            解析应答端点轮换是攻击者让同一逻辑名称在不同时刻返回不同可用地址或名称服务器路径，并让植入在建立 C2 前读取当前应答、直接把该地址作为连接目标。稳定变量是 attacker-controlled answer set 随时间变化及其被进程消费，而不是某个 A/AAAA/NS 记录、低 TTL 或“fast flux”名称。
+          en: >-
+            Resolver-Answer Endpoint Rotation means an actor has one logical name return different live addresses or nameserver paths over time and an implant reads the current answer before C2 and uses that address directly as its connection target. The stable variable is an attacker-controlled answer set changing over time and being consumed by a process, rather than an A, AAAA, or NS record, low TTL, or the label fast flux.
+        - zh: >-
+            ESET 对 Gamaredon 数千样本和基础设施的研究显示 C2 IP 通常每天变化数次，并明确记录部分工具通过 WMI 自行解析硬编码域，再用所得 IP 联系 C2。这把 answer rotation、endpoint consumption 和反阻断目的连接为直接证据。
+          en: >-
+            ESET's research across thousands of Gamaredon samples and infrastructure shows C2 IPs commonly changing several times per day and explicitly documents tools resolving a hardcoded domain themselves through WMI and then using the resulting IP to contact C2. This directly links answer rotation, endpoint consumption, and the anti-blocking purpose.
+    stealth_characteristics:
+      paragraphs:
+        - zh: >-
+            解析应答端点轮换使同一域在不同递归器、缓存和时间窗下呈现不同 IP；按当前 IP 查杀只能看到一部分节点，旧连接和新连接可能被分散到多个 ASN、地区或证书。残余为 query、answer、TTL、rcode、解析时间、resolver/client、被动 DNS first/last seen 和紧随的同进程 RemoteIP 连接。
+          en: >-
+            Resolver-Answer Endpoint Rotation makes the same domain present different IPs across recursive resolvers, caches, and time windows. Blocking the current IP sees only part of the pool, while old and new connections can disperse across ASNs, regions, or certificates. Residuals include query, answer, TTL, rcode, resolution time, resolver and client, passive-DNS first and last seen, and the same process's immediate RemoteIP connection.
+        - zh: >-
+            轮换不必低 TTL，也不保证所有地址是代理；缓存可能使主机继续使用旧 endpoint。合法 CDN、GSLB、灾备、anycast、DDNS、云弹性和移动服务同样轮换地址，因此只有 answer history 加 endpoint consumption、服务归属差和控制结果才可定性。
+          en: >-
+            Rotation need not use low TTL and does not prove every address is a proxy; caching can keep a host on an older endpoint. Legitimate CDNs, GSLB, disaster recovery, anycast, DDNS, cloud elasticity, and mobile services also rotate addresses, so classification requires answer history plus endpoint consumption, a service-ownership differential, and control outcome.
+    scope_boundary_definition:
+      paragraphs:
+        - zh: >-
+            纳入要求同一逻辑名称的 attacker-controlled answer set 发生时间变化，并有同设备/进程在对应解析后连接当前结果。多个静态 A 记录、一次 round-robin、仅权威侧变化而无受害消费、域名指向批准 CDN 或 DNS 记录更新但连接未发生，都不足。
+          en: >-
+            Inclusion requires time-varying attacker-controlled answers for one logical name and a corresponding connection by the same device or process to the current result after resolution. Several static A records, one round-robin observation, authoritative-side change without victim consumption, an approved CDN, or a DNS update without a connection is insufficient.
+        - zh: >-
+            如果 answer IP 实际是中继/代理，T1090/NJT-0206 另管路径；如果 DNS response 内直接承载命令而不是 locator，归 T1071/NJT-0160；失败后才切换 answer/generator 时 NJT-0153 并列。服务对象公布当前 IP 时 NJT-0209 可并列，但服务资源不替代 DNS answer rotation 证据。
+          en: >-
+            If an answer IP is actually a relay or proxy, T1090 or NJT-0206 separately owns the path. If the DNS response carries commands rather than a locator, T1071 or NJT-0160 applies. NJT-0153 coexists when answer or generator switching occurs only after failure. NJT-0209 can coexist when a service object publishes the current IP, but service-resource evidence cannot replace DNS answer rotation.
+    application_scenarios_and_threat_model:
+      application_scenarios:
+        paragraphs:
+          - zh: >-
+              针对政府机构的脚本植入可保存一个 C2 域，运行时用 WMI/系统 resolver 获取 IP 并直接连接；操作者每天多次更新域的地址集合，使阻断单一 IP 只短暂有效。防守需把每次解析版本与随后连接和脚本结果连接。
+            en: >-
+              A script implant targeting a government organization can retain one C2 domain, resolve it through WMI or the system resolver at runtime, and connect directly. The operator updates the domain's address set several times per day so blocking one IP is short-lived. Defenders need to join each resolution version to the later connection and script outcome.
+      threat_model:
+        attacker_model:
+          paragraphs:
+            - zh: >-
+                攻击者需要持续控制 DNS/动态更新凭据和一组在线 endpoint，并处理传播延迟、缓存、健康状态和证书。地址池扩大提高基础设施成本与被动 DNS/注册关联面；更新太快会因缓存不一致导致植入连接失败。
+              en: >-
+                The actor needs continuing control of DNS or dynamic-update credentials and a pool of live endpoints and must handle propagation delay, caching, health, and certificates. A larger pool raises infrastructure cost and passive-DNS or registration correlation surface. Updates that are too fast can strand implants on stale cached answers.
+        defender_model:
+          paragraphs:
+            - zh: >-
+                防守方可查询递归 DNS 的 client/query/answer/TTL/rcode 与端点 Event 22/3 或等效 resolver/network 进程事件，保留被动 DNS、RDAP、ASN 和 TLS 证书。需把 resolver client 映射回主机；若只有企业递归器的源 IP、DoH 绕过或流量采样，则消费链会断裂。
+              en: >-
+                The defender can query recursive-DNS client, query, answer, TTL, and rcode fields and endpoint Event 22 and 3 or equivalent resolver and network process events and retain passive DNS, RDAP, ASN, and TLS certificates. Resolver clients must be mapped back to hosts. Enterprise resolver source only, DoH bypass, or flow sampling breaks the consumption chain.
+    stealth_mechanisms:
+      - mechanism_ref: NM-ST
+        role: primary
+        summary: {zh: 应答池变化把同一控制端分散到时间和网络节点, en: Answer-pool changes distribute one controller across time and network nodes}
+        analysis:
+          paragraphs:
+            - zh: >-
+                攻击者让同一名字在不同时间解析到不同在线节点，单一 IP/短窗只呈现局部控制痕迹，增加跨端点重建成本。Gamaredon 的多次日内变化和解析后 IP 消费直接支持该链；按域和进程长窗合并 answer 与连接可恢复。
+              en: >-
+                The actor has one name resolve to different live nodes over time, so one IP or short window shows only a local fragment of control and raises cross-endpoint reconstruction cost. Gamaredon's multiple daily changes and post-resolution IP use directly support the chain. Long-window merging of answers and connections by domain and process restores it.
+        evidence_keys: [B4-T1568-REF-GAMAREDON]
+        confidence: high
+    research_limitations:
+      paragraphs:
+        - zh: >-
+            ESET 直接支持地址轮换和工具使用解析结果，但未公开每台受害主机的完整 DNS→socket 事件，也未给出统一 TTL。报告还说明 2022–2023 部分工具转向硬编码 IP，因此不能把所有 Gamaredon C2 或每次变化都归入本子项。
+          en: >-
+            ESET directly supports address rotation and tools consuming resolver results but does not publish complete DNS-to-socket events for every victim or a universal TTL. The report also states some 2022–2023 tools shifted to hardcoded IPs, so not every Gamaredon C2 or change qualifies.
+  - key: B4-T1568-SUB-SHARED-GENERATION
+    name: {zh: 共享状态定位符生成, en: Shared-State Locator Generation}
+    summary:
+      zh: >-
+        攻击者让植入与基础设施共享时间、种子或词表规则，在运行时独立生成候选 locator 并消费其中已启用者。
+      en: >-
+        Adversaries have implants and infrastructure share a time, seed, or word-list rule so candidates are generated independently at runtime and an enabled locator is consumed.
+    stable_variable: shared_generation_state_synchronizes_implant_candidate_locators_with_attacker_enabled_infrastructure
+    trace_change: one_implant_produces_a_time_or_seed_related_candidate_family_with_failures_or_unused_names_before_a_successful_C2_endpoint
+    defender_observation_difference: requires_reconstructing_candidate_family_and_process_success_instead_of_blocking_observed_domains_individually
+    prerequisites: shared_algorithm_and_state_time_or_seed_synchronization_and_attacker_registration_or_activation_of_candidates
+    evidence_keys: [B4-T1568-REF-POSHSPY, B4-T1568-REF-DNS-TERMS-REUSE]
+    confidence: high
+    definition_and_concept:
+      paragraphs:
+        - zh: >-
+            共享状态定位符生成是攻击者在植入和基础设施侧预置相同算法及状态输入，使植入在运行时从日期、种子、受害者属性、词表或组合规则独立生成域名/URL 候选，再请求操作者已注册或启用的候选以建立 C2。稳定变量是双方共享状态同步候选空间，而不是字符串随机度、DGA 名称或某种哈希。
+          en: >-
+            Shared-State Locator Generation means an actor preconfigures the same algorithm and state inputs in implant and infrastructure so the implant independently derives domain or URL candidates from date, seed, victim property, word list, or composition rules at runtime and requests a candidate registered or enabled by the operator to establish C2. The stable variable is shared state synchronizing a candidate space, not string randomness, the DGA label, or a particular hash.
+        - zh: >-
+            Mandiant 在事件响应中识别 POSHSPY，并对样本确认其从 domain/subdomain/TLD/URI/文件名/扩展词表派生 C2 URL；报告样本可组合 550 个 URL，并描述这些 URL 指向地理邻近、真实被攻陷网站的 C2。该证据支持生成器和实际 C2 使用，但不证明所有 550 个候选都被查询。
+          en: >-
+            Mandiant identified POSHSPY during incident response and confirmed in samples that it derives C2 URLs from domain, subdomain, TLD, URI, filename, and extension word lists. The analyzed sample could combine 550 URLs and used geographically local, legitimately compromised sites for C2. This establishes a generator and actual C2 use but does not prove that every one of the 550 candidates was queried.
+    stealth_characteristics:
+      paragraphs:
+        - zh: >-
+            共享生成使未来 locator 不必存储或从服务器下发，静态提取只得到规则/词表而非一个长期 endpoint。日志可能出现普通词构成的域、少量 NXDOMAIN、不同日期的 URL 或直接成功请求；高熵检测会漏掉词表生成，且一个被封域不代表候选空间失效。残余为同进程的候选序列、时间/种子关系、rcode、注册/证书时间和最终连接结果。
+          en: >-
+            Shared generation avoids storing or delivering future locators, so static extraction yields a rule or word lists rather than one durable endpoint. Logs can show ordinary-word domains, a few NXDOMAINs, date-varying URLs, or a direct successful request. Entropy detection misses word-list generation, and blocking one domain does not disable the candidate space. Residuals include the same process's candidate sequence, time or seed relationship, rcode, registration or certificate time, and final connection result.
+        - zh: >-
+            正常软件也生成 shard、tenant、cache-bust、tracking 和 per-device hostnames；浏览器预取、安全扫描和服务发现会产生 NXDOMAIN 群。只有算法/家族证据、相同进程生成/查询、其中一项成功并出现 C2 后果时成立；随机外观或 NXDOMAIN 数量单独不成立。
+          en: >-
+            Legitimate software also generates shard, tenant, cache-bust, tracking, and per-device hostnames, while browser prefetch, security scanning, and service discovery create NXDOMAIN groups. Classification requires algorithm or family evidence, generation or querying by the same process, a successful candidate, and a C2 outcome. Random appearance or NXDOMAIN count alone is insufficient.
+    scope_boundary_definition:
+      paragraphs:
+        - zh: >-
+            纳入要求共享规则/状态、候选 locator 的运行时生成及至少一个候选被同一植入消费为 C2。硬编码域列表、远端服务直接返回地址、域名仅含随机 victim ID、合法客户端 URL 模板和未知算法能力但无成功联系均排除或降低为候选。
+          en: >-
+            Inclusion requires a shared rule or state, runtime generation of candidate locators, and at least one candidate consumed as C2 by the same implant. Hardcoded domain lists, an address directly returned by a remote service, a domain carrying only a random victim ID, legitimate client URL templates, and algorithm capability without successful contact are excluded or remain candidates.
+        - zh: >-
+            失败后才启动生成器时 NJT-0153 拥有 failure trigger；社交/Web 服务对象存词表或种子时 NJT-0209 拥有资源；第一服务返回 locator 后另连操作通道且角色分离时 NJT-0210 拥有 handoff。本项只拥有双方共享规则生成 endpoint。
+          en: >-
+            If a generator starts only after failure, NJT-0153 owns the failure trigger. If a social or Web-service object stores a word list or seed, NJT-0209 owns the resource. If one service returns a locator and a role-distinct operational channel follows, NJT-0210 owns the handoff. This child owns only endpoint generation from a rule shared by both sides.
+    application_scenarios_and_threat_model:
+      application_scenarios:
+        paragraphs:
+          - zh: >-
+              文件无落地的 PowerShell 后门可由 WMI 定期启动，按日期和词表组合域、子域、URI 与文件名，向当期启用的少数候选发送加密 C2。阻断已知 URL 后，操作者可在下一周期注册/接管另一个候选而无需更新植入。
+            en: >-
+              A fileless PowerShell backdoor can be launched periodically by WMI, combine date and word lists into domains, subdomains, URIs, and filenames, and send encrypted C2 to a small set of currently enabled candidates. After a known URL is blocked, the operator can register or activate another candidate in a later period without updating the implant.
+      threat_model:
+        attacker_model:
+          paragraphs:
+            - zh: >-
+                攻击者必须保持算法、词表、时间和注册/基础设施同步，并承担域注册、证书和抢注成本。复杂/高熵候选易被分类器发现，普通词候选需要更大词表；时钟偏差、TLD 政策、sinkhole 和 defender 预注册会破坏同步。
+              en: >-
+                The actor must keep algorithm, word list, time, and registration or infrastructure synchronized and bears registration, certificate, and pre-registration costs. Complex or high-entropy candidates are easier for classifiers to find, while ordinary-word candidates require larger word lists. Clock skew, TLD policy, sinkholing, and defensive pre-registration disrupt synchronization.
+        defender_model:
+          paragraphs:
+            - zh: >-
+                防守方需要 endpoint resolver/process 事件与递归 DNS history，并使用 process identity、query time、rcode、candidate family、RDAP registration/NS、CT certificate 和成功连接关联。若只看 resolver 聚合且没有主机映射，或应用用 DoH/代理，生成器难以归属。
+              en: >-
+                The defender needs endpoint resolver and process events plus recursive DNS history and correlates process identity, query time, rcode, candidate family, RDAP registration and nameservers, CT certificates, and successful connection. With resolver aggregates lacking host mapping, or applications using DoH or a proxy, generator attribution is difficult.
+    stealth_mechanisms:
+      - mechanism_ref: NM-ST
+        role: primary
+        summary: {zh: 共享生成器把控制可达性分散到候选命名空间和时间周期, en: A shared generator distributes control reachability across candidate namespace and time periods}
+        analysis:
+          paragraphs:
+            - zh: >-
+                攻击者在多个候选与周期中只启用少量 endpoint，使单个域/短窗只见完整生成空间的一部分。POSHSPY 的 550 URL 组合直接支持这一分散；按算法、进程和时间汇总候选并确认成功消费可恢复控制关系。
+              en: >-
+                The actor enables only a small number of endpoints across candidates and periods, so one domain or short window shows only part of the generation space. POSHSPY's 550 URL combinations directly support this dispersion. Aggregating candidates by algorithm, process, and time and confirming successful consumption restores the control relationship.
+        evidence_keys: [B4-T1568-REF-POSHSPY]
+        confidence: high
+    research_limitations:
+      paragraphs:
+        - zh: >-
+            POSHSPY 来源直接证明样本生成逻辑和事件中的 C2 使用，但没有列出所有 550 URL 的 DNS/HTTP 尝试，也不提供通用 NXDOMAIN 或词法阈值。其被分析样本使用合法被攻陷网站，域信誉和 DGA 外观都不能单独检测。
+          en: >-
+            The POSHSPY source directly establishes sample generation logic and C2 use in incidents but does not enumerate DNS or HTTP attempts for all 550 URLs or provide universal NXDOMAIN or lexical thresholds. The analyzed sample used legitimate compromised sites, so domain reputation and DGA appearance alone cannot detect it.
+  - key: B4-T1568-SUB-RESPONSE-SYNTHESIS
+    name: {zh: 解析响应参数合成, en: Resolver-Response Parameter Synthesis}
+    summary:
+      zh: >-
+        攻击者让植入把解析应答字段作为计算材料，运行时合成与应答字面值不同的 C2 地址或端口。
+      en: >-
+        Adversaries have implants use resolver-answer fields as calculation material to synthesize a C2 address or port different from the answer's literal value at runtime.
+    stable_variable: deterministic_transformation_from_resolver_answer_material_to_the_consumed_C2_endpoint_parameters
+    trace_change: resolver_answer_and_successor_socket_do_not_match_literally_but_repeat_a_stable_calculated_mapping
+    defender_observation_difference: requires_answer_to_transformation_to_connection_correlation_or_sample_formula_recovery
+    prerequisites: attacker_controlled_answer_material_matching_transform_logic_and_reachable_calculated_endpoint
+    evidence_keys: [B4-T1568-REF-NUMBERED-PANDA, B4-T1568-REF-ZEEK-DNS-REUSE]
+    confidence: high
+    definition_and_concept:
+      paragraphs:
+        - zh: >-
+            解析响应参数合成是攻击者让植入读取 DNS 应答中的地址/字段，但不直接连接其字面 endpoint，而是通过预置公式计算另一个 IP、port 或连接参数并用于 C2。稳定变量是 answer material→deterministic transform→successor socket，而不是 DNS record 类型、计算公式名称或端口数值。
+          en: >-
+            Resolver-Response Parameter Synthesis means an actor has an implant read an address or field from a DNS answer but not connect to that literal endpoint. A preconfigured formula calculates another IP, port, or connection parameter used for C2. The stable variable is answer material to deterministic transformation to successor socket rather than DNS-record type, formula name, or port value.
+        - zh: >-
+            CrowdStrike 对 Numbered Panda 的分析记录恶意代码通常使用两个 DNS 名称，一个是实际 C2，另一个应答用于计算通信端口；常见公式把应答 IP 前两 octet 相乘再加第三 octet，例如 200.2.43.X 得到 443。该报告还说明此设计用于绕过出口端口过滤，并给出经测试的网络规则。
+          en: >-
+            CrowdStrike's Numbered Panda analysis documents malware commonly using two DNS names, one as the actual C2 and another answer to calculate the communication port. A common formula multiplies the first two answer-IP octets and adds the third, such as 200.2.43.X yielding 443. The report also states that the design is used to bypass egress port filtering and provides tested network rules.
+    stealth_characteristics:
+      paragraphs:
+        - zh: >-
+            解析器日志显示计算域和普通 IP，应答与实际 C2 域/IP 可能不同；连接日志只显示后继端口，任一单独观察面都没有字面桥。静态阻断应答 IP 可能无效，端口策略也会被攻击者通过改变计算材料调整。残余为同 ProcessGuid 的 query/answer、固定时间关系、稳定公式输出和后继 RemoteIP/port。
+          en: >-
+            Resolver logs show a calculation domain and ordinary IP while the actual C2 domain or IP may differ. Connection logs show only the successor port, leaving no literal bridge in either observation plane. Blocking the answer IP can be ineffective, and the actor can alter calculation material to change the port policy outcome. Residuals include query and answer by the same ProcessGuid, fixed timing, stable formula output, and successor RemoteIP and port.
+        - zh: >-
+            合法 SRV/SVCB/HTTPS 记录、service discovery、负载均衡、STUN/ICE、应用配置服务和端口映射也会让解析值影响后续连接。只有非标准 transform、同进程消费和 C2 结果形成闭环时成立；DNS answer 与连接不一致本身不能定性。
+          en: >-
+            Legitimate SRV, SVCB, and HTTPS records, service discovery, load balancing, STUN or ICE, application configuration services, and port mapping also let resolver values influence later connections. Classification requires a nonstandard transformation, same-process consumption, and C2 outcome. A mismatch between DNS answer and connection is insufficient by itself.
+    scope_boundary_definition:
+      paragraphs:
+        - zh: >-
+            纳入要求解析 answer、可重复或样本支持的转换和按输出参数建立的 C2 socket。直接使用 A/AAAA 地址归解析应答轮换或父级；远端 HTTP/Web 对象直接给 IP/port 归 NJT-0209/0210；标准 SRV/SVCB 客户端行为是正常反例。
+          en: >-
+            Inclusion requires a resolver answer, repeatable or sample-supported transformation, and a C2 socket established with the output parameters. Direct use of an A or AAAA address belongs to Resolver-Answer Endpoint Rotation or the parent. An HTTP or Web object directly providing IP and port belongs to NJT-0209 or NJT-0210. Standard SRV or SVCB client behavior is a normal counterexample.
+        - zh: >-
+            计算出的非典型 port 可以并列 T1571，但 T1571 拥有协议—端口配对；如果 DNS response 同时传命令，NJT-0160 拥有 carriage。失败后才计算备用 endpoint 时 NJT-0153 拥有 activation trigger。
+          en: >-
+            A calculated atypical port can coexist with T1571, which owns protocol-to-port pairing. If the DNS response also carries commands, NJT-0160 owns carriage. If calculation occurs only after failure to derive a reserve endpoint, NJT-0153 owns the activation trigger.
+    application_scenarios_and_threat_model:
+      application_scenarios:
+        paragraphs:
+          - zh: >-
+              植入先解析一个控制者可改应答的“计算域”，读取返回 IP 的 octet 并得到 port；再解析/连接另一个 C2 域并使用该 port。操作者只改计算域应答即可让既有样本跨不同出口端口恢复控制，无需更新配置。
+            en: >-
+              An implant first resolves a calculation domain whose answer the controller can change, reads the returned IP octets to derive a port, and then resolves or connects to another C2 domain using that port. By changing only the calculation-domain answer, the operator can move existing samples across egress ports without updating configuration.
+      threat_model:
+        attacker_model:
+          paragraphs:
+            - zh: >-
+                攻击者需控制计算材料和实际 C2，并保证公式输出是有效端口/地址且未与网络中间件冲突。公式固定后可被逆向、从重复 answer→connection 配对推断或写入检测；不同变体会增加运营与服务端监听复杂度。
+              en: >-
+                The actor needs control of calculation material and actual C2 and must ensure formula outputs are valid ports or addresses that do not conflict with middleboxes. A fixed formula can be reversed, inferred from repeated answer-to-connection pairs, or encoded in detection. Multiple variants increase operational and server-listener complexity.
+        defender_model:
+          paragraphs:
+            - zh: >-
+                防守方需在端点将 DNS Event 22/QueryName 和网络 Event 3/RemoteIP/port 以 ProcessGuid/时间连接，保存完整 answers/TTLs，并从样本、内存或重复观测获取 transform。只有递归器日志且看不到端点 process 时，多主机共享缓存会造成错误配对。
+              en: >-
+                The defender must join DNS Event 22 and QueryName to network Event 3 and RemoteIP or port on the endpoint by ProcessGuid and time, retain complete answers and TTLs, and obtain the transformation from a sample, memory, or repeated observations. Recursive-resolver logs without endpoint process identity can mispair hosts sharing a cache.
+    stealth_mechanisms:
+      - mechanism_ref: NM-BT
+        role: primary
+        summary: {zh: 响应到连接的私有计算语义落在常规 DNS 与流量日志之外, en: Private answer-to-connection semantics fall outside ordinary DNS and flow logs}
+        analysis:
+          paragraphs:
+            - zh: >-
+                攻击者让 DNS answer 只作为数值材料，实际连接参数经植入私有公式出现；DNS 和 socket 日志分别可见却缺少直接语义关系，使静态规则看不见求值步骤。Numbered Panda 公式直接支持该链；逆向公式或按进程重复配对可恢复。
+              en: >-
+                The actor uses a DNS answer only as numeric material and has the actual connection parameter emerge through a private implant formula. DNS and socket logs are individually visible but lack a direct semantic relationship, leaving the evaluation step outside static analytics. The Numbered Panda formula directly supports the chain. Reversing the formula or repeated process-level pairing restores it.
+        evidence_keys: [B4-T1568-REF-NUMBERED-PANDA]
+        confidence: high
+    research_limitations:
+      paragraphs:
+        - zh: >-
+            CrowdStrike 来源明确说明算法和 C2 port 使用，并称规则经过测试，但公开页面没有提供特定样本 hash、完整 PCAP 或逐受害连接，因此支持技术存在与公式，不支持任一组织的实际漏报率或所有变体都用同一公式。
+          en: >-
+            CrowdStrike explicitly describes the algorithm and C2 port use and states that rules were tested, but the public page provides no specific sample hash, complete PCAP, or per-victim connection. It supports technique existence and the formula, not a real-world miss rate or use of one formula by every variant.
+defense_candidates:
+  detection_strategies:
+    - key: B4-T1568-DET-ANSWER-CONSUMPTION
+      name: {zh: 解析应答版本到端点消费关联, en: Resolver-Answer Version to Endpoint Consumption Correlation}
+      detects_keys: [B4-T1568-PARENT, B4-T1568-SUB-ANSWER-ROTATION, B4-T1568-SUB-RESPONSE-SYNTHESIS]
+      objective:
+        zh: >-
+          将版本化 DNS 应答、同进程后继连接和基础设施历史连接起来，确认轮换地址或响应计算值实际成为 C2 endpoint。
+        en: >-
+          Join versioned DNS answers, successor connections by the same process, and infrastructure history to confirm that a rotated address or response-derived value actually becomes a C2 endpoint.
+      analytic_keys: [B4-T1568-NJA-ANSWER-ROTATION, B4-T1568-NJA-RESPONSE-SYNTHESIS]
+    - key: B4-T1568-DET-GENERATED-CANDIDATE
+      name: {zh: 共享生成候选到成功控制端点关联, en: Shared-Generation Candidate to Successful Control Endpoint Correlation}
+      detects_keys: [B4-T1568-PARENT, B4-T1568-SUB-SHARED-GENERATION]
+      objective:
+        zh: >-
+          从同进程候选 locator 家族、解析/请求结果、注册和证书时间中识别共享生成规则，并要求至少一个候选产生后继 C2 结果。
+        en: >-
+          Identify a shared generation rule from same-process locator families, resolution or request results, and registration and certificate timing, requiring at least one candidate to produce a successor C2 outcome.
+      analytic_keys: [B4-T1568-NJA-GENERATED-CANDIDATE]
+  detection_analytics:
+    - key: B4-T1568-NJA-ANSWER-ROTATION
+      strategy_key: B4-T1568-DET-ANSWER-CONSUMPTION
+      name: {zh: 同名应答池变化与同进程连接消费, en: Same-Name Answer-Pool Change and Same-Process Connection Consumption}
+      target_keys: [B4-T1568-PARENT, B4-T1568-SUB-ANSWER-ROTATION]
+      logic:
+        zh: >-
+          对每个 client/device、process 和规范化 query 保存 `answers+TTLs+rcode` 的时间版本，按本地 resolver 缓存寿命将每次成功应答与同一 ProcessGuid/InitiatingProcessUniqueId 到 answer IP 的首个连接配对；跨至少一个业务周期汇总 unique answers、answer lifespan、ASN/region、SNI/cert 和 nameserver/RDAP 变化。只有同一非批准进程反复消费当前应答、端点集合变化不能由批准 CDN/DDNS/灾备解释，且后继连接出现 C2 行为时确认。低 TTL、多 IP 或 ASN 多样性单独只是排名特征。
+        en: >-
+          For each client or device, process, and normalized query, retain time-versioned answers, TTLs, and rcode and pair each successful answer with the same ProcessGuid or InitiatingProcessUniqueId's first connection to an answer IP within the local resolver cache lifetime. Across at least one business cycle, aggregate unique answers, answer lifespan, ASN or region, SNI or certificate, and nameserver or RDAP changes. Confirm only when the same unapproved process repeatedly consumes current answers, the endpoint-set change is not explained by approved CDN, DDNS, or disaster recovery, and successor connections exhibit C2 behavior. Low TTL, multiple IPs, or ASN diversity alone are ranking features.
+      data_requirements:
+        - {source_type: recursive_dns, channel: 'Zeek dns.log or managed resolver', required_fields: [ts, uid, id.orig_h, id.resp_h, query, qtype_name, rcode_name, answers, TTLs, rtt]}
+        - {source_type: endpoint_dns, channel: 'Sysmon Event 22 or equivalent', required_fields: [UtcTime, Computer, ProcessGuid, ProcessId, Image, QueryName, QueryStatus, QueryResults]}
+        - {source_type: endpoint_network, channel: 'Sysmon Event 3 or Defender DeviceNetworkEvents', required_fields: [timestamp, device_id, process_unique_id, image, remote_ip, remote_port, remote_url, protocol]}
+        - {source_type: passive_dns, channel: 'CIRCL Passive DNS or equivalent', required_fields: [rrname, rrtype, rdata, count, time_first, time_last]}
+        - {source_type: infrastructure_metadata, channel: 'RDAP and CT/TLS logs', required_fields: [domain, registration_event_time, registrar, nameserver, entity_or_handle, cert_fingerprint, cert_subject, cert_issuer, cert_validity, sni]}
+      observables: [same_name_changing_answers, answer_to_same_process_connection, short_answer_lifespan_relative_to_service_baseline, infrastructure_diversity, successor_C2_outcome]
+      correlation:
+        window: 'Resolver-cache lifetime for answer-to-connection; 7–30 days for answer-pool and infrastructure history, calibrated by service'
+        dimensions: [device_id, ProcessGuid_or_process_unique_id, query, answer_ip, uid, remote_ip, sni, cert_fingerprint, ASN, time]
+      false_positives: [CDN_and_GSLB, cloud_autoscaling, disaster_recovery, legitimate_DDNS, endpoint_security_and_update_services, mobile_edge_services]
+      blind_spots: [DoH_or_DoQ_outside_managed_resolver, resolver_cache_without_client_mapping, NAT_or_proxy_hiding_process_connection, TLS13_or_ECH_certificate_gaps, passive_DNS_sensor_bias, direct_IP_fallback]
+      tuning_guidance:
+        zh: >-
+          建立 provider/service owner、域、ASN、证书、预期 TTL 范围和设备进程画像；允许规则绑定服务身份而不是永久 IP。先按 answer consumption 和未知 process 提升，再用 churn/多样性排序。未知本地基线时不使用固定 IP 数或 TTL 阈值。
+        en: >-
+          Baseline provider or service owner, domain, ASN, certificate, expected TTL range, and device process. Bind allowances to service identity rather than permanent IP. Elevate first on answer consumption by an unknown process and then rank by churn and diversity. Do not use fixed IP-count or TTL thresholds without a local baseline.
+      evidence_keys: [B4-T1568-REF-GAMAREDON, B4-T1568-REF-ZEEK-DNS-REUSE, B4-T1568-REF-SYSMON-REUSE, B4-T1568-REF-MDE-NET-REUSE, B4-T1568-REF-PDNS, B4-T1568-REF-RDAP-REUSE, B4-T1568-REF-CT-REUSE, B4-T1568-REF-ZEEK-TLS-REUSE]
+    - key: B4-T1568-NJA-GENERATED-CANDIDATE
+      strategy_key: B4-T1568-DET-GENERATED-CANDIDATE
+      name: {zh: 同进程候选定位符家族与成功端点, en: Same-Process Candidate-Locator Family and Successful Endpoint}
+      target_keys: [B4-T1568-PARENT, B4-T1568-SUB-SHARED-GENERATION]
+      logic:
+        zh: >-
+          按 device/process 在解析器、代理和端点网络日志中构建候选 domain/URL 序列，保留 rcode、HTTP/DNS success、生成时间与后继 socket。用样本/内存恢复的词表、时间、种子或组合规则优先建立 family；没有算法时只能从相同进程、时间关系、公共词元/结构和 RDAP/CT 同期出现提出 hypothesis。至少一个候选必须成功解析/请求并由同一进程产生 C2 结果。NXDOMAIN、熵、长度、TLD 或新注册域任一单独不告警。
+        en: >-
+          Build a candidate domain or URL sequence by device and process across resolver, proxy, and endpoint network logs, retaining rcode, HTTP or DNS success, generation time, and successor socket. Prefer a family derived from word lists, time, seed, or composition rules recovered from a sample or memory. Without an algorithm, same process, time relation, shared tokens or structure, and contemporaneous RDAP or CT support only a hypothesis. At least one candidate must resolve or respond successfully and produce a C2 outcome in the same process. NXDOMAIN, entropy, length, TLD, or a newly registered domain alone does not alert.
+      data_requirements:
+        - {source_type: endpoint_dns_network, channel: 'Sysmon 22/3 or equivalent EDR', required_fields: [timestamp, device_id, process_guid, image, query_name, query_status, query_results, remote_ip, remote_port, remote_url]}
+        - {source_type: recursive_dns, channel: 'Zeek dns.log or managed resolver', required_fields: [ts, uid, client_ip, query, qtype_name, rcode_name, answers, TTLs]}
+        - {source_type: proxy_http, channel: null, required_fields: [timestamp, device_id, process_id, host, uri, method, status_code, destination_ip]}
+        - {source_type: passive_dns_registration_certificate, channel: 'Passive DNS, RDAP, CT', required_fields: [rrname, rrtype, rdata, time_first, time_last, domain, registration_event_time, nameserver, cert_fingerprint, cert_not_before]}
+        - {source_type: sample_or_memory, channel: null, required_fields: [sample_hash, generator_version, seed_or_time_basis, token_or_wordlist_digest, candidate_output]}
+      observables: [same_process_candidate_family, candidate_time_or_seed_relation, failed_then_successful_candidate, registration_or_certificate_alignment, successful_C2_consumption]
+      correlation:
+        window: 'One generator period plus adjacent clock-skew periods; retain 30 days or the maximum recovered generation horizon'
+        dimensions: [device_id, process_guid, generator_version, candidate_family, query, remote_url, rcode_or_status, domain, cert_fingerprint, time]
+      false_positives: [browser_prefetch_and_typos, antivirus_or_sandbox_generated_queries, service_discovery, tenant_shards, cache_busting_and_tracking_domains, load_tests]
+      blind_spots: [direct_HTTP_without_OS_resolver, encrypted_proxy_or_DoH, no_sample_or_memory, one_candidate_success_without_failures, clock_skew, shared_browser_process]
+      tuning_guidance:
+        zh: >-
+          对批准软件保存 URL template/tenant/shard 规则和 signer；算法/词表匹配与成功 C2 结果权重大于词法特征。sinkhole/阻断清单按 generator period 自动到期/更新，避免永久封禁碰撞的合法域。
+        en: >-
+          Retain URL-template, tenant, and shard rules and signer for approved software. Algorithm or word-list match plus successful C2 outcome outweighs lexical features. Expire or update sinkhole and block lists by generator period to avoid permanently blocking legitimate domains that collide.
+      evidence_keys: [B4-T1568-REF-POSHSPY, B4-T1568-REF-ZEEK-DNS-REUSE, B4-T1568-REF-SYSMON-REUSE, B4-T1568-REF-PDNS, B4-T1568-REF-RDAP-REUSE, B4-T1568-REF-CT-REUSE]
+    - key: B4-T1568-NJA-RESPONSE-SYNTHESIS
+      strategy_key: B4-T1568-DET-ANSWER-CONSUMPTION
+      name: {zh: 解析应答—私有变换—后继 socket 关联, en: Resolver Answer–Private Transform–Successor Socket Join}
+      target_keys: [B4-T1568-PARENT, B4-T1568-SUB-RESPONSE-SYNTHESIS]
+      logic:
+        zh: >-
+          对已知样本/家族从代码或内存取得 answer→IP/port transform；对每个 endpoint DNS answer 计算候选输出，并在 resolver cache/样本轮询窗口内连接同一 ProcessGuid 的 Event 3/DeviceNetworkEvents。若未知公式，收集多个 answer 与后继 socket 配对，只在重复得到同一稳定 mapping 后升级。Numbered Panda 的 `(octet1*octet2)+octet3` 只作家族规则。标准 SRV/SVCB/HTTPS 解析、应用配置服务和代理 PAC 等批准映射先排除。高置信还需 successor endpoint 的 C2 结果。
+        en: >-
+          Obtain an answer-to-IP-or-port transform from code or memory for a known sample or family. Calculate candidate outputs for each endpoint DNS answer and join them to Event 3 or DeviceNetworkEvents for the same ProcessGuid within the resolver-cache or sample polling window. With an unknown formula, collect multiple answer-to-successor-socket pairs and elevate only after a stable mapping repeats. Numbered Panda's `(octet1*octet2)+octet3` is a family rule only. Exclude approved standard SRV, SVCB, or HTTPS resolution, application configuration services, and proxy PAC mappings first. High confidence additionally requires a C2 outcome at the successor endpoint.
+      data_requirements:
+        - {source_type: endpoint_dns, channel: 'Sysmon Event 22 or equivalent', required_fields: [UtcTime, Computer, ProcessGuid, Image, QueryName, QueryStatus, QueryResults]}
+        - {source_type: dns_transaction, channel: 'Zeek dns.log or resolver', required_fields: [ts, uid, client_ip, query, qtype_name, rcode_name, answers, TTLs]}
+        - {source_type: endpoint_network, channel: 'Sysmon Event 3 or Defender DeviceNetworkEvents', required_fields: [timestamp, device_id, process_guid, image, remote_ip, remote_port, remote_url, protocol]}
+        - {source_type: transformation_knowledge, channel: 'Sample/memory/repeated-pair analytic', required_fields: [sample_hash_or_family, transform_version, input_fields, transform_expression_or_mapping, expected_output]}
+      observables: [calculation_domain_answer, nonliteral_successor_endpoint, stable_answer_to_port_or_IP_mapping, same_process_consumption, C2_session_outcome]
+      correlation:
+        window: 'Resolver cache lifetime and one sample polling cycle; retain repeated pairs for 7–30 days when formula is unknown'
+        dimensions: [device_id, ProcessGuid, query, answer, transform_version, remote_ip, remote_port, time]
+      false_positives: [SRV_SVCB_HTTPS_record_consumption, service_discovery, PAC_or_configuration_service, game_or_media_port_negotiation, STUN_ICE]
+      blind_spots: [no_formula_or_sample, one_observed_pair, shared_process, DoH_without_endpoint_query, delayed_connection, direct_socket_created_in_injected_process]
+      tuning_guidance:
+        zh: >-
+          标准记录语义和批准产品 mapping 建白名单；未知公式维持 hypothesis，至少三组或样本支持的稳定 mapping 再升高。不要因端口 443/80 或 answer/connection 不一致单独告警。
+        en: >-
+          Allowlist standard record semantics and approved product mappings. Keep an unknown formula at hypothesis until at least three stable pairs or sample support. Do not alert solely because the port is 443 or 80 or because answer and connection differ.
+      evidence_keys: [B4-T1568-REF-NUMBERED-PANDA, B4-T1568-REF-ZEEK-DNS-REUSE, B4-T1568-REF-SYSMON-REUSE, B4-T1568-REF-MDE-NET-REUSE]
+  mitigations:
+    - key: B4-T1568-MIT-RESOLUTION-EGRESS
+      name: {zh: 受管解析与端点消费约束, en: Managed Resolution and Endpoint-Consumption Constraints}
+      description:
+        zh: >-
+          强制工作负载经受管解析器，保留客户端—应答映射，并让 DNS 应答不能自动授权任意进程、地址或端口的后继外联。
+        en: >-
+          Force workloads through managed resolvers, retain client-to-answer mappings, and prevent a DNS answer from automatically authorizing successor egress by any process, address, or port.
+      measures:
+        - key: managed_resolver_path
+          control_type: preventive
+          description: {zh: 除批准 resolver/DoH 服务外阻断直接 DNS/DoT/DoH，集中记录 query/answer/TTL/rcode/client，并对高置信恶意域 sinkhole/block。, en: Block direct DNS, DoT, and DoH except approved resolvers or DoH services, centrally record query, answer, TTL, rcode, and client, and sinkhole or block high-confidence malicious domains.}
+        - key: process_endpoint_binding
+          control_type: preventive
+          description: {zh: 以软件身份、设备角色、域/服务 owner、端口和短时解析关系控制外联；解析成功不自动把所有 answer IP/计算 port 加入长期允许。, en: Control egress by software identity, device role, domain or service owner, port, and short-lived resolution relationship; successful resolution must not add every answer IP or calculated port to a durable allowlist.}
+        - key: versioned_resolution_lineage
+          control_type: detective-support
+          description: {zh: 保存解析版本、端点连接、RDAP/被动 DNS/证书历史及阻断结果，能从当前 endpoint 追溯同一动态关系。, en: Retain resolution versions, endpoint connections, RDAP, passive-DNS and certificate history, and block outcomes so a current endpoint can be traced across the same dynamic relationship.}
+      applications:
+        - target_key: B4-T1568-PARENT
+          use: {zh: 将所有运行时 locator 求值限制到受管解析/配置路径，并按进程验证得到 endpoint 的首次及后继连接。, en: Confine runtime locator evaluation to managed resolution or configuration paths and validate first and successor connections to the derived endpoint by process.}
+          expected_effect: {zh: 减少未审计动态解析并使静态 IoC 变化仍保留跨版本谱系。, en: Reduce unaudited dynamic resolution and retain cross-version lineage despite static-IoC changes.}
+          limitations: {zh: 外部应用可内置 DoH、合法 SaaS/CDN 高度动态，受管解析器被绕过或日志不含客户端时控制失效。, en: Applications can embed DoH and legitimate SaaS or CDN services are highly dynamic; bypassed managed resolvers or logs without client identity defeat the control.}
+        - target_key: B4-T1568-SUB-ANSWER-ROTATION
+          use: {zh: 对同一服务的 answer pool 绑定批准 provider/ASN/证书/进程，并在轮换时重新评估，而不是将旧域名信誉永久传递给所有新 IP。, en: Bind an answer pool to approved provider, ASN, certificate, and process and reevaluate on rotation rather than permanently transferring old domain reputation to every new IP.}
+          expected_effect: {zh: 限制恶意轮换池通过单一域名持续获得信任，并保存每个已消费 IP。, en: Prevent a malicious rotating pool from inheriting durable trust from one domain and retain every consumed IP.}
+          limitations: {zh: CDN/多云/灾备需要宽动态集合；证书/ECH/共享 IP 可能不能区分租户。, en: CDN, multicloud, and disaster recovery require broad dynamic sets; certificates, ECH, and shared IPs may not distinguish tenants.}
+        - target_key: B4-T1568-SUB-RESPONSE-SYNTHESIS
+          use: {zh: 进程外联仍须匹配批准服务的 destination/port 角色，DNS answer 或标准 resolver 成功不能授权计算出的未知 port/IP。, en: Process egress must still match approved destination and port roles; a DNS answer or successful standard resolution must not authorize an unknown calculated port or IP.}
+          expected_effect: {zh: 阻断利用解析材料绕过端口/地址策略，并把异常 transform 输出暴露为策略差。, en: Block use of resolver material to bypass address or port policy and expose anomalous transform output as a policy differential.}
+          limitations: {zh: 动态协商端口、媒体和服务发现需要细粒度例外；被盗批准进程或隧道仍可绕过。, en: Dynamically negotiated ports, media, and service discovery need precise exceptions; a compromised approved process or tunnel can still bypass controls.}
+      evidence_keys: [B4-T1568-REF-DNS-FIREWALL-REUSE, B4-T1568-REF-ZEEK-DNS-REUSE, B4-T1568-REF-SYSMON-REUSE]
+    - key: B4-T1568-MIT-GENERATED-NAMESPACE
+      name: {zh: 生成候选命名空间预测与处置, en: Generated-Candidate Namespace Prediction and Response}
+      description:
+        zh: >-
+          从样本/内存恢复生成规则，在受控时间窗预测候选、阻断或 sinkhole 高置信集合，并通过注册/证书监控和 endpoint 消费确认处置效果。
+        en: >-
+          Recover generation rules from samples or memory, predict candidates for controlled periods, block or sinkhole high-confidence sets, and verify response through registration, certificate monitoring, and endpoint consumption.
+      measures:
+        - key: bounded_candidate_prediction
+          control_type: detective-support
+          description: {zh: 版本化算法、seed/词表与时钟假设，生成有限前后窗口候选并记录碰撞/置信；不用词法模型替代逆向证据。, en: Version algorithm, seed or word list, and clock assumptions, generate candidates for bounded past and future windows, and record collision and confidence; do not substitute a lexical model for reverse-engineering evidence.}
+        - key: sinkhole_block_registration_coordination
+          control_type: containment
+          description: {zh: 对高置信未注册/恶意候选执行到期阻断、sinkhole 或与 registrar/provider 协调；保存 sinkhole 请求及原始解析者。, en: Apply expiring block or sinkhole or coordinate with registrar or provider for high-confidence unregistered or malicious candidates; retain sinkhole requests and original resolvers.}
+        - key: registration_certificate_watch
+          control_type: detective-support
+          description: {zh: 监控候选 RDAP 注册、NS 变化与 CT 证书，发现攻击者激活后立即与 endpoint query/connection 关联。, en: Monitor candidate RDAP registration, nameserver changes, and CT certificates and immediately correlate actor activation with endpoint queries and connections.}
+      applications:
+        - target_key: B4-T1568-SUB-SHARED-GENERATION
+          use: {zh: 对已恢复的 generator 在每周期预测并处置候选，同时检查同进程是否仍消费未预测/变体 endpoint。, en: Predict and handle candidates for each recovered generator period while checking whether the same process still consumes unpredicted or variant endpoints.}
+          expected_effect: {zh: 提前降低可用候选并把生成器从单域阻断问题转为版本化命名空间控制。, en: Reduce available candidates in advance and turn the generator from a single-domain blocking problem into versioned namespace control.}
+          limitations: {zh: 预测和抢注存在法律/成本/碰撞风险；未知 seed、用户特定 key、快速变体和私有 resolver 会降低覆盖，sinkhole 本身需严格隔离。, en: Prediction and pre-registration carry legal, cost, and collision risks. Unknown seeds, user-specific keys, rapid variants, and private resolvers reduce coverage, and sinkholes require strict isolation.}
+      evidence_keys: [B4-T1568-REF-POSHSPY, B4-T1568-REF-RDAP-REUSE, B4-T1568-REF-CT-REUSE, B4-T1568-REF-PDNS]
+existing_library_reuse:
+  reference_refs: [REF-000625, REF-000037, REF-000038, REF-000036, REF-000635, REF-000230, REF-000604, REF-000920, REF-000636]
+  claim_refs: []
+  case_refs: []
+  strategy_refs: []
+  analytic_refs: []
+  mitigation_refs: []
+  relationship_refs: []
+  duplicate_search_note:
+    zh: >-
+      已用 library_lookup、精确 URL 和 T1568/DGA/fast-flux/DNS calculation 关键词查重。三项原始样本/活动来源和 CIRCL Passive DNS URL 未在共享库出现，建议 create；固定 STIX、DNS 术语、RDAP、CT、Zeek DNS/TLS、Sysmon/MDE 网络及 Route 53 DNS Firewall 均精确复用。现有 NJT-0209/0210 只作边界，不复用其防御对象，因为数据与关联目标不同。
+    en: >-
+      Library lookup, exact URLs, and T1568, DGA, fast-flux, and DNS-calculation keywords were checked. The three original sample or activity sources and CIRCL Passive DNS URL are absent from the shared library and should be created. Fixed STIX, DNS terminology, RDAP, CT, Zeek DNS and TLS, Sysmon or MDE network, and Route 53 DNS Firewall are exact reuse. Existing NJT-0209 and NJT-0210 provide boundaries only; their defense objects are not reused because data and correlation objectives differ.
+library_candidates:
+  references:
+    - {key: B4-T1568-REF-ATTACK-REUSE, reuse_ref: REF-000625, title: 'MITRE ATT&CK Enterprise 19.1 STIX', url: 'https://raw.githubusercontent.com/mitre-attack/attack-stix-data/master/enterprise-attack/enterprise-attack-19.1.json', locator: 'T1568 and T1568.001/.002/.003, TA0011 mapping and adjacent fixed-baseline objects'}
+    - key: B4-T1568-REF-GAMAREDON
+      title: Cyberespionage the Gamaredon way Analysis of toolset used to spy on Ukraine in 2022 and 2023
+      author: ESET Research
+      url: https://web-assets.esetstatic.com/wls/en/papers/white-papers/cyberespionage-gamaredon-way.pdf
+      locator: Network Infrastructure; frequently changing C2 server IP several times per day; tools resolve hardcoded domain themselves using WMI and use resulting IP to contact C2; shift toward some hardcoded IP variants
+      support: original_sample_infrastructure_and_telemetry_research
+    - key: B4-T1568-REF-POSHSPY
+      title: Dissecting One of APT29's Fileless WMI and PowerShell Backdoors POSHSPY
+      author: Mandiant FireEye
+      url: https://cloud.google.com/blog/topics/threat-intelligence/dissecting-one-ofap/
+      locator: Incident response and sample analysis; word-list domain/subdomain/TLD/URI/file generation; 550 candidate C2 URLs; legitimate compromised C2 sites; infrequent beaconing
+      support: original_incident_and_sample_analysis
+    - key: B4-T1568-REF-NUMBERED-PANDA
+      title: Whois Numbered Panda
+      author: CrowdStrike Global Threat Analysis Cell
+      url: https://www.crowdstrike.com/en-us/blog/whois-numbered-panda/
+      locator: two DNS names, one for C2 and one for port calculation; common `(A*B)+C` formula; observed targeting and tested IDS rules
+      support: original_adversary_and_malware_analysis
+    - {key: B4-T1568-REF-DNS-TERMS-REUSE, reuse_ref: REF-000037, title: 'RFC 9499 DNS Terminology', url: 'https://www.rfc-editor.org/rfc/rfc9499.html', locator: 'Passive DNS definition and DNS terminology'}
+    - {key: B4-T1568-REF-RDAP-REUSE, reuse_ref: REF-000038, title: 'RFC 9083 RDAP JSON Responses', url: 'https://www.rfc-editor.org/rfc/rfc9083.html', locator: 'Domain, nameserver, entity, event and network/ASN response structures'}
+    - {key: B4-T1568-REF-CT-REUSE, reuse_ref: REF-000036, title: 'RFC 9162 Certificate Transparency 2.0', url: 'https://www.rfc-editor.org/rfc/rfc9162.html', locator: 'Public auditable certificate logs and monitoring limits'}
+    - {key: B4-T1568-REF-ZEEK-DNS-REUSE, reuse_ref: REF-000635, title: 'Zeek DNS Log Fields', url: 'https://docs.zeek.org/en/v8.2.1/reference/logs/dns.html', locator: 'ts, uid, client/resolver tuple, query, qtype_name, rcode_name, answers, TTLs and rtt'}
+    - {key: B4-T1568-REF-SYSMON-REUSE, reuse_ref: REF-000230, title: 'Sysmon System Activity', url: 'https://learn.microsoft.com/en-us/sysinternals/downloads/sysmon', locator: 'Event 22 process DNS query and Event 3 process network connection; Event 3 disabled by default'}
+    - {key: B4-T1568-REF-MDE-NET-REUSE, reuse_ref: REF-000604, title: 'Microsoft Defender XDR DeviceNetworkEvents', url: 'https://learn.microsoft.com/en-us/defender-xdr/advanced-hunting-devicenetworkevents-table', locator: 'Timestamp, DeviceId, RemoteIP, RemotePort, RemoteUrl, Protocol and InitiatingProcessUniqueId'}
+    - key: B4-T1568-REF-PDNS
+      title: CIRCL Passive DNS Version 2
+      author: CIRCL
+      url: https://www.circl.lu/services/passive-dns/
+      locator: REST API and Common Output Format fields rrname, rrtype, rdata, count, time_first and time_last; access restricted to trusted partners and coverage is sensor-dependent
+      support: authoritative_passive_DNS_service_and_fields
+    - {key: B4-T1568-REF-ZEEK-TLS-REUSE, reuse_ref: REF-000920, title: 'Zeek SSL and TLS Log Fields', url: 'https://docs.zeek.org/en/current/reference/logs/ssl.html', locator: 'uid, endpoints, version, cipher, server_name, established and certificate-chain file IDs; TLS 1.3/ECH limits'}
+    - {key: B4-T1568-REF-DNS-FIREWALL-REUSE, reuse_ref: REF-000636, title: 'AWS Route 53 Resolver DNS Firewall', url: 'https://docs.aws.amazon.com/Route53/latest/DeveloperGuide/resolver-dns-firewall.html', locator: 'Outbound DNS query policy for traffic passing through the VPC Resolver only'}
+  claims:
+    - {key: B4-T1568-CLM-ADMISSION, proposition_zh: 'T1568 只有在攻击者控制的运行时解析/计算值被同一植入消费为后继 C2 endpoint 时准入', proposition_en: 'T1568 is admitted only when an attacker-controlled runtime resolution or calculation value is consumed by the same implant as a successor C2 endpoint', evidence_keys: [B4-T1568-REF-ATTACK-REUSE, B4-T1568-REF-GAMAREDON, B4-T1568-REF-POSHSPY, B4-T1568-REF-NUMBERED-PANDA], mode: fixed_baseline_plus_original_evidence}
+    - {key: B4-T1568-CLM-ANSWER-ROTATION, proposition_zh: 'Gamaredon 工具解析频繁变化的硬编码域并直接使用所得 IP 联系 C2，支持解析应答端点轮换', proposition_en: 'Gamaredon tools resolve frequently changing hardcoded domains and directly use the resulting IP for C2, supporting Resolver-Answer Endpoint Rotation', evidence_keys: [B4-T1568-REF-GAMAREDON], mode: original_sample_and_infrastructure_analysis}
+    - {key: B4-T1568-CLM-GENERATION, proposition_zh: 'POSHSPY 从共享词表组合运行时派生 C2 URL 并在事件中使用被攻陷站点，支持共享状态定位符生成', proposition_en: 'POSHSPY derives runtime C2 URLs from shared word-list combinations and uses compromised sites in incidents, supporting Shared-State Locator Generation', evidence_keys: [B4-T1568-REF-POSHSPY], mode: original_incident_and_sample_analysis}
+    - {key: B4-T1568-CLM-SYNTHESIS, proposition_zh: 'Numbered Panda 使用一个 DNS 应答 IP 的 octet 计算另一个 C2 连接端口，支持解析响应参数合成', proposition_en: 'Numbered Panda uses octets from one DNS answer IP to calculate the port for another C2 connection, supporting Resolver-Response Parameter Synthesis', evidence_keys: [B4-T1568-REF-NUMBERED-PANDA], mode: original_adversary_analysis}
+    - {key: B4-T1568-CLM-BOUNDARY, proposition_zh: '失败触发、服务对象、引导角色、多跳路径与 DNS carriage 分别由 NJT-0153、NJT-0209、NJT-0210、NJT-0206 和 NJT-0160 拥有；T1568 只拥有 endpoint derivation 与 consumption', proposition_en: 'Failure trigger, service object, bootstrap role, multihop path, and DNS carriage belong respectively to NJT-0153, NJT-0209, NJT-0210, NJT-0206, and NJT-0160; T1568 owns endpoint derivation and consumption only', evidence_keys: [B4-T1568-REF-ATTACK-REUSE], mode: fixed_and_canonical_boundary_review}
+    - {key: B4-T1568-CLM-DEFENSE, proposition_zh: '递归/端点 DNS、网络连接、被动 DNS、RDAP 和证书字段能恢复求值—消费链，但文档不证明通用阈值或检测准确率', proposition_en: 'Recursive and endpoint DNS, network connection, passive DNS, RDAP, and certificate fields can reconstruct evaluation-to-consumption, but documentation does not establish universal thresholds or detection accuracy', evidence_keys: [B4-T1568-REF-ZEEK-DNS-REUSE, B4-T1568-REF-SYSMON-REUSE, B4-T1568-REF-MDE-NET-REUSE, B4-T1568-REF-PDNS, B4-T1568-REF-RDAP-REUSE, B4-T1568-REF-CT-REUSE, B4-T1568-REF-ZEEK-TLS-REUSE], mode: official_fields_plus_bounded_design_inference}
+  cases:
+    - {key: B4-T1568-CASE-GAMAREDON, name: 'Gamaredon rotating DNS answers consumed as C2 IPs', central_fact: 'C2 server IPs changed several times daily and tools resolved hardcoded domains themselves and used the resulting IP to contact C2', evidence_keys: [B4-T1568-REF-GAMAREDON], scope_limit: 'Not every tool used domains; some variants used hardcoded IPs, and no universal TTL is reported'}
+    - {key: B4-T1568-CASE-POSHSPY, name: 'POSHSPY word-list generated C2 URLs', central_fact: 'Incident-identified fileless backdoor derives C2 URLs from multiple word lists; analyzed options permit 550 URLs and actual C2 used compromised legitimate sites', evidence_keys: [B4-T1568-REF-POSHSPY], scope_limit: 'Source does not show queries to every candidate or a universal lexical/NXDOMAIN threshold'}
+    - {key: B4-T1568-CASE-NUMBERED, name: 'Numbered Panda DNS-answer-derived C2 port', central_fact: 'Malware uses one DNS name for C2 and another answer as numeric material for a port formula such as (A*B)+C', evidence_keys: [B4-T1568-REF-NUMBERED-PANDA], scope_limit: 'Public report lacks a full PCAP and states multiple algorithm variants exist; one formula is not universal'}
+  detection_strategies: [B4-T1568-DET-ANSWER-CONSUMPTION, B4-T1568-DET-GENERATED-CANDIDATE]
+  detection_analytics: [B4-T1568-NJA-ANSWER-ROTATION, B4-T1568-NJA-GENERATED-CANDIDATE, B4-T1568-NJA-RESPONSE-SYNTHESIS]
+  mitigations: [B4-T1568-MIT-RESOLUTION-EGRESS, B4-T1568-MIT-GENERATED-NAMESPACE]
+  relationships: []
+research:
+  taxonomy_breadth_review:
+    attack_subtechnique_count: 3
+    attack_subtechnique_ids: [T1568.001, T1568.002, T1568.003]
+    represented_dimensions: [changing_resolver_answer_pool, shared_candidate_generation, resolver_answer_parameter_calculation]
+    breadth_trigger: examine_at_least_two_materially_different_axes
+    coverage_resolutions:
+      - {attack_id: T1568.001, resolution: niji-variable-candidate, child_key: B4-T1568-SUB-ANSWER-ROTATION, reason: 'Contributes direct evidence for changing answer-set state consumed as endpoints; record type and fast-flux label are not imported'}
+      - {attack_id: T1568.002, resolution: niji-variable-candidate, child_key: B4-T1568-SUB-SHARED-GENERATION, reason: 'Contributes shared algorithm/state synchronization and successful candidate consumption; DGA label and domain form are not imported'}
+      - {attack_id: T1568.003, resolution: niji-variable-candidate, child_key: B4-T1568-SUB-RESPONSE-SYNTHESIS, reason: 'Contributes answer-to-private-transform-to-socket mapping; DNS record and formula name are not imported'}
+    candidate_stealth_axes_examined:
+      - {axis: resolver_answer_set_mutation, result: formal_candidate, child_key: B4-T1568-SUB-ANSWER-ROTATION, defense_difference: time-versioned answer history plus connection consumption}
+      - {axis: shared_generation_state, result: formal_candidate, child_key: B4-T1568-SUB-SHARED-GENERATION, defense_difference: candidate family/algorithm plus successful endpoint}
+      - {axis: response_material_private_transformation, result: formal_candidate, child_key: B4-T1568-SUB-RESPONSE-SYNTHESIS, defense_difference: answer-transform-socket reconstruction}
+      - {axis: primary_failure_activation, result: adjacent-technique, owner: NJT-0153, reason: 'Failure selects when a derivation method is used, not how the endpoint is derived'}
+      - {axis: service_object_locator, result: adjacent-technique, owner: NJT-0209, reason: 'Provider account/object identity owns locator publication; dynamic computation/rotation and consumption remain here'}
+      - {axis: bootstrap_to_operational_role, result: adjacent-technique, owner: NJT-0210, reason: 'A distinct stage-role handoff requires more than one endpoint derivation transaction'}
+      - {axis: resolved_proxy_or_relay_path, result: adjacent-technique, owner: NJT-0206, reason: 'The routing relationship behind an answer is independent of resolver-state mutation'}
+      - {axis: DNS_command_or_result_carriage, result: adjacent-technique, owner: NJT-0160, reason: 'DNS carrying task data differs from DNS deriving a later endpoint'}
+      - {axis: domain_randomness_record_type_or_TTL, result: not-stealth-distinct, reason: 'Implementation features and ranking signals do not define stable children without consumption'}
+    second_pass_required: false
+    second_pass_completed: false
+    proposed_niji_child_count: 3
+    breadth_gap_explained: true
+    reviewer_notes:
+      zh: >-
+        三项固定 ATT&CK 子项被分别解析为应答状态、共享生成状态和响应变换三个 Niji 变量，并有不同消费证据与防御。没有复制 Fast Flux/DGA/DNS Calculation 名称，亦未按域、算法或记录类型拆分。
+      en: >-
+        The three fixed ATT&CK children resolve into Niji variables for answer state, shared generation state, and response transformation, each with distinct consumption evidence and defense. Fast Flux, DGA, and DNS Calculation names are not copied, and no split uses domain, algorithm, or record type.
+  evidence_coverage:
+    parent_behavior_keys: [B4-T1568-REF-ATTACK-REUSE, B4-T1568-REF-GAMAREDON, B4-T1568-REF-POSHSPY, B4-T1568-REF-NUMBERED-PANDA]
+    boundary_keys: [B4-T1568-REF-ATTACK-REUSE, B4-T1568-REF-GAMAREDON, B4-T1568-REF-POSHSPY, B4-T1568-REF-NUMBERED-PANDA]
+    mechanism_support:
+      - {mechanism: NM-ST, keys: [B4-T1568-REF-GAMAREDON, B4-T1568-REF-POSHSPY], level: direct_rotation_and_candidate_generation_facts}
+      - {mechanism: NM-BT, keys: [B4-T1568-REF-NUMBERED-PANDA, B4-T1568-REF-POSHSPY], level: direct_private_derivation_semantics}
+    child_existence_support:
+      - {child_key: B4-T1568-SUB-ANSWER-ROTATION, keys: [B4-T1568-REF-GAMAREDON]}
+      - {child_key: B4-T1568-SUB-SHARED-GENERATION, keys: [B4-T1568-REF-POSHSPY]}
+      - {child_key: B4-T1568-SUB-RESPONSE-SYNTHESIS, keys: [B4-T1568-REF-NUMBERED-PANDA]}
+    unsupported_or_deferred:
+      - Gamaredon evidence lacks complete per-victim DNS-to-socket logs and some tools used hardcoded IPs.
+      - POSHSPY supports up to 550 generated URLs but does not prove every candidate was queried or supply a generic lexical threshold.
+      - Numbered Panda public reporting gives the formula and intent but no full PCAP, sample hash, or universal variant formula.
+      - Passive DNS coverage is provider- and sensor-dependent; CIRCL access is restricted and historical absence is not proof of non-use.
+      - CT does not cover non-TLS endpoints or every certificate, while TLS 1.3 and ECH reduce passive visibility.
+      - Sysmon Event 3 is disabled by default and DoH/DoQ can bypass managed recursive logs.
+      - No source supplies universal TTL, answer-count, NXDOMAIN, entropy, generation-window or mapping-pair thresholds.
+  content_depth_review:
+    compared_with_njt_0001: true
+    field_responsibilities_complete: true
+    candidate_specific_prose: true
+    repeated_prose_reviewed: true
+    notes:
+      zh: >-
+        父级及三项候选分别覆盖定义、消费门、痕迹变化、残余、正常反例、相邻边界、应用场景、攻防模型、机理、防御和证据限制。主 Agent 应统一复核与 NJT-0209/0210、NJT-0153/0160/0206 的并列规则，并在正式写入时保留消费门。
+      en: >-
+        The parent and three candidates separately cover definition, consumption gate, trace change, residuals, normal counterexamples, adjacent boundaries, scenarios, threat models, mechanism, defense, and evidence limits. The primary agent should converge coexistence rules with NJT-0209, NJT-0210, NJT-0153, NJT-0160, and NJT-0206 and preserve the consumption gate in canonical writing.
+  automation_review: {canonical_prose_bulk_generated: false, mechanical_uses: [fixed_STIX_query, exact_URL_duplicate_search, manual_staging_YAML_serialization, YAML_and_evidence_key_validation]}
+  limitations:
+    paragraphs:
+      - zh: >-
+          本研究把 infrastructure-side 动态状态与 endpoint-side 实际消费分开；只有前者时不升级为完成的 C2。原始来源对样本/活动有不同可见度，未提供同一种日志集，检测方案因此是由来源事实和官方字段组成的受限工程设计，须以本地日志验证。
+        en: >-
+          This research separates infrastructure-side dynamic state from endpoint-side actual consumption and does not upgrade infrastructure evidence alone to completed C2. Original sources have different visibility into samples and activity and do not provide one common log set. The detection design is therefore a bounded engineering design built from source facts and official fields and requires validation on local telemetry.
+      - zh: >-
+          CDN、SaaS、DDNS、灾备、服务发现、租户分片和证书自动化会产生应答轮换、生成名称和解析到连接的合法关系。高质量结论必须包含攻击者可控状态、进程消费和 C2 结果，不能以新域、低 TTL、高熵、多个 ASN 或未知端口单独定性。防护措施若错误封禁动态基础设施会造成广泛业务影响。
+        en: >-
+          CDNs, SaaS, DDNS, disaster recovery, service discovery, tenant sharding, and certificate automation produce legitimate answer rotation, generated names, and resolution-to-connection relationships. High-quality conclusions require attacker-controlled state, process consumption, and C2 outcome and cannot rely on a new domain, low TTL, high entropy, multiple ASNs, or unknown port alone. Incorrect blocking of dynamic infrastructure can cause broad business impact.
+  rejected_mechanisms:
+    - {mechanism_ref: NM-DO, reason: Encoding or encryption of locator material is separate from runtime endpoint derivation and belongs to T1132/T1573 or NJT-0152 where applicable.}
+    - {mechanism_ref: NM-FD, reason: Legitimate provider/domain appearance can coexist but is owned by NJT-0209/NJT-0152; the formal children use state location and consumption mapping.}
+  open_questions:
+    - Can local endpoint telemetry map every resolver query to a stable process identity and later connection across cache hits?
+    - Does the organization retain recursive answers and TTLs or only query names and response codes?
+    - Which approved CDN, GSLB, DDNS, SaaS and service-discovery patterns require owner-specific baselines?
+    - Can samples or memory provide generator/transform versions, and how should candidate predictions expire across clock skew?
+    - During primary convergence, ensure a Web dead drop or bootstrap URL is not duplicated here unless the locator is dynamically derived and consumed.
+integration:
+  status: pending
+  resolutions: []

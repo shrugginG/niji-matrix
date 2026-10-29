@@ -1,0 +1,169 @@
+schema_version: 2.0.0
+type: evasion-subtechnique
+id: NJS-0217-001
+parent_ref: NJT-0217
+name:
+  zh: 消费主体解绑的云对象读取
+  en: Consumer-Identity-Decoupled Cloud Object Retrieval
+summary:
+  zh: 攻击者以公开权限、共享/账户密钥、SAS 或签名链接取回云对象，使服务验证授权载体而不验证或记录实际消费主体的独立身份。
+  en: An adversary retrieves a cloud object through public permission, a shared or account key, SAS, or a signed link, causing
+    the service to validate an authorization carrier without authenticating or recording the actual consumer's independent
+    identity.
+aliases: []
+lineage:
+  attck_subtechnique_inherited: false
+definition_and_concept:
+  paragraphs:
+  - zh: 消费主体解绑的云对象读取以“对象读取权是否绑定到发起者自身可审计身份”为控制变量。父级正文取得条件保持不变；子项要求服务根据公开权限或可转移秘密/链接完成读取，实际持有者不必以自身用户、role、service principal
+      或租户身份认证。AWS 预签名 URL、Azure storage account key/SAS 与 GCP signed URL 是不同实现，不形成兄弟项。
+    en: Consumer-Identity-Decoupled Cloud Object Retrieval controls whether object-read authority is bound to the initiator's
+      own auditable identity. The parent body-acquisition condition remains unchanged. The child requires the service to complete
+      the read based on public permission or a transferable secret or link, without requiring the holder to authenticate as
+      its own user, role, service principal, or tenant. An AWS presigned URL, Azure storage-account key or SAS, and GCP signed
+      URL are implementations rather than sibling categories.
+  - zh: “解绑”不表示完全没有痕迹。AWS server access log 可记录 requester、remote IP、QueryString 或匿名认证、状态与 bytes sent；Azure StorageBlobLogs
+      可记录 AuthenticationType、CallerIpAddress、ObjectKey/Uri、StatusCode 和 ResponseBodySize，但 AccountKey/SAS/Anonymous 通常不能提供实际人的
+      RequesterObjectId；GCP signed URL 绑定签名账户而非使用者，公开对象甚至不进入 Cloud Audit Logs，需另配 usage logs。分类依赖消费主体归因差，而不是链接或密钥名称。
+    en: Decoupling does not mean no trace. AWS server access logs can retain requester, remote IP, QueryString or anonymous
+      authentication, status, and bytes sent. Azure StorageBlobLogs can retain AuthenticationType, CallerIpAddress, ObjectKey
+      or Uri, StatusCode, and ResponseBodySize, but AccountKey, SAS, or Anonymous use commonly lacks the actual person's RequesterObjectId.
+      A GCP signed URL binds to the signing account rather than the holder, and public objects do not enter Cloud Audit Logs
+      at all, requiring separately configured usage logs. Classification depends on the consumer-attribution gap rather than
+      the name of a link or key.
+stealth_characteristics:
+  paragraphs:
+  - zh: 消费主体解绑的云对象读取：授权创建或暴露与正文消费可由不同主体、地址和时间完成。防守方可能看到管理员列取密钥、应用签发短期链接或对象被设为公开，随后只看到 AccountKey/SAS/QueryString/Anonymous
+      的成功读取；若未保存载体标识、签名者、有效期、对象范围和来源，便无法从数据面事件还原真实持有者。单纯按正常账户登录或用户下载检测会失去主体链。
+    en: Consumer-Identity-Decoupled Cloud Object Retrieval：Authorization creation or exposure and body consumption can occur
+      under different actors, addresses, and times. A defender may see an administrator list a key, an application issue a
+      short-lived link, or an object become public, followed only by a successful AccountKey, SAS, QueryString, or Anonymous
+      read. Without carrier identifier, signer, lifetime, object scope, and origin, the data-plane event cannot identify the
+      actual holder. Detection based only on normal account sign-in or user download loses the subject chain.
+  - zh: 残余特征包括认证类型、无 RequesterObjectId、签名年龄/到期、SAS 策略状态、异常 source IP/user agent、公开策略变化、listKeys 或签名动作、对象敏感度和响应字节。合法 CDN、客户下载门户、软件分发、临时合作链接、灾备和支持取证会使用同类载体，因此载体类别本身不能判恶，必须同
+      owner、业务用途、受众、对象范围和签发记录比较。
+    en: Residual features include authentication type, missing RequesterObjectId, signature age or expiry, SAS policy status,
+      unusual source IP or user agent, public-policy changes, listKeys or signing actions, object sensitivity, and response
+      bytes. Legitimate CDNs, customer download portals, software distribution, temporary collaboration links, disaster recovery,
+      and support forensics use the same carriers. Carrier type alone cannot establish maliciousness and must be compared
+      with owner, business purpose, audience, object scope, and issuance record.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 纳入公开/匿名读取、使用共享或账户级存储密钥读取、SAS，以及可由任意持有者使用的预签名/签名链接，但只有对象正文成功返回时才完成。只创建链接、列取密钥、修改公开访问、取得 SAS、发送邀请或出现 GetObject/GetBlob
+      失败调用均是能力或暴露层；无成功状态/响应字节、成功 FileDownloaded 或现场内容结果时不得升级。
+    en: Include public or anonymous reads, reads authorized by a shared or account-level storage key, SAS, and presigned or
+      signed links usable by any holder, but only when an object body is successfully returned. Link creation, key listing,
+      public-access mutation, SAS acquisition, invitation, or a failed GetObject or GetBlob remains capability or exposure.
+      Do not promote it without a successful status and response bytes, a successful FileDownloaded outcome, or incident evidence
+      of content.
+  - zh: 若读取以可解析的另一个账户/租户 principal 完成并源于跨账户 grant，则成功源读取可与本父级同现，但授权转移与外传由 NJT-0196 管理，不纳入本子项。以持久应用 token 或既有集成执行且能解析 app/service
+      principal 的读取归父级，并由 NJT-0086 管理其持续授权；单次窃取的人类 session 也不是本子项。账户密钥或 bearer link 如何被窃取属于凭据访问，内容结果仍由本子项承担。
+    en: When a resolvable principal in another account or tenant reads through a cross-account grant, the successful source
+      read can co-occur with this parent, but NJT-0196 owns entitlement transfer and exfiltration and the event does not enter
+      this child. A read by a durable application token or existing integration with a resolvable application or service principal
+      remains at the parent, while NJT-0086 owns its continuing authorization. One stolen human session is also outside this
+      child. Credential Access owns theft of an account key or bearer link, while this child owns the content outcome.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: Microsoft 记录 Storm-0501 在取得 Azure Owner 权限后调用 Microsoft.Storage/storageAccounts/listkeys/action 窃取存储账户密钥，随后开放网络访问并以
+        AzCopy 把账户数据外传。这一链证明攻击者真实使用主体解绑的账户级秘密取得并送出内容；公开资料未提供原始 StorageBlobLogs，因此 AuthenticationType、RequesterObjectId 缺失和响应字节应由部署侧日志验证，不能作为该事件已经观测到的字段陈述。
+      en: Microsoft records Storm-0501 invoking Microsoft.Storage/storageAccounts/listkeys/action after obtaining Azure Owner
+        authority, stealing storage-account keys, exposing network access, and then using AzCopy to exfiltrate account data.
+        This chain establishes actual content acquisition and delivery through a principal-decoupled account secret. The public
+        report does not publish raw StorageBlobLogs, so AuthenticationType, missing RequesterObjectId, and response bytes
+        must be validated in deployment telemetry rather than presented as observed fields from that incident.
+    - zh: 公开对象与签名链接属于同一控制变量的其他实现。Google 明确说明 signed URL 可被任何持有者在有效期内用于读取对象，且 Cloud Audit Logs 不追踪 public objects；AWS 将预签名
+        URL 定义为 bearer token，并在 S3 server access log 中区分 QueryString 与未认证请求。这些文档证明可实施路径和观察差，不证明特定攻击者已用该实现成功取数，因此其案例强度低于 Storm-0501。
+      en: Public objects and signed links are other implementations of the same control variable. Google explicitly states
+        that any holder can use a signed URL to read an object during its validity and that Cloud Audit Logs does not track
+        public objects. AWS characterizes presigned URLs as bearer tokens and distinguishes QueryString from unauthenticated
+        requests in S3 server access logs. These documents establish an implementable path and observation difference, not
+        a particular adversary's successful use, so their case strength is lower than Storm-0501.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者需要得到或诱使产生可读对象的公开权限、账户/共享密钥、SAS 或签名 URL，并在有效期、对象范围、网络条件和加密约束内发送请求。使用公开访问无需独立身份；使用 bearer link 不需获得签名账户本身；账户密钥通常权限更广但暴露后更易触发轮换和集中响应。若提供方要求
+          identity-bound OAuth 且禁用共享密钥/公开访问，攻击者失去本子项路径。
+        en: The adversary needs to obtain or induce public read permission, an account or shared key, SAS, or a signed URL
+          for a readable object, then send the request within lifetime, object scope, network conditions, and encryption constraints.
+          Public access requires no independent identity, a bearer link does not require control of the signing account, and
+          an account key is often broader but more likely to trigger rotation and centralized response once exposed. If the
+          provider requires identity-bound OAuth and disables shared-key and public access, the child path is unavailable.
+    defender_model:
+      paragraphs:
+      - zh: 防守方需要保留 public access/ACL/policy 变化、listKeys/签名或 SAS 签发线索、载体策略与对象范围，并把它们连接到成功数据面读取。认证类型、签名者、来源、user agent、对象、状态、响应字节和到期是核心字段。对公开
+          GCP 对象需 usage logs，因为 Cloud Audit Logs 明确不记录该访问；对 Azure 需 diagnostic setting；对 AWS 应联合 CloudTrail 对象数据事件与 server
+          access log，而不能假定任一默认存在。
+        en: The defender needs public-access, ACL, or policy changes; listKeys, signing, or SAS issuance evidence; carrier
+          policy and object scope; and successful data-plane reads. Authentication type, signer, origin, user agent, object,
+          status, response bytes, and expiry are core fields. Public GCP objects require usage logs because Cloud Audit Logs
+          explicitly omits those reads. Azure requires a diagnostic setting, and AWS benefits from joining CloudTrail object
+          data events with server access logs without assuming either exists by default.
+stealth_mechanisms:
+- mechanism_ref: NM-ST
+  role: primary
+  summary:
+    zh: 让授权创建者与实际内容消费者分离在不同事件和主体中
+    en: Separate authorization creator from the actual content consumer across events and subjects
+  analysis:
+    paragraphs:
+    - zh: 攻击者持有可转移载体后，无需以自己的云身份执行正文请求。授权平面记录签名者、key owner、SAS 或公开策略，数据面则记录匿名、QueryString、AccountKey/SAS 或来源地址；二者可相隔较长时间，且实际人不在任一身份字段中。Storm-0501
+        直接证明账户密钥与 AzCopy 内容外传链，AWS、Azure 与 GCP 官方资料证明残余字段和默认覆盖差；跨平面关联可恢复载体来源而未必恢复持有者，故置信度为 medium。
+      en: Once the adversary holds a transferable carrier, the body request need not use the actor's own cloud identity. The
+        authorization plane records a signer, key owner, SAS, or public policy, while the data plane records Anonymous, QueryString,
+        AccountKey or SAS, or only an origin address. The events can be widely separated in time, and the actual person can
+        be absent from every identity field. Storm-0501 directly establishes an account-key-to-AzCopy content-exfiltration
+        chain, while AWS, Azure, and GCP documentation establishes residual fields and default coverage differences. Cross-plane
+        correlation can recover carrier origin without necessarily recovering the holder, so confidence is medium.
+  confidence: medium
+  evidence_refs:
+  - REF-000530
+  - REF-001112
+  - REF-001113
+  - REF-001109
+  - REF-000541
+  - REF-001116
+  - REF-000540
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000253
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000223
+evidence:
+  claim_refs:
+  - CLM-001081
+  - CLM-001083
+  case_refs:
+  - CASE-000329
+  reference_refs:
+  - REF-000530
+  - REF-001112
+  - REF-001113
+  - REF-001109
+  - REF-000541
+  - REF-001116
+  - REF-000540
+research:
+  limitations:
+    paragraphs:
+    - zh: 当前恶意事件对子项的强证据集中在 Storm-0501 的 Azure Storage account key 与 AzCopy 链；公开/预签名/SAS 其他实现主要由官方能力和日志语义支持，未形成同等强度的在野成功案例。可转移载体的匿迹收益也没有量化，来源
+        IP、user agent、响应字节、公开策略变化和 key 访问仍可能使其显著。若主 Agent 要求每种实现均有现场案例，应保留统一子项但把未观测实现写入限制，不能按厂商补分。
+      en: Strong malicious-event evidence for the child currently concentrates on Storm-0501's Azure Storage account-key and
+        AzCopy chain. Other public, presigned, and SAS implementations rely mainly on official capability and logging semantics
+        rather than equally strong field cases. No source quantifies the carrier's stealth benefit, and source IP, user agent,
+        response bytes, public-policy changes, or key access can remain conspicuous. If the primary reviewer requires a field
+        case for every implementation, retain one unified child while limiting unobserved implementations rather than creating
+        provider-specific children.
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-10-05'
+  modified: '2026-10-05'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

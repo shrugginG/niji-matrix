@@ -1,0 +1,123 @@
+schema_version: 2.0.0
+type: evasion-subtechnique
+id: NJS-0222-001
+parent_ref: NJT-0222
+name:
+  zh: 内层服务端点解耦
+  en: Inner-Service Endpoint Decoupling
+summary:
+  zh: 隧道端点把内部服务会话与外部可见连接分开，使边界设备看到外层对端而非真实内层服务。
+  en: A tunnel endpoint separates an internal service session from the externally visible connection, leaving boundary devices
+    with the outer peer rather than the real inner service.
+aliases: []
+lineage:
+  attck_subtechnique_inherited: false
+definition_and_concept:
+  paragraphs:
+  - zh: 内层服务端点解耦指隧道进程在受害主机或边缘节点一侧接受本地或内部服务会话，并把仍可识别的 RDP、SMB、Tor 或其他内层语义封装到另一外部连接。直接目的在于让操作者跨越原本不可达的服务边界，同时让网络边界只登记隧道外层对端。服务
+      socket 与外联 socket 的对应关系是本项变量；所用隧道软件和外层协议不是分类依据。
+    en: Inner-Service Endpoint Decoupling occurs when a tunnel process accepts a local or internal service session on a victim
+      host or edge node and carries its still identifiable RDP, SMB, Tor, or other inner semantics in a separate external
+      connection. Its direct purpose is to cross a service boundary otherwise unavailable to the operator while the network
+      boundary records only the tunnel's outer peer. The relationship between the service socket and egress socket is the
+      variable, not the tunnel product or outer protocol.
+  - zh: 判定需把内层服务端点、隧道端点、外层连接、解封装后的服务结果接成同一链。APT29 的 meek/Tor 通道把受害主机本地 139、445 和 3389 端口经外层 HTTP/TLS 暴露给操作者；这支持端点分离，而单独观察一个
+      Google 相关 TLS 连接不足以证明内层服务。
+    en: Classification joins the inner service endpoint, tunnel endpoint, outer connection, and service result after decapsulation
+      into one chain. APT29's meek and Tor path exposed local victim ports 139, 445, and 3389 to the operator through outer
+      HTTP and TLS, supporting endpoint separation. Observing a Google-related TLS connection alone cannot establish the inner
+      service.
+stealth_characteristics:
+  paragraphs:
+  - zh: 内层服务端点解耦让边界五元组中的目的地址与端口不再指向真实服务；边界的 RDP/SMB 规则和服务解析可能只看见允许的外层协议，目标侧服务日志又可能只看见本地或隧道进程。两侧各有片段，但没有进程和 socket 所有权关联时难以还原同一控制者。
+    en: Inner-Service Endpoint Decoupling removes the real service address and port from the boundary five-tuple. RDP or SMB
+      boundary rules and parsers may see only the allowed outer protocol, while service logs on the target may see only a
+      local or tunnel process. Each side retains a fragment, yet the common controller is hard to reconstruct without process
+      and socket ownership joins.
+  - zh: 残余包括监听配置、local accept、外联 connect、隧道进程启动、流量方向与字节关系，以及内层服务认证、桌面或文件操作。端点 socket telemetry、边界 flow 和服务审计均可打破遮蔽；内核/设备级隧道、双层加密或第三方平台不提供会话键时，结论只能降为候选。
+    en: Residual evidence includes listener configuration, local accept, external connect, tunnel process creation, traffic
+      direction and byte relationships, and inner service authentication, desktop, or file activity. Endpoint socket telemetry
+      joined to boundary flow and service audit can break the concealment. Kernel or appliance tunneling, layered encryption,
+      or a third-party platform without session keys limits the conclusion to a candidate.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 纳入必须有可识别的内层服务会话被外层承载，且服务端点与外层对端分离并产生后继访问或 C2 结果。普通代理的两段转发若没有独立内层协议关系由 NJT-0206 负责；合法堡垒机、企业 VPN、服务网格和获批 SSH 端口转发即使呈现同样拓扑，也须按
+      owner、peer、内层服务、工单和期限排除。
+    en: Inclusion requires a recognizable inner service session carried by an outer layer, separated service and outer peers,
+      and a successor access or C2 outcome. Two-leg proxy forwarding without an independent inner protocol belongs to NJT-0206.
+      Approved bastions, enterprise VPNs, service meshes, and SSH forwarding can show the same topology and must be excluded
+      through owner, peer, inner service, ticket, and expiry.
+  - zh: 多个内层流共享同一外层会话时可再并列多流汇聚；一个内层流被拆成多次外层事务时可并列事务化重组。本项只拥有端点关系，不能以 RDP/SMB 端口名称取代内层会话证据，也不能以外层 TLS 推断额外密码保护。
+    en: Multi-stream convergence can co-apply when several inner flows share one outer session, and transactionized reassembly
+      can co-apply when one inner flow spans several outer transactions. This child owns the endpoint relationship only; an
+      RDP or SMB port label cannot replace inner-session evidence, and outer TLS does not establish attacker-added cryptography.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: 当企业阻断从互联网直接访问内部桌面或文件服务时，攻击者在已控主机上放置隧道端点，使内部服务连接通过允许的外层 Web/TLS 路径到达操作者。APT29 的本地端口暴露展示了这一结果；后继登录和访问属于证明隧道有用的结果，而非按服务种类再分子项。
+      en: When an enterprise blocks direct Internet access to internal desktop or file services, an adversary can place a
+        tunnel endpoint on a compromised host and carry service connections to the operator through an allowed outer web or
+        TLS path. APT29's local-port exposure demonstrates the outcome. Subsequent login and access prove tunnel use rather
+        than defining children by service type.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者需控制隧道两端或可用的远端解封装服务，拥有创建监听和外联 socket 的权限，并能访问目标内部服务。稳定映射、服务认证、重连和流控是运营成本；外层断开或本地服务变更会暴露失败与重试痕迹。
+        en: The actor needs control of both tunnel endpoints or a usable remote decapsulation service, authority to create
+          listener and egress sockets, and reachability to the target internal service. Stable mapping, service authentication,
+          reconnection, and flow control impose operating costs, and outer-path failure or local-service change leaves retries
+          and errors.
+    defender_model:
+      paragraphs:
+      - zh: 防守方至少需要端点进程/socket 归属、边界外层 flow 与内层服务审计，并以进程启动键、local socket、outer flow、服务会话和时间关联。只有边界 TLS 或只有本地服务日志时不能断言完整隧道；应保留合法远程运维的批准路径作为对照。
+        en: Defenders need endpoint process and socket ownership, boundary outer-flow data, and inner-service audit, joined
+          by process-start key, local socket, outer flow, service session, and time. Boundary TLS alone or local service logs
+          alone cannot establish a complete tunnel. Approved remote-administration paths must remain comparison cases.
+stealth_mechanisms:
+- mechanism_ref: NM-BT
+  role: primary
+  summary:
+    zh: 外层连接把内层服务对端移出边界服务观察
+    en: Outer carriage moves the inner service peer beyond boundary service observation
+  analysis:
+    paragraphs:
+    - zh: 攻击者让隧道端点接收内层服务连接并向外建立另一连接，边界记录的五元组和应用事务因而不再包含真实内部服务。专门查找内层服务的规则在边界视角看不到目标，而本地服务又只记录隧道端点；跨 socket 和后继服务结果关联可恢复这条行为链，故形成有条件的行为透明。
+      en: The actor has a tunnel endpoint accept an inner service connection and open another connection outward, so boundary
+        five-tuples and application transactions no longer contain the real internal service. Rules looking for that service
+        cannot see it at the boundary, while the local service records the tunnel endpoint. Joining sockets to successor service
+        outcomes restores the chain, making the transparency conditional on the defender's vantage.
+  evidence_refs:
+  - REF-001024
+  - REF-001144
+  confidence: high
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000258
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000172
+evidence:
+  claim_refs:
+  - CLM-001103
+  case_refs: []
+  reference_refs:
+  - REF-001024
+  - REF-001144
+research:
+  limitations:
+    paragraphs:
+    - zh: Mandiant 的 APT29 现场材料证明内外层服务与端口链，但没有给出每个受害边界的完整传感器配置或漏报记录。Zeek tunnel 日志文档证明可用字段，不能证明所有应用隧道自动被识别；本项效应需按目标部署验证。
+      en: Mandiant's APT29 field report establishes the inner and outer service and port chain but does not publish every
+        victim boundary sensor configuration or missed alert. Zeek tunnel documentation establishes available fields, not
+        automatic recognition of every application tunnel; the effect requires validation against the target deployment.
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-10-05'
+  modified: '2026-10-05'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

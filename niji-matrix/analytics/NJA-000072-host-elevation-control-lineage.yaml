@@ -1,0 +1,69 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000072
+strategy_ref: DET-000095
+name:
+  zh: 宿主提权请求—中介—执行身份结果谱系分析
+  en: Host Elevation Request–Intermediary–Execution Identity Outcome Lineage Analytic
+summary:
+  zh: 关联 Windows、Linux 与 macOS 上的低权限调用、授权控制、受信中介、执行身份变化和首个高权限结果，并用策略与维护基线判定异常。
+  en: Correlate lower-privilege invocation, authorization control, trusted intermediary, execution-identity transition, and first privileged outcome on Windows, Linux, and macOS, then test the chain against policy and maintenance baselines.
+domains: [enterprise]
+platforms: [Windows, Linux, macOS]
+logic:
+  paragraphs:
+  - zh: 分析首先把 UAC/LUA、sudo、setuid/setgid、macOS Authorization Services 和 TCC/PPPC 事件规范为 elevation transaction。每条事务至少保留 host、时间、调用 user/SID/UID、调用进程 start key、父进程、control type、request/correlation ID、目标应用或命令、原始与结果完整性级别或 real/effective UID/GID、授权方式、结果和中介进程/服务。若请求 ID 无法传播，则按 host、登录会话、调用/中介/结果进程 start key 与两分钟内时间顺序降级连接，并显式标记 lineage_quality。
+    en: The analytic first normalizes UAC or LUA, sudo, setuid or setgid, macOS Authorization Services, and TCC or PPPC events into elevation transactions. Every transaction retains at least host, time, calling user, SID, or UID, caller process start key, parent process, control type, request or correlation ID, target application or command, original and resulting integrity level or real and effective UID or GID, authorization method, outcome, and intermediary process or service. If a request ID does not propagate, it uses a degraded join by host, logon session, caller, intermediary, and outcome process start keys and a two-minute sequence and explicitly labels lineage_quality.
+  - zh: Windows 路径连接 elevation request、LUA/安全事件、相关注册表或策略快照与高完整性子进程，检查用户可写 handler 或参数是否被 auto-elevating/受信组件消费，以及签名、publisher、父子关系和授权结果是否符合应用清单。Linux 路径连接 sudo 命令/认证、时间戳记录状态或 setuid/setgid 文件执行与 UID→EUID/GID 变化，并验证规则、tty/session、二进制 inode/hash 与命令。macOS 路径连接 AuthorizationExecuteWithPrivileges 或 security_authtrampoline、TCC AttributionChain、应用 bundle/path/code requirement 与受保护操作；TCC 仅在链条确实产生更高资源访问权时计入，而不把所有隐私访问当作通用提权。
+    en: The Windows path joins elevation request, LUA or security events, relevant registry or policy snapshot, and high-integrity child; it tests whether a user-writable handler or parameter was consumed by an auto-elevating or trusted component and whether signing, publisher, parent-child relationship, and authorization result match the application inventory. The Linux path joins sudo command and authentication, timestamp-record state, or setuid and setgid execution to the UID-to-EUID or GID transition and validates rule, tty or session, binary inode or hash, and command. The macOS path joins AuthorizationExecuteWithPrivileges or security_authtrampoline, TCC AttributionChain, application bundle, path, and code requirement to the protected action. TCC counts only where the chain actually produces higher resource access rather than treating all privacy access as generic elevation.
+  - zh: 风险评分分为来源、中介、控制状态和结果四组。来源异常包括非常见用户会话、未知调用进程、用户可写输入或业务外时点；中介异常包括合法二进制消费未盘点 handler、罕见调用者、异常子进程或签名/路径不一致；控制状态异常包括 UAC、sudoers、权限位、TCC/PPPC 或授权规则在事务前被未批准写入；结果异常包括权限级别确实提高并随即修改安全配置、凭据、账户、服务或受保护数据。至少三组成立并有成功身份转换才输出“已关联异常提权”；只有结果无请求侧时输出“提权谱系不完整”，只有配置变化无使用时输出“提权控制状态异常”。
+    en: Risk scoring uses provenance, intermediary, control-state, and outcome groups. Provenance anomalies include an uncommon user session, unknown caller, user-writable input, or off-window timing. Intermediary anomalies include a legitimate binary consuming an uninventoried handler, a rare caller, anomalous child, or signing and path mismatch. Control-state anomalies include an unapproved write to UAC, sudoers, permission bits, TCC or PPPC, or authorization rules before the transaction. Outcome anomalies require an actual privilege increase followed by security-configuration, credential, account, service, or protected-data action. At least three groups plus a successful identity transition produce a correlated anomalous elevation; an outcome without request-side data produces incomplete elevation lineage, while configuration change without use produces an elevation-control-state anomaly.
+data_requirements:
+- source_type: host-elevation-request-and-authorization
+  name: {zh: 宿主提权请求、授权方式与结果事件, en: Host elevation request authorization-method and outcome events}
+  channel: null
+  required_fields: [timestamp, host_id, user_or_principal_id, logon_or_session_id, caller_process_start_key, control_type, request_or_correlation_id, target_application_or_command, authorization_method, authorization_outcome, original_privilege, resulting_privilege]
+- source_type: process-and-execution-identity
+  name: {zh: 进程谱系、签名与执行身份遥测, en: Process lineage signing and execution-identity telemetry}
+  channel: null
+  required_fields: [timestamp, host_id, process_start_key, parent_process_start_key, image_path, image_hash, signer, command_line_or_hash, real_uid_or_sid, effective_uid_or_sid, integrity_level, token_elevation_type, exit_or_operation_outcome]
+- source_type: elevation-control-state
+  name: {zh: 提权控制配置、授权缓存与批准应用状态, en: Elevation-control configuration authorization-cache and approved-application state}
+  channel: null
+  required_fields: [snapshot_or_change_time, host_id, writer_principal, writer_process, control_type, state_key, old_value, new_value, validity_start, validity_end, approval_or_change_id]
+- source_type: privileged-host-outcome
+  name: {zh: 高权限安全相关结果事件, en: Privileged security-relevant host outcome events}
+  channel: null
+  required_fields: [timestamp, host_id, process_start_key, effective_principal, target_object, action, outcome, sensitivity]
+observables:
+- zh: 用户可写注册表 handler 或参数在批准变更之外被修改，随后由受信 auto-elevating Windows 组件消费并派生高完整性未知进程。
+  en: A user-writable registry handler or parameter changes outside an approved change and is then consumed by a trusted auto-elevating Windows component that spawns an unknown high-integrity process.
+- zh: sudo 在没有对应交互认证或工单的缓存有效期内由异常 tty/session 调用，或 setuid/setgid 二进制的 inode/hash 与清单不符并产生 UID/EUID 转换。
+  en: Sudo is invoked from an anomalous tty or session inside a cached interval without matching interactive authentication or work record, or a setuid or setgid binary whose inode or hash differs from inventory produces a UID-to-EUID transition.
+- zh: TCC AttributionChain 或 Authorization Services 显示未盘点调用者经已批准应用/broker 取得受保护操作，且 bundle/path/code requirement 或后续高权限结果偏离基线。
+  en: TCC AttributionChain or Authorization Services shows an uninventoried caller obtaining a protected action through an approved application or broker while bundle, path, code requirement, or downstream privileged outcome deviates from baseline.
+- zh: 高权限结果存在但缺少调用者、授权方式或中介事务，且同一主机随后发生敏感安全状态变更。
+  en: A privileged outcome lacks caller, authorization method, or intermediary transaction and the same host then shows a sensitive security-state change.
+correlation:
+  window:
+    zh: 以精确 request/correlation ID 或 process start key 覆盖事务全程；无稳定键时从控制状态写入前十分钟到高权限结果后十五分钟，并按 sudo/TCC 授权有效期延长到其明确失效，最长八小时。配置基线至少保留三十日，二进制和中介调用基线至少九十日。
+    en: Span the complete transaction with exact request or correlation ID or process start key. Without a stable key, use ten minutes before control-state write through fifteen minutes after privileged outcome and extend through explicit sudo or TCC authorization expiry, at most eight hours. Retain configuration baseline for at least thirty days and binary and intermediary-call baselines for at least ninety days.
+  dimensions: [host, user_principal, logon_session, caller_process, control_type, request_correlation, intermediary, target_application, authorization_method, original_privilege, resulting_privilege, state_key, outcome_object, approval, time]
+false_positives:
+- zh: 批准的软件安装、设备管理、帮助台提权、开发构建、应急响应、sudo 运维、授权应用更新和 PPPC/TCC 配置部署会合法产生同类链。
+  en: Approved software installation, device management, help-desk elevation, development builds, incident response, sudo administration, authorized application update, and PPPC or TCC deployment legitimately produce similar chains.
+- zh: 软件更新可能改变签名、路径、handler、setuid inode 或子进程；只有版本/工单、目标集合和维护窗口一致时才能作为反例。
+  en: Software updates can change signing, path, handler, setuid inode, or child process and qualify as counterexamples only when version or work record, target set, and maintenance window agree.
+blind_spots:
+- zh: Windows 未采集 LUA/ETW 或进程 start key、sudo 未集中保留命令与认证、macOS unified log 被限流或 TCC AttributionChain 不完整时，只能从结果反推。
+  en: When Windows omits LUA or ETW and process start keys, sudo command and authentication are not centralized, or macOS unified log is rate-limited or TCC AttributionChain incomplete, the analytic can infer only backward from outcomes.
+- zh: 攻击者控制受信 broker、签名更新通道、审批系统和日志传输，或直接使用不经过可见控制的内核漏洞时，链条可能内部一致或完全缺失；后者应转交 T1068。
+  en: If an adversary controls the trusted broker, signed update channel, approval system, and log transport, or uses a kernel exploit that bypasses visible controls, the chain may look internally consistent or be absent; the latter should be referred to T1068.
+tuning_guidance:
+  paragraphs:
+  - zh: 按平台分别建立调用者—控制—中介—目标组合基线，不把 Windows 系统二进制、sudo、security_authtrampoline、Finder 或任何签名应用永久允许。允许项绑定具体版本/hash、调用者、参数或 handler、目标权限、变更单、用户/设备和期限；用户可写输入进入受信中介时提高审查权重。
+    en: Build platform-specific caller-control-intermediary-target combination baselines and never permanently allow Windows system binaries, sudo, security_authtrampoline, Finder, or any signed application. Bind allowances to a concrete version or hash, caller, parameter or handler, target privilege, change record, user or device, and validity, and raise review weight when user-writable input enters a trusted intermediary.
+  - zh: 先用受控 UAC、sudo、setuid 与 TCC 操作验证 stable key 和身份转换字段，再测试请求日志丢失时的降级连接。敏感 command line 可哈希或分级访问，但必须保留足以区分目标命令与输入来源的身份；将“谱系不完整”与“确认 误报”分开计量。
+    en: Validate stable keys and identity-transition fields with controlled UAC, sudo, setuid, and TCC operations before testing degraded joins under request-log loss. Sensitive command lines may be hashed or access-controlled, but enough identity must remain to distinguish target command and input origin. Measure incomplete lineage separately from confirmed false positives.
+evidence_refs: [REF-000317, REF-000318, REF-000319, REF-000323, REF-000324, REF-000325]
+lifecycle: {status: review, version: 0.1.0, created: '2026-09-13', modified: '2026-09-13', contributors: [Niji Matrix Research], reviewers: []}

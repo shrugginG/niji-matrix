@@ -1,0 +1,716 @@
+handoff_schema_version: '2.0.0'
+type: technique-research-handoff
+batch_ref: BATCH-TA0011-003
+work_item_ref: WORK-TA0011-T1090
+temporary_key_prefix: B3-T1090
+candidate:
+  source_type: attack
+  source_attack_id: T1090
+  name:
+    zh: 代理
+    en: Proxy
+recommendation:
+  decision: adapt
+  confidence: high
+  original_attack_subtechniques_imported: false
+  rationale:
+    paragraphs:
+      - zh: >-
+          保留 T1090 的核心问题，因为 SOCKS、端口转发、FRP、Tor 与 CDN 路由均可在受害端和真实控制端之间插入中介，使目标侧五元组、连接来源或表面目的地不再直接代表控制基础设施。CISA 对 Volt Typhoon 的调查直接记录了 PRTG 服务器上的 PortProxy 和 FRP 中继，Microsoft 与美国司法部又记录了被攻陷 SOHO 路由器作为隐藏真实来源的出口；Mandiant 对 APT29 的现场调查则确认 Tor 与 meek 域前置被用于后门访问。这些证据足以支持 TA0011 中独立的中介转发对象。
+        en: >-
+          Retain the core T1090 problem because SOCKS, port forwarding, FRP, Tor, and CDN routing can insert an intermediary between a victim and the real controller, causing the victim-side five-tuple, connection origin, or apparent destination to cease representing the control infrastructure directly. CISA's Volt Typhoon investigation directly records PortProxy and FRP relay use on a PRTG server; Microsoft and the U.S. Department of Justice separately record compromised SOHO routers used as egress to hide true origin; and Mandiant's APT29 investigation confirms Tor plus meek domain fronting for backdoor access. These sources support a distinct intermediary-forwarding object in TA0011.
+      - zh: >-
+          采用 adapt 而不是照搬 ATT&CK 范围。正式对象限定为承载 C2 或操作者访问的路径中介，并要求说明可见相邻节点、真实控制端和防守观察面之间的差异。Internal Proxy 与 External Proxy 是中介相对网络边界的位置，单独不产生稳定的 Niji 子项；Multi-hop 只有在不同节点分割端到端观察责任时才形成原生变量；Domain Fronting 只有在外层 TLS 身份与内层 HTTP 路由权威分离时才形成原生变量。一般企业代理、NAT、负载均衡与远程办公 VPN 没有攻击者控制及 C2 结果时属于正常反例。
+        en: >-
+          Adapt rather than copy ATT&CK's scope. The formal object is limited to intermediated paths carrying C2 or operator access and requires an explained differential among the visible adjacent node, real controller, and defender vantage. Internal Proxy and External Proxy describe where the intermediary sits relative to a network boundary and do not independently form stable Niji children. Multi-hop contributes a native variable only when separate nodes partition end-to-end observation custody. Domain Fronting contributes a native variable only when outer TLS identity and inner HTTP routing authority diverge. Ordinary enterprise proxies, NAT, load balancing, and remote-work VPNs are normal counterexamples absent attacker control and a C2 outcome.
+proposed_content:
+  summary:
+    zh: 攻击者通过一个或多个网络中介转发指挥控制流量，使防守方可见的相邻节点、来源归属或表面目的地与真实控制路径分离。
+    en: Adversaries relay command-and-control traffic through one or more network intermediaries so the adjacent node, source provenance, or apparent destination visible to defenders is separated from the real control path.
+  aliases: [Connection Proxy, Traffic Relay]
+  classification:
+    tactic_refs: [TA0011]
+    origin:
+      kind: attack-adapted
+      source_attack_id: T1090
+      source_attack_version: '19.1'
+    decision_key: B3-T1090-DECISION
+  definition_and_concept:
+    paragraphs:
+      - zh: >-
+          中介转发指挥控制路径是攻击者让受害端、控制端或操作者会话先连接到代理、转发器、被控边缘设备或共享路由前端，再由该中介建立或延续另一段网络关系的行为。其直接目的在于避免受害端与真实控制基础设施直接互见、借用另一网络来源的归属，或让部分观察面只看到路径的一段。RFC 1928 的 SOCKS CONNECT 明确区分客户端到 SOCKS 服务器的连接与服务器按 DST.ADDR、DST.PORT 建立的目标连接，为这一“两段关系”提供协议级模型；攻击实现不必使用 SOCKS 才能满足概念。
+        en: >-
+          Intermediary-Relayed C2 Paths is adversary behavior in which a victim, controller, or operator session first connects to a proxy, forwarder, compromised edge device, or shared routing front end and that intermediary establishes or continues another network relationship. The immediate purpose is to prevent direct visibility between the victim and true control infrastructure, borrow another network origin's provenance, or expose only part of the path to a given observation plane. RFC 1928 SOCKS CONNECT explicitly separates the client-to-SOCKS-server connection from the server's connection to DST.ADDR and DST.PORT, providing a protocol-level model for this two-leg relationship; implementations need not use SOCKS to satisfy the concept.
+      - zh: >-
+          本技术的概念锚是可归因的中介状态、至少两段可连接的流量关系、以及 C2 或操作者控制结果。单条到住宅 IP、单个监听端口、安装代理工具或一次异常转发规则只能构成调查线索；需进一步证明中介接收一侧流量并向另一侧转发，或者权威路由层将外层所示目标交付到隐藏后端。代理可以与加密、隧道、应用服务、故障切换或多阶段通道并列，但这些并列事实不能替代中介转发证据。
+        en: >-
+          The conceptual anchors are attributable intermediary state, at least two joinable traffic relationships, and a C2 or operator-control result. One connection to a residential IP, a listening port, installation of proxy software, or one anomalous forwarding rule is only an investigative lead. Classification additionally requires evidence that the intermediary received traffic on one side and forwarded it on the other, or that an authoritative routing layer delivered an outerly named destination to a concealed back end. Proxying may coexist with encryption, tunneling, application services, failover, or multi-stage channels, but those parallel facts do not substitute for intermediary-forwarding evidence.
+  stealth_characteristics:
+    paragraphs:
+      - zh: >-
+          中介把直接的受害端—控制端连接改写为受害端—最后跳点和中介—后端等局部关系。目标日志记录的是代理、SOHO 路由器、内部服务器、Tor 出口或 CDN 前端，而不是最初操作者；受害端允许列表和地理信誉也可能只评价最后跳点。若路径由多个独立中继组成，任一节点或单点传感器通常只有相邻关系，防守方必须取得端点、代理、网络设备或提供方的共同时间、会话和流量证据才能恢复端到端谱系。
+        en: >-
+          An intermediary rewrites a direct victim-to-controller connection into local relationships such as victim-to-last-hop and relay-to-backend. Target logs record a proxy, SOHO router, internal server, Tor exit, or CDN front end rather than the original operator, while victim allowlists and geographic reputation may evaluate only that last hop. Where independently operated relays form the path, any one node or sensor normally retains only adjacent relationships. Defenders need common time, session, and traffic evidence across endpoints, proxies, network devices, or providers to recover end-to-end lineage.
+      - zh: >-
+          匿迹不等于无痕。中介主机上仍会出现监听、代理配置、入站和出站 socket、流量计数与身份；目标侧仍可记录最后跳来源、TLS 指纹、时间和字节形态。被攻陷出口还留下固件或进程完整性异常、管理登录和同一设备向多个目标转发的关系；域前置留下 SNI、证书、HTTP Host 或 :authority、CDN 账户与源站之间的路由关系。缺少中介侧或提供方日志时，目标侧可以确认“观察到最后跳”或“路由身份不一致”，但不能据此声称已恢复真实控制者。
+        en: >-
+          Stealth does not erase evidence. The intermediary host can retain listeners, proxy configuration, inbound and outbound sockets, traffic counters, and identity; the target can retain last-hop origin, TLS fingerprint, timing, and byte shape. Compromised egress also leaves firmware or process-integrity changes, administrative logons, and one device relaying toward multiple targets. Domain fronting leaves SNI, certificate, HTTP Host or :authority, CDN account, and origin-routing relationships. Without intermediary-side or provider logs, the target may establish that it observed a last hop or a routing-identity mismatch, but cannot claim to have recovered the true controller.
+  scope_boundary_definition:
+    paragraphs:
+      - zh: >-
+          纳入经内部受控主机、外部代理、被攻陷边缘设备、层叠中继或共享路由前端转发 C2/操作者会话，并且这种转发改变来源、目的或路径可见性的行为。内部与外部是部署属性：二者都可只产生相同的“可见对端不是控制端”结果，也都可能因完整代理审计而没有明显匿迹收益。多跳只有在跨节点观察责任分割、日志不可共同取得或路径关系分舱时才超过父级核心；代理数量本身不是分类变量。
+        en: >-
+          Scope includes forwarding C2 or operator sessions through controlled internal hosts, external proxies, compromised edge devices, layered relays, or shared routing front ends when the forwarding changes source, destination, or path visibility. Internal versus external is a deployment attribute: either may produce the same result that the visible peer is not the controller, and either may have little stealth value under complete proxy audit. Multi-hop exceeds parent-core only where observation custody is partitioned across nodes, logs cannot be jointly obtained, or path relationships are compartmented. Proxy count itself is not a taxonomy variable.
+      - zh: >-
+          NJT-0160“应用会话承载指挥控制”中的协议中介会终止并理解 DNS、MQTT、邮件等应用事务，再按主题、收件者或解析结果路由消息；本项中 SOCKS、PortProxy、FRP 或普通转发中介只需建立另一段网络关系，不要求理解控制消息语义。T1102 的直接对象是合法 Web 服务的内容、API 或资源承担死信箱或命令交换；仅把 CDN 当路由层或把 Web 服务前面的代理当字节中继归本项。公共 broker 既承担应用事务又隐藏控制端时可与 NJT-0160 并列，但不能只因目的地是第三方服务就记为 T1090。
+        en: >-
+          The protocol intermediary in NJT-0160 Application-Session C2 Carriage terminates and understands an application transaction such as DNS, MQTT, or mail and routes messages by topic, recipient, or resolution result. A SOCKS, PortProxy, FRP, or ordinary forwarding intermediary here only needs to establish another network relationship and need not understand control-message semantics. T1102 directly concerns legitimate Web-service content, APIs, or resources serving as a dead drop or command exchange; using a CDN as a routing layer or a proxy before a Web service as a byte relay belongs here. A public broker that both handles application transactions and hides the controller may coexist with NJT-0160, but a third-party-service destination alone does not establish T1090.
+      - zh: >-
+          T1572 的直接对象是把完整内层协议会话封装进外层协议以跨越控制边界；本技术关注谁转发两段连接，即使转发负载没有内外协议嵌套也成立。APT29 的 meek 同时使用 HTTP/TLS 封装 Tor 流量并借 CDN 路由，因而可同时涉及隧道与代理，但两种证据不可互换。NJT-0153 要求主要路径失败或触发条件之后启用备用路径；持续使用代理不构成 fallback，只有失败后才切换到代理路线时才可并列归类。T1104 的阶段/功能分工也不由多个代理地址或链中多个节点自动证明。
+        en: >-
+          T1572 directly concerns encapsulating an intact inner protocol session in an outer protocol to cross a control boundary. This technique asks who forwards two connection legs and applies even when the relayed payload has no nested inner and outer protocols. APT29 meek both wrapped Tor traffic in HTTP/TLS and used CDN routing, so tunneling and proxying can coexist, but their evidence is not interchangeable. NJT-0153 requires activation of a reserve path after primary-path failure or another handoff condition. Persistent proxy use is not fallback and co-classifies only when a failure causes a switch to the proxy route. T1104 stage or function division is likewise not established by multiple proxy addresses or multiple nodes in one chain.
+  application_scenarios_and_threat_model:
+    application_scenarios:
+      paragraphs:
+        - zh: >-
+            攻击者可在受限区内部署 FRP 客户端、PortProxy 或 SOCKS 监听，把不具直接出站能力的植入流量汇聚到可联网主机；也可让目标仅看到一台外部 VPS、VPN 或被攻陷 SOHO 路由器，再由它连接控制基础设施。高资源行动可将这些节点组成分舱路径，使不同资产所有者和网络观察者各自只掌握一段。Volt Typhoon 的 PRTG/FRP 与 SOHO 出口分别证明内部转发和借用外部网络归属的现场行为。
+          en: >-
+            An actor may deploy an FRP client, PortProxy, or SOCKS listener inside a restricted zone to aggregate implant traffic through an Internet-reachable host. The actor may instead expose only an external VPS, VPN, or compromised SOHO router to the target and have that node contact control infrastructure. A well-resourced operation can compose such nodes into a compartmented path so different asset owners and network observers each possess only one segment. Volt Typhoon's PRTG/FRP activity and SOHO egress independently establish internal forwarding and borrowed external-network provenance in field operations.
+        - zh: >-
+            在共享 CDN 或边缘路由服务允许不同名称层参与路由时，植入可在 TLS 握手中呈现高信誉前端名称，而在解密后的 HTTP Host 或 :authority 中指定另一后端。APT29 的 meek 将 Tor 流量包装在合法 TLS/HTTP 连接中，并利用 CDN 把请求重定向到 reflection server；受害边界看到公共服务，CDN 才能看到内层路由目标。该场景还可能包含 Tor 多跳和协议隧道，应按各自直接对象并列记录。
+          en: >-
+            Where a shared CDN or edge-routing service lets different naming layers participate in routing, an implant can present a high-reputation front name during the TLS handshake and identify another back end in the decrypted HTTP Host or :authority. APT29 meek wrapped Tor traffic in legitimate TLS and HTTP and used the CDN to redirect requests to a reflection server; the victim boundary saw a public service while the CDN could see the inner routing destination. This scenario may also contain Tor multi-hop and protocol tunneling and should be co-classified by each behavior's direct object.
+    threat_model:
+      attacker_model:
+        paragraphs:
+          - zh: >-
+              攻击者需要控制或租用至少一个能接收并转发流量的中介，掌握监听地址、认证、目的路由与双侧可达性。内部代理要求已有主机或网络设备权限以及穿越分区的连接；被攻陷出口要求维持第三方设备控制而不破坏其正常功能；多跳需要配置和维护节点间密钥、路由或会话状态；域前置还要求共享服务接受外层名称与内层路由目标的特定组合。中介增加延迟、故障点、带宽与运维成本，并可能在配置、进程和提供方日志中集中暴露关系。
+            en: >-
+              The actor must control or rent at least one intermediary able to receive and forward traffic and must manage listener address, authentication, destination routing, and reachability on both sides. Internal proxying requires prior authority on a host or network device plus connectivity across zones. Compromised egress requires continued control of a third-party device without disrupting its normal function. Layered relays require keys, routing, or session state between nodes. Domain fronting additionally requires a shared service to accept a particular combination of outer name and inner routing target. Intermediaries add latency, failure points, bandwidth, and operational cost and can concentrate relationship evidence in configuration, process, and provider logs.
+      defender_model:
+        paragraphs:
+          - zh: >-
+              防守方至少拥有受害端连接或边界流量，理想情况下还拥有端点进程网络事件、内部代理/防火墙/NAT 配置与会话日志、网络设备管理审计、被控边缘设备完整性数据以及 CDN 诊断日志。分析需统一设备、进程、原始和转换后五元组、代理会话、请求目的、SNI/Host、证书、提供方账户与时间。单个目标通常无权取得外部中介或多个司法辖区的日志，因此对真实控制者的结论必须区分“目标侧最后跳推断”“已配对两段转发”“跨提供方恢复完整链”三种置信等级。
+            en: >-
+              The defender has at least victim connection or boundary-flow telemetry and ideally endpoint process-network events, internal proxy, firewall, or NAT configuration and session logs, network-device administrative audit, compromised-edge integrity data, and CDN diagnostic logs. Analysis normalizes device, process, pre- and post-translation tuple, proxy session, requested destination, SNI and Host, certificate, provider account, and time. A single target normally lacks authority to obtain logs from external intermediaries or multiple jurisdictions, so conclusions about the true controller must distinguish victim-side last-hop inference, paired two-leg forwarding, and a complete cross-provider chain.
+          - zh: >-
+              合法安全网关、服务网格、远程办公 VPN、CDN、反向代理、跳板机和故障恢复会产生相似的两段流量或名称差异。防守方需要批准的中介清单、变更工单、软件角色、代理身份与目标服务契约来排除正常行为；不得把 Tor 节点、住宅 ASN、SNI/Host 差异或 portproxy 注册项单独等同于恶意 C2。TLS 内容不可见、ECH、QUIC、NAT 日志缺失、时钟偏差和短保留期都会削弱跨段关联。
+            en: >-
+              Legitimate security gateways, service meshes, remote-work VPNs, CDNs, reverse proxies, jump hosts, and disaster recovery create similar two-leg flows or naming differences. Defenders need an approved-intermediary inventory, change tickets, software role, proxy identity, and destination-service contract to exclude normal behavior. A Tor node, residential ASN, SNI-to-Host difference, or PortProxy registry entry alone must not be equated with malicious C2. Opaque TLS, ECH, QUIC, absent NAT logs, clock skew, and short retention weaken cross-leg correlation.
+  stealth_mechanisms:
+    - mechanism_ref: NM-FD
+      role: primary
+      summary:
+        zh: 中介来源或外层路由身份替代真实控制端的可见身份
+        en: Intermediary origin or outer routing identity substitutes for the visible identity of the true controller
+      analysis:
+        paragraphs:
+          - zh: >-
+              攻击者让目标只与代理、被攻陷路由器、Tor 出口或 CDN 前端直接交互，目标侧痕迹中的来源地址、网络所有者或服务名称因此指向中介而非控制端。粗粒度信誉与地理规则会把中介的真实属性当作操作者属性；只有连接代理配置、双侧会话、设备完整性或 SNI—Host—提供方路由关系才能恢复差异。这一行为以另一真实或可信特征替代控制基础设施特征，形成特征伪装。
+            en: >-
+              The actor causes the target to interact directly only with a proxy, compromised router, Tor exit, or CDN front end, so source address, network owner, or service name in target-side traces points to the intermediary rather than the controller. Coarse reputation and geography rules treat the intermediary's genuine attributes as operator attributes. The differential is recovered only by joining proxy configuration, both flow legs, device integrity, or SNI-to-Host-to-provider routing. Another real or trusted feature substitutes for control-infrastructure features, producing Feature Disguise.
+      evidence_keys: [REF-000073, REF-000074, B3-T1090-REF-MANDIANT-APT29-FRONTING, B3-T1090-REF-RFC1928]
+      confidence: high
+    - mechanism_ref: NM-ST
+      role: secondary
+      summary:
+        zh: 分舱中继把一条控制关系拆到不同节点和观察辖区
+        en: Compartmented relays split one control relationship across nodes and observation jurisdictions
+      analysis:
+        paragraphs:
+          - zh: >-
+              当路径由相互独立或只知相邻节点的中继组成时，受害端、入口、中间节点和出口分别保存局部流量，单一日志集不能直接连接操作者与受害者。Tor 官方说明三跳路径及每个 relay 只知前后相邻关系，Mandiant 又在 APT29 后门中观察到 Tor 与域前置组合。痕迹不是消失，而是空间分布在多个管理域；防守方需跨节点长窗重建，形成时空释痕效果。仅增加一个由同一组织完整记录的代理不自动满足本机理。
+            en: >-
+              When independently operated relays or relays that know only adjacent nodes form the path, victim, entry, middle, and exit vantage points each retain local traffic and no single log set directly joins operator to victim. Tor documentation describes three-hop paths and per-relay adjacency knowledge, while Mandiant observed Tor combined with domain fronting in APT29's backdoor. Traces are distributed spatially across administrative domains rather than erased, requiring long-window cross-node reconstruction and producing Spatiotemporal Trace Dilution. Adding one fully logged proxy under a single organization does not automatically satisfy this mechanism.
+      evidence_keys: [B3-T1090-REF-MANDIANT-APT29-FRONTING, B3-T1090-REF-TOR-OVERVIEW, B3-T1090-REF-TOR-PATH]
+      confidence: high
+  subtechnique_taxonomy:
+    narrative:
+      paragraphs:
+        - zh: >-
+            建议三个原生子项，分别按被替代的信任依据和需要恢复的路径关系划分。被攻陷网络出口归属借用以真实第三方设备的网络所有权、地理与正常功能替代操作者来源，需要设备完整性和跨目标谱系；分舱中继观察链断裂以各节点只保留相邻关系为变量，需要多视点时序与流量关联；跨层路由权威分离以 TLS 外层身份和解密后 HTTP 路由目标不一致为变量，需要同会话名称、证书、账户与源站校验。三者可以组合，但来源信誉、链路观察责任和协议路由权威是不同防御问题。
+          en: >-
+            Three native children are proposed, partitioned by the trust basis being substituted and the path relationship that must be recovered. Compromised-Network Egress Provenance Borrowing substitutes the network ownership, geography, and normal function of a genuine third-party device for operator origin and requires device integrity plus cross-target lineage. Compartmented-Relay Observation-Chain Break uses per-node adjacency-only visibility and requires multi-vantage timing and flow correlation. Cross-Layer Routing-Authority Divergence separates outer TLS identity from the decrypted HTTP routing target and requires same-session name, certificate, account, and origin validation. They may combine, but source reputation, path-observation custody, and protocol-routing authority are distinct defensive problems.
+        - zh: >-
+            普通单跳转发是父级核心。Internal Proxy 与 External Proxy 只表示中介相对受害网络的位置，并分别覆盖内部汇聚/越界与外部最后跳，不直接映射为 NJS；Multi-hop 只有满足观察责任分舱才支持第二子项，单纯两个同属同一日志域的代理仍归父级；Domain Fronting 为第三子项提供强证据，但子项按跨层路由权威差命名并可覆盖其他同类共享路由机制。代理轮换若核心是被攻陷出口池的准备与轮换，TA0042 NJS-0044-002 仍拥有资源变量；实际 C2 转发可与本父项及第一个子项并列。
+          en: >-
+            Ordinary one-hop forwarding remains parent-core. Internal Proxy and External Proxy only locate the intermediary relative to the victim boundary and cover internal aggregation or traversal and an external last hop without mapping directly to NJS children. Multi-hop supports the second child only when it compartments observation custody; two proxies inside one complete logging domain remain parent-core. Domain Fronting strongly supports the third child, but the child is named for cross-layer routing-authority divergence and can cover equivalent shared-routing mechanisms. Where proxy rotation's core is preparation and rotation of a compromised egress pool, TA0042 NJS-0044-002 continues to own the resource variable; actual C2 forwarding may co-classify with this parent and the first child.
+    coverage: proposed
+    temporary_subtechnique_keys:
+      - B3-T1090-NJS-COMPROMISED-EGRESS-PROVENANCE
+      - B3-T1090-NJS-COMPARTMENTED-RELAY-CUSTODY
+      - B3-T1090-NJS-ROUTING-AUTHORITY-DIVERGENCE
+proposed_subtechniques:
+  - temporary_key: B3-T1090-NJS-COMPROMISED-EGRESS-PROVENANCE
+    name:
+      zh: 被攻陷网络出口归属借用
+      en: Compromised-Network Egress Provenance Borrowing
+    summary:
+      zh: 攻击者从被攻陷的住宅、SOHO、企业或边缘设备转发控制流量，使目标把第三方真实网络归属误作操作者来源。
+      en: The actor relays control traffic from compromised residential, SOHO, enterprise, or edge devices so the target mistakes genuine third-party network provenance for operator origin.
+    stable_variable:
+      zh: 中介出口属于真实第三方且保留正常功能，攻击者借用其网络归属而非仅使用任意代理 IP。
+      en: The intermediary egress belongs to a genuine third party and retains normal function, allowing the actor to borrow its network provenance rather than merely use any proxy IP.
+    trace_change:
+      zh: 目标来源从攻击者基础设施变为住宅或企业接入网地址；同一被控设备留下异常 VPN/代理模块、管理活动和对多个目标的出站关系。
+      en: Target-visible origin changes from actor infrastructure to a residential or enterprise access-network address; the compromised device retains an anomalous VPN or proxy module, administrative activity, and outbound relationships toward targets.
+    defender_observation_difference:
+      zh: 目标侧地理、ASN 和信誉信号趋向正常，资产所有者侧设备完整性和双侧流量则更有区分力；需跨组织恢复。
+      en: Geography, ASN, and reputation look more normal at the target, while device integrity and bilateral flows at the asset owner are more discriminating and require cross-organizational reconstruction.
+    sibling_boundary:
+      zh: 与分舱中继的区别是本项改变最后跳来源的真实归属，即使只有一个中介也成立；与路由权威分离的区别是本项不要求 SNI/Host 等名称层不一致。
+      en: Unlike compartmented relays, this child changes genuine provenance of the last-hop origin and can exist with one intermediary. Unlike routing-authority divergence, it does not require disagreement between naming layers such as SNI and Host.
+    adjacent_boundaries:
+      zh: 攻陷与准备出口池归 TA0042 NJT-0044/NJS-0044-002；本项只拥有这些节点实际转发 C2 时产生的目标侧归属替代。合法住宅代理或企业 VPN 若无攻击者控制和 C2 结果不纳入。
+      en: Compromise and preparation of the egress pool belong to TA0042 NJT-0044 and NJS-0044-002; this child owns the target-side provenance substitution when those nodes actually relay C2. Legitimate residential proxy or enterprise VPN use is excluded without adversary control and a C2 outcome.
+    prerequisites_and_scenario:
+      zh: 攻击者已控制第三方网络设备或代理节点并能维持转发，目标基于来源网络声誉或地理进行判断；Volt Typhoon SOHO/KV Botnet 为直接案例。
+      en: The actor controls a third-party network device or proxy node and can maintain relay service while the target uses source-network reputation or geography; Volt Typhoon SOHO and KV Botnet activity directly establishes the scenario.
+    evidence_keys: [REF-000073, REF-000074, CASE-000045]
+    confidence: high
+    defense_value:
+      zh: 检测需连接目标侧最后跳与节点所有者的代理状态、完整性和流量；缓解需淘汰 EOL 边缘设备、限制管理面并让来源信誉不再单独放行。
+      en: Detection joins target-side last hop to proxy state, integrity, and flows at the node owner; mitigation retires end-of-life edge devices, restricts management exposure, and stops treating source reputation as a standalone allow decision.
+  - temporary_key: B3-T1090-NJS-COMPARTMENTED-RELAY-CUSTODY
+    name:
+      zh: 分舱中继观察链断裂
+      en: Compartmented-Relay Observation-Chain Break
+    summary:
+      zh: 攻击者用只保留相邻路径关系的中继分割操作者到受害端的观察责任，使任一常规日志域无法独立恢复完整链。
+      en: The actor partitions operator-to-victim observation custody across relays that retain only adjacent path relationships so no ordinary logging domain independently recovers the full chain.
+    stable_variable:
+      zh: 中继节点和管理域之间有意分舱，每个观察点只有前后相邻关系，而不是代理数量或产品名称。
+      en: Intentional compartmentation among relay nodes and administrative domains leaves each vantage with adjacent relationships only; proxy count or product name is not the variable.
+    trace_change:
+      zh: 直接连接被拆为入口、中间、出口和目标的局部会话，时间、字节和电路关系分布在不同记录与辖区。
+      en: A direct connection becomes local entry, middle, exit, and target sessions with timing, byte counts, and circuit relationships distributed across records and jurisdictions.
+    defender_observation_difference:
+      zh: 目标只能稳定识别最后跳，单个 relay 不能给出完整源与目的；跨视点流量确认、端点 Tor/代理配置或依法取得的多节点日志才可提高归因。
+      en: The target reliably identifies only the last hop and one relay cannot provide both complete source and destination; multi-vantage flow confirmation, endpoint Tor or proxy configuration, or lawfully acquired multi-node logs raise attribution confidence.
+    sibling_boundary:
+      zh: 与被攻陷出口归属借用的区别是节点可为租赁或公共中继且不必借用真实所有者声誉；与路由权威分离的区别是本项可在所有命名层一致时成立。
+      en: Unlike compromised-egress provenance, nodes may be rented or public relays and need not borrow a genuine owner's reputation. Unlike routing-authority divergence, this child can exist when all naming layers agree.
+    adjacent_boundaries:
+      zh: Tor 内承载完整协议的封装另评 T1572；失败后换另一条中继路径另评 NJT-0153；同一组织完整记录的多级企业代理属于父级核心而不满足观察链断裂。
+      en: Encapsulation of an intact protocol inside Tor is separately assessed under T1572; switching to another relay path after failure is separately assessed under NJT-0153; a multi-tier enterprise proxy stack fully logged by one organization remains parent-core and does not satisfy observation-chain break.
+    prerequisites_and_scenario:
+      zh: 攻击者能配置多管理域中继或使用 Tor 等网络，并接受延迟与可用性成本；APT29 使用 Tor/meek 提供现场支持，Tor 官方路径说明提供机理支持。
+      en: The actor can configure relays across administrative domains or use a network such as Tor and accepts latency and availability cost. APT29 Tor and meek use supplies field support, while Tor path documentation supplies mechanism support.
+    evidence_keys: [B3-T1090-REF-MANDIANT-APT29-FRONTING, B3-T1090-REF-TOR-OVERVIEW, B3-T1090-REF-TOR-PATH]
+    confidence: high
+    defense_value:
+      zh: 防御重点是端点代理/Tor 状态、跨边界时间与字节对称性、最后跳情报和多视点保留，不是简单封禁某个代理地址。
+      en: Defense emphasizes endpoint proxy or Tor state, cross-boundary timing and byte symmetry, last-hop intelligence, and multi-vantage retention rather than blocking one proxy address.
+  - temporary_key: B3-T1090-NJS-ROUTING-AUTHORITY-DIVERGENCE
+    name:
+      zh: 跨层路由权威分离
+      en: Cross-Layer Routing-Authority Divergence
+    summary:
+      zh: 攻击者让连接外层声明的服务身份与解密后决定后端的路由权威不同，使边界传感器只看到获准前端。
+      en: The actor separates the service identity declared by the outer connection from the decrypted routing authority that selects the backend, leaving a boundary sensor with an approved front end.
+    stable_variable:
+      zh: 同一会话中外层 TLS SNI/证书身份与 HTTP Host 或 :authority、提供方账户或实际源站的路由关系不一致。
+      en: Within one session, outer TLS SNI or certificate identity disagrees with the HTTP Host or :authority, provider account, or actual origin-routing relationship.
+    trace_change:
+      zh: 边界记录高信誉前端名称与 CDN IP，服务解密后按另一 Host/账户路由至隐藏后端；提供方能记录 mismatch、源站和账户。
+      en: The boundary records a high-reputation front name and CDN IP while the service routes by another Host or account after decryption; the provider can retain mismatch, origin, and account records.
+    defender_observation_difference:
+      zh: 无 TLS/HTTP 联合可见性的企业只评估前端名称；可解密代理或 CDN 提供方可比较 SNI、Host、证书覆盖、账户所有权和 OriginURL。
+      en: An enterprise without joint TLS and HTTP visibility evaluates only the front name; a decrypting proxy or CDN provider can compare SNI, Host, certificate coverage, account ownership, and OriginURL.
+    sibling_boundary:
+      zh: 与前两个子项不同，本项不依赖中继来源被攻陷或路径包含多个 relay；一个共享 CDN 前端即可产生路由权威差。
+      en: Unlike the first two children, this child does not require a compromised relay origin or several relays; one shared CDN front end can create the routing-authority differential.
+    adjacent_boundaries:
+      zh: 伪造 OIP 等应用内容外观归 NJT-0152；共享 Web 资源存取命令归 T1102；HTTPS 内封装 Tor/SMB 等完整会话归 T1572。本项只拥有决定后端的名称或账户层差异。
+      en: Application-content appearance such as fake OIP belongs to NJT-0152; commands stored in a shared Web resource belong to T1102; an intact Tor or SMB session inside HTTPS belongs to T1572. This child owns only the name or account-layer differential that selects the backend.
+    prerequisites_and_scenario:
+      zh: 共享 CDN/前门允许或曾允许外层和内层名称分离，攻击者控制内层后端；APT29 meek 为现场案例，AWS 和 Azure 官方规则证明 SNI/Host/账户一致性是可实施控制面。
+      en: A shared CDN or front door allows or historically allowed separation between outer and inner names and the actor controls the inner backend. APT29 meek is a field case, while AWS and Azure rules establish SNI, Host, and account congruence as an implementable control surface.
+    evidence_keys: [B3-T1090-REF-MANDIANT-APT29-FRONTING, B3-T1090-REF-AWS-CLOUDFRONT, B3-T1090-REF-AZURE-FRONTDOOR]
+    confidence: high
+    defense_value:
+      zh: 可在解密出口或提供方逐会话校验 SNI、Host/:authority、证书、租户/订阅和源站，阻断跨租户 mismatch 并保留 421/SSLMismatchedSNI 证据。
+      en: A decrypting egress or provider can validate SNI, Host or :authority, certificate, tenant or subscription, and origin per session, reject cross-tenant mismatches, and retain 421 or SSLMismatchedSNI evidence.
+defense_candidates:
+  detection_strategies:
+    - temporary_key: B3-T1090-DET-INTERMEDIARY-PATH-LINEAGE
+      name:
+        zh: 中介路径双侧会话与路由权威关联
+        en: Intermediary-Path Bilateral Session and Routing-Authority Correlation
+      objective:
+        zh: 将端点、受管中介、边界、目标和提供方记录拼接为路径图，分别识别未批准转发、被攻陷出口归属借用、观察链分舱和跨层路由权威差。
+        en: Join endpoint, managed-intermediary, boundary, target, and provider records into a path graph that separately identifies unauthorized forwarding, compromised-egress provenance borrowing, compartmented observation custody, and cross-layer routing-authority divergence.
+      subjects: [parent, B3-T1090-NJS-COMPROMISED-EGRESS-PROVENANCE, B3-T1090-NJS-COMPARTMENTED-RELAY-CUSTODY, B3-T1090-NJS-ROUTING-AUTHORITY-DIVERGENCE]
+      domains: [enterprise]
+      analytic_keys: [B3-T1090-NJA-MANAGED-RELAY-PAIR, B3-T1090-NJA-EGRESS-PROVENANCE, B3-T1090-NJA-ROUTING-AUTHORITY]
+      candidate_resolution: create
+      reuse_notes:
+        zh: DET-000049/NJA-000023 可扩展被攻陷基础设施准备与所有者侧完整性，但不包含 C2 两段 socket/flow 配对；DET-000163/NJA-000175 校验产品服务内容契约，也不等同 SNI—Host—提供方账户路由权威。建议新建策略并按相同事实复用或扩展 CASE/REF。
+        en: DET-000049 and NJA-000023 may extend compromised-infrastructure preparation and owner-side integrity but do not pair the two C2 socket or flow legs. DET-000163 and NJA-000175 validate product-service content contracts and are not the same as SNI-to-Host-to-provider-account routing authority. Create a strategy while reusing or extending cases and references for the same facts.
+  detection_analytics:
+    - temporary_key: B3-T1090-NJA-MANAGED-RELAY-PAIR
+      name:
+        zh: 受管中介入出站会话配对分析
+        en: Managed-Intermediary Ingress-Egress Session Pairing Analytic
+      purpose:
+        zh: 证明受管内部主机或网络设备同时接收一段会话并建立另一段未批准连接，而不是从单个代理工具或单边 flow 推断转发。
+        en: Establish that a managed internal host or network device received one session and established another unauthorized connection rather than infer forwarding from a proxy tool or one-sided flow.
+      raw_to_normalized_fields:
+        - source: endpoint-network
+          channel: Sysmon Event 3 or EDR equivalent
+          raw_fields: [UtcTime, ProcessGuid, ProcessId, Image, SourceIp, SourcePort, DestinationIp, DestinationPort, Protocol, Initiated]
+          normalized_fields: [event_time, relay_device_id, relay_process_key, relay_image, leg_direction, source_ip, source_port, destination_ip, destination_port, transport]
+        - source: network-flow
+          channel: Zeek conn.log or flow equivalent
+          raw_fields: [ts, uid, id.orig_h, id.orig_p, id.resp_h, id.resp_p, proto, service, duration, orig_bytes, resp_bytes, conn_state, history]
+          normalized_fields: [event_time, sensor_session_id, source_ip, source_port, destination_ip, destination_port, transport, service, duration, bytes_a_to_b, bytes_b_to_a, connection_state]
+        - source: proxy-or-forwarder-audit
+          channel: SOCKS, FRP, reverse-proxy, firewall, NAT, or PortProxy configuration/audit
+          raw_fields: [timestamp, device_id, authenticated_client, command, requested_destination, requested_port, bound_address, bound_port, result, rule_id, change_actor, configuration_version]
+          normalized_fields: [event_time, relay_device_id, relay_identity, relay_command, requested_destination, requested_port, outbound_bind, decision, relay_rule_id, rule_actor, rule_version]
+      logic:
+        zh: >-
+          先以 relay_device_id 和 relay_process_key 规范所有监听、连接及转发规则，生成 inbound_leg 与 outbound_leg。对每条入站会话在十秒内寻找同一进程、规则或代理 session 建立的外出会话；若无显式 session ID，则以端口映射、时间、方向、持续时间和双向字节比例形成候选配对。再核对批准中介清单、变更工单、调用身份和请求目的。只有发现未批准 relay 状态且两段流量配对，并在外段出现 C2/操作者结果时输出 confirmed_relay；仅存在规则、工具或一侧流量分别输出 configuration_risk 或 incomplete_path。
+        en: >-
+          Normalize listeners, connections, and forwarding rules by relay_device_id and relay_process_key, producing inbound_leg and outbound_leg. For every inbound session, search within ten seconds for an outbound session established by the same process, rule, or proxy session. Where no explicit session ID exists, create a candidate pair from port mapping, time, direction, duration, and bidirectional byte ratio. Compare the pair with the approved-intermediary inventory, change ticket, initiating identity, and requested destination. Emit confirmed_relay only when unauthorized relay state and paired legs lead to a C2 or operator outcome on the outer leg. A rule, tool, or one-sided flow alone yields configuration_risk or incomplete_path.
+      correlation:
+        window: 10 seconds for leg pairing; 24 hours for rule change to first relay use
+        dimensions: [relay_device_id, relay_process_key, relay_rule_id, proxy_session_id, inbound_tuple, outbound_tuple, requested_destination, rule_actor, time]
+      observables:
+        - 未批准监听或 PortProxy/FRP/SOCKS 规则与同一设备双侧 flow 相连
+        - 入出站持续时间和双向字节形态相近且进程/规则一致
+        - 受限源通过中介到达原本不可达目标并产生控制结果
+      false_positives: [批准的堡垒机与跳板机, 企业代理与服务网格, 运维端口转发, 备份和监控中继, 安全测试]
+      blind_spots: [Event 3 未启用, 网络设备不记录进程, NAT/代理缺少 session ID, 加密负载只能用弱流量配对, 时钟漂移, relay 位于不可见外部组织]
+      tuning_guidance:
+        zh: 先维护按设备、进程、规则、调用身份、可达域和有效期限定的批准中介清单；流量比例只能排序候选，不能单独确认。分别调校低吞吐交互和高吞吐转发，保留拒绝与失败连接，并按正常最长代理会话覆盖窗口。
+        en: Maintain an approved-intermediary inventory bounded by device, process, rule, calling identity, reachable domain, and validity period. Byte ratio ranks candidate pairs and never confirms alone. Tune low-throughput interactive and high-throughput relay traffic separately, retain denied and failed connections, and cover the longest normal proxy session in retention.
+      evidence_keys: [REF-000025, B3-T1090-REF-RFC1928, REF-000634, REF-000230]
+      confidence: high
+    - temporary_key: B3-T1090-NJA-EGRESS-PROVENANCE
+      name:
+        zh: 第三方出口完整性—目标最后跳关联分析
+        en: Third-Party Egress Integrity to Target Last-Hop Correlation Analytic
+      purpose:
+        zh: 把目标看到的住宅/企业最后跳与边缘设备所有者的代理状态和出站 flow 关联，区分借用真实归属与普通代理使用。
+        en: Join residential or enterprise last hops seen by a target to proxy state and outbound flows at the edge-device owner, distinguishing borrowed genuine provenance from ordinary proxy use.
+      raw_to_normalized_fields:
+        - source: target-network-observation
+          channel: firewall, NDR, VPN, authentication, or service access logs
+          raw_fields: [timestamp, source_ip, source_port, destination_ip, destination_port, protocol, session_id, tls_fingerprint, account_or_target]
+          normalized_fields: [event_time, last_hop_ip, last_hop_port, target_ip, target_port, transport, target_session_id, client_fingerprint, target_identity]
+        - source: edge-device-integrity
+          channel: router/firewall/VPN configuration and process audit
+          raw_fields: [timestamp, device_id, owner_id, firmware_version, support_status, process_or_module, listener, config_hash, admin_actor, change_result]
+          normalized_fields: [event_time, relay_device_id, asset_owner, software_version, lifecycle_state, relay_artifact, relay_listener, integrity_state, management_actor, management_result]
+        - source: edge-egress-flow
+          channel: device flow, ISP flow, or owner-side NDR
+          raw_fields: [timestamp, device_id, pre_nat_source, post_nat_source, destination_ip, destination_port, protocol, bytes_out, bytes_in, flow_id]
+          normalized_fields: [event_time, relay_device_id, internal_source, last_hop_ip, target_ip, target_port, transport, bytes_a_to_b, bytes_b_to_a, owner_flow_id]
+      logic:
+        zh: >-
+          从目标侧可疑会话取得 last_hop_ip、时间、指纹与目标结果，在获授权的资产所有者或提供方数据中解析该 IP 对应设备和 NAT 时段。要求同一设备在时间和字节容差内具有匹配出站 flow，并存在未批准代理/VPN 模块、异常监听或管理变化；若还能连接到上游入站 flow，则输出 provenance_borrowing_confirmed。目标侧仅看到住宅 ASN 或本地地理时输出 last_hop_only；设备完整性异常但无目标配对时输出 compromised_relay_risk。
+        en: >-
+          Obtain last_hop_ip, time, fingerprint, and target outcome from a suspicious target-side session and resolve that IP to a device and NAT interval in authorized asset-owner or provider data. Require a matching outbound flow from that device within time and byte tolerances plus an unauthorized proxy or VPN module, anomalous listener, or management change. Emit provenance_borrowing_confirmed when an upstream inbound flow can also be joined. Residential ASN or local geography at the target alone yields last_hop_only; device-integrity anomaly without a target pair yields compromised_relay_risk.
+      correlation:
+        window: 5 minutes per flow pair; 90 days for device integrity and management history
+        dimensions: [last_hop_ip, nat_interval, relay_device_id, owner_flow_id, target_session_id, client_fingerprint, target_identity, time]
+      observables:
+        - 目标最后跳映射到 EOL 或被植入的边缘设备
+        - 设备出现新代理/VPN 模块或未批准监听并同时向目标转发
+        - 多个表面无关出口共享客户端指纹、目标和操作时间但每个目标侧来源短寿
+      false_positives: [商业住宅代理, ISP CGNAT, 合法远程管理, 托管安全服务, 用户自建 VPN, 路由器固件升级]
+      blind_spots: [无跨组织授权, CGNAT 映射缺失, 设备不产生日志, 内存驻留模块, 共享出口用户过多, 目标仅保留聚合流量]
+      tuning_guidance:
+        zh: 不以 ASN、国家或住宅标签直接阻断；将设备生命周期、具体完整性异常、同一时段 NAT 映射和目标行为作为独立评分。所有者/提供方不可见时明确标记 last_hop_only，不用情报推断填补证据空白。
+        en: Do not block directly on ASN, country, or residential labels. Score device lifecycle, a concrete integrity anomaly, same-interval NAT mapping, and target behavior independently. When owner or provider visibility is absent, explicitly label last_hop_only rather than filling the evidence gap with intelligence inference.
+      evidence_keys: [REF-000073, REF-000074, CASE-000045, REF-000025]
+      confidence: medium
+    - temporary_key: B3-T1090-NJA-ROUTING-AUTHORITY
+      name:
+        zh: TLS—HTTP—提供方路由权威一致性分析
+        en: TLS-HTTP-Provider Routing-Authority Congruence Analytic
+      purpose:
+        zh: 在同一会话比较 DNS、TLS SNI/证书、HTTP Host/:authority、CDN 账户和实际源站，识别外层获准名称被用来路由到未关联后端。
+        en: Compare DNS, TLS SNI and certificate, HTTP Host or :authority, CDN account, and actual origin within one session to identify an approved outer name routing to an unrelated backend.
+      raw_to_normalized_fields:
+        - source: dns-tls-http
+          channel: resolver, TLS sensor, decrypting proxy, or endpoint network telemetry
+          raw_fields: [timestamp, client_id, query_name, answer_ip, connection_id, sni, certificate_san, certificate_fingerprint, http_host_or_authority, method, uri, status_code]
+          normalized_fields: [event_time, device_id, resolved_name, edge_ip, session_id, outer_name, certificate_names, certificate_id, inner_routing_authority, http_method, request_path, response_status]
+        - source: cdn-or-frontdoor-diagnostic
+          channel: provider access and diagnostic logs
+          raw_fields: [timestamp, request_id, Sni, requestUri, ErrorInfo, Result, distribution_or_profile_id, account_or_subscription_id, OriginName, OriginIP, OriginURL]
+          normalized_fields: [event_time, provider_request_id, outer_name, inner_routing_authority, provider_decision, provider_result, route_id, route_owner, origin_name, origin_ip, origin_url]
+      logic:
+        zh: >-
+          以 device_id、session_id 或 provider_request_id 合并 DNS、TLS 与 HTTP 层，计算 outer_name、certificate_names、inner_routing_authority 和 route_owner 的一致关系。若 SNI 缺失或与 Host 不同，且 Host 未被证书覆盖、路由不属于同一批准账户/订阅，或提供方记录 SSLMismatchedSNI/421，则标记 routing_authority_divergence。只有再连接到未批准源站、C2 进程或控制结果时才提升高置信；同账户合法多域路由、Host 重写和旧客户端无 SNI 作为替代解释保留。
+        en: >-
+          Join DNS, TLS, and HTTP layers by device_id, session_id, or provider_request_id and compute congruence among outer_name, certificate_names, inner_routing_authority, and route_owner. Mark routing_authority_divergence when SNI is absent or differs from Host and the Host is not certificate-covered, routing does not belong to the same approved account or subscription, or the provider records SSLMismatchedSNI or 421. Raise to high confidence only after joining an unapproved origin, C2 process, or control outcome. Preserve same-account legitimate multi-domain routing, Host rewriting, and legacy no-SNI clients as alternatives.
+      correlation:
+        window: 5 minutes for enterprise sensor joins; provider request lifetime for request_id
+        dimensions: [device_id, session_id, provider_request_id, edge_ip, outer_name, inner_routing_authority, certificate_id, route_owner, origin_name, time]
+      observables:
+        - SNI 与 Host/:authority 不一致且不属于批准的同账户路线
+        - 证书覆盖外层名称但不覆盖决定后端的内层权威
+        - 提供方返回 421 或 SSLMismatchedSNI 并记录未批准 OriginURL
+        - 同一端点进程随后出现 C2 控制结果
+      false_positives: [合法 CDN 多租户, 反向代理 Host 重写, 同订阅多域路由, 旧客户端无 SNI, TLS 检查设备改写, 测试和迁移]
+      blind_spots: [TLS 未解密, ECH 隐藏 SNI, HTTP/3 采集不足, 企业拿不到提供方账户与源站字段, 同一租户内被滥用路线通过平台一致性检查]
+      tuning_guidance:
+        zh: 维护按应用、提供方账户/订阅、证书、前端域和源站绑定的批准路由图；先记录 mismatch，再对跨账户和未批准源站执行阻断。不要把所有 SNI/Host 差异等同恶意，也不能因知名 CDN 域而整体豁免。
+        en: Maintain an approved routing graph bound by application, provider account or subscription, certificate, front domain, and origin. Observe mismatches before enforcing and block cross-account or unapproved-origin cases. Do not equate every SNI-to-Host difference with malice or exempt an entire well-known CDN domain.
+      evidence_keys: [B3-T1090-REF-MANDIANT-APT29-FRONTING, B3-T1090-REF-AWS-CLOUDFRONT, B3-T1090-REF-AZURE-FRONTDOOR, B3-T1090-REF-AZURE-FRONTDOOR-MONITOR, B3-T1090-REF-RFC7239]
+      confidence: high
+  mitigations:
+    - temporary_key: B3-T1090-MIT-RELAY-AND-ROUTING-AUTHORITY-GOVERNANCE
+      name:
+        zh: 中介转发与路由权威治理
+        en: Intermediary Forwarding and Routing-Authority Governance
+      description:
+        zh: 以批准的中介清单、双侧会话审计、边缘设备生命周期和跨层名称/账户一致性约束代理路径，保留重建所需的原始和转换后关系。
+        en: Govern proxy paths through an approved-intermediary inventory, bilateral session audit, edge-device lifecycle controls, and cross-layer name and account congruence while retaining pre- and post-forwarding relationships needed for reconstruction.
+      measures:
+        - key: approved-relay-inventory-and-default-deny
+          name: {zh: 批准中介清单与默认拒绝, en: Approved-Relay Inventory and Default Deny}
+          control_type: preventive
+          implementation:
+            zh: 按设备、签名进程、监听、调用身份、可达网络域、请求目的和有效期登记代理、堡垒机、服务网格和端口转发；阻断未登记的 FRP、SOCKS、Tor、PortProxy 与直接外部代理路线，并把拒绝保留到集中日志。
+            en: Register proxies, bastions, service meshes, and port forwards by device, signed process, listener, calling identity, reachable network domain, requested destination, and validity period. Block unregistered FRP, SOCKS, Tor, PortProxy, and direct external-proxy routes and retain denials centrally.
+        - key: bilateral-proxy-session-accounting
+          name: {zh: 代理双侧会话记账, en: Bilateral Proxy Session Accounting}
+          control_type: detective-support
+          implementation:
+            zh: 受管中介为每次请求生成稳定 session ID，记录认证客户端、原始五元组、请求目的、绑定地址、出站五元组、规则/配置版本、决定、开始结束和字节计数；日志实时送往不同权限存储。
+            en: Have each managed intermediary generate a stable session ID and record authenticated client, original tuple, requested destination, bound address, outbound tuple, rule or configuration version, decision, start and end, and byte counters, forwarding the log in real time to differently authorized storage.
+        - key: edge-device-lifecycle-and-integrity
+          name: {zh: 边缘设备生命周期与完整性控制, en: Edge-Device Lifecycle and Integrity Control}
+          control_type: exposure-reduction
+          implementation:
+            zh: 淘汰 EOL 路由器与 VPN/防火墙设备，关闭公网管理面，实施唯一管理身份、签名固件和配置基线，监控新监听、VPN/代理模块及异常设备间登录，并支持快速隔离和取证留存。
+            en: Retire end-of-life routers and VPN or firewall devices, close public management, enforce unique administrative identity, signed firmware, and configuration baselines, monitor new listeners, VPN or proxy modules, and anomalous device-to-device logons, and support rapid isolation with forensic preservation.
+        - key: routing-authority-congruence-enforcement
+          name: {zh: 路由权威一致性强制, en: Routing-Authority Congruence Enforcement}
+          control_type: preventive
+          implementation:
+            zh: 在可解密出口或 CDN/Front Door 校验 SNI、Host/:authority、证书覆盖、租户/订阅、路由和源站，拒绝跨账户或未批准 mismatch，记录 421、SSLMismatchedSNI、OriginName/IP/URL 与请求 ID。
+            en: At a decrypting egress or CDN or Front Door, validate SNI, Host or :authority, certificate coverage, tenant or subscription, route, and origin; reject cross-account or unauthorized mismatches and record 421, SSLMismatchedSNI, OriginName, OriginIP, OriginURL, and request ID.
+      applications:
+        - target: parent
+          use:
+            zh: 对所有批准中介实施限定范围、双侧会话 ID、配置版本和集中审计，对未登记转发默认拒绝并关联后继 C2 结果。
+            en: Scope every approved intermediary, assign bilateral session IDs, retain configuration versions and centralized audit, deny unregistered forwarding by default, and join later C2 outcomes.
+          expected_effect:
+            zh: 中介不再天然切断路径谱系，内部/外部代理均留下可连接的原始客户端、请求目的和出站关系。
+            en: Intermediaries no longer inherently break path lineage, and both internal and external proxies retain joinable original-client, requested-destination, and outbound relationships.
+          limitations:
+            zh: 外部公共或敌手控制中介不服从组织策略；严格默认拒绝会影响远程办公、供应商支持与复杂服务网格，需具体且限时的例外。
+            en: Public or adversary-controlled external intermediaries do not follow organizational policy. Strict default deny can disrupt remote work, vendor support, and complex service meshes and requires specific time-bounded exceptions.
+        - target: compromised-egress-provenance
+          use:
+            zh: 淘汰 EOL 边缘设备、限制管理面、验证固件与代理模块，并让目标侧风险决策结合设备完整性和会话行为，不单靠地理/ASN 放行。
+            en: Retire end-of-life edge devices, constrain management, verify firmware and proxy modules, and combine target-side risk decisions with device integrity and session behavior rather than allow solely by geography or ASN.
+          expected_effect:
+            zh: 攻击者更难廉价取得真实第三方出口，残余被控节点更易从所有者侧异常和目标流量恢复。
+            en: The actor has greater difficulty cheaply acquiring genuine third-party egress, and residual compromised nodes become easier to recover from owner-side anomalies and target flows.
+          limitations:
+            zh: 组织不能修补所有互联网 SOHO 设备；合法住宅代理、CGNAT 与共享网络仍会限制仅靠目标侧判断的精度。
+            en: An organization cannot patch every Internet SOHO device, and legitimate residential proxies, CGNAT, and shared networks limit accuracy from target-side evidence alone.
+        - target: compartmented-relay-custody
+          use:
+            zh: 在端点限制未批准 Tor/代理组件，跨所有自有边界集中保留时间、五元组、字节和进程键，并对需使用匿名网络的业务采用专用受管出口与审计。
+            en: Restrict unauthorized Tor or proxy components on endpoints, centrally retain time, tuple, byte, and process keys across every owned boundary, and route legitimate anonymity-network use through a dedicated managed egress with audit.
+          expected_effect:
+            zh: 自有观察域中的链段可被合并，攻击者必须把更多关键关系移到不可见外部节点并承担更高维护和延迟成本。
+            en: Path segments inside owned observation domains can be joined, forcing the actor to move more critical relationships into unseen external nodes and accept higher maintenance and latency cost.
+          limitations:
+            zh: 无法强制外部 relay 留存，流量确认受背景流量、填充和时间扰动影响；封禁 Tor 还可能伤害合法隐私与研究用途。
+            en: External relays cannot be forced to retain records, traffic confirmation is affected by background traffic, padding, and timing perturbation, and blocking Tor may harm legitimate privacy and research use.
+        - target: routing-authority-divergence
+          use:
+            zh: 强制同会话 SNI、Host、证书与路由账户/订阅关系一致，批准的同账户 Host 重写须登记源站和有效期，所有 mismatch 保留请求 ID 和实际源站。
+            en: Enforce congruence among same-session SNI, Host, certificate, and route account or subscription. Register approved same-account Host rewriting with origin and validity, and retain request ID and actual origin for every mismatch.
+          expected_effect:
+            zh: 仅借公共前端名称不能把请求路由到攻击者后端，跨租户域前置被边缘直接拒绝并留下高质量证据。
+            en: A public front name alone cannot route the request to an actor backend, and cross-tenant fronting is rejected at the edge with high-quality evidence.
+          limitations:
+            zh: ECH、无 SNI 客户端、同租户滥用和合法多域路由需要额外上下文；企业若不能解密 TLS，主要依赖提供方执行和日志。
+            en: ECH, no-SNI clients, same-tenant abuse, and legitimate multi-domain routing require more context. Enterprises unable to decrypt TLS depend mainly on provider enforcement and logs.
+      evidence_keys: [REF-000025, REF-000073, REF-000074, B3-T1090-REF-RFC1928, B3-T1090-REF-RFC7239, B3-T1090-REF-AWS-CLOUDFRONT, B3-T1090-REF-AZURE-FRONTDOOR, B3-T1090-REF-AZURE-FRONTDOOR-MONITOR]
+      candidate_resolution: create-or-split
+existing_library_reuse:
+  reference_refs: [REF-000625, REF-000025, REF-000073, REF-000074, REF-000634, REF-000230]
+  claim_refs: []
+  case_refs: [CASE-000045]
+  strategy_refs: []
+  analytic_refs: []
+  mitigation_refs: []
+  relationship_refs: []
+library_candidates:
+  references:
+    - temporary_key: B3-T1090-REF-MANDIANT-APT29-FRONTING
+      title:
+        zh: APT29 使用 Tor 进行域前置
+        en: APT29 Domain Fronting with The Onion Router (TOR)
+      url: https://cloud.google.com/blog/topics/threat-intelligence/apt29-domain-frontin
+      publisher: Mandiant
+      author: Matthew Dunwoody
+      published: '2017-03-27'
+      source_type: incident-report
+      locator: Mandiant observation of APT29; Tor/meek; TLS front domain; HTTP reflection-server Host; Tor hidden service forwarding local ports 139, 445, and 3389
+      credibility: high
+      limitation: 单一 APT29 调查证明具体组合，但不证明所有 Tor、CDN 或域名差异均为恶意；文中“indistinguishable”是作者结论，Niji 正式稿应保留端点与提供方可见的残余痕迹。
+    - temporary_key: B3-T1090-REF-RFC1928
+      title:
+        zh: RFC 1928：SOCKS 协议第 5 版
+        en: 'RFC 1928: SOCKS Protocol Version 5'
+      url: https://www.rfc-editor.org/info/rfc1928/
+      publisher: IETF / RFC Editor
+      published: '1996-03'
+      source_type: standard
+      locator: CONNECT/BIND/UDP ASSOCIATE; DST.ADDR/DST.PORT; BND.ADDR/BND.PORT; client-to-proxy and proxy-to-target relationship
+      credibility: high
+      limitation: 标准证明协议字段与转发模型，不证明任何使用实例为恶意或提供具体产品日志字段。
+    - temporary_key: B3-T1090-REF-RFC7239
+      title:
+        zh: RFC 7239：Forwarded HTTP 扩展
+        en: 'RFC 7239: Forwarded HTTP Extension'
+      url: https://www.rfc-editor.org/info/rfc7239/
+      publisher: IETF / RFC Editor
+      published: '2014-06'
+      source_type: standard
+      locator: Forwarded for/by/host/proto; per-proxy chain elements; optionality and trust/security limits
+      credibility: high
+      limitation: Forwarded 为可选且可被客户端伪造或代理删除；只有受信边界生成的字段可作谱系证据。
+    - temporary_key: B3-T1090-REF-TOR-OVERVIEW
+      title:
+        zh: Tor 工作原理概览
+        en: How Tor Works Overview
+      url: https://support.torproject.org/about-tor/how-tor-works/overview/
+      publisher: Tor Project
+      published: null
+      source_type: official-documentation
+      locator: multi-relay circuit; each relay knows predecessor and successor only; no individual relay knows complete path
+      credibility: high
+      limitation: 说明系统设计与观察模型，不证明具体攻击者使用或任何部署完全匿名。
+    - temporary_key: B3-T1090-REF-TOR-PATH
+      title:
+        zh: Tor 入口、中间与出口路径选择规范
+        en: Tor Circuit Creation and Entry Guard Selection
+      url: https://spec.torproject.org/guard-spec/guard-selection/index.html
+      publisher: Tor Project
+      published: null
+      source_type: official-documentation
+      locator: client-entry guard-middle-exit-destination path and relay selection roles
+      credibility: high
+      limitation: 证明典型三跳路径角色，不提供攻击检测效果、阈值或 APT29 个案归因。
+    - temporary_key: B3-T1090-REF-AWS-CLOUDFRONT
+      title:
+        zh: CloudFront 备用域名限制与域前置防护
+        en: CloudFront Alternate Domain Name Restrictions and Domain Fronting Protection
+      url: https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/CNAMEs.html
+      publisher: Amazon Web Services
+      published: null
+      source_type: official-documentation
+      locator: SNI equals Host; certificate account and coverage checks; cross-account domain-fronting rejection with HTTP 421; Host selects distribution
+      credibility: high
+      limitation: CloudFront 当前控制面不能代表历史服务或其他 CDN；同账户/无 SNI 情况有平台特定例外。
+    - temporary_key: B3-T1090-REF-AZURE-FRONTDOOR
+      title:
+        zh: Azure Front Door 域前置阻断与诊断日志
+        en: Azure Front Door Domain Fronting Blocking and Diagnostic Logs
+      url: https://learn.microsoft.com/en-us/azure/frontdoor/front-door-faq
+      publisher: Microsoft
+      published: null
+      source_type: official-documentation
+      locator: SNI/Host mismatch; same-subscription route exception; HTTP 421; SSLMismatchedSNI diagnostic value
+      credibility: high
+      limitation: FAQ 支持平台控制逻辑与 mismatch 处置；具体诊断字段由独立 monitor 文档支持。
+    - temporary_key: B3-T1090-REF-AZURE-FRONTDOOR-MONITOR
+      title:
+        zh: Azure Front Door 监控与访问日志字段
+        en: Monitor Azure Front Door
+      url: https://learn.microsoft.com/en-us/azure/frontdoor/monitor-front-door
+      publisher: Microsoft
+      published: null
+      source_type: official-documentation
+      locator: Sni, requestUri, ErrorInfo/SSLMismatchedSNI, Result, OriginName, OriginIP, and OriginURL fields
+      credibility: high
+      limitation: 字段可用性取决于 Front Door 层级、诊断设置和请求是否到达源站；字段文档不证明攻击。
+  claims:
+    - temporary_key: B3-T1090-CLM-TWO-LEG
+      statement:
+        zh: 代理中介把客户端到目标的一条逻辑通信实现为客户端—代理和代理—目标两段网络关系，目标通常只把最后跳识别为直接来源。
+        en: A proxy intermediary implements one logical client-to-target communication as client-to-proxy and proxy-to-target network relationships, with the target normally identifying only the last hop as its direct origin.
+      evidence_keys: [B3-T1090-REF-RFC1928, REF-000025]
+      evidence_mode: standard-plus-field-observation
+      confidence: high
+    - temporary_key: B3-T1090-CLM-COMPROMISED-PROVENANCE
+      statement:
+        zh: 被攻陷 SOHO/边缘设备作为出口时，目标看到第三方真实网络归属而非操作者原始位置，设备完整性与跨侧流量仍可恢复关系。
+        en: When a compromised SOHO or edge device serves as egress, the target sees genuine third-party network provenance rather than the operator's original location, while device integrity and cross-vantage flows can still recover linkage.
+      evidence_keys: [REF-000073, REF-000074, CASE-000045]
+      evidence_mode: directly-observed
+      confidence: high
+    - temporary_key: B3-T1090-CLM-RELAY-CUSTODY
+      statement:
+        zh: 只知相邻节点的多中继路径将端到端观察责任分散到不同节点与管理域，单点日志不能独立还原源和目的。
+        en: A multi-relay path whose relays know only adjacent nodes distributes end-to-end observation custody across nodes and administrative domains, preventing one point log from independently recovering both source and destination.
+      evidence_keys: [B3-T1090-REF-TOR-OVERVIEW, B3-T1090-REF-TOR-PATH, B3-T1090-REF-MANDIANT-APT29-FRONTING]
+      evidence_mode: architecture-plus-field-observation
+      confidence: high
+    - temporary_key: B3-T1090-CLM-ROUTING-AUTHORITY
+      statement:
+        zh: 共享边缘服务按解密后的 Host/:authority 路由时，外层 TLS SNI/证书身份可与真实后端路由权威分离；提供方可用名称、证书、账户和源站一致性阻断该差异。
+        en: When a shared edge service routes by the decrypted Host or :authority, outer TLS SNI or certificate identity can diverge from actual backend routing authority; the provider can reject the differential through name, certificate, account, and origin congruence.
+      evidence_keys: [B3-T1090-REF-MANDIANT-APT29-FRONTING, B3-T1090-REF-AWS-CLOUDFRONT, B3-T1090-REF-AZURE-FRONTDOOR, B3-T1090-REF-AZURE-FRONTDOOR-MONITOR]
+      evidence_mode: field-observation-plus-official-control-documentation
+      confidence: high
+    - temporary_key: B3-T1090-CLM-TAXONOMY
+      statement:
+        zh: 中介位于内部或外部、路径有几跳均不足以构成 Niji 子项；只有第三方归属借用、观察责任分舱或跨层路由权威差带来独立痕迹与防御时才正式划分。
+        en: Intermediary location inside or outside and hop count do not by themselves form Niji children; formal separation requires third-party provenance borrowing, compartmented observation custody, or a cross-layer routing-authority differential with independent traces and defense.
+      evidence_keys: [REF-000625, B3-T1090-REF-RFC1928, B3-T1090-REF-RFC7239, B3-T1090-REF-TOR-OVERVIEW]
+      evidence_mode: research-synthesis
+      confidence: medium
+  cases:
+    - temporary_key: B3-T1090-CASE-VOLT-INTERNAL-RELAY
+      name:
+        zh: Volt Typhoon 的 PRTG PortProxy 与 FRP 中介
+        en: Volt Typhoon PRTG PortProxy and FRP Intermediary
+      actor_or_campaign: Volt Typhoon
+      time_range: activity reported through 2024-02-07
+      central_facts:
+        zh: CISA 联合公告记录攻击者在 PRTG 服务器创建 netsh PortProxy 修改，将特定端口流量重定向至其代理基础设施，并使用 FRP 客户端建立 C2 通信；公告提供中介状态和用途，但未公开可配对的逐流原始日志。
+        en: The CISA joint advisory records actors creating a netsh PortProxy modification on a PRTG server to redirect selected port traffic to proxy infrastructure and using FRP clients for C2 communications. It establishes intermediary state and purpose but does not publish raw per-flow records that can be paired independently.
+      evidence_keys: [REF-000025]
+      confidence: high
+    - temporary_key: B3-T1090-CASE-APT29-TOR-FRONTING
+      name:
+        zh: APT29 的 Tor、meek 与 CDN 域前置后门路径
+        en: APT29 Tor, meek, and CDN-Fronted Backdoor Path
+      actor_or_campaign: APT29
+      time_range: observed for at least two years before 2017-03 reporting
+      central_facts:
+        zh: Mandiant 观察 APT29 以 Tor 和 meek 建立后门，TLS 外观指向 Google 服务，HTTP 指定 reflection server，Tor hidden service 再把流量转发到本地 139、445 和 3389 端口；案例同时支持分舱中继与跨层路由权威分离，并与隧道并列。
+        en: Mandiant observed APT29 establishing a backdoor with Tor and meek, presenting Google-service TLS appearance, naming a reflection server in HTTP, and using a Tor hidden service to forward traffic to local ports 139, 445, and 3389. The case supports both compartmented relay custody and cross-layer routing-authority divergence and coexists with tunneling.
+      evidence_keys: [B3-T1090-REF-MANDIANT-APT29-FRONTING]
+      confidence: high
+  detection_strategies: [B3-T1090-DET-INTERMEDIARY-PATH-LINEAGE]
+  detection_analytics: [B3-T1090-NJA-MANAGED-RELAY-PAIR, B3-T1090-NJA-EGRESS-PROVENANCE, B3-T1090-NJA-ROUTING-AUTHORITY]
+  mitigations: [B3-T1090-MIT-RELAY-AND-ROUTING-AUTHORITY-GOVERNANCE]
+  relationships: []
+research:
+  taxonomy_breadth_review:
+    attack_subtechnique_count: 4
+    attack_subtechnique_ids: [T1090.001, T1090.002, T1090.003, T1090.004]
+    represented_dimensions:
+      - 中介相对受害网络边界的位置：内部或外部
+      - 代理链节点数量与追踪深度
+      - CDN/TLS/HTTP 名称层参与的后端路由方式
+    breadth_trigger: examine-at-least-two-materially-distinct-axes
+    coverage_resolutions:
+      - attack_subtechnique_id: T1090.001
+        attack_name: Internal Proxy
+        resolution: parent-core
+        notes:
+          zh: 内部位置支持汇聚受限主机、越过分区和缩减直接外联，但位置本身不产生唯一匿迹变量；CISA PRTG/FRP 支持父级两段转发与检测设计。
+          en: Internal placement supports aggregating restricted hosts, crossing zones, and reducing direct egress, but location itself does not produce a unique stealth variable. CISA PRTG and FRP activity supports parent-level two-leg forwarding and defense design.
+      - attack_subtechnique_id: T1090.002
+        attack_name: External Proxy
+        resolution: parent-core
+        notes:
+          zh: 外部位置通常替代目标可见来源，但租赁 VPS、VPN、公共代理和被攻陷出口的痕迹不同；普通外部代理归父级，被攻陷真实第三方出口贡献第一个 Niji 变量。
+          en: External placement commonly substitutes the target-visible origin, but rented VPS, VPN, public proxy, and compromised egress leave different traces. Ordinary external proxying remains parent-core, while compromised genuine third-party egress contributes the first Niji variable.
+      - attack_subtechnique_id: T1090.003
+        attack_name: Multi-hop Proxy
+        resolution: niji-variable-candidate
+        notes:
+          zh: 跳数不是变量；只有各中继属于不同观察责任域、只保留相邻关系且端到端链无法由单点恢复时，贡献“分舱中继观察链断裂”。
+          en: Hop count is not the variable. Multi-hop contributes Compartmented-Relay Observation-Chain Break only when relays occupy separate observation-custody domains, retain adjacent relationships only, and no one point recovers the end-to-end chain.
+      - attack_subtechnique_id: T1090.004
+        attack_name: Domain Fronting
+        resolution: niji-variable-candidate
+        notes:
+          zh: 不继承“域前置”名称；其稳定贡献是同一会话外层 TLS 身份与解密后路由权威分离，形成跨层一致性分析和提供方控制。
+          en: The Domain Fronting label is not inherited. Its stable contribution is separation between outer TLS identity and decrypted routing authority within one session, enabling cross-layer congruence analysis and provider enforcement.
+    candidate_stealth_axes_examined:
+      - 被攻陷第三方出口的真实网络归属借用
+      - 多管理域中继对端到端观察责任的分舱
+      - TLS/HTTP/提供方账户之间的跨层路由权威分离
+      - 内部与外部位置差异（拒绝为独立子项）
+      - 代理链长度（拒绝为独立子项）
+      - 代理端点轮换（交给 TA0042 NJS-0044-002 或 NJT-0153，视直接对象而定）
+    second_pass_required: false
+    second_pass_completed: false
+    proposed_niji_child_count: 3
+    breadth_gap_explained: true
+    reviewer_notes:
+      zh: >-
+        四个 ATT&CK 子项全部获得 planning-only 决议。三个建议 Niji 子项跨越 ATT&CK 的位置/工具分类：被攻陷出口可存在于 external 或 multi-hop，分舱观察可由 Tor 或自建链实现，路由权威差可由不同共享边缘服务实现。主 Agent 应重点复核第一个子项与 TA0042 NJS-0044-002 的双重归类是否保持“资源准备”与“实际 C2 转发”边界。
+      en: >-
+        All four ATT&CK children have planning-only resolutions. The three proposed Niji children cut across ATT&CK's placement and implementation categories: compromised egress may be external or multi-hop, compartmented observation may use Tor or a private chain, and routing-authority divergence may use different shared edge services. The primary agent should specifically review dual classification of the first child with TA0042 NJS-0044-002 so resource preparation remains distinct from actual C2 forwarding.
+  evidence_coverage:
+    parent_behavior_keys: [REF-000625, REF-000025, B3-T1090-REF-RFC1928]
+    boundary_keys: [REF-000625, B3-T1090-REF-RFC1928, B3-T1090-REF-RFC7239, B3-T1090-REF-MANDIANT-APT29-FRONTING]
+    mechanism_support:
+      - mechanism: NM-FD
+        evidence_keys: [REF-000073, REF-000074, B3-T1090-REF-MANDIANT-APT29-FRONTING, B3-T1090-REF-AWS-CLOUDFRONT]
+      - mechanism: NM-ST
+        evidence_keys: [B3-T1090-REF-TOR-OVERVIEW, B3-T1090-REF-TOR-PATH, B3-T1090-REF-MANDIANT-APT29-FRONTING]
+    child_existence_support:
+      - child_key: B3-T1090-NJS-COMPROMISED-EGRESS-PROVENANCE
+        evidence_keys: [REF-000073, REF-000074, CASE-000045]
+      - child_key: B3-T1090-NJS-COMPARTMENTED-RELAY-CUSTODY
+        evidence_keys: [B3-T1090-REF-MANDIANT-APT29-FRONTING, B3-T1090-REF-TOR-OVERVIEW, B3-T1090-REF-TOR-PATH]
+      - child_key: B3-T1090-NJS-ROUTING-AUTHORITY-DIVERGENCE
+        evidence_keys: [B3-T1090-REF-MANDIANT-APT29-FRONTING, B3-T1090-REF-AWS-CLOUDFRONT, B3-T1090-REF-AZURE-FRONTDOOR, B3-T1090-REF-AZURE-FRONTDOOR-MONITOR]
+    unsupported_or_deferred:
+      - 从住宅/本地 ASN 单独推断代理或真实控制者
+      - 从安装 FRP、Tor、VPN 或 PortProxy 配置单独推断成功 C2 转发
+      - 将两个代理或任何固定跳数自动认定为观察链分舱
+      - 把所有 SNI/Host 差异认定为域前置攻击
+      - 在无提供方或中介日志时宣称已恢复完整控制路径
+      - 将代理轮换、失败换路或内层协议封装直接吸收到 T1090 子项
+  content_depth_review:
+    compared_with_njt_0001: true
+    field_responsibilities_complete: true
+    candidate_specific_prose: true
+    repeated_prose_reviewed: true
+    notes:
+      zh: 父级提案分别覆盖行为与目的、观察差、残余痕迹、正常反例、五项相邻边界、两类场景、攻击者成本、三档防守置信和证据限制；没有以工具或 ATT&CK 子项名称代替分类。
+      en: The parent proposal separately covers behavior and purpose, observation differential, residual traces, normal counterexamples, five adjacent boundaries, two scenario classes, actor cost, three defender confidence levels, and evidence limits. Tool or ATT&CK child names do not substitute for taxonomy.
+  automation_review:
+    canonical_prose_bulk_generated: false
+    mechanical_uses: [YAML syntax validation, local library lookup, exact-URL duplicate search]
+  limitations:
+    paragraphs:
+      - zh: >-
+          Volt Typhoon 来源直接证明内部 PortProxy/FRP 状态和被攻陷 SOHO 出口用途，但公开材料没有提供可供独立复算的逐流入出站 session ID、字节对称性或目标结果。CASE-000045 已把同一 SOHO 事实用于 TA0042 资源准备；扩展到本候选只能支持“实际出口转发与来源归属替代”，不能把设备攻陷步骤或出口池轮换整体搬入 TA0011。CISA/Microsoft/DOJ 对主体归因和用途的高置信不等于每条目标侧住宅 IP 都能归为 Volt Typhoon。
+        en: >-
+          Volt Typhoon sources directly establish internal PortProxy or FRP state and compromised SOHO egress purpose, but public material does not publish per-flow ingress and egress session IDs, byte symmetry, or target outcomes that an independent analyst can recompute. CASE-000045 already uses the same SOHO facts for TA0042 resource preparation. Extending them here supports actual egress forwarding and source-provenance substitution only; it does not move the device-compromise step or egress-pool rotation wholesale into TA0011. High-confidence actor attribution and purpose from CISA, Microsoft, and DOJ do not make every residential target-side IP Volt Typhoon.
+      - zh: >-
+          Mandiant 的 APT29 报告是多跳和跨层路由权威分离的强案例，但 Tor 与 meek 同时包含代理、隧道、加密、域前置和远程服务，因此正式案例必须按直接事实分别支持各对象，不能把一次命中当作全部分类的互证。Tor 文档、RFC 1928/7239、AWS 和 Azure 文档证明架构、字段与控制可能性，不证明提出的 Analytic 在任何环境的检出率。SNI/Host 可见性还受 TLS 解密、ECH、QUIC 和提供方日志权限限制。
+        en: >-
+          Mandiant's APT29 report is strong evidence for layered relays and cross-layer routing-authority divergence, but Tor plus meek simultaneously contains proxying, tunneling, encryption, domain fronting, and remote services. A formal case must support each object with its direct facts rather than treat one hit as proof of every classification. Tor documentation, RFC 1928 and 7239, and AWS and Azure documentation establish architecture, fields, and feasible controls, not detection rates for the proposed analytics in every environment. SNI and Host visibility is further constrained by TLS decryption, ECH, QUIC, and provider-log authority.
+      - zh: >-
+          双侧流量配对中的十秒、五分钟和字节容差是工程起点而非来源给出的通用阈值。长驻代理、复用连接、多路复用、缓存和异步中继会破坏简单一对一匹配；企业代理、服务网格、远程维护、CDN Host 重写和灾备又会产生强正常相似行为。正式 NJA 应在受控转发测试和本地基线中校准，并将不完整路径作为较低结论，而不是因日志缺口提高恶意置信。
+        en: >-
+          Ten-second and five-minute windows and byte tolerances for bilateral flow pairing are engineering starting points rather than universal thresholds supplied by sources. Long-lived proxies, connection reuse, multiplexing, caching, and asynchronous relays break simple one-to-one matching, while enterprise proxies, service meshes, remote maintenance, CDN Host rewriting, and disaster recovery create strong legitimate lookalikes. A formal NJA should calibrate against controlled relay tests and local baselines and report an incomplete path at lower confidence rather than increase malicious confidence because logs are missing.
+  rejected_mechanisms:
+    - mechanism_ref: NM-DO
+      reason:
+        zh: 代理转发不必改变或隐藏 C2 消息语义；内容加密、编码或封装由相邻技术证明，不能从中介存在自动推出数据遮蔽。
+        en: Proxy forwarding need not transform or conceal C2 message semantics. Adjacent techniques establish encryption, encoding, or encapsulation, so Data Obscuration cannot be inferred from an intermediary alone.
+    - mechanism_ref: NM-BT
+      reason:
+        zh: 当前证据核心是来源/目的身份替代与跨节点痕迹分布；“像正常行为”只在具体出口信誉或业务基线下成立，尚不足作为父级独立普遍机理。
+        en: Current evidence centers on origin or destination identity substitution and cross-node trace distribution. Appearing normal depends on concrete egress reputation or business baselines and is insufficient as an independent universal parent mechanism.
+  open_questions:
+    - 主 Agent 是否将“被攻陷网络出口归属借用”保留为正式 T1090 子项，并通过双重主体扩展 CASE-000045；若与 NJS-0044-002 防御差不足，应保留父级案例而非复制资源子项。
+    - REF-000025 的 locator/notes 当前主要记录侦查和 NTDS 行为，正式复用 T1090 前应扩展同一参考对象以准确定位 PRTG PortProxy、FRP 和 multi-hop 段落。
+    - 正式域路由 Analytic 应同时引用 Azure FAQ 的 mismatch 阻断语义和 monitor 文档的 OriginName、OriginIP、OriginURL、Sni、requestUri、ErrorInfo 字段；平台字段仍需按实际 Front Door 层级与诊断配置验证。
+    - 受管代理使用 RFC 7239 时，必须区分由受信第一跳生成的元素与客户端提供的伪造 Forwarded；正式逻辑不应把未验证 header 当作源地址事实。
+integration:
+  status: pending
+  resolutions: []

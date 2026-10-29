@@ -1,0 +1,114 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000292
+strategy_ref: DET-000232
+name:
+  zh: 未来任务登记—调度执行—启动结果分析
+  en: Future Task Registration–Scheduled Execution–Boot Outcome Analytic
+summary:
+  zh: 输出关机/重启任务 writer、definition、runtime 和后来 boot 的长期谱系。
+  en: Emit long-lived lineage from shutdown or reboot task writer and definition through runtime and later boot.
+domains:
+- enterprise
+platforms:
+- Windows
+logic:
+  paragraphs:
+  - zh: 采集 Task Scheduler Operational/Security 的注册、更新、删除、run instance 和 action，保存 task ID/path、definition digest、creator
+      SID/process、runtime principal、scheduled/actual time、command/args、approval。
+    en: Collect Task Scheduler Operational or Security registration, update, deletion, run instance, and action, preserving
+      task ID or path, definition digest, creator SID or process, runtime principal, scheduled and actual time, command
+      or arguments, and approval.
+  - zh: 从登记保留到 scheduled time+15 分钟（初始 cap 24 小时），连接 scheduler child/shutdown process、Event 1074 在两分钟及 boot/outage
+      在三十分钟。重复 task ID 必须用 definition digest/run instance 区分。
+    en: Retain from registration through scheduled time plus 15 minutes, initially capped at 24 hours, and join scheduler
+      child or shutdown process to Event 1074 within two minutes and boot or outage within thirty. Distinguish reused
+      task IDs by definition digest and run instance.
+data_requirements:
+- source_type: scheduled-task-lifecycle
+  name:
+    zh: 计划任务生命周期
+    en: Scheduled-task lifecycle
+  channel: Task Scheduler Operational and Security
+  required_fields:
+  - event.time
+  - asset.id
+  - task.id
+  - task.path
+  - definition.digest
+  - creator.sid
+  - creator.process.id
+  - runtime.principal
+  - run.instance.id
+  - scheduled.time
+  - action.command
+  - action.arguments
+  - approval.id
+- source_type: windows-system-lifecycle
+  name:
+    zh: Windows 生命周期结果
+    en: Windows lifecycle outcome
+  channel: System event log
+  required_fields:
+  - event.time
+  - asset.id
+  - event.id
+  - requester.process
+  - boot.id
+  - uptime
+  - shutdown.type
+- source_type: business-health
+  name:
+    zh: 业务健康与 owner
+    en: Business health and owner
+  channel: null
+  required_fields:
+  - asset.id
+  - owner.id
+  - probe.success
+  - user.impact
+  - maintenance.window
+observables:
+- zh: 未来 shutdown/reboot action 由无审批 writer 登记并按计划执行
+  en: A future shutdown or reboot action is registered by an unapproved writer and executes on schedule
+- zh: scheduler runtime 与 boot/outage 在任务定义窗口闭合
+  en: Scheduler runtime and boot or outage close within the task-definition window
+correlation:
+  window:
+    zh: 登记到 scheduled+15 分钟，cap 24 小时；执行到 Event 1074 两分钟、boot 三十分钟。
+    en: Retain registration to scheduled plus 15 minutes, capped at 24 hours; two minutes to Event 1074 and thirty
+      to boot.
+  dimensions:
+  - asset.id
+  - task.id
+  - definition.digest
+  - creator.sid
+  - runtime.principal
+  - run.instance.id
+  - scheduled.time
+  - boot.id
+false_positives:
+- zh: 补丁、安装、备份、维护、自动恢复和计划重启
+  en: Patching, install, backup, maintenance, automatic recovery, and scheduled restart
+blind_spots:
+- zh: 任务审计关闭、TaskCache 直接修改、task ID 重用、删除后未采、时钟篡改或 MDM provider-only 调度
+  en: Task audit disabled, direct TaskCache mutation, task ID reuse, deletion before collection, clock tampering,
+    or provider-only MDM schedules
+tuning_guidance:
+  paragraphs:
+  - zh: 对 shutdown/reboot action 要求 creator/runtime allowlist、definition digest、owner、审批和到期；不全局放行 SYSTEM。关键 task 生命周期保留
+      90 天。
+    en: Require creator and runtime allowlists, definition digest, owner, approval, and expiry for shutdown or reboot
+      actions; never globally allow SYSTEM. Retain critical task lifecycle for 90 days.
+evidence_refs:
+- REF-000601
+- REF-000977
+- REF-000980
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-10-04'
+  modified: '2026-10-04'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

@@ -1,0 +1,242 @@
+schema_version: 2.0.0
+type: technique
+id: NJT-0098
+name:
+  zh: 权限提升控制路径滥用
+  en: Elevation-Control Path Abuse
+summary:
+  zh: 攻击者操纵或选择本应约束高风险操作的授权控制路径，使较低权限发起与更高权限结果在来源谱系或时间上分离，从而降低单点观察对真实提权因果的辨识能力。
+  en: Adversaries manipulate or select an authorization-control path meant to constrain high-risk operations, separating lower-privilege
+    initiation from the higher-privilege result in provenance lineage or time and reducing a single observation point's ability
+    to resolve the true elevation cause.
+aliases:
+- Abuse Elevation Control Mechanism
+- T1548
+definition_and_concept:
+  paragraphs:
+  - zh: 权限提升控制路径滥用的直接对象，是决定一个请求、进程或委派会话能否从当前安全上下文取得更高有效权限的授权事务。路径可以由本地 consent/credential broker、UAC 或授权 helper、sudo 与执行身份位、TCC/PPPC
+      已批准应用、云 JIT 激活、role assumption 或身份模拟组成。技术成立需要三个要素：可识别的较低权限起点、攻击者能够选择或影响的提权控制路径，以及由该路径产生的更高完整性、EUID/GID、有效角色或资源访问结果。
+    en: 'Elevation-Control Path Abuse directly concerns the authorization transaction that decides whether a request, process,
+      or delegated session can obtain higher effective privilege from its current security context. The path can include a
+      local consent or credential broker, UAC or authorization helper, sudo and execution-identity bits, a TCC or PPPC-approved
+      application, cloud JIT activation, role assumption, or impersonation. The technique requires three elements: an identifiable
+      lower-privilege starting point, an elevation-control path the adversary can select or influence, and a higher integrity
+      level, EUID or GID, effective role, or resource-access result produced by that path.'
+  - zh: “控制路径”并不等同于某个配置文件、提示框或产品。它把请求者、授权条件、控制状态、中介、结果身份和首个高权限动作视为一个可追踪因果单元。攻击者可能直接改变控制输入，也可能利用已经存在但仍有效的缓存、批准或 eligible 状态；如果没有权限变化，或高权限在攻击前已经无条件有效，则不属于本技术。由此定义可以跨
+      Windows、Linux、macOS 与云 IAM 比较相同的因果责任，同时保留平台字段差异。
+    en: A control path is not identical to a configuration file, prompt, or product. It treats requester, authorization condition,
+      control state, intermediary, result identity, and first privileged action as one traceable causal unit. The adversary
+      may directly change control input or exploit an existing cache, approval, or eligible state that remains valid. If privilege
+      does not change, or the higher privilege was already unconditionally effective before adversary action, the technique
+      does not apply. This definition compares the same causal responsibility across Windows, Linux, macOS, and cloud IAM
+      while retaining platform-specific fields.
+stealth_characteristics:
+  paragraphs:
+  - zh: 权限提升控制路径滥用的匿迹价值不在于必然删除日志，而在于把提权链的关键部分放到不同信任域。受信系统二进制、正常授权服务、已批准应用或合法服务主体可以成为可见中介，使结果进程或 API 调用继承常见父进程、签名、服务名或 effective
+      identity；低权限输入与高权限结果之间的真实因果不再能从任一事件单独读出。只按二进制信誉、父进程或主体名称 allowlist 的检测会错误地把中介信任传给攻击者控制的事务。
+    en: Elevation-Control Path Abuse derives stealth value not from necessarily deleting logs but from placing critical parts
+      of the elevation chain in different trust domains. A trusted system binary, normal authorization service, approved application,
+      or legitimate service principal can become the visible intermediary, giving the result process or API call a common
+      parent, signature, service name, or effective identity. The true causal link between low-privilege input and privileged
+      outcome is no longer readable from one event. Detection that allowlists binary reputation, parent process, or principal
+      name alone incorrectly transfers intermediary trust to an adversary-controlled transaction.
+  - zh: 另一种匿迹来自权限状态寿命。sudo 认证缓存、eligible-to-active 激活和短期身份模拟凭据让权限只在一个可控区间内存在；激活记录可能早于敏感动作，到期时状态快照又恢复正常。短寿命降低长期暴露，但也会使只比较周期性角色/组快照的防守方看不到使用时的有效权限。该特性改变的是痕迹的时间结构而非总量：证据被拆成
+      request/approval、token 或 timestamp、资源使用与 deactivation/expiry。
+    en: 'A second stealth effect comes from privilege-state lifetime. Sudo authentication caches, eligible-to-active activation,
+      and short-lived impersonation credentials make privilege exist only within a controllable interval. Activation can precede
+      the sensitive action and a post-expiry state snapshot can look normal again. Short lifetime reduces long-term exposure
+      but also hides the effective privilege at use time from defenders comparing periodic role or group snapshots. This changes
+      the temporal structure of traces rather than necessarily their volume: evidence is split across request and approval,
+      token or timestamp, resource use, and deactivation or expiry.'
+scope_boundary_definition:
+  paragraphs:
+  - zh: 软件漏洞直接改变权限、绕过正常授权语义时归 T1068，而不是因结果为高权限就归本技术。Windows access token 的创建、复制、impersonation 或替换以令牌为直接对象时归 T1134；向既有主体新增长期
+      key、角色、组、委派或设备信任边归 T1098/NJT-0083；域或租户策略的广泛持久修改若直接对象是策略治理则归 T1484。上述行为可以与本技术相邻发生，但只有提权控制事务本身被选择、操纵或利用时才形成 NJT-0098。
+    en: A software flaw that directly changes privilege outside normal authorization semantics belongs to T1068 rather than
+      this technique merely because the result is privileged. Creation, copying, impersonation, or replacement of a Windows
+      access token belongs to T1134 when the token is the direct object. Addition of a long-lived key, role, group, delegation,
+      or device-trust edge to an existing principal belongs to T1098 and NJT-0083. Broad durable domain or tenant policy mutation
+      belongs to T1484 when policy governance is the direct object. These behaviors can occur adjacent to NJT-0098, but the
+      technique applies only when the elevation-control transaction itself is selected, manipulated, or exploited.
+  - zh: UAC 提示是否出现、sudo 是否要求密码、文件使用 setuid 还是 setgid、TCC 保护的数据类别、云厂商或日志通道都只是实现属性，不能作为 Niji 子技术边界。合法管理员在已激活且获批窗口内执行预期任务是反例；用户误批准提示也只有在攻击者控制的请求确实获得更高权限时才进入本范围。本技术不推断每次提权都有隐藏意图，匿迹结论只针对攻击者有意选择会分离谱系或压缩权限寿命的路径。
+    en: Whether a UAC prompt appears, sudo requests a password, a file uses setuid or setgid, the TCC-protected data class,
+      cloud vendor, and log channel are implementation properties rather than Niji child boundaries. A legitimate administrator
+      performing expected work inside an approved active interval is a counterexample. Accidental user approval enters scope
+      only if an adversary-controlled request actually obtains higher privilege. The technique does not infer concealment
+      intent for every elevation; stealth conclusions apply to deliberate selection of a path that separates lineage or compresses
+      privilege lifetime.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: 在 Windows 场景中，攻击者可先改变用户可写 handler 或为受信 auto-elevating 组件提供特制输入，再让该组件产生高完整性子进程；Glupteba 对 CompMgmtLauncher 与 fodhelper
+        的使用展示了这种 requester—trusted intermediary—privileged child 分离。在 Linux 场景中，攻击者可在 sudo timestamp 仍有效的 tty/session 内执行被允许命令，或利用
+        setuid/setgid 执行使 real 与 effective identity 分离；后者若只是正常程序行为而无攻击者控制输入，则只是父级实现基线。
+      en: On Windows, an adversary can first change a user-writable handler or supply crafted input to a trusted auto-elevating
+        component and then have that component produce a high-integrity child. Glupteba's use of CompMgmtLauncher and fodhelper
+        demonstrates separation among requester, trusted intermediary, and privileged child. On Linux, an adversary can execute
+        an allowed command while a sudo timestamp remains valid in a tty or session or use setuid or setgid execution to separate
+        real and effective identity. The latter is only a parent implementation baseline when no adversary-controlled input
+        is involved.
+    - zh: 在 macOS 场景中，攻击者可经 Authorization Services helper 或已由 TCC/PPPC 批准的应用执行受保护操作，防守方需验证 attribution chain、bundle/path 与
+        code requirement，而不能仅信任前台应用名。在云场景中，已取得低权限主体的攻击者可请求 PIM/PAM 临时激活、调用 AssumeRole 或模拟服务账户，使用短期 token 访问敏感资源后等待到期；持久 entitlement
+        没有变化，但原始主体、effective identity 和资源结果仍应通过 request/session/delegation 连接。
+      en: On macOS, an adversary can perform a protected action through an Authorization Services helper or an application
+        already approved by TCC or PPPC, requiring defenders to validate attribution chain, bundle or path, and code requirement
+        rather than trusting the foreground application name. In cloud environments, an adversary controlling a lower-privilege
+        principal can request temporary PIM or PAM activation, call AssumeRole, or impersonate a service account, use a short-lived
+        token against a sensitive resource, and wait for expiry. Durable entitlement need not change, but the original principal,
+        effective identity, and resource outcome should remain connected through request, session, or delegation records.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者已经能在受限用户、进程或云主体上下文中运行，并了解目标环境中的提权入口。对于中介谱系轴，攻击者需要能够调用 broker/受信组件、影响其解析的输入或 handler、选择已批准应用，或持有 impersonation/role-assumption
+          所需权限；对于时间窗轴，攻击者需要能复用有效 sudo 缓存、完成或劫持 JIT 激活，或取得短期凭据。攻击者不必拥有内核漏洞或写入永久管理员角色，但必须能在更高权限消失前完成目标动作。
+        en: The adversary can already execute in a constrained user, process, or cloud-principal context and understands available
+          elevation entries. For the intermediary-lineage axis, the adversary can invoke a broker or trusted component, influence
+          its resolved input or handler, select an approved application, or hold permission needed for impersonation or role
+          assumption. For the temporary-window axis, the adversary can reuse a valid sudo cache, complete or hijack JIT activation,
+          or obtain a short-lived credential. A kernel exploit or permanent administrator-role write is unnecessary, but the
+          adversary must complete the objective before higher privilege disappears.
+      - zh: 攻击者假定防守方会对已签名系统二进制、常见授权服务、服务账户和已批准管理窗口给予较低风险，并可能只保存高权限结果或周期性权限快照。其主要设计选择是中介与权限寿命，而不是工具或操作系统。若防守方完整保留原始请求者、策略版本、事务
+          ID、token/session、有效期和资源结果，攻击者的匿迹收益显著降低，必须进一步控制审批或日志链才可维持内部一致性。
+        en: The adversary assumes defenders assign lower risk to signed system binaries, common authorization services, service
+          accounts, and approved maintenance intervals and may retain only privileged outcomes or periodic entitlement snapshots.
+          The principal design choices are intermediary and privilege lifetime rather than tool or operating system. If defenders
+          retain original requester, policy version, transaction ID, token or session, validity, and resource outcome, the
+          stealth advantage falls sharply and the adversary must additionally control approval or logging chains to maintain
+          internal consistency.
+    defender_model:
+      paragraphs:
+      - zh: 防守方的观察面分布在请求者、授权服务、中介进程或身份、临时权限状态和资源操作之间。宿主可能提供调用关系、真实与有效身份、授权结果和进程谱系；云平台可能提供请求、批准、角色会话、有效期、委派关系和资源审计。审批、软件清单、策略配置和维护时段为这些记录提供正常背景。
+        en: Defender visibility is distributed across the requester, authorization service, intermediary process or identity,
+          temporary authority state, and resource operation. A host may expose call relationships, real and effective identity,
+          authorization outcome, and process lineage, while cloud platforms may expose requests, approvals, role sessions,
+          validity periods, delegation, and resource audit. Approvals, software inventory, policy configuration, and maintenance
+          windows provide legitimate context.
+      - zh: 主要盲区来自这些观察面缺少稳定关联键或保留期不一致。只记录高权限结果而不记录请求者、只显示服务身份而不保留模拟者，或只保存当前角色而没有激活历史，都会使中介来源和短期权限窗口难以重建。
+        en: The main blind spots arise when those vantages lack stable correlation keys or have inconsistent retention. Recording
+          a privileged result without the requester, showing a service identity without the impersonator, or preserving only
+          current roles without activation history makes intermediary provenance and temporary authority windows difficult
+          to reconstruct.
+stealth_mechanisms:
+- mechanism_ref: NM-BT
+  role: primary
+  summary:
+    zh: 提权因果跨越控制平面、受信中介与高权限结果边界
+    en: Elevation causality crosses control-plane trusted-intermediary and privileged-outcome boundaries
+  analysis:
+    paragraphs:
+    - zh: 行为设计上，攻击者选择受信 broker、系统组件、批准应用或委派身份承接低权限请求。痕迹因此从一条同主体/同进程的显式提权事件，变为请求者、授权事件、中介和高权限结果分处不同进程、服务或主体的序列。防守方若只观察请求侧会看不到结果，只观察结果侧则看到可信父进程或
+        effective identity；信任边界切断直接归因，产生 Boundary Traversal 匿迹。用事务 ID、调用/父子谱系、delegation chain、策略状态与资源结果重连后，才能恢复完整因果。
+      en: By design, the adversary selects a trusted broker, system component, approved application, or delegated identity
+        to carry a lower-privilege request. The trace changes from an explicit same-principal or same-process elevation event
+        into a sequence distributed across requester, authorization event, intermediary, and privileged result in different
+        processes, services, or principals. A defender watching the request side misses the result, while one watching the
+        outcome side sees a trusted parent or effective identity. The trust boundary severs direct attribution and creates
+        Boundary Traversal stealth. Transaction IDs, call or parent-child lineage, delegation chain, policy state, and resource
+        outcome must be rejoined to restore causality.
+  evidence_refs:
+  - REF-000317
+  - REF-000318
+  - REF-000322
+  - REF-000323
+  - REF-000325
+  confidence: high
+- mechanism_ref: NM-ST
+  role: secondary
+  summary:
+    zh: 短寿命权限把激活、使用与到期痕迹拆成离散时间事件
+    en: Short-lived privilege splits activation use and expiry traces into discrete time events
+  analysis:
+    paragraphs:
+    - zh: 行为设计上，攻击者在 sudo 缓存、JIT 激活或短期 impersonation token 的有效期内安排高权限动作。权限痕迹从持久 entitlement 变为 request/approval、timestamp
+        或 token、使用与失效的短序列，窗口外的快照可再次显示普通权限。只做定时状态比较的防守方无法看到操作发生时的 effective privilege，形成 Short-lived Trace 匿迹；构造精确 interval
+        并验证每次使用的原始主体、scope、审批与 expiry 后，该时间分离才被消除。
+      en: By design, the adversary schedules privileged action inside the validity of a sudo cache, JIT activation, or temporary
+        impersonation token. The privilege trace changes from a durable entitlement into a short sequence of request and approval,
+        timestamp or token, use, and invalidation, while snapshots outside the interval can again show ordinary privilege.
+        Defenders relying on periodic state comparison cannot see effective privilege at action time, creating Short-lived
+        Trace stealth. Constructing an exact interval and validating original principal, scope, approval, and expiry for each
+        use removes the temporal separation.
+  evidence_refs:
+  - REF-000317
+  - REF-000319
+  - REF-000320
+  - REF-000321
+  - REF-000322
+  confidence: high
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000095
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000096
+evidence:
+  claim_refs:
+  - CLM-000527
+  - CLM-000528
+  - CLM-000529
+  - CLM-000530
+  - CLM-000531
+  - CLM-000532
+  case_refs:
+  - CASE-000122
+  reference_refs:
+  - REF-000317
+  - REF-000318
+  - REF-000319
+  - REF-000320
+  - REF-000321
+  - REF-000322
+  - REF-000323
+  - REF-000324
+  - REF-000325
+research:
+  limitations:
+    paragraphs:
+    - zh: 平台文档和现场案例能够证明受信中介、临时授权状态以及相应的观察差异，但不能证明每次正常授权、sudo 缓存、已批准应用或云临时访问都由匿迹目的驱动。受信中介的现场证据较强；短寿命窗口更多依赖实现语义和观察效果，具体攻击意图需要事件证据补充。
+      en: Platform documentation and field cases establish trusted intermediaries, temporary authority state, and their observation
+        differences, but they do not show that every normal authorization, sudo cache, approved application, or temporary
+        cloud access is chosen for evasion. Field evidence is stronger for trusted intermediaries; ephemeral windows rely
+        more on implementation semantics and observation effects, so event-specific evidence is needed to establish adversary
+        intent.
+    - zh: 日志支持因平台、版本和配置而异。授权事务、真实与有效身份、缓存时间、应用归因链、角色激活、委派关系和令牌失效可能只在部分环境可见；部分新保护功能仍处于预览或有限部署状态。缺少稳定关联键时，结论必须限制在能够直接观察的控制路径或时间窗口。
+      en: Logging support varies by platform, version, and configuration. Authorization transactions, real and effective identity,
+        cache timing, application attribution chains, role activation, delegation, and token expiry may be visible only in
+        some environments, while newer protection features can remain in preview or limited deployment. Without stable correlation
+        keys, conclusions remain limited to the control path or time window directly observed.
+lifecycle:
+  status: review
+  version: 0.2.0
+  created: '2026-09-13'
+  modified: '2026-09-19'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []
+classification:
+  tactic_refs:
+  - TA0004
+  origin:
+    kind: attack-adapted
+    source_attack_id: T1548
+    source_attack_version: '19.1'
+  decision_ref: DEC-TA0004-T1548
+subtechnique_taxonomy:
+  narrative:
+    paragraphs:
+    - zh: 两个子技术按受信中介谱系和权限存在时间划分。受信提权中介谱系借用改变资源操作所呈现的可见执行者，使原始请求者与高权限结果分离；短寿命权限窗口激活改变权限状态的持续时间，使授权、使用和失效分散在有限区间。
+      en: The two children are partitioned by trusted-intermediary lineage and authority lifetime. Trusted Elevation Intermediary
+        Lineage Borrowing changes the visible executor associated with a resource operation, separating the original requester
+        from the privileged result. Ephemeral Privilege-Window Activation changes how long the authority state exists, distributing
+        authorization, use, and expiry across a bounded interval.
+    - zh: 平台、授权提示、权限位、受保护数据类别和云服务名称只是实现属性。两个变量可以共同出现，但一个需要恢复请求者到中介再到结果的谱系，另一个需要恢复激活到失效的时间区间，因此保持独立边界。
+      en: Platforms, authorization prompts, privilege bits, protected-data classes, and cloud-service names are implementation
+        properties. The two variables can coexist, but one requires reconstruction from requester through intermediary to
+        outcome and the other reconstruction of an activation-to-expiry interval, so their boundaries remain distinct.
+  coverage: established
+  subtechnique_refs:
+  - NJS-0098-001
+  - NJS-0098-002

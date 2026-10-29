@@ -1,0 +1,44 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000021
+strategy_ref: DET-000047
+name: {zh: 条件门控投放多视角差异分析, en: Multi-Vantage Context-Gated Staging Differential Analytic}
+summary: {zh: 比较受控客户端与真实目标条件下的响应、重定向和对象，恢复单一观察面看不到的恶意投放。, en: Compare responses, redirects, and objects under controlled clients and real target conditions to recover malicious staging hidden from one vantage.}
+domains: [enterprise]
+platforms: [Web, Cloud, Advertising, Object Storage]
+logic:
+  paragraphs:
+  - zh: 从不同来源、地区、设备、浏览器、Referer、时间和交互状态请求同一投放 URL，记录状态、重定向、页面、对象哈希和下载，并与平台控制平面中的条件规则关联。稳定地只向目标化条件返回恶意或不同对象，且与后续执行或已知活动一致时提高风险；普通 A/B 测试、区域内容和反欺诈必须由业务配置排除。
+    en: Request the same staging URL from different origins, geographies, devices, browsers, referrers, times, and interaction states and record status, redirects, pages, object hashes, and downloads, linking results to conditional rules in the provider control plane. Raise risk when malicious or different objects are returned consistently only to targeted conditions and align with downstream execution or known activity; ordinary A/B testing, regional content, and anti-fraud require exclusion through business configuration.
+data_requirements:
+- source_type: multivantage-web-observation
+  name: {zh: 多视角 Web 与下载观测, en: Multi-vantage web and download observations}
+  channel: null
+  required_fields: [timestamp, vantage_id, source_region, device_profile, request_url, referrer, response_status, redirect_chain, object_hash]
+- source_type: staging-control-plane
+  name: {zh: 投放服务控制平面与条件规则, en: Staging-service control plane and conditional rules}
+  channel: null
+  required_fields: [tenant_id, object_id, rule_id, condition_fields, response_object, modified_at]
+- source_type: downstream-object-use
+  name: {zh: 投放对象后续取用和执行, en: Downstream staged-object retrieval and execution}
+  channel: null
+  required_fields: [timestamp, object_hash, target_entity, retrieval_source, execution_result]
+observables:
+- {zh: 扫描器和审核员获得良性页面而匹配目标获得不同对象, en: Scanners and reviewers receive benign pages while matching targets receive a different object}
+- {zh: 响应差异由来源、设备、地区、Referer 或交互状态稳定决定, en: Response differences are consistently determined by origin, device, geography, referrer, or interaction state}
+- {zh: 目标化对象随后被下载或执行而公开视角无法重现, en: The targeted object is later downloaded or executed while public vantage points cannot reproduce it}
+correlation:
+  window: {zh: 使用分钟至七日窗口重复多视角请求，并使用三十日窗口连接条件配置、对象版本和后续使用。, en: Use minute-to-seven-day windows for repeated multi-vantage requests and thirty-day windows to connect conditional configuration, object versions, and downstream use.}
+  dimensions: [url, tenant, object, rule, vantage, device, geography, referrer, response_variant, time]
+false_positives:
+- {zh: 合法 A/B 测试、区域化内容、灰度发布和反欺诈挑战, en: Legitimate A/B testing, localized content, staged releases, and anti-fraud challenges}
+- {zh: CDN 缓存、设备兼容和临时后端错误, en: CDN cache, device compatibility, and transient backend errors}
+blind_spots:
+- {zh: 目标条件无法安全复现或投放只发生一次, en: Target conditions cannot be reproduced safely or staging occurs only once}
+- {zh: 服务商不提供租户和条件规则审计, en: The provider does not expose tenant and conditional-rule audit}
+tuning_guidance:
+  paragraphs:
+  - zh: 应维护合法差异化响应的规则、所有者和有效期，并确保测试视角覆盖真实用户条件。单次差异不能定罪，必须结合稳定门控、对象风险和后续使用。
+    en: Maintain rules, owners, and validity periods for legitimate differential responses and ensure test vantage points cover real user conditions. One difference is not dispositive and must be combined with stable gating, object risk, and downstream use.
+evidence_refs: [REF-000066, REF-000084]
+lifecycle: {status: review, version: 1.0.0, created: '2026-09-09', modified: '2026-09-09', contributors: [Niji Matrix Research], reviewers: []}

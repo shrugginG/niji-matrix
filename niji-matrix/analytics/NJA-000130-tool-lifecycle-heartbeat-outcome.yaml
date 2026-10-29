@@ -1,0 +1,65 @@
+schema_version: "2.0.0"
+type: detection-analytic
+id: NJA-000130
+strategy_ref: DET-000130
+name:
+  zh: 工具生命周期—心跳—防护结果关联
+  en: Tool Lifecycle–Heartbeat–Protection Outcome Correlation
+summary:
+  zh: 将防御组件控制事件与集中报到和独立受保护结果连接，确认整体能力可用性丧失。
+  en: Join defensive-component control events to centralized check-in and independent protected outcomes to confirm whole-capability availability loss.
+domains: [enterprise]
+platforms: []
+logic:
+  paragraphs:
+    - zh: 先为每个 asset_id 与 tool_instance_id 建立预期组件清单，记录产品角色、进程/服务/驱动/模块/代理标识、启动方式、签名与 hash、健康报到周期、管理 authority 和批准恢复路径。将服务停止、进程终止、驱动或模块卸载、代理删除、启动类型改变、卸载和更新失败规范为控制事件，保留 actor_id、request_id、source、old_state、new_state、component_id、policy_version、approval_id 与时间；仅凭进程名或命令行不得标记为成功削弱。
+      en: First build an expected-component inventory for every asset_id and tool_instance_id, recording product role, process, service, driver, module, and agent identities, startup mode, signature and hash, health check-in interval, management authority, and approved recovery path. Normalize service stops, process termination, driver or module unload, agent deletion, startup-mode changes, uninstall, and update failure as control events with actor_id, request_id, source, old_state, new_state, component_id, policy_version, approval_id, and time. A process name or command line alone does not establish successful impairment.
+    - zh: 对每个控制事件，在组件自身预期恢复周期和至少两个报到周期内查找真实 component state、集中 heartbeat、版本与覆盖状态。只有组件持续缺失或失效且 heartbeat 超过基线容差时输出 availability_loss；若同一窗口又出现本应被该工具检查、阻断或记录的独立活动，而 product decision 缺失或变为 allow，则输出 availability_loss_with_outcome。只有状态变化而能力自动恢复时保留 state_change_only；无控制事件但心跳消失时保留 unexplained_health_loss，不能直接归因攻击者。
+      en: For each control event, inspect real component state, centralized heartbeat, version, and coverage status across the component's expected recovery interval and at least two check-in periods. Emit availability_loss only when the component remains absent or nonfunctional and heartbeat exceeds baseline tolerance. If independent activity that the tool should inspect, block, or record also occurs in the same window while the product decision is absent or changes to allow, emit availability_loss_with_outcome. Retain state_change_only when capability automatically recovers. Missing heartbeat without a control event remains unexplained_health_loss and is not directly attributed to an adversary.
+data_requirements:
+  - source_type: tool-control-plane-audit
+    name: {zh: 防御工具管理与控制面审计, en: Defensive-tool management and control-plane audit}
+    channel: null
+    required_fields: [timestamp, asset_id, tool_instance_id, actor_id, action, component_id, old_state, new_state, request_id, source, approval_id]
+  - source_type: os-service-process-module
+    name: {zh: 操作系统服务、进程、驱动与模块状态, en: "Operating-system service, process, driver, and module state"}
+    channel: null
+    required_fields: [timestamp, asset_id, component_id, process_id, service_id, image_hash, signer, start_type, state, exit_code, parent_process_id]
+  - source_type: central-agent-health
+    name: {zh: 集中代理健康与报到清单, en: Centralized agent health and check-in inventory}
+    channel: null
+    required_fields: [timestamp, asset_id, tool_instance_id, heartbeat_status, last_seen, policy_version, engine_version, sensor_version, coverage_status]
+  - source_type: independent-protected-outcome
+    name: {zh: 独立来源的受保护活动与控制结果, en: Independently observed protected activity and control outcome}
+    channel: null
+    required_fields: [timestamp, asset_id, activity_id, activity_type, control_expected, product_decision, observed_result, source_type]
+observables:
+  - {zh: 防御服务、进程、驱动、模块或代理出现未经批准的停止、卸载、删除或禁用, en: "An unapproved stop, unload, deletion, uninstall, or disable action affects a defensive service, process, driver, module, or agent"}
+  - {zh: 控制事件后组件未在预期恢复周期内恢复且集中报到连续缺失, en: The component fails to recover within its expected interval and centralized check-ins remain missing after the control event}
+  - {zh: 心跳缺失期间出现本应受防御工具检查的独立活动但没有相应产品结果, en: Independently observed activity that should be inspected has no corresponding product outcome during the heartbeat gap}
+  - {zh: 本地状态、管理面健康与产品版本之间出现不能由滚动升级解释的矛盾, en: "Local state, management-plane health, and product version disagree in a way not explained by rolling upgrade"}
+correlation:
+  window:
+    zh: 从控制事件前十五分钟至后两小时关联，至少覆盖两个产品报到周期；自动恢复更慢的设备按已登记 SLO 延长至二十四小时。
+    en: Correlate from fifteen minutes before a control event through two hours after it and cover at least two product check-in periods; extend to twenty-four hours for devices with a registered slower recovery SLO.
+  dimensions: [asset_id, tool_instance_id, component_id, actor_id, request_id, policy_version, activity_id, approval_id, time]
+false_positives:
+  - {zh: 已批准的产品升级、代理迁移、故障重启和安全团队排障, en: "Approved product upgrades, agent migration, failure restart, and security-team troubleshooting"}
+  - {zh: 离线、休眠、网络隔离或退役资产造成的合法心跳中断, en: "Legitimate heartbeat loss from offline, sleeping, network-isolated, or retired assets"}
+  - {zh: 产品自身崩溃、签名更新失败或集中服务中断, en: "Product crashes, failed signature updates, or centralized service outages"}
+blind_spots:
+  - {zh: 攻击者同时控制工具、本地审计和集中健康管理面, en: "The adversary controls the tool, local audit, and centralized health plane together"}
+  - {zh: 资产没有权威组件清单、稳定标识或已知报到 SLO, en: "The asset lacks an authoritative component inventory, stable identity, or known check-in SLO"}
+  - {zh: 内核级篡改伪造进程、驱动与 heartbeat 且无独立观察, en: "Kernel-level tampering forges process, driver, and heartbeat state without independent observation"}
+tuning_guidance:
+  paragraphs:
+    - zh: 按产品、资产角色、网络状态和报到 SLO 分别建立组件与 heartbeat 基线，并用批准工单绑定精确 actor、component、目标版本、时间和预期恢复结果。不得永久放行管理员、签名二进制、维护窗口或单一工具名；这些条件只能降低 control-event 权重，不能消除持续缺失和独立防护结果差分。新部署和退役资产应有明确生命周期状态，避免用静默白名单处理。
+      en: Build component and heartbeat baselines separately by product, asset role, network state, and check-in SLO, and bind approved tickets to an exact actor, component, target version, time, and expected recovery result. Do not permanently allow administrators, signed binaries, maintenance windows, or one product name. Those conditions may reduce control-event weight but cannot suppress persistent absence and an independent protection-outcome differential. New deployments and retired assets need explicit lifecycle states rather than silent allowlisting.
+evidence_refs: [REF-000446, REF-000447, REF-000450, REF-000358]
+lifecycle:
+  status: review
+  version: "1.0.0"
+  created: "2026-09-22"
+  modified: "2026-09-22"
+  contributors: [Niji Matrix Research]
+  reviewers: []

@@ -1,0 +1,105 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000168
+strategy_ref: DET-000157
+name:
+  zh: 既存邮件副本端点读取与历史同步关联
+  en: Preexisting Mail Replica Endpoint Read and Prior Sync Correlation
+summary:
+  zh: 关联端点非预期副本读取、历史同步范围与本次服务器逐封审计缺口。
+  en: Join unexpected endpoint replica reads, prior sync scope, and the current gap in server per-item audit.
+domains:
+- enterprise
+platforms:
+- Windows
+- Office Suite
+logic:
+  paragraphs:
+  - zh: 对批准的邮件数据目录和经识别的 PST/OST 设置文件访问 SACL 或等价 EDR 读取遥测，筛选非 Outlook、备份、索引及批准迁移进程对大量邮件副本的连续 ReadData/复制。用文件创建时间或 Outlook 同步范围确认副本早于本次进程活动，再将进程签名、父进程、用户、设备、目标复制路径与
+      MailItemsAccessed Sync 的邮箱、客户端 IP、会话和时间关联。若没有相应的新 Bind/导出事件而存在可疑副本读取，输出“端点读取、服务器未新增逐封访问”的差分；缺少服务器日志时只能报告端点异常，不可写成已证明零服务端访问。
+    en: Apply a file-access SACL or equivalent EDR read telemetry to approved mail-data directories and identified PST/OST
+      files. Select sustained ReadData or copy access by processes other than Outlook, backup, indexing, or approved migration
+      tools. Establish that the replica predates the current process from file creation time or Outlook sync scope, then join
+      process signer, parent, user, device, copy destination, and MailItemsAccessed Sync mailbox, client IP, session, and
+      time. If suspicious replica reads occur without corresponding new Bind or export events, emit an endpoint-read versus
+      no-new-per-message-server-access differential. If server logs are missing, report only endpoint anomaly, not proven
+      absence of server access.
+data_requirements:
+- source_type: endpoint-file-access
+  name:
+    zh: 端点邮件副本文件读取
+    en: Endpoint mail-replica file access
+  channel: Windows Security 4663 with SACL or EDR equivalent
+  required_fields:
+  - time_created
+  - computer
+  - subject_user_sid
+  - process_name
+  - object_name
+  - access_mask
+- source_type: endpoint-process-lineage
+  name:
+    zh: 端点进程与复制谱系
+    en: Endpoint process and copy lineage
+  channel: EDR process and file copy telemetry
+  required_fields:
+  - timestamp
+  - device_id
+  - process_guid
+  - parent_process_guid
+  - signer
+  - destination_path
+- source_type: exchange-mailbox-audit
+  name:
+    zh: Exchange 邮箱访问审计
+    en: Exchange mailbox access audit
+  channel: Purview MailItemsAccessed and mailbox export audit
+  required_fields:
+  - creation_time
+  - mailbox_u_p_n
+  - user_id
+  - client_i_p_address
+  - session_id
+  - mail_access_type
+  - parent_folder
+observables:
+- zh: 未批准进程在本次服务器逐封 Bind 缺席时读取既存 PST 或缓存副本
+  en: An unapproved process reads an existing PST or cache while no current server per-item Bind appears
+- zh: 同进程复制或提取邮件内容并形成后继产物
+  en: The same process copies or extracts mail content into a successor artifact
+correlation:
+  window:
+    zh: 围绕端点读取取二十四小时，同时回溯副本的先前同步范围。
+    en: Use twenty-four hours around the endpoint read and look back to the replica's earlier sync scope.
+  dimensions:
+  - mailbox
+  - device
+  - user
+  - process
+  - replica_path
+false_positives:
+- zh: 授权迁移、eDiscovery、备份、杀毒扫描、索引与用户本人离线阅读会读取同一文件；需按签名、工单、设备角色和结果去向排除。
+  en: Approved migration, eDiscovery, backup, antivirus, indexing, and ordinary offline reading access the same files; exclude
+    using signer, ticket, device role, and copy destination.
+blind_spots:
+- zh: 无文件 SACL/EDR、加密副本、内存中客户端访问、PST 来自其他主机、缺失高级邮箱审计或留存过短都会破坏差分。
+  en: Missing SACL or EDR, encrypted copies, in-memory client access, PST files from another host, absent advanced mailbox
+    audit, or short retention break the differential.
+tuning_guidance:
+  paragraphs:
+  - zh: 先登记批准的迁移/备份进程和邮箱数据目录，再按文件大小、读取持续时间、身份角色和敏感邮箱分层；不能以单次打开文件告警。
+    en: Inventory approved migration and backup processes and mail-data directories first, then stratify by file size, read
+      duration, identity role, and sensitive mailbox; do not alert on one file open alone.
+evidence_refs:
+- REF-000567
+- REF-000568
+- REF-000379
+- REF-000569
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-09-22'
+  modified: '2026-09-22'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

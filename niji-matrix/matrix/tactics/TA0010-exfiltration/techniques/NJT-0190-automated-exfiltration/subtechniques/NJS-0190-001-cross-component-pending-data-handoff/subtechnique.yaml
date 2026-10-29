@@ -1,0 +1,121 @@
+schema_version: 2.0.0
+type: evasion-subtechnique
+id: NJS-0190-001
+parent_ref: NJT-0190
+name:
+  zh: 跨组件待发交接
+  en: Cross-Component Pending-Data Handoff
+summary:
+  zh: 采集组件把数据写入共享待发对象，由独立上传组件自动消费并外送，使敏感访问与网络出站分属不同进程。
+  en: Collection components write data to a shared pending object that a separate uploader automatically consumes
+    and sends outward, placing sensitive access and network egress in different processes.
+aliases: []
+lineage:
+  attck_subtechnique_inherited: false
+definition_and_concept:
+  paragraphs:
+  - zh: 跨组件待发交接是数据生产者完成采集后只写入目录、文件、数据库队列或等价对象，由另一个具有网络能力的组件基于对象出现或状态变化自动接管外送。直接目标是持续外传，稳定变量是生产主体与外送主体被待发对象分离，而不是目录名称、插件产品或使用的协议。
+    en: Cross-Component Pending-Data Handoff occurs when a data producer completes collection by writing to a directory,
+      file, database queue, or equivalent object, after which another network-capable component automatically takes
+      over outward transfer based on object appearance or state. The direct goal is sustained exfiltration. Its
+      stable variable is separation of producer and egress principal by a pending object, not directory name, plugin
+      product, or protocol.
+  - zh: 单一脚本在同一执行流中扫描并上传文件不属于本子项，即使它完全自动；存在多个进程也不够，必须证明待发对象承担可重复的生产者—消费者交接。按时间才释放对象时可另映射 T1029，但本子项的触发边界是对象状态而非时钟。
+    en: One script that scans and uploads within the same execution flow does not enter this child even when fully
+      automatic. Multiple processes alone are also insufficient; a pending object must serve as a repeatable producer-consumer
+      handoff. If release is additionally time gated, T1029 may apply, while this child's trigger boundary remains
+      object state rather than the clock.
+stealth_characteristics:
+  paragraphs:
+  - zh: 跨组件待发交接使采集插件无需拥有外部 socket，上传组件也不必直接访问原始用户目录或捕获设备。短窗口或单进程检测因此只能看到“本地写入”或“后台上传”中的一半；Attor 还把网络相关功能分布到多个插件，进一步增加局部归因难度。共享对象的创建者、后继读取者、hash/大小、清空时间和上传连接仍是可恢复痕迹。
+    en: Cross-Component Pending-Data Handoff removes the need for collection plugins to own an external socket and
+      for the uploader to access original user directories or capture devices directly. A short-window or single-process
+      detector therefore sees only a local write or a background upload. Attor further distributes network functions
+      across several plugins, increasing local attribution difficulty. Creator, successor reader, hash or size,
+      drain time, and uploader connection remain recoverable traces.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 纳入要求生产者、待发对象和上传者三者关系可识别，且上传者把对象交付到受害环境之外。排除合法应用的 spool、备份、日志 shipper、云同步和 DLP quarantine，除非 owner、数据用途、目的地或变更关系支持恶意。内存管道和
+      IPC 可以是待发对象，但如果遥测无法证明其内容或交接，只能标为假设。打包、加密和 C2/FTP/Tor 通道属于相邻对象，不定义本子项。
+    en: Inclusion requires an identifiable producer, pending object, and uploader relationship and delivery of that
+      object outside the victim environment. Legitimate application spools, backup, log shippers, cloud sync, and
+      DLP quarantine are excluded unless owner, data purpose, destination, or change relationship supports malice.
+      Memory queues and IPC can be pending objects, but remain hypothetical when telemetry cannot establish content
+      or handoff. Packaging, encryption, and C2, FTP, or Tor channels are adjacent objects and do not define this
+      child.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: 端点间谍框架可以让截图、音频、按键或文档插件将各自输出放入统一 Upload 目录，File uploader 按对象状态自动上传；Attor 的公开逆向分析就是直接案例。类似结构也可用本地数据库、消息队列或内存环形缓冲实现，只要防守观察仍跨生产与外送主体分离。
+      en: An endpoint espionage framework can have screenshot, audio, keylogging, or document plugins place output
+        in one Upload directory for automatic object-driven transfer by a File uploader; public Attor reverse engineering
+        is a direct case. A local database, message queue, or memory ring can implement the same structure when
+        defender observation remains split across producer and egress principal.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者需要让多个组件共享对象命名、权限与状态协议，并确保上传者能够判定完整写入、处理重试和删除或标记已发送对象。上传者或目录权限失效会造成可见积压；重复消费、部分文件和错误日志也会暴露流水线。
+        en: The adversary needs components to share object naming, permissions, and state protocol and must let
+          the uploader identify complete writes, handle retries, and delete or mark sent objects. Failure of uploader
+          or directory permissions produces visible backlog, while duplicate consumption, partial files, and error
+          logs can expose the pipeline.
+    defender_model:
+      paragraphs:
+      - zh: 防守方保存文件/对象创建与读取、进程 start key、网络连接、目的地和批准流水线清单。检测不依赖读取敏感内容，可以按 object identity、path、hash、size 和时间把 writer、reader
+          与 outbound flow 连接。若只记录写入而不记录读取，或上传通过共享代理失去进程归属，结论置信度下降。
+        en: Defenders retain file or object creation and read, process start key, network connection, destination,
+          and approved-pipeline inventory. Detection need not inspect sensitive content and can join writer, reader,
+          and outbound flow by object identity, path, hash, size, and time. Confidence drops when reads are not
+          logged or upload crosses a shared proxy that loses process attribution.
+stealth_mechanisms:
+- mechanism_ref: NM-ST
+  role: primary
+  summary:
+    zh: 待发对象把敏感访问与网络出站拆到不同进程
+    en: A pending object splits sensitive access and network egress across processes
+  analysis:
+    paragraphs:
+    - zh: 生产者写入共享对象后结束本次采集，独立 uploader 在后续对象状态中读取并外送；行为、对象和时间由此被拆成多个局部信号。Attor 的 espionage plugins 不与 C2 通信，而 File
+        uploader 自动消费中央 Upload 文件夹，直接证明因果链。防守方若按单进程追踪会错失一端，按 object lineage 跨进程连接则可恢复完整外传。
+      en: The producer ends its collection step after writing a shared object, and a separate uploader later reads
+        and sends it based on object state, splitting behavior, object, and time into local signals. Attor's espionage
+        plugins do not communicate with C2, while the File uploader automatically consumes the central Upload folder,
+        directly establishing the causal chain. Per-process tracking misses one end; cross-process object lineage
+        reconstructs the exfiltration.
+  evidence_refs:
+  - REF-000484
+  confidence: high
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000219
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000199
+evidence:
+  claim_refs:
+  - CLM-000932
+  - CLM-000934
+  case_refs:
+  - CASE-000271
+  reference_refs:
+  - REF-000484
+research:
+  limitations:
+    paragraphs:
+    - zh: 直接强证据集中于 Attor 的 Windows 插件架构；跨平台泛化依据生产者—消费者对象语义而非同等强度的 Linux/macOS 恶意案例。目录交接在正常日志、备份和同步软件中极常见，必须保留未授权目的地、主体或数据来源条件。来源证明架构与痕迹分离，不量化漏检率。
+      en: Strong direct evidence is concentrated in Attor's Windows plugin architecture. Cross-platform generalization
+        rests on producer-consumer object semantics rather than equally strong Linux or macOS malicious cases. Directory
+        handoff is common in legitimate logging, backup, and synchronization and requires an unauthorized destination,
+        principal, or data-source condition. The source establishes architecture and trace separation, not a measured
+        miss rate.
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-10-04'
+  modified: '2026-10-04'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

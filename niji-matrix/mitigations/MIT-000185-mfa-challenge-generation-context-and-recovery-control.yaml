@@ -1,0 +1,134 @@
+schema_version: 2.0.0
+type: mitigation
+id: MIT-000185
+name:
+  zh: MFA 挑战发放、事务绑定与风险恢复治理
+  en: MFA Challenge Issuance, Transaction Binding, and Risk Recovery Governance
+summary:
+  zh: 限制权威 MFA challenge 的生成速率和入口，为用户显示事务情境，并在未知请求或恶意批准后自动阻断和恢复。
+  en: Limit the rate and entry points of authoritative MFA challenge generation, display transaction context to users, and
+    automatically block and recover after unknown requests or malicious approval.
+description:
+  paragraphs:
+  - zh: 本缓解覆盖 challenge 生成而非某一种推送产品。所有登录、无口令和恢复入口按 user、application、source 与独立 transaction 限速，连续拒绝、超时或欺诈报告触发暂停和风险流程；用户确认绑定到显示的应用、来源、位置和数字，通信侧支持请求通过已登记工单与独立回呼验证。恶意批准后同时撤销令牌、会话、认证方法和设备状态。
+    en: This mitigation governs challenge generation rather than one push product. Rate-limit every sign-in, passwordless,
+      and recovery entry by user, application, origin, and independent transaction. Consecutive denial, timeout, or fraud
+      report pauses requests and starts risk handling. Bind user confirmation to displayed application, origin, location,
+      and number, while communication-side support requests use registered cases and independent callbacks. After malicious
+      approval, revoke tokens, sessions, authentication methods, and device state together.
+domains:
+- enterprise
+measures:
+- key: challenge-rate-and-state-control
+  name:
+    zh: 挑战速率与状态控制
+    en: Challenge Rate and State Control
+  description:
+    paragraphs:
+    - zh: 按 user、application、source 与独立 transaction 限制 challenge 生成；连续拒绝、超时、无响应或欺诈报告后暂停新请求并进入风险流程，避免只限制某一种推送介质。
+      en: Limit challenge generation by user, application, origin, and independent transaction. Pause new requests and enter
+        a risk workflow after consecutive denial, timeout, nonresponse, or fraud report, without limiting controls to one
+        push transport.
+  control_type: preventive
+- key: transaction-bound-user-confirmation
+  name:
+    zh: 事务绑定用户确认
+    en: Transaction-Bound User Confirmation
+  description:
+    paragraphs:
+    - zh: 对仍需用户交互的 MFA 显示应用、来源和位置并要求数字或等价事务匹配，把用户确认绑定到具体 transaction；验证者绑定的抗钓鱼认证继续由 MIT-000175 提供。
+      en: For MFA that still needs user interaction, show application, origin, and location and require number or equivalent
+        transaction matching, binding user confirmation to a specific transaction. MIT-000175 continues to provide verifier-bound
+        phishing-resistant authentication.
+  control_type: preventive
+- key: suspicious-request-report-and-containment
+  name:
+    zh: 可疑请求报告与遏制
+    en: Suspicious-Request Reporting and Containment
+  description:
+    paragraphs:
+    - zh: 让用户一键拒绝并报告未知 challenge，把报告写入 sign-in、audit 与 risk 数据，自动提高用户风险、阻断新登录或要求安全恢复；不得依赖用户另行寻找服务台号码。
+      en: Let users deny and report an unknown challenge in one action, write the report to sign-in, audit, and risk data,
+        and automatically raise user risk, block new sign-ins, or require secure remediation rather than making the user find
+        a help-desk number separately.
+  control_type: detective-support
+- key: approved-challenge-recovery
+  name:
+    zh: 恶意批准后的恢复
+    en: Recovery After Malicious Approval
+  description:
+    paragraphs:
+    - zh: 确认恶意 challenge 被批准后，阻断新登录、撤销 refresh token 和应用 session、重置暴露的主凭据、检查并移除攻击者认证方法或设备、复核后继资源操作，并用安全设备验证旧会话和旧因素已失效。
+      en: After confirming approval of a malicious challenge, block new sign-ins, revoke refresh tokens and application sessions,
+        reset exposed primary credentials, inspect and remove adversary authentication methods or devices, review successor
+        resource actions, and verify from a safe device that old sessions and factors no longer work.
+  control_type: containment
+applications:
+- target_ref: NJT-0175
+  use:
+    paragraphs:
+    - zh: 对所有可生成 MFA challenge 的登录、无口令和 SSPR 入口登记 owner、factor、速率、显示情境、风险策略和日志字段；先审计合法重试，再启用限流、欺诈报告、风险阻断和 session 级恢复演练。
+      en: Inventory owner, factor, rate, displayed context, risk policy, and log fields for every sign-in, passwordless, and
+        SSPR entry capable of generating an MFA challenge. Audit legitimate retry behavior before enabling throttling, fraud
+        reporting, risk blocking, and session-level recovery exercises.
+  expected_effect:
+    paragraphs:
+    - zh: 缩小攻击者可任意生成请求的次数与范围，让未知 challenge 更易被用户和身份系统标记，并在批准后快速阻断 token 和会话后继价值。
+      en: Reduce the number and scope of requests an adversary can generate, make unexpected challenges easier for users and
+        identity systems to mark, and rapidly remove token and session value after approval.
+  limitations:
+    paragraphs:
+    - zh: 旧版 VPN、RADIUS、NPS、电话和恢复流程可能不支持完整情境或 transaction 匹配；过严限流会影响真实故障恢复，session 撤销在不同应用传播速度不同。
+      en: Legacy VPN, RADIUS, NPS, phone, and recovery flows may not support full context or transaction matching. Aggressive
+        throttling can impair real recovery, and session revocation propagates at different speeds across applications.
+- target_ref: NJS-0175-001
+  use:
+    paragraphs:
+    - zh: 为每用户—应用定义独立 challenge 速率与连续拒绝状态机；达到阈值或收到 fraud 时暂停请求、通知 SOC 和用户，并要求从已知安全设备重新发起，而不是继续向同一因素轰炸。
+      en: Define an independent-challenge rate and consecutive-denial state machine per user and application. At threshold
+        or fraud report, pause requests, notify the SOC and user, and require a restart from a known-safe device instead of
+        continuing to bombard the same factor.
+  expected_effect:
+    paragraphs:
+    - zh: 重复压力在形成长序列前被限制，拒绝和报告成为阻断信号；攻击者难以无限试验直至偶然批准。
+      en: Repetition pressure is constrained before a long sequence forms, and denial or reporting becomes a blocking signal,
+        preventing indefinite retries until accidental approval.
+  limitations:
+    paragraphs:
+    - zh: 分布在多个应用或恢复入口的请求可能规避单集成限额，合法网络故障也会触发；需要租户级 user 聚合和受控例外。
+      en: Requests distributed across applications or recovery entries can evade per-integration limits, and legitimate network
+        failures can trigger controls. Tenant-wide user aggregation and controlled exceptions are required.
+- target_ref: NJS-0175-002
+  use:
+    paragraphs:
+    - zh: 让 challenge 显示应用和来源并绑定 transaction，对外部通信与 challenge 同时出现的高权限用户自动提升风险；已知目录回呼与支持流程由 MIT-000116 提供，抗钓鱼认证由 MIT-000175
+        提供。
+      en: Display application and origin and bind the challenge to its transaction, automatically raising risk when external
+        communication and a challenge coincide for a privileged user. MIT-000116 provides known-directory callback and support
+        workflow, while MIT-000175 provides phishing-resistant authentication.
+  expected_effect:
+    paragraphs:
+    - zh: challenge 显示情境与实际 transaction 对齐，外部通信同时出现时触发风险处置；结合复用对象后，攻击者叙事更难单独驱动批准。
+      en: Displayed challenge context aligns with the actual transaction and coincident external communication triggers risk
+        handling. Combined with the reused controls, the adversary narrative is less able to drive approval by itself.
+  limitations:
+    paragraphs:
+    - zh: 数字匹配可被实时社工转述，真实支持渠道同时失陷会绕过关系核验；抗钓鱼方法的覆盖必须包括恢复和旧应用，否则攻击者会转向最弱入口。
+      en: A real-time social engineer can relay number matching, and simultaneous compromise of a genuine support channel
+        can bypass relationship checks. Phishing-resistant coverage must include recovery and legacy applications or the adversary
+        shifts to the weakest entry.
+evidence_refs:
+- REF-000786
+- REF-000787
+- REF-000788
+- REF-000790
+- REF-000784
+- REF-000436
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-09-27'
+  modified: '2026-09-27'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

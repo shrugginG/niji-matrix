@@ -1,0 +1,124 @@
+schema_version: 2.0.0
+type: evasion-subtechnique
+id: NJS-0191-003
+parent_ref: NJT-0191
+name:
+  zh: 检查不透明替代传输
+  en: Inspection-Opaque Alternative Transfer
+summary:
+  zh: 攻击者让替代外传通道在防守检查点呈现为受保护会话或密文，使内容规则失去可解释输入。
+  en: An adversary makes the alternative exfiltration channel appear at the defensive inspection point as a protected
+    session or ciphertext, depriving content rules of interpretable input.
+aliases: []
+lineage:
+  attck_subtechnique_inherited: false
+definition_and_concept:
+  paragraphs:
+  - zh: 检查不透明替代传输是经替代协议渗出的一种实现，其中攻击者使用 TLS、SSH/SFTP、协议外附加加密或等价保护，让选定检查点无法恢复外传内容。分类变量是防守方在该位置能否解释应用数据，而不是握手使用对称还是非对称算法；同一
+      SSH 或 TLS 会话通常同时包含公钥协商和对称内容保护。
+    en: Inspection-Opaque Alternative Transfer is an implementation of Exfiltration Over Alternative Protocol in
+      which the adversary uses TLS, SSH or SFTP, added encryption above a protocol, or equivalent protection so
+      the chosen inspection point cannot recover exfiltrated content. The classification variable is whether the
+      defender can interpret application data at that point, not whether the handshake uses symmetric or asymmetric
+      cryptography. One SSH or TLS session commonly combines public-key establishment with symmetric content protection.
+stealth_characteristics:
+  paragraphs:
+  - zh: 检查不透明替代传输保留连接元数据、服务器名可见性、证书、握手、方向字节和进程归属，却把文件名、敏感内容和应用操作隐藏在加密边界后。只依赖 DLP 关键字或明文协议解析的控制无法判断内容；源文件访问、异常目的地、非典型进程、会话持续时间和出站字节仍可组成旁证。ECH、QUIC、复用连接和共享云端点会进一步减少元数据区分力。
+    en: Inspection-Opaque Alternative Transfer preserves connection metadata, possible server-name visibility, certificates,
+      handshake, directional bytes, and process attribution while hiding filenames, sensitive content, and application
+      operations behind encryption. Keyword DLP or clear-text protocol parsing cannot judge the content. Source-file
+      access, unusual destination, atypical process, duration, and outbound bytes remain corroborating evidence.
+      ECH, QUIC, multiplexed connections, and shared cloud endpoints can further reduce metadata discrimination.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 纳入要求替代外传关系和检查点内容不可解释同时成立。企业正常 HTTPS、SSH 管理、SFTP 备份、VPN 和同步并非恶意；加密连接、非浏览器进程或自签名证书单独不足。若不可解释性来自外传前的口令归档，可同时标注
+      NJT-0133，但传输通道自身仍需与 C2 不同；若只是把载荷编码进可解析字段，则归协议语义载荷伪装。
+    en: Inclusion requires both an alternative exfiltration relationship and uninterpretable content at the inspection
+      point. Ordinary enterprise HTTPS, SSH administration, SFTP backup, VPN, and synchronization are not malicious;
+      encryption, a non-browser process, or a self-signed certificate alone is insufficient. Password-protected
+      archives may additionally map to NJT-0133, but the transfer channel must still differ from C2. Payload merely
+      encoded into parsable fields belongs to Protocol-Semantic Payload Camouflage.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: JPCERT/CC 在 MirrorFace 事件中确认攻击者审阅文件内容、用 WinRAR 准备数据并以 SFTP 外传。RFC 4253 规定 SSH 传输提供强加密、服务器认证和完整性，握手协商公钥与对称算法。二者共同证明真实恶意外传进入不透明
+        SSH 传输，但来源未说明受害防线是否因加密漏报，因此匿迹效果保持 medium。
+      en: JPCERT/CC confirmed MirrorFace operators reviewing file content, preparing data with WinRAR, and exfiltrating
+        by SFTP. RFC 4253 specifies strong encryption, server authentication, and integrity for SSH transport, with
+        public-key and symmetric algorithms negotiated in the handshake. Together these establish real malicious
+        exfiltration entering opaque SSH transport, while the incident does not say a victim control missed it because
+        of encryption; stealth effect therefore remains medium-confidence.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者需要 SFTP/HTTPS 等客户端或自定义加密能力、接收端凭据/密钥以及可达目的地。保护内容会降低中间检查，但端点仍能在加密前读取数据，接收端与证书也可能被封锁。自建密钥管理、代理兼容性和握手指纹可能增加实施和暴露成本。
+        en: The attacker needs an SFTP or HTTPS client or custom cryptographic capability, receiver credentials
+          or keys, and a reachable destination. Content protection weakens intermediary inspection, but the endpoint
+          still reads data before encryption and the receiver or certificate can be blocked. Custom key management,
+          proxy compatibility, and handshake fingerprints can increase implementation and exposure costs.
+    defender_model:
+      paragraphs:
+      - zh: 防守方看到 Zeek conn/ssl、IPFIX 或防火墙元数据，并可用端点进程、文件访问与 DLP 在加密前建立谱系。若没有 TLS/SSH 元数据、端点文件审计或稳定进程键，只能得到目的地级候选；合法开发、备份和管理活动会产生相同会话。授权解密受隐私、证书固定和协议支持限制。
+        en: The defender sees Zeek conn and ssl, IPFIX, or firewall metadata and can use endpoint process, file
+          access, and pre-encryption DLP for lineage. Without TLS or SSH metadata, endpoint file audit, or stable
+          process keys, only a destination-level candidate is possible. Legitimate development, backup, and administration
+          create the same sessions. Authorized decryption is constrained by privacy, certificate pinning, and protocol
+          support.
+stealth_mechanisms:
+- mechanism_ref: NM-DO
+  role: primary
+  summary:
+    zh: 让中间检查点保留流量但无法解释外传文件和敏感内容
+    en: Leave traffic visible while preventing an intermediary inspection point from interpreting files and sensitive
+      content
+  analysis:
+    paragraphs:
+    - zh: 攻击者把替代外传数据放入加密会话，检查点从可解析文件或请求体退化为握手与密文字节。内容规则失去直接输入，检测必须转向敏感读取、进程、目的地和方向字节谱系。MirrorFace 的 SFTP 使用与 SSH
+        标准提供的加密能力支持该因果链；并未证明所有 SFTP 都服务匿迹或某产品被绕过。
+      en: The adversary places alternative-channel exfiltration inside an encrypted session, reducing the inspection
+        point from parsable files or request bodies to handshakes and ciphertext bytes. Content rules lose direct
+        input, forcing detection onto sensitive-read, process, destination, and directional-byte lineage. MirrorFace's
+        SFTP use and SSH's standardized encryption support the causal chain without proving that every SFTP session
+        serves stealth or bypasses a product.
+  evidence_refs:
+  - REF-000918
+  - REF-000919
+  - REF-000920
+  confidence: medium
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000222
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000200
+    - MIT-000156
+evidence:
+  claim_refs:
+  - CLM-000940
+  case_refs:
+  - CASE-000274
+  reference_refs:
+  - REF-000918
+  - REF-000919
+  - REF-000920
+  - REF-000634
+  - REF-000604
+research:
+  limitations:
+    paragraphs:
+    - zh: SSH 与 TLS 的机密性是协议属性，不能证明攻击者主观匿迹目的。MirrorFace 资料证明 SFTP 外传，但不公开会话字节、证书、检测产品或告警结果。正式分析必须把“内容不可检查”与“外传已确认”分开，并以端点或数据谱系补足；只从加密流量反推数据失窃会产生大量误报。
+      en: SSH and TLS confidentiality is a protocol property and does not prove adversary stealth intent. MirrorFace
+        reporting establishes SFTP exfiltration but does not publish session bytes, certificates, detection products,
+        or alert outcomes. Canonical analysis must keep “content opaque” separate from “exfiltration confirmed”
+        and add endpoint or data lineage; inferring theft from encryption alone produces extensive false positives.
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-10-04'
+  modified: '2026-10-04'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

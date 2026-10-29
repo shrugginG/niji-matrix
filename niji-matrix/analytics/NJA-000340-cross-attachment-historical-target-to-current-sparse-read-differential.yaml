@@ -1,0 +1,155 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000340
+strategy_ref: DET-000255
+name:
+  zh: 跨介质接入历史目标—当前稀疏读取差分
+  en: Cross-Attachment Historical Target to Current Sparse-Read Differential
+summary:
+  zh: 关联跨接入对象知识、当前稀疏读取与后继结果，作为父级调查分析。
+  en: Join cross-attachment object knowledge, current sparse reads, and downstream outcomes as a parent investigation analytic.
+domains:
+- enterprise
+platforms:
+- Windows
+logic:
+  paragraphs:
+  - zh: '为每次接入建立 media_id 和 attachment_session_id，以介质实例、卷 GUID、文件系统 ID、组织资产号和可选根目录摘要组合识别，避免只依赖序列号。保存介质枚举、索引数据库写入、对象路径和可用摘要，以及建立状态的进程；把植入配置、任务或对象选择规范化为含
+      media_id、路径、file_id/hash 和选择时间的 target_key，历史至少覆盖批准介质最长正常返回周期。
+
+      后续匹配介质重接入时，以父 Analytic 的 exercised_read 或 read_with_attacker_usable_outcome 为结果门，检查读取对象是否匹配早期 target_key，并计算 discovery_to_read_session_gap、current_session_enumeration_count、targeted_read_count
+      和 post_read_outcome。同一非批准组件在不同接入会话先建立对象知识，后来没有相称当前枚举却只读少量既定目标并产生输出时，报告 reattachment_gated_target_recall。当前会话全盘重扫归父级/T1119；修改时间检查点归
+      NJS-0135-001；命令/结果信箱交 DET-000239。'
+    en: 'Build media_id and attachment_session_id for every attachment using a combination of media instance, volume GUID,
+      filesystem ID, organizational asset number, and optional root digest rather than serial alone. Retain media enumeration,
+      index-database writes, object path and available hash, and the process creating state. Normalize implant configuration,
+      tasking, or selection into target_key containing media_id, path, file_id or hash, and selection time, retaining history
+      for the longest normal return cycle.
+
+      On matching-media reattachment, use exercised_read or read_with_attacker_usable_outcome from the parent analytic as
+      the result gate, test the read against an earlier target_key, and calculate discovery_to_read_session_gap, current_session_enumeration_count,
+      targeted_read_count, and post_read_outcome. Report reattachment_gated_target_recall when the same unapproved component
+      builds object knowledge in one session and later reads a few predetermined targets without proportionate current enumeration
+      and produces output. A current full rescan belongs to the parent and T1119; a modification-time checkpoint belongs to
+      NJS-0135-001; a command or result mailbox goes to DET-000239.'
+data_requirements:
+- source_type: normalized-media-session
+  name:
+    zh: 经验证的Normalized Media Session数据
+    en: Normalized Media Session
+  channel: device control PnP mount unmount and volume inventory
+  required_fields:
+  - timestamp
+  - device_id
+  - attachment_session_id
+  - media_id
+  - media_instance_id
+  - media_serial_number
+  - volume_guid
+  - filesystem_id
+  - organizational_asset_id
+  - mount_point
+  - user_id
+  - event_type
+- source_type: media-object-access-history
+  name:
+    zh: 经验证的Media Object Access History数据
+    en: Media Object Access History
+  channel: endpoint enumeration indexing and ReadData telemetry
+  required_fields:
+  - timestamp
+  - device_id
+  - attachment_session_id
+  - media_id
+  - process_unique_id
+  - user_id
+  - operation
+  - object_path
+  - file_id
+  - content_hash
+  - access_result
+  - bytes_read
+- source_type: implant-target-state
+  name:
+    zh: 经验证的Implant Target State数据
+    en: Implant Target State
+  channel: EDR file registry database or task configuration changes
+  required_fields:
+  - timestamp
+  - device_id
+  - process_unique_id
+  - state_path
+  - media_id
+  - selected_object_path
+  - selected_file_id
+  - selected_hash
+  - state_action
+- source_type: endpoint-output-lineage
+  name:
+    zh: 经验证的Endpoint Output Lineage数据
+    en: Endpoint Output Lineage
+  channel: file archive process and network telemetry
+  required_fields:
+  - timestamp
+  - device_id
+  - process_unique_id
+  - parent_process_unique_id
+  - source_object_path
+  - output_path
+  - archive_path
+  - remote_endpoint
+  - bytes_written
+observables:
+- zh: 早期接入由同一组件建立介质对象知识，后续无广泛当前枚举却读取匹配的少量目标
+  en: The same component builds media-object knowledge earlier then reads a few matching targets later without broad current
+    enumeration
+- zh: 匹配目标读取后出现输出队列、归档成员或外联结果
+  en: A matched target read is followed by an output queue archive member or egress outcome
+correlation:
+  window:
+    zh: 覆盖一个完整的批准介质返回周期，不设跨环境通用固定时长。
+    en: one complete approved media return cycle with no universal fixed duration
+  dimensions:
+  - device_id
+  - media_id
+  - attachment_session_id
+  - process_component_id
+  - user_id
+  - object_path
+  - file_id
+  - content_hash
+  - target_key
+  - output_path
+false_positives:
+- zh: 照片管理、备份 catalog、取证清单、媒体资产管理和电子发现会记住先前对象并在介质返回时读取
+  en: Photo management backup catalogs forensic manifests media asset management and e-discovery remember prior objects and
+    read when media returns
+- zh: 最近文件列表或搜索索引可在重接入后打开一个已知文件
+  en: Recent-file lists or search indexes can open one known file after reattachment
+blind_spots:
+- zh: 历史短于返回周期、介质 ID 不稳、状态加密或仅存内存、读遥测缺失
+  en: History shorter than return cycle unstable media ID encrypted or memory-only state or missing read telemetry
+- zh: 攻击者每次全盘重扫或删除状态会失去子项特征但仍可能属于父级
+  en: Full rescans or deleted state remove the child signature while the parent may still apply
+tuning_guidance:
+  paragraphs:
+  - zh: 按业务介质类别设置历史期限，不用任意固定天数。批准索引器例外绑定 media group、签名组件、数据库位置、owner、作业类型和输出库；未知持久进程在用户会话外创建索引或把目标写入隐藏队列时提高优先级。至少要求两个接入会话、稳定
+      media_id、先前对象知识、当前成功 ReadData 和后继结果，不因设备再次出现单独告警。
+    en: Set retention by business media class rather than an arbitrary fixed duration. Bind approved indexer exceptions to
+      media group, signed component, database location, owner, job type, and output repository. Raise priority when an unknown
+      persistent process indexes outside an interactive session or queues targets in hidden output. Require two attachment
+      sessions, stable media_id, prior object knowledge, current successful ReadData, and subsequent outcome; never alert
+      on device return alone.
+evidence_refs:
+- REF-001077
+- REF-000597
+- REF-000379
+- REF-001070
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-10-05'
+  modified: '2026-10-05'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

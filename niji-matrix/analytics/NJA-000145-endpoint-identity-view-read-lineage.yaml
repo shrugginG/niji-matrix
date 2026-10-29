@@ -1,0 +1,103 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000145
+strategy_ref: DET-000140
+name:
+  zh: 端点身份副本读取与暂存谱系分析
+  en: Endpoint Identity-Copy Read and Staging Analytic
+summary:
+  zh: 识别非惯常进程读取地址簿后短时暂存或发送数据的链。
+  en: Identify a nonroutine process reading an address book before short-horizon staging or transfer.
+domains:
+- enterprise
+platforms:
+- Windows
+logic:
+  paragraphs:
+  - zh: 在受管 Windows 终端先配置目标地址簿目录的对象访问 SACL，并验证 4663 是否实际生成。按主机、用户、进程创建时间和对象路径将多次读取聚合，排除该用户已批准的邮件客户端与同步作业；随后寻找同一进程或明确子进程的临时文件创建、压缩或出站传输。把“非惯常读取加后继资料移动”作为高优先级链，单次
+      4663 或同窗未见目录搜索只给低优先级线索。
+    en: On managed Windows endpoints, first configure object-access SACLs for the relevant address-book directories and verify
+      that 4663 is actually emitted. Aggregate reads by host, user, process creation time, and object path; compare them with
+      the user’s approved mail clients and sync jobs. Then seek temporary-file creation, packaging, or outbound transfer by
+      the same process or a proven child. Prioritize the chain of unusual read plus later data movement; a lone 4663 or no
+      observed directory search is only weak context.
+data_requirements:
+- source_type: windows-security-object-access
+  name:
+    zh: Windows 对象访问事件
+    en: Windows object-access events
+  channel: Security 4663 with configured SACL
+  required_fields:
+  - timecreated
+  - computer
+  - subjectusersid
+  - processid
+  - processname
+  - objectname
+  - accessmask
+- source_type: endpoint-process-lineage
+  name:
+    zh: 终端进程谱系
+    en: Endpoint process lineage
+  channel: Sysmon Event 1 or verified EDR equivalent
+  required_fields:
+  - utc_time
+  - computer
+  - processguid
+  - processid
+  - parentprocessguid
+  - image
+  - user
+- source_type: endpoint-file-network
+  name:
+    zh: 终端文件与网络结果
+    en: Endpoint file and network outcomes
+  channel: null
+  required_fields:
+  - timestamp
+  - host_id
+  - process_guid
+  - event_kind
+  - object_or_destination
+observables:
+- zh: 非批准客户端进程读取地址簿或身份副本
+  en: A nonapproved client process reads an address book or identity copy
+- zh: 读取后出现异常暂存文件或出站传输
+  en: Unusual staging file or outbound transfer follows the read
+correlation:
+  window:
+    zh: 以同一进程谱系的读取至结果 30 分钟作为试点窗口，正常同步基线保留 7 日；两者均需按实际客户端节奏校准。
+    en: Pilot a 30-minute read-to-outcome window for one process lineage and retain a seven-day normal-sync baseline; calibrate
+      both to actual client cadence.
+  dimensions:
+  - host_id
+  - user_sid
+  - process_guid
+  - object_path
+  - time
+false_positives:
+- zh: 首次 Outlook 全量下载、备份、索引和获准邮箱迁移会密集读取地址簿
+  en: First Outlook full downloads, backups, indexing, and approved mailbox migrations can read address books intensively
+blind_spots:
+- zh: 没有 SACL 就没有相应 4663；应用内地址簿 API 可能不产生文件读取事件，旧副本也可能已被移走
+  en: Without a SACL there is no corresponding 4663; in-app address-book access may produce no file-read event and an old
+    copy may already have moved elsewhere
+tuning_guidance:
+  paragraphs:
+  - zh: 先盘点本机地址簿实际路径和批准客户端，再在高价值终端试点对象访问审计以控制事件量。按用户、签名、进程谱系和批准同步窗口建立基线；不要仅因进程名为 Outlook 就永久放行，也不要把缺失查询日志解释为目录一定未被访问。
+    en: Inventory actual local address-book paths and approved clients before piloting object-access auditing on high-value
+      endpoints to control volume. Baseline by user, signer, process lineage, and approved sync window; do not permanently
+      allow everything named Outlook or interpret missing query logs as proof that the directory was untouched.
+evidence_refs:
+- REF-000480
+- REF-000481
+- REF-000379
+- REF-000366
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-09-22'
+  modified: '2026-09-22'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

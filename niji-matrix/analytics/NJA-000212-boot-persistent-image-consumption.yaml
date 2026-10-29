@@ -1,0 +1,50 @@
+schema_version: "2.0.0"
+type: detection-analytic
+id: NJA-000212
+strategy_ref: DET-000190
+name: {zh: 持久映像—启动消费完整性分析, en: Persistent-Image to Boot-Consumption Integrity Analytic}
+summary: {zh: 连接映像写入、boot target、签名/Trust Anchor、启动测量和重载后结果，确认持久系统映像替换。, en: "Join image writes, boot target, signature or Trust Anchor, boot measurement, and post-reload outcome to confirm persistent system-image replacement."}
+domains: [enterprise]
+platforms: [Network Devices]
+logic:
+  paragraphs:
+    - zh: 保存厂商发布映像、签名证书、manifest、ROMMON/bootloader、flash slot、boot variable 和已批准升级事务。规范化 copy/install/image write、manifest change、boot target、ROMMON/bootloader update、关键 appliance 组件修改及 reload/reboot 请求，记录 actor/session、source URI/hash、目标 slot/path、前后值、审批和结果。每次启动采集 secure boot/Trust Anchor 决策、实际 loaded image/hash/version、启动测量及 post-boot 关键组件 hash。
+      en: Retain vendor-released images, signing certificates, manifests, ROMMON or bootloader, flash slot, boot variable, and approved upgrade transaction. Normalize copy, install, image write, manifest change, boot target, ROMMON or bootloader update, critical appliance-component modification, and reload or reboot requests with actor and session, source URI and hash, target slot or path, old and new value, approval, and result. At each boot collect secure boot or Trust Anchor decision, actual loaded image, hash, and version, boot measurement, and post-boot critical-component hashes.
+    - zh: 未批准映像/启动组件被存储并在后续 boot_id 实际加载，签名/manifest 与可信发布不一致或被攻击者同步篡改，且安全、恢复或观察 canary 变化时输出 boot_persistent_replacement。写入未被启动消费输出 staged_untrusted_image；合法升级需 vendor provenance、审批、期望 hash 和 post-boot 验证。PHASEJAM 类组件/manifest 同步修改需要不同权原厂 manifest，不能信任设备内自更新基线。
+      en: Emit boot_persistent_replacement when an unapproved image or boot component is stored and actually loaded in a later boot_id, signature or manifest differs from trusted release or is co-tampered by the actor, and security, recovery, or observation canary changes. A write not consumed at boot is staged_untrusted_image. Legitimate upgrade needs vendor provenance, approval, expected hash, and post-boot validation. PHASEJAM-style component and manifest co-tampering requires a separately authorized vendor manifest rather than the device's self-updated baseline.
+data_requirements:
+  - source_type: vendor-image-trust
+    name: {zh: 厂商映像、签名与 manifest 信任库, en: Vendor Image Signature and Manifest Trust Store}
+    channel: Offline vendor repository
+    required_fields: [publisher, model, version, image_hash, signature_chain, manifest_hash, boot_component_hash, release_time]
+  - source_type: device-image-write-and-boot
+    name: {zh: 映像写入、启动配置与重载事务, en: Image Write Boot Configuration and Reload Transactions}
+    channel: Device AAA CLI and configuration audit
+    required_fields: [timestamp, device_id, actor_id, session_id, operation, source_uri, source_hash, target_slot_or_path, old_value, new_value, reboot_or_reload_id, approval_id, result]
+  - source_type: trusted-boot-measurement
+    name: {zh: Trust Anchor 与启动后实际映像测量, en: Trust Anchor and Post-Boot Actual Image Measurement}
+    channel: Vendor secure boot or external attestation
+    required_fields: [timestamp, device_id, boot_id, trust_decision, loaded_image_hash, loaded_version, boot_component_hash, manifest_hash, measurement_source]
+  - source_type: post-boot-security-outcome
+    name: {zh: 重载后安全、恢复与观察结果, en: Post-Reload Security Recovery and Observation Outcome}
+    channel: Independent functional canary
+    required_fields: [timestamp, device_id, boot_id, control_id, expected_result, observed_result, recovery_available]
+observables:
+  - {zh: 未批准映像或 ROMMON/boot target 被写入并在新 boot_id 加载, en: An unapproved image or ROMMON or boot target is written and loaded in a new boot_id}
+  - {zh: 设备内 manifest 被同步更新但不同权厂商 hash 不匹配, en: The on-device manifest is updated in tandem but differs from a separately authorized vendor hash}
+  - {zh: 重载后升级、认证、遥测或完整性功能性结果改变, en: Upgrade authentication telemetry or integrity function changes after reload}
+correlation:
+  window: {zh: 从映像/boot 写入前二十四小时覆盖所有相关重载，并保留至可信恢复和至少三十日。, en: "Correlate twenty-four hours before image or boot writes across all related reloads and retain through trusted recovery plus at least thirty days."}
+  dimensions: [device_id, actor_id, session_id, source_hash, target_slot_or_path, reboot_or_reload_id, boot_id, loaded_image_hash, boot_component_hash, control_id, time]
+false_positives:
+  - {zh: 厂商批准升级、应急恢复或双映像 slot 切换具有可信发布和 post-boot 验证, en: "Vendor-approved upgrade, emergency recovery, or dual-image slot switch with trusted release and post-boot validation"}
+  - {zh: RMA、实验室或灾备设备使用不同但批准的型号专属映像, en: RMA lab or recovery device uses a different but approved model-specific image}
+blind_spots:
+  - {zh: 设备没有 Trust Anchor 且所有 hash/manifest 由同一受侵 OS 提供, en: Device lacks a Trust Anchor and all hashes or manifests come from the same compromised OS}
+  - {zh: ROMMON 或供应链修改发生在组织首个可信基线之前, en: ROMMON or supply-chain mutation predates the organization's first trusted baseline}
+tuning_guidance:
+  paragraphs:
+    - zh: 按型号和 boot slot 维护离线厂商信任库，审批绑定 source hash、目标 slot、窗口和预期 boot_id。不要仅按版本字符串判断；要求 Trust Anchor 或外部读取、post-boot canary 与可恢复映像。未消费的 staged image 保留风险但与已启动替换分级。
+      en: Maintain an offline vendor trust store by model and boot slot. Approval binds source hash, target slot, window, and expected boot_id. Do not rely on version strings alone; require a Trust Anchor or external read, post-boot canary, and recoverable image. Retain risk for an unconsumed staged image but grade it separately from a loaded replacement.
+evidence_refs: [REF-000449, REF-000467, REF-000468, REF-000720]
+lifecycle: {status: review, version: "1.0.0", created: "2026-09-23", modified: "2026-09-23", contributors: [Niji Matrix Research], reviewers: []}

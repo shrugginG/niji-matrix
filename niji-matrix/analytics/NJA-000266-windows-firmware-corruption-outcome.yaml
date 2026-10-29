@@ -1,0 +1,129 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000266
+strategy_ref: DET-000216
+name:
+  zh: Windows 固件写入与启动观察坍塌分析
+  en: Windows Firmware Write and Boot Observation-Collapse Analytic
+summary:
+  zh: 输出异常刷写/驱动、固件状态变化、重启后失联和可信恢复差分的闭合链。
+  en: Emit a closed chain of anomalous flash or driver, firmware state change, post-reboot loss, and trusted recovery
+    differential.
+domains:
+- enterprise
+platforms:
+- Windows
+logic:
+  paragraphs:
+  - zh: 在重启前十五分钟连接异常刷写工具/驱动加载、签名/hash、低层访问、固件资源 GUID、LastAttemptVersion/Status、更新包与审批。被拒绝或成功回滚的尝试保持 exposure。
+    en: Within fifteen minutes before reboot, join anomalous flashing utility or driver load, signature and hash,
+      low-level access, firmware-resource GUID, LastAttemptVersion and Status, update package, and approval. Rejected
+      or successfully rolled-back attempts remain exposure.
+  - zh: 跨至少两次启动尝试或 24 小时连接 boot ID、TPM PCR/TCG、BMC/串口 POST、外部电源/网络、集中 heartbeat 和预期 OS agent。确认需要未授权写入后持续 no-boot/组件缺失，且可信恢复或离线读回显示固件差。
+    en: Across at least two boot attempts or 24 hours, join boot ID, TPM PCR or TCG, BMC or serial POST, external
+      power or network, centralized heartbeat, and expected OS agent. Confirmation requires persistent no-boot or
+      missing component after an unauthorized write and a firmware difference from trusted recovery or offline readback.
+data_requirements:
+- source_type: endpoint-process-driver
+  name:
+    zh: 端点刷写进程与驱动
+    en: Endpoint flashing process and driver
+  channel: DeviceProcessEvents and Sysmon Event 6
+  required_fields:
+  - event.time
+  - device.id
+  - process.unique.id
+  - process.name
+  - process.command.line
+  - driver.path
+  - driver.hash
+  - driver.signature
+  - account.sid
+- source_type: firmware-resource-status
+  name:
+    zh: 固件资源与更新状态
+    en: Firmware resource and update status
+  channel: ESRT and FirmwareResources inventory
+  required_fields:
+  - device.id
+  - firmware.guid
+  - version.current
+  - last.attempt.version
+  - last.attempt.status
+  - package.hash
+  - approval.id
+  - reboot.time
+- source_type: external-boot-evidence
+  name:
+    zh: 外部启动与证明证据
+    en: External boot and attestation evidence
+  channel: null
+  required_fields:
+  - device.id
+  - boot.id
+  - pcr.value
+  - tcg.log.hash
+  - bmc.post.code
+  - serial.result
+  - heartbeat.time
+  - power.state
+  - network.state
+- source_type: firmware-recovery-readback
+  name:
+    zh: 可信恢复与固件读回
+    en: Trusted recovery and firmware readback
+  channel: null
+  required_fields:
+  - device.id
+  - hardware.model
+  - known.good.hash
+  - readback.hash
+  - recovery.method
+  - recovery.result
+observables:
+- zh: 异常硬件写入驱动或固件包之后设备在 OS 前持续失联
+  en: The device persistently disappears before the OS after an anomalous hardware-write driver or firmware package
+- zh: 外部证明或离线读回显示固件与已知良好映像不同
+  en: External attestation or offline readback differs from the known-good firmware
+correlation:
+  window:
+    zh: 写入到重启十五分钟；至少两次启动或 24 小时确认持续失败，并保留恢复证据。
+    en: Use fifteen minutes from write to reboot and at least two boots or 24 hours to confirm persistence, preserving
+      recovery evidence.
+  dimensions:
+  - device.id
+  - process.unique.id
+  - driver.hash
+  - firmware.guid
+  - boot.id
+  - event.time
+false_positives:
+- zh: 批准固件升级失败、电源中断、硬件故障、兼容性问题、厂商恢复和计划主板更换
+  en: Approved firmware update failure, power loss, hardware fault, incompatibility, vendor recovery, and planned
+    motherboard replacement
+blind_spots:
+- zh: 无硬件证明或 BMC、组件未测量、固件无法读回、设备完全断电或 BMC 同时受控
+  en: No hardware attestation or BMC, unmeasured component, unreadable firmware, complete power loss, or compromised
+    BMC
+tuning_guidance:
+  paragraphs:
+  - zh: 按 hardware GUID/型号维护批准包、签名、版本和维护窗口。单次更新失败保持低置信；只有 writer/包、消费、外部持续失败和可信差分闭合才升级。先保全证据再恢复。
+    en: Maintain approved packages, signatures, versions, and maintenance windows by hardware GUID or model. Keep
+      one update failure low confidence; escalate only when writer or package, consumption, external persistent failure,
+      and trusted differential close. Preserve evidence before recovery.
+evidence_refs:
+- REF-000893
+- REF-000894
+- REF-000895
+- REF-000896
+- REF-000897
+- REF-000366
+- REF-000194
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-10-04'
+  modified: '2026-10-04'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

@@ -1,0 +1,125 @@
+schema_version: "2.0.0"
+type: technique
+id: NJT-0063
+name:
+  zh: BITS 后台作业执行
+  en: BITS Background-Job Execution
+summary:
+  zh: 攻击者把载荷取得和状态触发执行委托给持久化 BITS 作业，利用后台传输外观以及创建、传输、作业状态和通知程序之间的观察断点降低识别与归因概率。
+  en: Adversaries delegate payload acquisition and state-triggered execution to persistent BITS jobs, using background-transfer appearance and observation breaks among creation, transfer, job state, and notification programs to reduce detection and attribution.
+aliases: []
+classification:
+  tactic_refs:
+    - TA0002
+  origin:
+    kind: attack-retained
+    source_attack_id: T1197
+    source_attack_version: "19.1"
+  decision_ref: DEC-TA0002-T1197
+definition_and_concept:
+  paragraphs:
+    - zh: BITS 后台作业执行是攻击者创建或修改 Windows Background Intelligent Transfer Service 作业，把一个或多个文件、远端与本地路径、传输优先级、重试属性和通知程序组合成异步执行链的技术。BITS 服务独立于创建它的短驻命令、PowerShell 会话或 COM 客户端维护作业；当作业进入 transferred 或 error 状态时，服务可以按照通知配置在作业所有者的用户上下文中启动指定程序。其直接目标是在取得载荷的同时，把后继代码执行委托给操作系统管理的持久作业状态。
+      en: BITS Background-Job Execution is a technique in which an adversary creates or modifies a Windows Background Intelligent Transfer Service job and combines one or more files, remote and local paths, transfer priority, retry properties, and a notification program into an asynchronous execution chain. The BITS service maintains the job independently of the short-lived command, PowerShell session, or COM client that created it. When the job enters transferred or error state, the service can launch a specified program in the job owner's user context according to its notification configuration. The direct objective is to acquire a payload while delegating follow-on code execution to persistent operating-system-managed job state.
+    - zh: 本技术的概念锚是“具有执行语义的 BITS 作业”，而不是 bitsadmin.exe、PowerShell cmdlet、COM 接口、HTTP 或 SMB 中任何一种工具或介质。创建工具可以退出，网络连接可以中断并恢复，通知程序也可以晚于初始操作发生，但只要同一作业 GUID、文件队列、状态和通知配置共同维持执行因果，它们仍属于一个 BITS 执行对象。单纯使用 BITS 下载或上传文件而没有状态通知或明确耦合的后继执行，只构成传输行为，不属于 TA0002 下的本技术。
+      en: The conceptual anchor is a BITS job with execution semantics, not any one tool or medium such as bitsadmin.exe, a PowerShell cmdlet, a COM interface, HTTP, or SMB. The creating tool may exit, the network connection may fail and resume, and the notification program may run well after the initial operation, yet a common job GUID, file queue, state, and notification configuration preserve one BITS execution object. Merely using BITS to download or upload a file without state notification or explicitly coupled follow-on execution is transfer behavior and is outside this TA0002 technique.
+stealth_characteristics:
+  paragraphs:
+    - zh: BITS 后台作业执行的核心匿迹矛盾是：攻击者必须留下足以让 Windows 服务恢复传输和启动程序的持久状态，却希望防守方只看到合法系统服务、低干扰网络活动或一个迟到的用户上下文进程。请求者的命令或 COM 调用、BITS 服务中的网络传输、QMGR 数据库中的作业定义以及通知程序的进程创建分布在不同数据源和时间点。只监控常规启动项、创建工具或最终进程的检测会遗漏中间作业语义，难以确认谁创建了作业、何时绑定了命令以及哪个状态转换导致执行。
+      en: The central stealth problem in BITS Background-Job Execution is that an adversary must leave enough persistent state for a Windows service to resume transfer and launch a program while hoping the defender sees only a legitimate system service, low-disruption network activity, or a delayed user-context process. Requester command or COM invocation, network transfer inside the BITS service, job definition in the QMGR database, and notification-program process creation are distributed across data sources and time. Detection focused on conventional autoruns, the creating tool, or the final process misses the intermediate job semantics and struggles to establish who created the job, when the command was bound, and which state transition caused execution.
+    - zh: 攻击者还可以选择 normal 或 low 等后台优先级、网络成本策略、重试间隔、作业名称和通知条件，使传输随空闲带宽推进并接近更新或同步活动；也可以让未完成作业跨登录恢复、错误重试和主机重启继续存在。匿迹并不意味着痕迹消失：作业 GUID、所有者 SID、名称、优先级、URL、目标文件、通知标志、程序与参数、状态转换、BITS-Client 事件和后继进程仍可形成完整残余链。启用跨源采集并延长保留期，会显著削弱这种匿迹。
+      en: An adversary can also choose a background priority such as normal or low, network-cost policy, retry interval, job name, and notification condition so transfer advances with idle bandwidth and resembles update or synchronization activity; an unfinalized job may also remain across logon recovery, error retry, and host reboot. Stealth does not remove traces. Job GUID, owner SID, name, priority, URL, destination file, notification flags, program and arguments, state transitions, BITS-Client events, and successor process still form a complete residual chain. Cross-source collection and longer retention materially weaken the effect.
+scope_boundary_definition:
+  paragraphs:
+    - zh: 本技术纳入攻击者创建、修改、恢复或故意保留 BITS 作业，并把文件队列、传输状态或错误条件与程序执行连接起来的行为。执行可以由 SetNotifyCmdLine 配置的 transferred 或 error 通知直接触发，也可以在同一可证明的作业链中由攻击者明确衔接；判定要求能够把作业身份、状态和执行结果连接起来，而不能仅凭出现 bitsadmin.exe、BITS 网络连接或 QMGR 记录就归类。通过本地交互、远程 PowerShell 或 COM API 管理作业属于实现方式，不构成不同子技术。
+      en: This technique includes adversary creation, modification, resumption, or deliberate retention of a BITS job that connects a file queue, transfer state, or error condition to program execution. Execution may be triggered directly by a transferred- or error-state notification configured through SetNotifyCmdLine, or explicitly coupled by the adversary within the same demonstrable job chain. Classification requires linking job identity, state, and execution outcome; the mere presence of bitsadmin.exe, BITS network traffic, or a QMGR record is insufficient. Local interaction, remote PowerShell, and COM APIs are implementation methods rather than separate children.
+    - zh: 本技术排除没有执行语义的普通 BITS 下载、上传或同步，排除只借用 BITS 进行命令与控制或数据外传但没有由该作业推动代码运行的活动。由通用调度器保存未来触发条件的执行归 T1053，由服务管理器直接创建或启动程序归 T1569，由解释器解析命令或脚本归 T1059。Windows Update、软件分发、消息同步和管理员恢复失败下载都会合法产生长期、后台或带通知的 BITS 作业；只有作业来源、配置、目标、状态和执行结果共同表明攻击者有意改变防守观察时，才进入本对象。
+      en: This technique excludes ordinary BITS download, upload, or synchronization without execution semantics and excludes use of BITS solely for command and control or exfiltration when the job does not advance code execution. Execution retained by a general scheduler belongs to T1053, direct creation or start through a service manager to T1569, and command or script parsing to T1059. Windows Update, software distribution, messaging synchronization, and administrator recovery of failed downloads legitimately create long-lived, background, or notified BITS jobs. The object applies only when job origin, configuration, target, state, and execution outcome jointly demonstrate deliberate adversary manipulation of defender observation.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+      - zh: 攻击者通常在已经获得 Windows 用户会话、脚本执行或远程管理能力后使用本技术：先让 BITS 以较低前台干扰取得载荷，再在 transferred 状态启动下一阶段程序；或者配置一个必然失败或可长期等待的传输，使 error 通知在稍后或重复触发执行。该技术适合创建者进程不应长期存活、网络连接可能间歇中断、主机可能重启，或端点与网络团队无法长期共享关联键的环境。后继目的可以是启动后门、恢复驻留组件或推动其他 Execution 行为，但这些载荷效果不改变本技术以 BITS 作业为直接对象的边界。
+        en: An adversary typically uses this technique after obtaining a Windows user session, script execution, or remote-management capability. BITS may first acquire a payload with little foreground disruption and launch the next-stage program on transferred state, or the adversary may configure a transfer that will fail or wait for an extended period so error notification executes later or repeatedly. The technique is useful when the creator process should not remain alive, network connectivity may be intermittent, the host may reboot, or endpoint and network teams cannot retain shared correlation keys for long. Follow-on purposes can include launching a backdoor, restoring a resident component, or advancing another Execution behavior, but those payload effects do not change the BITS job as the direct object.
+  threat_model:
+    attacker_model:
+      paragraphs:
+        - zh: 攻击者需要能够以目标用户身份创建或修改 BITS 作业，并控制至少一个远端或本地文件映射、作业优先级、通知标志、完整程序路径和参数；若利用延期或错误触发，还需要控制重试和超时属性，或预测登录、网络恢复与重启后的服务行为。BITS 以调用 SetNotifyCmdLine 的用户上下文启动程序，服务账户作业不能使用该命令行回调，因此本技术不会自动获得 SYSTEM 权限。攻击者还必须接受策略带宽限制、作业数量限制、九十日默认 inactivity timeout、目标文件完成语义和安全产品对 BITS 事件或进程链的监控。
+          en: The adversary needs the ability to create or modify a BITS job as the target user and control at least one remote-to-local file mapping, job priority, notification flags, full program path, and arguments. Delayed or error-triggered use additionally requires control of retry and timeout properties or an ability to predict service behavior after logon, network recovery, and reboot. BITS launches the program in the context of the user who called SetNotifyCmdLine, and service-account jobs cannot use this command-line callback, so the technique does not automatically obtain SYSTEM privilege. The adversary must also accept policy bandwidth limits, job-count limits, the default ninety-day inactivity timeout, destination-file completion semantics, and security monitoring of BITS events or process lineage.
+    defender_model:
+      paragraphs:
+        - zh: 防守方模型假定可以取得进程创建与命令行、PowerShell BITS cmdlet 或部分 COM 调用、Microsoft-Windows-Bits-Client/Operational 事件、当前作业枚举、QMGR 活动与已删除记录、网络连接和文件完整性信息。可靠分析需要把时间统一后，按设备、用户 SID、作业 GUID、显示名称、优先级、远端 URL、本地路径、通知程序、参数和状态转换关联创建—传输—通知—结果序列，并把关联窗口扩展到登录恢复、重启和组织允许的最长作业寿命。若只记录 bitsadmin.exe、只看服务宿主网络，或在通知发生前清理数据库与事件，防守方只能得到低置信度片段。
+          en: The defender model assumes access to process creation and command line, PowerShell BITS cmdlets or some COM invocation, Microsoft-Windows-Bits-Client/Operational events, current job enumeration, active and deleted QMGR records, network connections, and file integrity. Reliable analysis normalizes time and correlates a creation-transfer-notification-outcome sequence by device, user SID, job GUID, display name, priority, remote URL, local path, notification program, arguments, and state transition, extending the window across logon recovery, reboot, and the longest job lifetime allowed by policy. If collection records only bitsadmin.exe, observes only service-host network traffic, or loses database and event history before notification, the defender retains only low-confidence fragments.
+stealth_mechanisms:
+  - mechanism_ref: NM-BT
+    role: primary
+    summary:
+      zh: BITS 服务和 QMGR 状态分离请求者与执行结果
+      en: BITS service and QMGR state separate requester from execution outcome
+    analysis:
+      paragraphs:
+        - zh: 攻击者把文件队列、状态和通知程序写入由 BITS 服务维护的作业后，创建命令或 COM 客户端可以退出，后续网络传输由服务宿主发起，通知程序则在 transferred 或 error 状态下通过 CreateProcessAsUser 启动。常规进程视图因此把网络活动归到受信服务，把最终程序显示为迟到的用户上下文进程；只监控创建工具或普通启动项的规则缺少连接两端的作业语义，关键行为落在有效观察与分析理解之外，形成行为透明。
+          en: After the adversary writes a file queue, state, and notification program into a BITS-managed job, the creating command or COM client can exit, subsequent network transfer originates from a service host, and the notification program starts through CreateProcessAsUser on transferred or error state. A conventional process view therefore attributes network activity to a trusted service and shows the final program as a delayed user-context process. Rules monitoring only the creating tool or conventional autoruns lack the job semantics that connect both ends, leaving critical behavior outside effective observation and analytic understanding and producing Behavioral Transparency.
+        - zh: 这种机理不表示 QMGR 内容本身不可解释。BITS 接口、Operational 事件和针对活动或已删除数据库记录的取证解析能够恢复 GUID、所有者、文件、命令、参数和状态；Mandiant 的 KEGTAP 调查正是通过跨源组合这些信息识别服务启动的后门。因此残余线索充分时，问题属于覆盖和关联缺口，而不是 NM-DO 数据遮蔽。
+          en: This mechanism does not mean QMGR content is inherently uninterpretable. BITS interfaces, Operational events, and forensic parsing of active or deleted database records can recover GUID, owner, files, command, arguments, and state; Mandiant's KEGTAP investigation identified the service-launched backdoor by combining those sources. When residual evidence is available, the problem is a coverage and correlation gap rather than NM-DO Data Obscuration.
+    evidence_refs: [REF-000115, REF-000137, REF-000141]
+    confidence: high
+  - mechanism_ref: NM-ST
+    role: secondary
+    summary:
+      zh: 异步状态重试与作业寿命跨窗口分散执行链
+      en: Asynchronous state retry and job lifetime disperse the execution chain across windows
+    analysis:
+      paragraphs:
+        - zh: BITS 把新作业置于队列并根据网络、登录和策略条件推进连接与传输；瞬态错误会按照 minimum retry delay 和 no progress timeout 自动重试，transferred 状态又必须等待 Complete 才成为最终状态。攻击者若保留未完成作业或利用可恢复错误，创建、传输、状态通知和程序启动可能落在不同会话、不同日甚至不同重启周期，使短窗口阈值、单次内存快照和局部日志查询只能看到碎片，形成时空释痕。
+          en: BITS queues new jobs and advances connection and transfer according to network, logon, and policy conditions. Transient errors retry according to minimum retry delay and no-progress timeout, while transferred state does not become final until Complete. If an adversary leaves a job unfinalized or exploits a recoverable error, creation, transfer, state notification, and program launch can land in different sessions, days, or reboot cycles. Short-window thresholds, one-time memory snapshots, and local log queries then see only fragments, producing Spatiotemporal Trace Dilution.
+        - zh: 本机理以 BITS 作业状态为因果载体，不等同于 T1053 保存任意未来时间表。UBoatRAT 直接证明未完成通知作业可以跨重启周期性运行，Microsoft 文档则限定默认 inactivity timeout 和登录条件。作业 GUID、创建与修改时间、状态历史、通知配置和重复进程结果仍允许长期重建；无法保留这些关联键时才会获得完整匿迹收益。
+          en: The causal carrier is BITS job state rather than an arbitrary future schedule retained by T1053. UBoatRAT directly demonstrates an unfinalized notification job executing periodically across reboot, while Microsoft documentation constrains the default inactivity timeout and logon requirements. Job GUID, creation and modification times, state history, notification configuration, and repeated process outcomes still permit long-horizon reconstruction; the full stealth benefit appears only when those keys are not retained.
+    evidence_refs: [REF-000115, REF-000136, REF-000138, REF-000140, REF-000141]
+    confidence: high
+  - mechanism_ref: NM-FD
+    role: secondary
+    summary:
+      zh: 后台优先级和更新式作业属性降低恶意可区分性
+      en: Background priority and update-like job properties reduce malicious distinguishability
+    analysis:
+      paragraphs:
+        - zh: BITS 允许应用选择 foreground、high、normal 或 low 优先级；后台优先级使用空闲带宽，并随前台网络活动和网络成本调整。攻击者选择后台优先级、常见代理设置和类似 System update 的显示名称后，恶意作业与 Windows Update、软件分发和同步应用共享服务宿主、带宽节奏、队列状态和管理元数据，单点流量速率、签名进程或作业名称难以将其准确识别为恶意，形成特征伪装。
+          en: BITS allows an application to select foreground, high, normal, or low priority. Background priorities use idle bandwidth and adapt to foreground network activity and network cost. When an adversary selects a background priority, common proxy settings, and a display name such as System update, the malicious job shares service hosting, bandwidth cadence, queue state, and management metadata with Windows Update, software distribution, and synchronization applications. Point observations of transfer rate, signed process, or job name cannot classify it accurately, producing Feature Disguise.
+        - zh: 仅仅使用 BITS 默认 normal 优先级并不能证明攻击者有意伪装。较高置信度需要同时看到异常创建主体、非常见 URL 或目标路径、通知程序、与业务不符的时间关系或恶意后继结果。Microsoft 对 sLoad 的研究证明未检查 BITS 的防线会遗漏攻击活动，Mandiant 案例证明恶意作业确实可以采用 normal 优先级和更新式名称，但公开材料没有直接陈述攻击者选择优先级的主观理由，因此本机理保持 medium。
+          en: Merely using the default normal BITS priority does not prove deliberate disguise. Higher confidence requires an unusual creator, off-baseline URL or destination path, notification program, business-inconsistent timing, or malicious follow-on outcome. Microsoft's sLoad research shows that defenses not inspecting BITS can miss adversary activity, and the Mandiant case shows a malicious job using normal priority and an update-like name, but public material does not directly state the adversary's subjective reason for choosing priority; this mechanism therefore remains medium confidence.
+    evidence_refs: [REF-000135, REF-000139, REF-000141]
+    confidence: medium
+subtechnique_taxonomy:
+  narrative:
+    paragraphs:
+      - zh: 本技术保留两项 Niji 原生子技术。活动感知型后台传输执行固定攻击者对后台优先级、网络成本策略和更新式作业属性的选择，主要改变传输节奏与合法相似性；长驻作业延迟激活固定 transferred 或 error 通知、未完成作业和重试或跨重启寿命的组合，主要改变创建与实际程序启动之间的时间和来源关系。前者关注传输如何融入正常后台活动，后者关注状态何时以及由谁触发执行。
+        en: This technique retains two Niji-native children. Activity-Aware Background Transfer Execution fixes the adversary's selection of background priority, network-cost policy, and update-like job properties, principally changing transfer cadence and benign resemblance. Long-Lived Job Deferred Activation fixes the combination of transferred or error notification, an unfinalized job, and retry or post-reboot lifetime, principally changing the temporal and provenance relationship between creation and actual program launch. The former concerns how transfer blends into normal background activity; the latter concerns when and by whom state triggers execution.
+      - zh: 两项子技术可以组合，但不能仅以 BITS 的平台固有属性判定。后台优先级必须是与执行链耦合的攻击者选择，而长寿命必须来自攻击者有意保留通知作业或利用错误与重试；默认 normal 优先级、正常更新器的长作业、具体接口、协议或工具名称都不构成新的子项。若后续证据无法证明攻击者控制这些变量，应降低置信度或合并分类，而不是为了保留现有 ID 强制维持数量。
+        en: The children can be combined, but BITS platform properties alone do not establish either category. Background priority must be an adversary selection coupled to the execution chain, while long lifetime must arise from deliberate retention of a notified job or exploitation of error and retry. Default normal priority, a legitimate updater's long-running job, a particular interface, protocol, or tool name does not create another child. If future evidence cannot establish adversary control of these variables, confidence must be lowered or the category merged rather than preserving a count for existing IDs.
+  coverage: established
+  subtechnique_refs: [NJS-0063-001, NJS-0063-002]
+defense:
+  detections:
+    coverage: available
+    strategy_refs: [DET-000057]
+  mitigations:
+    coverage: available
+    mitigation_refs: [MIT-000056]
+evidence:
+  claim_refs: [CLM-000248, CLM-000308, CLM-000309, CLM-000310, CLM-000311, CLM-000312, CLM-000313, CLM-000314, CLM-000315]
+  case_refs: [CASE-000053, CASE-000054]
+  reference_refs: [REF-000115, REF-000135, REF-000136, REF-000137, REF-000138, REF-000139, REF-000140, REF-000141, REF-000142]
+research:
+  limitations:
+    paragraphs:
+      - zh: 证据层级并不均衡。Microsoft 接口与生命周期文档直接证明作业优先级、异步状态、通知程序、用户上下文、重试和默认寿命；UBoatRAT 与 KEGTAP 案例直接证明状态通知和跨窗口执行，因此长驻作业延迟激活为 high。活动感知型后台传输执行由可配置优先级、空闲带宽行为、sLoad 对未检查 BITS 防线的规避效果以及 Mandiant 的 normal-priority 恶意作业共同支持，但案例没有直接陈述攻击者选择优先级的主观目的，所以该子项和 NM-FD 只保持 medium。
+        en: Evidence strength is uneven. Microsoft interface and lifecycle documentation directly establishes job priority, asynchronous state, notification programs, user context, retry, and default lifetime. The UBoatRAT and KEGTAP cases directly establish state notification and cross-window execution, so Long-Lived Job Deferred Activation is high confidence. Activity-Aware Background Transfer Execution is jointly supported by configurable priority, idle-bandwidth behavior, sLoad's evasion of defenses that do not inspect BITS, and Mandiant's normal-priority malicious job, but the cases do not directly state the adversary's subjective reason for selecting priority. That child and NM-FD therefore remain medium confidence.
+      - zh: BITS 被 Windows Update、软件分发、同步程序和管理员广泛合法使用，服务宿主网络、normal 优先级、长期作业或通知配置都不能单独证明恶意。不同 Windows 版本的 QMGR 格式、Operational 事件字段和日志保留也会改变可见性；Mandiant 指出手工数据库分析难以规模化，删除记录虽可恢复却会被覆盖。未来评审应优先寻找明确记录恶意优先级选择的案例，并验证所声明字段在目标 Windows 版本和采集产品中真实可得。
+        en: Windows Update, software distribution, synchronization software, and administrators use BITS legitimately, so service-host network traffic, normal priority, long-lived jobs, or notification configuration alone does not establish maliciousness. QMGR format, Operational event fields, and retention vary across Windows versions and change visibility; Mandiant notes that manual database analysis does not scale and recoverable deleted records can be overwritten. Future review should prioritize cases that explicitly document malicious priority selection and verify that claimed fields are actually available in the target Windows version and collection product.
+lifecycle:
+  status: draft
+  version: "1.1.0"
+  created: "2026-09-10"
+  modified: "2026-09-10"
+  contributors:
+    - Niji Matrix Research
+  reviewers: []

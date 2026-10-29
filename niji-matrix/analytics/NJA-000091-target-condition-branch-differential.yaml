@@ -1,0 +1,100 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000091
+strategy_ref: DET-000106
+name:
+  zh: 显式目标属性分支差分
+  en: Explicit Target-Attribute Branch Differential
+summary:
+  zh: 输出环境属性、攻击者条件和匹配或失配后的执行差异之间的关系。
+  en: Produce relationships among environment attributes, adversary conditions, and execution differences after match or mismatch.
+domains:
+- enterprise
+platforms:
+- Windows
+- Linux
+- macOS
+- ESXi
+logic:
+  paragraphs:
+  - zh: 在进程或投递会话内聚合主机、域、网络、路径、语言、文件、参数和客户端属性读取，记录规范化、常量或规则访问、比较结果、分支标识，以及退出、重定向、载荷释放或敏感动作。若单变量条件变化能稳定改变后继结果，输出 explicit_condition_gated_activation；只有枚举而无后继差异时保留为环境发现，密码派生链转交 NJA-000110。
+    en: Within a process or delivery session, aggregate reads of host, domain, network, path, language, file, parameter, and
+      client attributes and record normalization, constant or rule access, comparison result, branch identity, and exit,
+      redirection, payload release, or sensitive action. Emit explicit_condition_gated_activation when a one-variable condition
+      change consistently alters the successor outcome. Retain enumeration without a successor difference as environment
+      discovery and route cryptographic derivation chains to NJA-000110.
+data_requirements:
+- source_type: environment-condition-telemetry
+  name:
+    zh: 环境条件与分支遥测
+    en: Environment condition and branch telemetry
+  channel: null
+  required_fields:
+  - event.timestamp
+  - host.id
+  - process.start_key
+  - session.id
+  - attribute.type
+  - attribute.value_hash
+  - operation
+  - rule.id
+  - comparison.result
+  - branch.id
+  - successor.action
+- source_type: condition-gated-delivery
+  name:
+    zh: 条件化投递与服务端决策
+    en: Condition-gated delivery and server decision
+  channel: null
+  required_fields:
+  - event.timestamp
+  - session.id
+  - request.attribute_hash
+  - decision.rule_id
+  - decision.result
+  - response.object_hash
+  - response.action
+observables:
+- zh: 集中环境枚举后只在匹配值出现载荷或敏感动作
+  en: Payload or sensitive action appears only after a matching value following concentrated environment enumeration
+- zh: 条件失配导致退出、自删、诱饵或不返回载荷
+  en: Condition mismatch causes exit, self-deletion, decoy behavior, or payload withholding
+correlation:
+  window:
+    zh: 覆盖同一进程运行或投递会话中的属性采集、比较和首个分支结果；具体会话超时依据应用、代理和服务端日志的生命周期配置并记录，不使用跨环境固定窗口。
+    en: Cover attribute collection, comparison, and the first branch outcome within the same process run or delivery session.
+      Configure and record the concrete session timeout from application, proxy, and server-log lifecycle rather than use
+      one cross-environment fixed window.
+  dimensions:
+  - host.id
+  - process.start_key
+  - session.id
+  - sample.hash
+  - attribute.type
+  - comparison.result
+  - branch.id
+false_positives:
+- zh: 软件许可、兼容性检查、更新适用性、区域合规、功能开关和单实例应用
+  en: Software licensing, compatibility checks, update applicability, regional compliance, feature flags, and single-instance
+    applications
+blind_spots:
+- zh: 服务端条件不可见、比较被内联或混淆、属性无法稳定重放，或没有匹配与失配对照
+  en: Invisible server-side conditions, inlined or obfuscated comparisons, attributes that cannot be replayed stably, or no
+    matched and unmatched controls
+tuning_guidance:
+  paragraphs:
+  - zh: 按签名、发布者、应用用途和预期条件字段建立正常基线。优先使用检查后的恶意结果和受控差分，不用单个语言、域、互斥或用户代理读取作为结论；敏感属性保存哈希时仍需稳定比较键。
+    en: Baseline legitimate behavior by signing, publisher, application purpose, and expected condition fields. Prioritize
+      malicious outcome after checks and controlled differential rather than conclude from one language, domain, mutex, or
+      user-agent read. When sensitive attributes are hashed, preserve a stable comparison key.
+evidence_refs:
+- REF-000390
+- REF-000420
+lifecycle:
+  status: review
+  version: 0.2.0
+  created: '2026-09-19'
+  modified: '2026-09-21'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

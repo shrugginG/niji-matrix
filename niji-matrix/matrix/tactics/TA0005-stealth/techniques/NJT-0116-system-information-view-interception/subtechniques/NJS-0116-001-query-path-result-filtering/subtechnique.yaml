@@ -1,0 +1,89 @@
+schema_version: 2.0.0
+type: evasion-subtechnique
+id: NJS-0116-001
+name:
+  zh: 查询路径结果过滤
+  en: Query-Path Result Filtering
+summary:
+  zh: 攻击者在系统信息 API、系统调用或序列输出返回前移除选定对象条目，使多个依赖同一路径的工具共同遗漏真实活动。
+  en: Adversaries remove selected object entries before system-information APIs, system calls, or sequence output return so multiple tools depending on the same path omit real activity.
+aliases: []
+parent_ref: NJT-0116
+lineage:
+  attck_subtechnique_inherited: false
+definition_and_concept:
+  paragraphs:
+  - zh: 查询路径结果过滤是攻击者在用户态库函数、原生 API、系统调用、文件或网络序列生成函数以及等价查询路径中插入选择逻辑，在结果返回调用者之前按 PID、端口、名称、路径或其他对象键删除条目。直接目的在于让真实对象继续执行、通信或持久化，而观察者只获得经过筛选的集合。
+    en: Query-Path Result Filtering is an evasion sub-technique in which an adversary inserts selection logic into a user-space library function, native API, system call, file or network sequence generator, or an equivalent query path and deletes entries by PID, port, name, path, or another object key before results return to the caller. Its immediate purpose is to let a real object continue executing, communicating, or persisting while the observer receives only a filtered set.
+  - zh: 稳定变量是“查询执行路径被修改并对返回集合实施选择性过滤”。具体 API、操作系统层级和被隐藏对象是实现；若查询代码保持正确而用于枚举的对象链或元数据本身被修改，则属于 NJS-0116-002。
+    en: The stable variable is modification of a query execution path that selectively filters the returned set. Particular APIs, operating-system levels, and hidden objects are implementations. If query code remains correct while the object list or metadata used for enumeration is changed, the behavior belongs to NJS-0116-002.
+stealth_characteristics:
+  paragraphs:
+  - zh: 查询路径结果过滤使共享 API 或虚拟文件路径成为单一错误事实源。ps、netstat、目录浏览器与安全工具即使由不同进程运行，只要依赖相同系统调用或序列函数，就会共同遗漏被选择的进程、文件或连接；对象仍产生 CPU、线程、socket、磁盘和网络结果，但常用清单看起来内部一致。
+    en: Query-Path Result Filtering makes a shared API or virtual-file path a single false source of truth. Ps, netstat, directory browsers, and security tools can all omit a selected process, file, or connection when they depend on the same system call or sequence function, even when running in separate processes. The object still produces CPU, thread, socket, disk, and network outcomes while common inventories appear internally consistent.
+  - zh: hook 代码、函数指针或表项变化、未知模块、控制设备、过滤选择器、同一对象在旁路网络或更低层内存中的存在性仍可观察。只要防守方能使用不共享该路径的视图、可信启动或离线检查，过滤结果就会形成差分；若攻击者控制所有独立路径，检测能力显著下降。
+    en: Hook code, function-pointer or table-entry changes, unknown modules, control devices, filtering selectors, and existence of the same object in side-channel networking or lower-layer memory remain observable. The filtered result forms a differential whenever defenders can use a view that does not share the path, trusted boot, or offline inspection. Detection degrades materially when the adversary controls every independent path.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 纳入攻击者有意修改查询执行路径、在返回前移除或改写选定条目，并由被过滤对象继续产生实际行为的情形。判定要求识别调用链或代码完整性变化、输入与输出集合以及独立存在性证据，不能只凭某工具未显示对象。
+    en: Scope includes deliberate adversary modification of a query execution path that removes or rewrites selected entries before return while the filtered object continues producing real behavior. Classification requires query-lineage or code-integrity change, input and output sets, and independent existence evidence; one tool failing to display an object is insufficient.
+  - zh: 合法安全产品过滤、兼容性包装、访问控制导致的不同视图、进程自然结束和扫描竞态是反例。直接从内核活动链移除对象归兄弟项；把对象移入容器、虚拟机或其他地址空间归 NJT-0111；删除日志与历史记录归 NJT-0112。
+    en: Legitimate security-product filtering, compatibility wrappers, access-control views, natural process termination, and scan races are counterexamples. Direct removal from a kernel active list belongs to the sibling. Moving an object into a container, virtual machine, or another address space belongs to NJT-0111, and deleting logs or history belongs to NJT-0112.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: Linux 根套件可 hook getdents、read 或 tcp/udp sequence-show 函数，从 /proc 和 /proc/net 输出中删除矿工进程、后门 PID 与 C2 端口；Windows 用户态根套件可拦截目录、Registry 或进程枚举 API。XorDdos 直接展示用户态组件通过 IOCTL 更新 PID 与端口隐藏集合，再由内核 hook 过滤多个工具共同消费的结果。
+      en: A Linux rootkit may hook getdents, read, or TCP and UDP sequence-show functions and delete miner processes, backdoor PIDs, and C2 ports from /proc and /proc/net output. A Windows user-mode rootkit may intercept directory, Registry, or process-enumeration APIs. XorDdos directly demonstrates a user-mode component updating hidden PID and port sets through IOCTL before kernel hooks filter results consumed by multiple tools.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者需要在查询函数或其下层分派点执行代码，知道目标对象标识与调用约定，并维持不同内核版本、并发访问和错误处理兼容。过滤条件必须足够窄以免删除正常对象或破坏工具；控制设备、hook 表和重复选择器也可能形成稳定指纹。
+        en: The adversary needs code execution in the query function or a lower dispatch point, knowledge of target object identifiers and calling conventions, and compatibility with kernel versions, concurrent access, and error handling. Filters must be narrow enough not to remove legitimate objects or break tools. Control devices, hook tables, and repeated selectors can also form stable fingerprints.
+    defender_model:
+      paragraphs:
+      - zh: 防守方可取得函数与表项完整性、模块和驱动清单、查询输入/返回集合、内核或 hypervisor 对象、流量与 socket 事实以及启动加载来源，并用稳定对象键对齐。只采集一个受影响 API、无法读取内核或没有旁路网络时会形成盲区；合法监控和安全 hook 需要签名、版本与用途基线。
+        en: Defenders can obtain function and table-entry integrity, module and driver inventory, query input and returned sets, kernel or hypervisor objects, flow and socket facts, and boot or load provenance and align them with stable object keys. Collecting only one affected API, inability to read the kernel, or missing side-channel networking creates blind spots. Legitimate monitoring and security hooks require signing, version, and purpose baselines.
+stealth_mechanisms:
+- mechanism_ref: NM-BT
+  role: primary
+  summary:
+    zh: 共享查询路径在返回前移除真实对象条目
+    en: A shared query path removes real object entries before return
+  analysis:
+    paragraphs:
+    - zh: 攻击者把选择过滤插入多个工具共同依赖的查询路径，痕迹从一个真实对象分裂为仍在活动的下层状态和缺少条目的上层结果。防守方在共享接口边界看不到对象并把后继行为归给其他主体，形成行为透明；独立路径与 hook 完整性可破坏该效果。
+      en: The adversary inserts selection filtering into a query path shared by multiple tools, splitting traces into an active lower-layer object and an upper result missing the entry. Defenders cannot see the object at the shared interface boundary and attribute successor behavior elsewhere, producing Behavioral Transparency. Independent paths and hook integrity can break the effect.
+  evidence_refs:
+  - REF-000401
+  - REF-000433
+  confidence: high
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000113
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000114
+evidence:
+  claim_refs:
+  - CLM-000643
+  case_refs:
+  - CASE-000155
+  reference_refs:
+  - REF-000401
+  - REF-000433
+research:
+  limitations:
+    paragraphs:
+    - zh: XorDdos 直接证明 PID 与端口过滤以及控制设备，但不同操作系统、对象类型和工具可能使用不共享的查询路径。一个对象只在单次快照中缺失可能是竞态、权限或缓存，不足以证明根套件；高置信度需要重复差分、路径完整性变化和持续后继行为。
+      en: XorDdos directly establishes PID and port filtering plus a control device, but operating systems, object classes, and tools may use query paths that are not shared. An object missing from one snapshot can result from race, authority, or cache and does not establish a rootkit. High confidence requires repeated differentials, query-path integrity change, and persistent successor behavior.
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-09-21'
+  modified: '2026-09-21'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

@@ -1,0 +1,108 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000255
+strategy_ref: DET-000210
+name:
+  zh: Windows 本地与 SMB 命名空间枚举分析
+  en: Windows Local and SMB Namespace Enumeration Analytic
+summary:
+  zh: 关联异常 dir、PowerShell 或文件浏览进程与目录/共享对象访问，不把列表等同正文读取。
+  en: Join abnormal dir, PowerShell, or file-browser processes to directory or share object access without equating listing
+    to body reads.
+domains:
+- enterprise
+platforms:
+- Windows
+logic:
+  paragraphs:
+  - zh: 从进程和脚本事件识别 dir/tree/Get-ChildItem、远控文件浏览及等价枚举，在已配置 SACL 的高价值本地目录使用 4663 ListDirectory/ReadData 语义，在 SMB 审计中使用 5145
+      的 share、relative target、accesses 与主体。按主机、用户、进程和根路径聚合范围；后继 file open/copy/archive 仅作独立上下文。
+    en: Identify dir, tree, Get-ChildItem, remote file browsing, and equivalent enumeration from process and script events.
+      Use 4663 ListDirectory or ReadData semantics where target SACLs exist on high-value local directories, and SMB 5145
+      share, relative target, access, and actor fields. Aggregate by host, user, process, and root path. Later file open,
+      copy, or archive remains separate context.
+data_requirements:
+- source_type: windows-process-script
+  name:
+    zh: Windows 进程和脚本
+    en: Windows process and script
+  channel: Sysmon or EDR plus PowerShell where enabled
+  required_fields:
+  - timestamp
+  - host_id
+  - user_id
+  - process_guid
+  - image
+  - command_line
+  - parent_guid
+  - script_block
+- source_type: windows-object-access
+  name:
+    zh: Windows 文件对象访问
+    en: Windows file object access
+  channel: Security 4663 with target SACL
+  required_fields:
+  - timestamp
+  - host_id
+  - subject_user_sid
+  - process_id
+  - process_name
+  - object_name
+  - access_mask
+- source_type: windows-share-access
+  name:
+    zh: Windows 共享对象访问
+    en: Windows share object access
+  channel: Security 5145 where enabled
+  required_fields:
+  - timestamp
+  - host_id
+  - subject_user_sid
+  - source_address
+  - share_name
+  - relative_target_name
+  - accesses
+observables:
+- zh: 非常用主体递归列出高价值本地目录或已知共享
+  en: An unusual actor recursively lists a high-value local directory or known share
+- zh: 短时跨多个根路径或共享形成高扇出名称读取
+  en: High-fan-out name reads span several roots or shares in a short period
+correlation:
+  window:
+    zh: 进程内 30 分钟聚合路径范围，SMB 按主体/来源/share 2 小时；14 日建立用户和作业基线。
+    en: Aggregate path scope for 30 minutes per process and SMB for two hours by actor, source, and share; use a 14-day user
+      and job baseline.
+  dimensions:
+  - host_id
+  - user_id
+  - process_guid
+  - source_address
+  - share_name
+  - root_path
+  - time
+false_positives:
+- zh: 用户浏览、备份、杀毒、索引、开发构建、部署和取证会合法枚举
+  en: User browsing, backup, antivirus, indexing, development builds, deployment, and forensics legitimately enumerate
+blind_spots:
+- zh: 未配置 SACL/5145、GUI/API 无进程参数、共享代理、重解析点、日志量与返回名称不在事件中会限制结论
+  en: Missing SACL or 5145, GUI or API calls without process parameters, share proxies, reparse points, event volume, and
+    absent returned names limit conclusions
+tuning_guidance:
+  paragraphs:
+  - zh: 按用户/服务身份、父进程、根路径、share、主机角色和批准窗口设到期基线。单次 dir、签名工具或 4663 不定性。
+    en: Use expiring baselines by user or service identity, parent, root, share, host role, and approved window. One dir,
+      signed utility, or 4663 is not determinative.
+evidence_refs:
+- REF-000625
+- REF-000835
+- REF-000836
+- REF-000379
+- REF-000474
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-09-27'
+  modified: '2026-09-27'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

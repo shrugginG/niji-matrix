@@ -1,0 +1,51 @@
+schema_version: "2.0.0"
+type: detection-analytic
+id: NJA-000059
+strategy_ref: DET-000080
+name: {zh: ESXi Guest Operations 请求—认证—来宾结果分析, en: ESXi Guest Operations Request-Authentication-Guest Outcome Analytic}
+summary: {zh: 以 host 和 VM 身份连接管理请求、GuestOps 日志、认证预期与 vmtoolsd 后继结果，恢复 hypervisor-to-guest 因果。, en: Join management requests GuestOps logs authentication expectations and vmtoolsd-descended outcomes by host and VM identity to restore hypervisor-to-guest causality.}
+domains: [enterprise]
+platforms: [ESXi, Windows, Linux]
+logic:
+  paragraphs:
+  - zh: 为每个 vCenter/ESXi Guest Operations 生成 guestops_execution_id，保存管理主体/会话、源、host build、目标 VM moref/UUID、Tools 版本与状态、方法、参数或 hash、request/task/eventChainId、开始/完成时间和结果。读取每 VM `vmware.log` 的 GuestOps 记录，并连接来宾 `vmtoolsd.exe`/`vmtoolsd`、子进程、命令、用户、文件传输和网络结果。
+    en: Generate a GuestOps execution ID for every vCenter or ESXi Guest Operations event and retain management principal or session, source, host build, target VM moref or UUID, Tools version and state, method, parameters or hash, request task or eventChainId, start and completion time, and result. Read GuestOps records from each VM's `vmware.log` and join guest `vmtoolsd.exe` or `vmtoolsd`, child process, command, user, file transfer, and network outcome.
+  - zh: 对每次成功操作计算来宾认证预期：正常凭据化请求应邻近 Windows 登录/注销或 Linux 等价访问证据；受影响版本中成功动作、无相应认证且有 vmtoolsd 结果进入漏洞分支。无管理请求的 vmtoolsd 子进程进入未归因分支。将同一主体跨多 VM 执行、非常见 StartProgramInGuest、文件传入后执行和日志服务异常提高优先级，但不让“缺 4624”单独定性。
+    en: For every successful action calculate expected guest authentication. Normal credentialed requests should align with Windows logon or logoff or Linux equivalent access evidence; on affected versions a successful action without authentication but with vmtoolsd outcome enters the exploit branch. A vmtoolsd child without management request enters an unattributed branch. Prioritize one principal across many VMs, unusual StartProgramInGuest, transfer-then-execute, and logging-service anomaly, but never classify from missing 4624 alone.
+data_requirements:
+- source_type: vsphere-identity-and-api
+  name: {zh: vCenter/ESXi 会话、权限与 GuestOps API, en: vCenter or ESXi session privilege and GuestOps API}
+  channel: null
+  required_fields: [timestamp, vcenter_or_host_id, principal_id, session_id, source_address, target_vm_id, api_method, request_task_or_event_chain_id, parameters_or_hash, result]
+- source_type: esxi-vm-guestops-log
+  name: {zh: 每 VM vmware.log 与 ESXi GuestOps 记录, en: Per-VM vmware.log and ESXi GuestOps records}
+  channel: vmware.log
+  required_fields: [timestamp, esxi_host_id, target_vm_id, guestops_operation, guest_identity_or_type, tools_channel_id, status, related_file_or_process]
+- source_type: guest-authentication-and-tools
+  name: {zh: 来宾认证与 VMware Tools 状态, en: Guest authentication and VMware Tools state}
+  channel: null
+  required_fields: [timestamp, target_vm_id, guest_os, vmware_tools_version, vmware_tools_status, authentication_event, account_or_token, logon_type, outcome]
+- source_type: guest-process-file-network
+  name: {zh: vmtoolsd 后继进程、文件与网络结果, en: vmtoolsd successor process file and network outcome}
+  channel: null
+  required_fields: [timestamp, target_vm_id, process_start_key, parent_process, child_process, command_line_or_hash, file_path_or_hash, network_destination, user_context, outcome]
+observables:
+- {zh: StartProgramInGuest 成功后同一 VM 出现 vmtoolsd 子进程，但没有预期来宾认证事件, en: StartProgramInGuest succeeds and the same VM has a vmtoolsd child without the expected guest authentication event}
+- {zh: 非备份/支持主体短时间跨多个 VM 调用 GuestOps 并执行相同命令或文件, en: A non-backup or support principal invokes GuestOps across multiple VMs in a short period and executes the same command or file}
+- {zh: 文件传入、进程启动和文件传出形成同一 GuestOps 链，且无变更单或目标不在主体职责范围, en: File transfer in process start and transfer out form one GuestOps chain without a change record or with targets outside principal responsibility}
+correlation:
+  window: {zh: 从管理会话前十五分钟到 GuestOps 完成后两小时；跨 VM fan-out 和离线日志补传延长七日。, en: From fifteen minutes before management session through two hours after GuestOps completion with cross-VM fan-out and delayed log forwarding extended seven days.}
+  dimensions: [vcenter, esxi_host, principal, session, target_vm, request_task_event_chain, guestops_method, tools_channel, authentication, vmtoolsd_process, file, network, approval, time]
+false_positives:
+- {zh: 备份与灾备、支持诊断、自动化清单、来宾定制、补丁与应急恢复, en: Backup and disaster recovery support diagnostics automated inventory guest customization patching and emergency recovery}
+blind_spots:
+- {zh: ESXi/vCenter 日志未集中、`vmware.log` 轮转、VM 时间漂移或来宾无 EDR, en: ESXi or vCenter logs not centralized rotated `vmware.log` VM time drift or guest without EDR}
+- {zh: 被攻陷 vCenter/ESXi 能篡改日志，或旧版本缺少稳定请求键, en: Compromised vCenter or ESXi can alter logs or legacy versions lack stable request keys}
+tuning_guidance:
+  paragraphs:
+  - zh: 先盘点备份、支持和编排工具使用的主体、源、API 方法、VM 集合和窗口，并把允许项绑定工具版本、任务/变更单和目标；不要允许所有 vpxuser、root 或 vmtoolsd。对 StartProgramInGuest、transfer-then-execute 和跨 VM fan-out 分别建基线。
+    en: Inventory principals sources API methods VM sets and windows used by backup support and orchestration and bind allowances to tool version task or change record and target. Do not allow all vpxuser root or vmtoolsd activity. Baseline StartProgramInGuest transfer-then-execute and cross-VM fan-out separately.
+  - zh: 在受控实验中验证凭据化 GuestOps 会产生哪些认证和 `vmware.log` 字段，再测试补丁前后差异；只有管理动作成功、版本兼容和来宾结果共同存在时才使用“认证缺失”分支。所有 host 与 VM 强制时间同步并将日志远程写入不可由 ESXi 管理员单独删除的位置。
+    en: Validate in controlled testing which authentication and `vmware.log` fields credentialed GuestOps produces and compare patched and affected versions. Use the missing-authentication branch only when management success version compatibility and guest outcome coexist. Time-sync every host and VM and remotely write logs where an ESXi administrator alone cannot delete them.
+evidence_refs: [REF-000053, REF-000208, REF-000209, REF-000210]
+lifecycle: {status: review, version: 0.1.0, created: '2026-09-12', modified: '2026-09-12', contributors: [Niji Matrix Research], reviewers: []}

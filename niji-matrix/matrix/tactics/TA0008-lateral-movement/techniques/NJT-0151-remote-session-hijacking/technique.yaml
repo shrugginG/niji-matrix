@@ -1,0 +1,230 @@
+schema_version: 2.0.0
+type: technique
+id: NJT-0151
+name:
+  zh: 远程服务会话劫持
+  en: Remote Service Session Hijacking
+summary:
+  zh: 攻击者接入他人已经建立的远程服务传输或会话，使后续控制继承原有会话的认证、来源或用户上下文。
+  en: An adversary enters a remote-service transport or session already established by another principal, causing subsequent
+    control to inherit the earlier session's authentication, origin, or user context.
+aliases:
+- T1563
+classification:
+  tactic_refs:
+  - TA0008
+  origin:
+    kind: attack-adapted
+    source_attack_id: T1563
+    source_attack_version: '19.1'
+  decision_ref: DEC-TA0008-T1563
+definition_and_concept:
+  paragraphs:
+  - zh: 远程服务会话劫持是攻击者在已有内部立足点上，控制另一主体先前建立且仍有效的远程交互状态。被接管的对象可以是通向内部主机的已认证传输及其新增控制通道，也可以是服务器上保留的交互桌面与客户端附着关系；核心不是服务协议名称，而是控制者和原认证/会话所有者分离后，目标仍按原有状态接受操作。至少应能指出原会话、后来的异常接入，以及由该状态产生的目标控制结果。
+    en: Remote Service Session Hijacking occurs when an adversary with an internal foothold controls remote interactive state
+      previously established and still maintained by another principal. The object may be an authenticated transport to an
+      internal host with an additional control channel, or an interactive desktop retained on a server whose client attachment
+      changes. The defining property is a separation between current controller and original authenticated session owner while
+      the target continues to accept actions under earlier state, not the name of the protocol. Evidence should identify the
+      original session, later anomalous access, and a control result derived from that state.
+  - zh: 这种行为有多层证据门：可见会话或可达套接字只证明暴露；未授权的通道创建或会话重附着证明接管动作；与目标主机或另一内部资源上的命令、进程或访问相联才能证明横向结果。正当的会话恢复、远程协助或管理员接管可能具有相同技术形态，必须结合授权、原所有者、发起进程与目标效果判别。
+    en: The behavior has several evidence gates. A visible session or reachable socket proves exposure; unauthorized channel
+      creation or session reattachment establishes the takeover action; and linked commands, processes, or resource access
+      on a destination host or another internal resource establish the lateral result. Legitimate reconnection, remote support,
+      or administrator takeover can have the same technical shape and must be evaluated against authorization, original owner,
+      initiating process, and target effect.
+stealth_characteristics:
+  paragraphs:
+  - zh: 匿迹变量是攻击者把操作绑定到一个已经被认证和允许的会话，而不是重新建立完整登录。沿既有 SSH 传输新增通道会使目标网络边界仍只看见原有 TCP 来源和既有身份；远程桌面重附着则保留原用户桌面、进程和登录上下文，变化主要落在客户端地址、会话连接事件及接管发起者。若检测只计数新连接、新认证或陌生账户，可能漏掉这两类交接。
+    en: The stealth variable is binding adversary actions to a session that has already been authenticated and allowed rather
+      than performing a complete new logon. A new channel on an existing SSH transport can leave the destination network boundary
+      seeing the original TCP origin and identity. Remote desktop reattachment preserves the original user's desktop, processes,
+      and logon context; changes concentrate in the client address, reconnect event, and initiating actor. Detection based
+      only on new connections, new authentication, or unfamiliar accounts can miss both transitions.
+  - zh: 这种效果不是隐形。客户端的控制套接字连接或 ptrace、目标 SSH 服务端的新通道/子进程、Windows 的 4778/4779、tscon/等效管理进程以及原用户上下文中的后续动作均可能留下可关联的痕迹。没有通道级采集时，SSH
+      目标端正常会话日志可能不足以归因真实本地操作者；没有跨主机原用户活动与批准工单时，远程桌面正常重连也会产生相似日志。
+    en: This is not invisibility. Client control-socket connections or ptrace, new channels or child processes at the destination
+      SSH server, Windows 4778 and 4779, tscon or equivalent management processes, and follow-on actions in the original user's
+      context can all leave joinable traces. Without channel-level capture, ordinary SSH server logs may be insufficient to
+      attribute the true local controller. Without cross-host owner activity and approval records, routine remote desktop
+      reconnection can produce similar events.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 纳入已有远程会话或已认证传输被另一个主体接管并用于目标控制的链条，攻击者可先拥有本地普通用户权限、管理权限或特定会话连接权，但这些权限本身不是 T1563。T1021 负责攻击者用自己的账户/凭据建立新远程连接；T1550 负责代理、令牌、票据或其他材料被用来通过另一次认证；T1210
+      负责以服务漏洞触发目标控制。单纯复制密钥、访问 SSH_AUTH_SOCK、枚举 RDP 会话或观察 SSH 流不构成会话接管。
+    en: Scope includes a chain in which another principal takes over an existing remote session or authenticated transport
+      and uses it for destination control. The adversary may first hold local user, administrator, or specific session-connect
+      rights, but those rights alone are not T1563. T1021 owns new remote connections made with the attacker's account or
+      credentials; T1550 owns agent, token, ticket, or other material used in another authentication; and T1210 owns destination
+      control triggered by a service vulnerability. Copying a key, accessing SSH_AUTH_SOCK, enumerating RDP sessions, or observing
+      SSH traffic alone does not establish session takeover.
+  - zh: 若接管只让攻击者在其已控制的同一主机上取得更高本地令牌或进程权限，而没有通过另一内部主体或系统会话取得横向控制，应优先归入 TA0004 的权限提升或相关进程上下文技术。若操作先接管远程会话、又因此可控制另一主机/内部资源，两阶段可分别标注；不可将本地
+      SYSTEM 的取得自动等同于横向完成。把管理员正常帮用户恢复桌面排除在恶意分类外，除非有未授权主体与异常结果证据。
+    en: If takeover only gives the adversary a stronger local token or process authority on a host already under their control,
+      without lateral control through another internal principal or system session, TA0004 privilege escalation or the relevant
+      process-context technique is primary. If an operation first takes over a remote session and thereby controls another
+      host or internal resource, the phases can be labeled separately; gaining local SYSTEM is not automatically a lateral
+      outcome. Normal administrator help in restoring a user's desktop remains outside malicious classification absent unauthorized
+      initiator and anomalous result evidence.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: 在 SSH 管理跳板上，运维人员已经连到内部系统并保持 ControlMaster 传输；攻击者占有同机身份或可访问控制套接字，尝试在原认证传输上建立新交互通道。另一种场景是攻击者能附着运行中的 SSH 客户端并修改通道请求。两个实现均应以“原连接没有重新认证、目标出现新增控制通道”验证，不能把转发代理为新目标签名的行为混入。
+      en: On an SSH administration jump host, an operator has already connected to an internal system and keeps a ControlMaster
+        transport alive. An adversary controlling a local identity or reaching its control socket attempts a new interactive
+        channel over the original authenticated transport. A second implementation attaches to a running SSH client and changes
+        its channel request. Both implementations require evidence that the original connection was reused without fresh authentication
+        and that a new destination control channel appeared; an agent signing for a new target connection is a different behavior.
+    - zh: 在远程桌面会话主机上，另一个内部用户的会话保持活动或断开但未结束。攻击者先获得能够请求连接该会话的权限，再将它附着到自己的客户端或现有会话，并在原用户桌面中执行后续动作。此场景的核心不是 tscon 二进制本身，而是会话所有者、原客户端与新控制端之间的异常关系；管理员交接、排障和用户本人设备切换是必须排除的正常反例。
+      en: On a Remote Desktop Session Host, another internal user's session remains active or disconnected but not ended.
+        The adversary first obtains authority to request connection to that session, then attaches it to their client or existing
+        session and performs follow-on actions within the original user's desktop. The core is the anomalous relationship
+        among session owner, previous client, and new controller, not the tscon executable itself. Authorized administrator
+        handoff, troubleshooting, and the user's own device change are necessary normal counterexamples.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者须已有能看到或碰到现存会话的一处内部立足点。SSH 通道路径需要对运行中客户端的可附着权限、同身份控制套接字访问或更高权限，以及目标现存可用连接；RDP 路径需要对会话主机的连接权限、所有者口令或能实际调用连接功能的管理权限。攻击者可能知道目标会话
+          ID、socket 路径和会话所属用户，但不能假定任何已登录用户或所有 root/SYSTEM 进程都会给其可用通道。成功还取决于会话未终结、服务端允许附加通道或重连、以及目标用户上下文仍有目标资源权限。
+        en: The adversary needs an internal foothold from which an existing session can be found and reached. The SSH channel
+          path needs permission to attach to the running client, access to a same-identity control socket, or higher authority,
+          plus a usable established connection to the destination. The RDP path needs connect rights on the session host,
+          the owner's password, or administrative authority that actually permits the connection action. The adversary may
+          know a session ID, socket path, and owner, but neither every logged-in user nor every root or SYSTEM process guarantees
+          a usable channel. Success also depends on the session remaining alive, the service allowing another channel or reconnection,
+          and the target user's context retaining the needed resource rights.
+    defender_model:
+      paragraphs:
+      - zh: 防守方假定能分别采集会话初始认证、目标进程/资源行为以及部分会话生命周期事件；Linux 侧可选用经验证的 OpenSSH 通道级埋点和本机 socket/ptrace 观测，Windows 侧可用安全日志 4624、4778、4779、4688
+          及会话主机资产/批准记录。网络加密和常规认证日志不会自动揭示 SSH 新通道的真实发起者，4778 也只证明重连而不证明恶意。主机、账户、会话/连接标识、原/新客户端及时间是核心关联键；缺任一层时按暴露、接管、横向结果分级。
+        en: Assume the defender can separately collect initial session authentication, destination process or resource behavior,
+          and some session-lifecycle events. Linux deployments may add validated OpenSSH channel instrumentation and local
+          socket or ptrace observation; Windows deployments can use Security events 4624, 4778, 4779, and 4688 with session-host
+          inventory and approval records. Network encryption and ordinary authentication logs do not automatically reveal
+          the true initiator of a new SSH channel, while 4778 proves reconnection rather than malice. Host, account, session
+          or connection identity, old and new client, and time are core join keys. Missing layers require separate exposure,
+          takeover, and lateral-result grades.
+stealth_mechanisms:
+- mechanism_ref: NM-ST
+  role: primary
+  summary:
+    zh: 将新控制通道压入既有认证传输
+    en: Place a new control channel inside an established authenticated transport
+  analysis:
+    paragraphs:
+    - zh: 攻击者若访问已有 SSH 控制套接字或附着运行中客户端，请求目标服务端在同一认证传输上增设通道。新命令不需要新 TCP 连接和完整认证流程，目标网络视角保留原用户来源，时间上新增的控制动作与合法连接寿命重叠，降低只看连接/登录计数的检测机会。残余证据是本机
+        socket 或 ptrace 活动、传输上的通道增加、目标端新的 shell/命令进程及后续资源动作；OpenSSH 技术规范与 iSSHD 研究支持机制，公开事件并未证明其在特定入侵中实际发生。
+      en: If an adversary reaches an existing SSH control socket or attaches to a running client, they can ask the destination
+        server to add a channel on the same authenticated transport. The new command needs neither a new TCP connection nor
+        a full authentication sequence, leaving the original user's origin at the destination network boundary and overlapping
+        the new control action with a legitimate connection's lifetime. This weakens detection based only on connection and
+        logon counts. Residual evidence comprises local socket or ptrace activity, a new transport channel, a new shell or
+        command process at the destination, and subsequent resource action. OpenSSH specifications and iSSHD research support
+        the mechanism; public incident evidence here does not establish its occurrence in a particular intrusion.
+  evidence_refs:
+  - REF-000614
+  - REF-000615
+  - REF-000616
+  - REF-000370
+  confidence: medium
+- mechanism_ref: NM-FD
+  role: secondary
+  summary:
+    zh: 用既有用户桌面承接新控制端
+    en: Attach a new controller to an existing user desktop
+  analysis:
+    paragraphs:
+    - zh: 在有连接权限的前提下，攻击者将既有远程桌面会话接到另一客户端/会话；用户桌面、登录 ID 与许多已有进程仍是原状态，后续操作表面继续属于原账户，因此仅按账户或新登录建立告警会丢失控制者变化。残余差异包括原客户端断开与新客户端重连，或原客户端继续在线时新增控制端、会话名或
+        LogonID 的连续性、连接操作发起进程及其权限、还有原用户上下文中的异常后续行为。Microsoft 文档证明重连、影子控制及相应权限，但无权推导所有实现均免口令、免提示或恶意。
+      en: Given connect authority, an adversary attaches an existing remote desktop session to another client or session.
+        The desktop, logon ID, and many existing processes remain associated with the original user, so alerts keyed only
+        to account name or a new logon can miss the controller change. Residual differences include the prior client disconnecting
+        and a new client reconnecting, or an additional controller joining while the prior client remains, continuity in session
+        name or LogonID, the connecting process and its authority, and anomalous follow-on actions in the original user's
+        context. Microsoft documentation establishes reconnect, shadow control, and their rights, but does not justify claiming
+        that every implementation bypasses passwords or prompts or is malicious.
+  evidence_refs:
+  - REF-000617
+  - REF-000619
+  - REF-000624
+  - REF-000618
+  - REF-000621
+  - REF-000622
+  - REF-000623
+  confidence: medium
+subtechnique_taxonomy:
+  narrative:
+    paragraphs:
+    - zh: 建议两个 Niji 原生子项，分别以攻击者改变“已认证传输内的通道控制者”和“现有交互会话所附着的客户端/操作者”为变量。前者使新动作藏于旧连接且要求通道级相关；后者使旧桌面的控制端迁移或并存，分别要求重连/来源或影子请求/策略相关。二者按被改写的会话关系、残余痕迹和防守数据划界；SSH
+        与 RDP 只是现有证据最清楚的实现，不作为 NJS 名称或成员条件。会话持续时长、代理转发和凭据类型尚不足以成为第三子项。
+      en: 'Two Niji-native children are proposed: one changes who controls a channel within an authenticated transport, and
+        the other changes the client or operator attached to an existing interactive session. The first places new action
+        inside an old connection and needs channel-level correlation; the second transfers or adds a controller to an old
+        desktop and needs reconnect or origin correlation for transfer and shadow request or policy correlation for co-control.
+        Their boundaries follow the modified session relationship, residual traces, and defender data; SSH and RDP are merely
+        the clearest implementations in the available evidence, not NJS names or membership rules. Session lifetime, agent
+        forwarding, and credential type do not yet warrant a third child.'
+  coverage: established
+  subtechnique_refs:
+  - NJS-0151-001
+  - NJS-0151-002
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000170
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000155
+evidence:
+  claim_refs:
+  - CLM-000766
+  - CLM-000767
+  - CLM-000768
+  - CLM-000769
+  case_refs:
+  - CASE-000211
+  - CASE-000212
+  reference_refs:
+  - REF-000613
+  - REF-000614
+  - REF-000615
+  - REF-000616
+  - REF-000617
+  - REF-000618
+  - REF-000619
+  - REF-000620
+  - REF-000621
+  - REF-000622
+  - REF-000623
+  - REF-000624
+  - REF-000377
+  - REF-000370
+research:
+  limitations:
+    paragraphs:
+    - zh: 现有 SSH 证据为 OpenSSH 原始规范、内核权限文档和 iSSHD/SSH-Jack 技术研究，足以说明旧认证传输增通道的技术可行性与可观察点，但未找到公开的逐会话野外入侵证据。因此本轮不建立 SSH 成功 CASE，也不把
+        Matrix.org 代理转发或 UNC3886 新 SSH 流重定向叙述代入。ControlMaster 新建的是同一传输内的新逻辑通道，不是原 PTY 的键盘接管；若主评审要求字段级野外案例，应延期这个子项。
+      en: The SSH evidence consists of primary OpenSSH specifications, kernel access-control documentation, and iSSHD or SSH-Jack
+        technical research. It establishes feasibility and observable points for adding a channel to an old authenticated
+        transport, but no published per-session field intrusion chain was found. No successful SSH case should be created,
+        and neither Matrix.org agent forwarding nor UNC3886 redirection of new incoming SSH traffic may be substituted. ControlMaster
+        opens a new logical channel on the same transport rather than taking the keyboard of the original PTY. If primary
+        review requires field incident evidence, defer this child.
+    - zh: RDS 的规范文档说明连接/远程控制所需权限、命令能力和事件字段，不证明任何特定攻击。Korznikov 提供受控演示，Mandiant 在 MAZE 响应综述中报告成功 tscon 劫持，CrowdStrike 报告则明确区分被阻断的
+        tscon 尝试与成功的 shadow 接管；后者还给出该事件未提示用户的具体策略条件。两份野外来源均未公开完整 4778/4779、原/新控制端和每个目标结果的日志链，所以 Analytic 的关联模式是可实施的防守设计，不是事件原文。
+      en: RDS specifications establish required rights, command capabilities, and event fields, not an attack in any particular
+        environment. Korznikov provides a controlled demonstration. Mandiant's MAZE response synthesis reports successful
+        tscon hijacking, while CrowdStrike expressly separates a blocked tscon attempt from successful shadow control under
+        a no-consent policy in that event. Neither field source publishes a complete 4778 or 4779, old and new controller,
+        and per-result log chain, so analytic correlation is an implementable defender design rather than a quotation of case
+        telemetry.
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-09-22'
+  modified: '2026-09-22'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

@@ -1,0 +1,118 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000327
+strategy_ref: DET-000249
+name:
+  zh: Windows 派生对象生成者与非批准读取者差分
+  en: Windows Derivative-Object Producer and Unapproved-Reader Differential
+summary:
+  zh: 按对象、主体、会话与结果字段实现“Windows 派生对象生成者与非批准读取者差分”。
+  en: Implement Windows Derivative-Object Producer and Unapproved-Reader Differential with object, principal, session, and
+    outcome fields.
+domains:
+- enterprise
+platforms:
+- Windows
+logic:
+  paragraphs:
+  - zh: 为打印队列、文件级备份和应用导出区建立 derivative manifest，至少记录 producer_kind、job_id、produced_time、source_owner、source_scope、derivative_object_id/path、expected_consumer、retention_end。打印适配器可从
+      PrintService/Operational 307 取得 document、user、client machine、printer、port、size 与 pages，但只有能稳定映射 spool 对象时才声明具体文档关系。把
+      manifest 与该路径的 4663 FILE_READ_DATA 连接，若读取进程或主体不在 expected_consumer 且随后产生复制、解析或外送结果，则输出 derivative-read-supported；只有路径时间近似而无稳定对象键时输出
+      derivative-store-anomaly，不声称规范源内容已读。打印队列试点用生成前后十分钟，普通备份按 manifest 保留期至多二十四小时或本地批准值。
+    en: Build a derivative manifest for print queues, file-level backups, and application export areas with at least producer_kind,
+      job_id, produced_time, source_owner, source_scope, derivative_object_id or path, expected_consumer, and retention_end.
+      A print adapter may obtain document, user, client machine, printer, port, size, and pages from PrintService/Operational
+      307, but it may assert a document relationship only when the spool object maps stably. Join the manifest to FILE_READ_DATA
+      in 4663 for the derivative path. If the reader process or principal is outside expected_consumer and produces a copy,
+      parse result, or outbound outcome, emit derivative-read-supported. When only path and time proximity exist without a
+      stable object key, emit derivative-store-anomaly without claiming canonical content was read. Pilot ten minutes around
+      print production and use the manifest retention interval, capped at twenty-four hours or a locally approved value, for
+      ordinary backups.
+data_requirements:
+- source_type: derivative-object-manifest
+  name:
+    zh: 经验证的Derivative Object Manifest数据
+    en: Derivative Object Manifest
+  channel: PrintService/Operational 307, backup catalog, or application export audit
+  required_fields:
+  - timestamp
+  - producer_kind
+  - job_id
+  - source_owner
+  - source_scope
+  - derivative_object_id_or_path
+  - expected_consumer
+  - retention_end
+- source_type: windows-derivative-read-audit
+  name:
+    zh: 经验证的Windows Derivative Read Audit数据
+    en: Windows Derivative Read Audit
+  channel: Security/4663 with SACL
+  required_fields:
+  - timestamp
+  - device_id
+  - subject_user_sid
+  - subject_logon_id
+  - object_name
+  - access_mask
+  - process_id
+  - process_name
+- source_type: process-and-output-lineage
+  name:
+    zh: 经验证的Process And Output Lineage数据
+    en: Process And Output Lineage
+  channel: Security/4688 plus endpoint file/network telemetry
+  required_fields:
+  - timestamp
+  - device_id
+  - process_start_id
+  - parent_process_start_id
+  - signer
+  - output_path_or_destination
+  - action_type
+observables:
+- zh: 派生对象由批准生产者生成后，被不在 manifest 中的进程实际读取
+  en: A derivative object is produced by an approved producer and then actually read by a process absent from its manifest
+- zh: 非批准读取者形成解析输出、复制或外送，而规范源没有本次逐对象读取
+  en: The unapproved reader creates a parse result, copy, or transfer while the canonical source has no current per-object
+    read
+correlation:
+  window:
+    zh: 临时打印队列在生成前后十分钟关联；备份和导出按生产者保留期、试点上限二十四小时；消费者基线保留三十天。
+    en: Use ten minutes around transient print-spool production; producer-defined retention for backups and exports capped
+      at twenty-four hours in the pilot; retain thirty days of consumer baselines.
+  dimensions:
+  - timestamp
+  - job_id
+  - device_id
+  - subject_logon_id
+  - object_name
+  - process_id
+  - process_start_id
+false_positives:
+- zh: 打印渲染和重试、备份校验、反恶意软件或 EDR、索引、DLP、支持导出、法律保全、迁移和取证会读取派生副本。
+  en: Print rendering and retry, backup verification, antivirus or EDR scanning, indexing, DLP inspection, support export,
+    legal hold, migration, and forensic acquisition can read derivative copies.
+blind_spots:
+- zh: 打印事件 307 可能没有稳定 spool 路径，manifest 可能缺逐文件映射，应用 API 或内存解析可能没有 4663；Windows 字段也不能证明 macOS 备份读取。
+  en: Print Event 307 may lack a stable spool path, manifests can omit per-file mappings, application APIs or memory parsing
+    may not emit 4663, and Windows telemetry does not establish macOS backup reads.
+tuning_guidance:
+  paragraphs:
+  - zh: 要求生产者 manifest 与实际 ReadData，优先使用稳定派生对象 ID，以签名、服务 SID 和作业范围绑定批准消费者；映射不确定时只输出异常状态。
+    en: Require a producer manifest and exercised ReadData, prefer stable derivative IDs, bind approved consumers to signer,
+      service SID, and job scope, and emit only an anomaly state when mapping is uncertain.
+evidence_refs:
+- REF-001077
+- REF-001083
+- REF-000379
+- REF-000475
+- REF-000868
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-10-05'
+  modified: '2026-10-05'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

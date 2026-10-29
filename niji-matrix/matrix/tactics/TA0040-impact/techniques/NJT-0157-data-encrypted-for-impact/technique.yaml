@@ -1,0 +1,184 @@
+schema_version: 2.0.0
+type: technique
+id: NJT-0157
+name:
+  zh: 为影响而加密数据
+  en: Data Encrypted for Impact
+summary:
+  zh: 攻击者使原本可读的数据因未授权加密及密钥控制而不可读，并改变加密覆盖或执行位置以削弱早期发现。
+  en: Adversaries deny reading through unauthorized encryption and key control while changing encryption coverage
+    or execution location to weaken early detection.
+aliases: []
+classification:
+  tactic_refs:
+  - TA0040
+  origin:
+    kind: attack-adapted
+    source_attack_id: T1486
+    source_attack_version: '19.1'
+  decision_ref: DEC-TA0040-T1486
+definition_and_concept:
+  paragraphs:
+  - zh: 为影响而加密数据是攻击者对原本供业务读取的内容实施未授权加密或重加密，并控制或隐瞒当前状态所需解密密钥，使合法用户无法按原用途使用数据。判断单位是可读状态和密钥归属的变化；文件或对象仍可能存在，服务也可能正常响应，但组织原有密钥和工作流无法恢复当前内容。
+    en: Data Encrypted for Impact is unauthorized encryption or re-encryption of content previously usable by business
+      workflows, with the adversary controlling or withholding the key needed for the current state. The unit of
+      analysis is changed readability and key custody. Files or objects may remain, and a service may respond normally,
+      while the organization's existing keys and workflow cannot recover current content.
+  - zh: Niji 的匿迹问题是加密过程如何削弱早期观察，而不是勒索通知是否出现。文件内局部改写会使写入量和整文件密文外观下降；由存储服务在客户密钥下重加密则把执行位置移出主机文件传感器。权限取得、载荷部署、后续删除备份和勒索谈判可构成同一行动链，却不是此父技术的直接对象。
+    en: The Niji stealth question is how the encryption process weakens early observation, not whether a ransom
+      note appears. Regional within-file rewriting lowers write volume and whole-file ciphertext appearance; storage-service
+      re-encryption under a customer key moves execution outside host file sensors. Privilege acquisition, payload
+      deployment, later backup deletion, and extortion can form one operation but are not this parent's direct object.
+stealth_characteristics:
+  paragraphs:
+  - zh: 大规模全文件加密常造成密集文件改写、明显内容统计变化和快速业务故障。稀疏加密保留大量明文区段，降低整文件熵和短窗写入量的判别力；服务端重加密保留对象键并借有效身份调用正常对象复制 API，使主机端点没有对应加密进程。两者改变的观察面不同，均不消除数据不可读的结果。
+    en: Mass full-file encryption commonly creates dense rewrites, conspicuous content-statistic changes, and rapid
+      business failures. Sparse encryption preserves much plaintext, weakening whole-file entropy and short-window
+      write-volume discrimination. Service-side re-encryption preserves object keys and uses normal copy APIs under
+      a valid identity, leaving no corresponding host encryptor process. These change different observation surfaces
+      without removing the unreadable-data outcome.
+  - zh: 同一进程跨多个业务文件的写入、文件内被改变区域、解析失败、对象数据事件中的客户密钥参数、对象版本和后续读失败仍可调查。若防守方只用整文件阈值或只部署主机 EDR，早期信号会不足；保留前版本、内容抽样及云数据事件时，攻击者的低可见设计会留下可以关联的反证。
+    en: One process writing many business files, changed file regions, parse failures, customer-key parameters in
+      object data events, object versions, and later failed reads remain investigable. Whole-file thresholds or
+      host-only EDR may have too little early signal. Preserved prior versions, content sampling, and cloud data
+      events provide correlatable counterevidence to the lower-visibility designs.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 纳入攻击者有意造成的密文状态转换：数据先前可由组织正常密钥读取，随后当前文件或对象版本因加密与密钥归属改变而失去合法可读性，并有证据表明覆盖或执行位置改变了守方观察。单个高熵文件、加密 API、SSE-C 参数或勒索字条都不能单独证明这条链。
+    en: Include adversary-caused ciphertext state changes where data was readable under normal organizational keys
+      and the current file or object version later becomes unreadable through encryption and changed key custody,
+      with evidence that coverage or execution location changed defender observation. One high-entropy file, cryptographic
+      API call, SSE-C parameter, or ransom note alone cannot establish this chain.
+  - zh: 删除或覆写原件造成的数据消失另归 T1485，磁盘内容或结构擦除归 T1561，恢复副本及快照抑制归 T1490；仅改 ACL 或 KMS 授权而不改密文属于访问控制问题。正常静态加密、组织仍掌握密钥的批准迁移和外传前打包加密是反例。选择性跳过文件及来宾虚拟机观察隔离分别由
+      NJT-0117、NJS-0111-004 负责。
+    en: Deletion or overwrite removing the original belongs separately to T1485, disk-content or structure wiping
+      to T1561, and recovery-copy or snapshot inhibition to T1490. Changing ACL or KMS grants without changing ciphertext
+      is an access-control issue. Ordinary at-rest encryption, approved migration retaining organizational key custody,
+      and encryption solely packaging exfiltrated data are counterexamples. NJT-0117 and NJS-0111-004 own selective
+      file skipping and guest-VM observation isolation respectively.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: 在终端或文件服务器，勒索载荷可间隔改写文档或业务数据文件中的区域，让应用打开失败而整文件仍留有大量原始内容。在云对象存储，攻击者可用已窃有效凭据通过服务端客户密钥重加密已有对象，使对象名仍在但正常读取者没有所需密钥。两者都可能伴随横向移动或备份损伤，不能用伴随行为代替加密证据。
+      en: On endpoints or file servers, an encryptor may rewrite spaced regions of documents or business data so
+        applications fail to open them while much original content remains. In object storage, an actor with stolen
+        valid credentials can have the service re-encrypt existing objects under a customer key, preserving object
+        names while normal readers lack the key. Lateral movement or backup damage may accompany either path but
+        cannot substitute for encryption evidence.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者需要写入目标文件内容，或有权读取并覆写已有对象，同时控制区域改写布局或服务端客户密钥。局部改写太少可能无法破坏业务解析；在当前 AWS S3 配置中，SSE-C 还必须被目标桶允许，或者攻击者需另有修改桶加密配置的权限。进程来源、文件写入、API
+          主体和对象版本仍形成成本与暴露面。
+        en: The attacker needs authority to write target file content or read and overwrite existing objects, plus
+          control over regional rewrite layout or the service-side customer key. Too little regional change may
+          not disrupt business parsing. In current AWS S3 configurations, the target bucket must also permit SSE-C
+          or the actor needs separate authority to change bucket encryption configuration. Process lineage, file
+          writes, API principals, and object versions remain costs and traces.
+    defender_model:
+      paragraphs:
+      - zh: 防守方可能有端点文件事件、进程身份、可安全比较的前版本、对象数据事件、桶加密配置和业务读结果。文件事件本身不提供区域熵，主机 EDR 也不能见到服务端对象重加密；须分别建立进程到文件结构差异和云主体到密钥参数、对象版本的关联。未管理文件共享、未启用数据事件及获批主体被盗均降低证据强度。
+        en: Defenders may have endpoint file events, process identity, safely comparable prior versions, object
+          data events, bucket encryption configuration, and business-read results. File events alone do not provide
+          regional entropy, and host EDR cannot see service-side object re-encryption. Separate joins are needed
+          from process to structural file difference and from cloud principal to key parameter and object version.
+          Unmanaged shares, disabled data events, and compromise of an approved principal weaken confidence.
+stealth_mechanisms:
+- mechanism_ref: NM-FD
+  role: primary
+  summary:
+    zh: 保留明文区域削弱整文件密文与写入特征
+    en: Preserved plaintext regions weaken whole-file ciphertext and write features
+  analysis:
+    paragraphs:
+    - zh: 攻击者只改写文件内部间隔区域，因而每个文件的写入字节与整文件密文比例低于完整加密。依赖总写入速率或整文件熵的检测较难把早期操作与合法批量编辑区分；按同一进程聚合多文件修改并对前后版本做区域比较仍能显露重复的密文布局和读取失败。
+      en: An adversary rewrites spaced regions within files, lowering written bytes and the whole-file ciphertext
+        fraction relative to full encryption. Detectors relying on total write rate or whole-file entropy have less
+        ability to separate early activity from bulk editing. Grouping modifications by process and comparing regions
+        of prior and current versions still exposes repeated ciphertext layout and failed reads.
+  evidence_refs:
+  - REF-000659
+  confidence: high
+- mechanism_ref: NM-BT
+  role: secondary
+  summary:
+    zh: 服务端重加密离开主机文件观察面
+    en: Service-side re-encryption leaves host file-observation scope
+  analysis:
+    paragraphs:
+    - zh: 持有有效对象权限的攻击者请求存储服务以客户提供密钥覆写已有对象，加密计算和版本变化发生在服务数据面而非受害主机文件系统。主机传感器因此不见对应的大量文件写入，若未采集对象数据事件就难以发现当前版本的密钥归属变化；CopyObject
+        序列、客户密钥参数与版本仍可由云侧审计重建。
+      en: An actor with valid object authority asks a storage service to overwrite existing objects under a customer-provided
+        key. Encryption and version change occur in the service data plane rather than a victim host filesystem.
+        Host sensors therefore see no corresponding mass file writes, and without object data events the changed
+        key custody of current versions is hard to detect. CopyObject sequences, customer-key parameters, and versions
+        remain reconstructable in cloud audit.
+  evidence_refs:
+  - REF-000660
+  - REF-000661
+  - REF-000663
+  confidence: high
+subtechnique_taxonomy:
+  narrative:
+    paragraphs:
+    - zh: 文件内稀疏加密按单一文件中被改写区段的密度和布局划界，改变端点写入与内容统计；客户密钥服务端重加密按执行权限及密钥归属移入存储服务划界，改变主机与对象数据面的观察关系。两个变量可共现，但一个不蕴含另一个，检测数据和缓解施加点也不同。
+      en: Sparse In-File Encryption is bounded by the density and layout of rewritten regions within one file, changing
+        endpoint write and content statistics. Customer-Key Service-Side Re-encryption is bounded by execution authority
+        and key custody moving into a storage service, changing host-versus-object-data-plane observation. The variables
+        can co-occur, but neither implies the other, and their detection data and control points differ.
+    - zh: 算法、扩展名、恶意软件家族、文件类别和平台不构成原生子项；选择性不处理关键目标与在无宿主传感器的来宾运行分别归既有 NJT-0117 和 NJS-0111-004。ATT&CK T1486 没有子项，本分类来自开放搜索和独立技术证据，不存在导入关系。
+      en: Cipher, extension, malware family, file category, and platform do not define native children. NJT-0117
+        owns selective preservation and NJS-0111-004 owns execution in a guest outside host sensing. ATT&CK T1486
+        has no children; this taxonomy arises from open search and independent technical evidence, not import.
+  coverage: established
+  subtechnique_refs:
+  - NJS-0157-001
+  - NJS-0157-002
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000175
+    - DET-000176
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000115
+    - MIT-000159
+evidence:
+  claim_refs:
+  - CLM-000781
+  - CLM-000782
+  - CLM-000783
+  case_refs:
+  - CASE-000216
+  reference_refs:
+  - REF-000658
+  - REF-000659
+  - REF-000660
+  - REF-000661
+  - REF-000662
+  - REF-000663
+  - REF-000654
+  - REF-000475
+research:
+  limitations:
+    paragraphs:
+    - zh: SentinelOne Labs 的样本分析证明几种勒索程序采用间歇区段改写，却没有给出适用于所有文件类型和传感器的通用阈值。AWS CIRT 的报告确认恶意 SSE-C 大量覆写，但未披露每个客户的完整读取测试或主观匿迹动机；应分别报告样本事实、服务实现和检测推断。
+      en: SentinelOne Labs' sample analysis establishes regional rewriting in several ransomware families but no
+        universal threshold across file types or sensors. AWS CIRT confirms malicious mass SSE-C overwrites without
+        publishing each customer's full read test or subjective stealth motive. Sample facts, service behavior,
+        and detection inference must be reported separately.
+    - zh: 缺少前版本时，端点文件事件最多提示异常写入，不能证明局部密文布局；缺少对象数据事件时，主机安静不能证明服务端未加密。2026 年后 S3 的 SSE-C 默认阻止使云路径依赖具体桶配置或额外配置权限，受保护旧版本可能恢复数据，但不能否认当前版本短时不可用。
+      en: Without a prior version, endpoint file events suggest abnormal writes at most and cannot prove sparse
+        ciphertext layout. Without object data events, a quiet host cannot rule out service-side encryption. S3's
+        post-2026 default SSE-C block makes the cloud path contingent on bucket configuration or additional configuration
+        authority. Protected prior versions may aid recovery without negating a temporary current-version outage.
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-09-22'
+  modified: '2026-09-22'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

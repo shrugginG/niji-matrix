@@ -1,0 +1,70 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000073
+strategy_ref: DET-000095
+name:
+  zh: 临时权限激活—有效区间—资源使用分析
+  en: Temporary Privilege Activation–Validity Interval–Resource Use Analytic
+summary:
+  zh: 从 JIT、角色假设和身份模拟事件构造临时高权限区间，将区间内资源操作与激活者、审批、认证强度、作用域和到期状态逐次核对。
+  en: Construct temporary privileged intervals from JIT, role-assumption, and impersonation events, then compare each in-interval resource action with activator, approval, authentication strength, scope, and expiry state.
+domains: [enterprise]
+platforms: [Identity Provider, IaaS, SaaS, Office Suite]
+logic:
+  paragraphs:
+  - zh: 分析规范 PIM/PAM activation、role assumption、服务账户 impersonation、token broker 与等价临时提权控制。为每次成功激活生成 privilege_interval_id，保存 tenant/account、原始主体、有效主体或角色、请求/审批 ID、批准者、理由、MFA/认证强度、source/device、目标作用域、requested/approved start 与 end、凭据或会话 ID、token issued/expiry、控制策略版本和结果。requested、approved、issued 与 effective 时间不能互换；缺少明确失效事件时使用 token expiry 或平台最大会话寿命，并标记 inferred_end。
+    en: The analytic normalizes PIM or PAM activation, role assumption, service-account impersonation, token brokers, and equivalent temporary elevation controls. It creates privilege_interval_id for every successful activation and retains tenant or account, original principal, effective principal or role, request and approval ID, approver, justification, MFA or authentication strength, source and device, target scope, requested and approved start and end, credential or session ID, token issue and expiry, control-policy version, and outcome. Requested, approved, issued, and effective times are not interchangeable. Without an explicit invalidation event, it uses token expiry or platform maximum session lifetime and labels inferred_end.
+  - zh: 将所有授权判断与敏感资源操作按 tenant、有效主体/角色、session/token/request ID 和时间连接到唯一窗口，同时保留原始主体或 delegation chain。精确 token/session 键优先；只有主体与时间时置信度降一级，并要求异常来源、罕见资源或审批缺口。每次使用分别检查是否发生在 approved/effective 区间内、是否属于 scope、激活者和使用者是否一致、MFA/审批是否满足策略、是否在 deactivation/expiry 后仍成功，以及相同原始主体是否并发激活多个高权限角色。
+    en: Join every authorization decision and sensitive resource action to one interval by tenant, effective principal or role, session, token, or request ID, and time while retaining original principal or delegation chain. Prefer exact token or session keys; principal-and-time-only correlation lowers confidence by one level and requires anomalous origin, rare resource, or approval gap. Test every use separately for approved and effective interval membership, scope membership, activator and user consistency, MFA and approval policy satisfaction, success after deactivation or expiry, and concurrent activation of multiple privileged roles by one original principal.
+  - zh: 输出分为四级：成功激活但尚无使用的“临时权限状态异常”；批准完整且作用域/时长正常的“可解释窗口”；缺少审批、来源异常、过宽作用域、异常时长或并发激活的“异常权限窗口”；以及异常窗口内完成高价值写入、策略变更、凭据访问、数据导出或防御修改的“已关联临时提权使用”。永久角色写入交由 T1098/NJT-0083，窗口到期后只剩未刷新令牌时记录撤销延迟，不把平台传播延迟自动归因为攻击。
+    en: >-
+      Produce four tiers: a temporary-privilege-state anomaly for successful activation without use; an explainable interval when approval, scope, and duration are normal; an anomalous privilege interval for missing approval, anomalous origin, excessive scope, unusual duration, or concurrent activation; and correlated temporary-elevation use when an anomalous interval contains a high-value write, policy change, credential access, data export, or defense modification. Refer permanent role writes to T1098 and NJT-0083. When only an unrefreshed token remains after interval expiry, record revocation delay rather than automatically attributing platform propagation to attack.
+data_requirements:
+- source_type: temporary-privilege-control-plane
+  name: {zh: 临时权限请求、审批、激活与失效事件, en: Temporary privilege request approval activation and invalidation events}
+  channel: null
+  required_fields: [timestamp, tenant_or_account_id, original_principal_id, effective_principal_or_role, operation, request_id, approval_id, approver_id, justification, authentication_strength, source, device_id, requested_scope, approved_scope, requested_start, approved_start, approved_end, status, policy_version]
+- source_type: temporary-credential-and-session
+  name: {zh: 短期凭据、令牌与委派会话元数据, en: Short-lived credential token and delegated-session metadata}
+  channel: null
+  required_fields: [issued_at, expires_at, tenant_or_account_id, credential_or_token_id, session_id, original_principal_id, effective_principal_or_role, delegation_chain, authentication_method, source, audience, scopes]
+- source_type: cloud-authorization-and-resource-use
+  name: {zh: 云授权判断与资源使用审计, en: Cloud authorization decision and resource-use audit}
+  channel: null
+  required_fields: [timestamp, tenant_or_account_id, principal_id, original_principal_id, role_or_session_id, token_or_request_id, source, device_id, target_resource, action, authorization_result, sensitivity]
+- source_type: privilege-policy-and-approved-work
+  name: {zh: 临时权限策略、值班与批准工作基线, en: Temporary privilege policy duty and approved-work baseline}
+  channel: null
+  required_fields: [policy_version, role_or_privilege, allowed_principals, required_approvers, required_authentication_strength, maximum_duration, allowed_scope, approved_source_or_device, work_id, maintenance_window]
+observables:
+- zh: 原始主体从新来源激活高权限角色，缺少要求的 MFA、批准者或理由，并在数分钟内访问从未使用的高价值资源。
+  en: An original principal activates a privileged role from a new origin without required MFA, approver, or justification and accesses a never-before-used high-value resource within minutes.
+- zh: 服务账户模拟或 role assumption 产生短期凭据，但资源日志缺少原始主体/delegation chain，或显示有效主体访问超出批准 scope。
+  en: Service-account impersonation or role assumption issues a short-lived credential while resource logs omit original principal or delegation chain or show the effective principal accessing outside approved scope.
+- zh: 同一主体并发激活多个不相容角色、请求接近平台允许的最大时长，或在窗口尾部集中执行策略、凭据与日志修改。
+  en: One principal concurrently activates incompatible roles, requests near-maximum platform duration, or concentrates policy, credential, and logging changes at the end of the interval.
+- zh: deactivation/expiry 后相同 session/token 继续成功，且该延迟不能由记录的令牌寿命和平台传播基线解释。
+  en: The same session or token remains successful after deactivation or expiry and the delay is not explained by recorded token lifetime and platform propagation baseline.
+correlation:
+  window:
+    zh: 以每个 interval 的 requested_at 前十五分钟为起点，覆盖 approved_start 至明确 deactivation、token expiry 或 approved_end 后一小时；exact token/session 可覆盖其完整寿命，principal-only 连接限制为二十四小时。主体、角色、来源、资源和时长基线至少使用九十日。
+    en: Start fifteen minutes before requested_at and cover approved_start through explicit deactivation, token expiry, or one hour after approved_end. Exact token or session joins span their complete lifetime; principal-only joins are limited to twenty-four hours. Use at least ninety days for principal, role, origin, resource, and duration baselines.
+  dimensions: [tenant_account, original_principal, effective_principal_role, request, approval, approver, privilege_interval, token_session, delegation_chain, source, device, target_scope, target_resource, authentication_strength, policy_version, time]
+false_positives:
+- zh: 批准的应急值守、故障处理、部署、审计、访问复核、break-glass 测试和自动化代理会合法激活高权限窗口并访问罕见资源。
+  en: Approved emergency duty, incident repair, deployment, audit, access review, break-glass testing, and automation brokers legitimately activate privileged intervals and access rare resources.
+- zh: 资源日志延迟、时钟偏差、令牌缓存和撤销传播可让使用看似发生在窗口之外；必须用 issued/expires、ingest time 与平台基线复核。
+  en: Resource-log delay, clock skew, token caching, and revocation propagation can make use appear outside the interval and require validation with issue and expiry, ingestion time, and platform baseline.
+blind_spots:
+- zh: 平台不记录 original principal、delegation chain、token/session ID、批准有效期或资源 authorization result 时，无法证明具体窗口授权了具体操作。
+  en: If a platform omits original principal, delegation chain, token or session ID, approval validity, or resource authorization result, the analytic cannot prove that a concrete interval authorized a concrete action.
+- zh: 攻击者控制批准者、PIM/PAM 策略、token broker 和审计导出，或使用长期服务账户 key 只显示有效身份时，控制面与使用面可能一致或失去真实发起者。
+  en: When an adversary controls the approver, PIM or PAM policy, token broker, and audit export, or uses a long-lived service-account key showing only the effective identity, control and use planes can agree internally or lose the real initiator.
+tuning_guidance:
+  paragraphs:
+  - zh: 为每个角色和资源范围建立正常激活者、批准者、认证强度、来源/设备、时长、并发角色、首次使用延迟和资源集合基线。允许规则绑定 request/approval ID、具体 work item、角色、scope 和 end time；不得永久放行管理员、自动化服务、公司网络或常见角色。
+    en: For every role and resource scope, baseline normal activators, approvers, authentication strength, origin or device, duration, concurrent roles, first-use delay, and resource set. Bind allowances to request or approval ID, concrete work item, role, scope, and end time; never permanently allow an administrator, automation service, corporate network, or common role.
+  - zh: 用受控 activation、impersonation、提前 deactivation 和 token expiry 测试 interval 边界，分别记录 source event time 与 ingestion time。若原始主体字段只在部分审计日志出现，应保留双身份事件并在缺失日志中降低结论，不用服务账户名称替代委派链。
+    en: Test interval boundaries with controlled activation, impersonation, early deactivation, and token expiry and retain source-event and ingestion times separately. If original-principal fields appear only in selected audit logs, preserve dual-identity events and lower conclusions where absent rather than substituting a service-account name for the delegation chain.
+evidence_refs: [REF-000317, REF-000320, REF-000321, REF-000322]
+lifecycle: {status: review, version: 0.1.0, created: '2026-09-13', modified: '2026-09-13', contributors: [Niji Matrix Research], reviewers: []}

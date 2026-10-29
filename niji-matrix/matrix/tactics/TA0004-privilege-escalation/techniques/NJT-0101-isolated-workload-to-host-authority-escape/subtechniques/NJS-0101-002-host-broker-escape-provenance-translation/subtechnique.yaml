@@ -1,0 +1,235 @@
+schema_version: 2.0.0
+type: evasion-subtechnique
+id: NJS-0101-002
+parent_ref: NJT-0101
+name:
+  zh: 宿主 Broker 逃逸来源转换
+  en: Host-Broker Escape-Provenance Translation
+summary:
+  zh: 攻击者从容器或 guest 向宿主侧 runtime、helper 或控制服务提交请求或状态，由正常 Broker 在宿主权限下产生结果，使结果侧可见主体与原工作负载调用者分离。
+  en: An adversary submits a request or state from a container or guest to a host-side runtime, helper, or control service,
+    which produces the result under host authority and separates the result-side visible actor from the originating workload
+    caller.
+aliases: []
+definition_and_concept:
+  paragraphs:
+  - zh: 宿主 Broker 逃逸来源转换以 original workload principal/process/request 或 control-state write、host broker transaction/executor
+      与 first host-only outcome 的有向关系为 stable key。攻击者不直接在同一进程中取得宿主 token，而让 rootful runtime daemon、kubelet、containerd/runc、host
+      helper/callback、hypervisor service 或等价高权限组件解释它可控的 method/body/state，并代表它建立执行上下文、挂载宿主资源、调用命令或完成敏感操作。
+    en: Host-Broker Escape-Provenance Translation uses the directed relation among an original workload principal, process,
+      or request or control-state write; host-broker transaction or executor; and first host-only outcome as its stable key.
+      Rather than obtaining a host token in the same process, the adversary has a rootful runtime daemon, kubelet, containerd
+      or runc, host helper or callback, hypervisor service, or equivalent privileged component interpret an adversary-controlled
+      method, body, or state and create an execution context, map a host resource, invoke a command, or complete a sensitive
+      operation on its behalf.
+  - zh: Broker 可以同步处理 socket/API，也可以稍后消费 callback/control file；二者都必须证明 original request/state 与具体 host transaction 的因果，而不是仅因
+      daemon 随后活动就归因。攻击者控制的变量是“由哪个受信宿主执行者承担结果”，不是 Docker、Kubernetes、cgroup 或 hypervisor 产品。结果侧如果是 Broker 创建的新 privileged container，本项负责
+      caller→daemon→new-workload 来源；该新容器再经 host alias 访问资源时，NJS-0101-001 可并列负责 mapping。
+    en: The broker can synchronously process a socket or API or consume a callback or control file later. Both require causal
+      proof from original request or state to a concrete host transaction rather than attribution merely because a daemon
+      acts afterward. The adversary-controlled variable is which trusted host executor carries the result, not a Docker, Kubernetes,
+      cgroup, or hypervisor product. When the broker creates a new privileged container, this child owns caller-to-daemon-to-new-workload
+      provenance. If that new container then accesses a host resource through an alias, NJS-0101-001 can co-occur to own the
+      mapping.
+stealth_characteristics:
+  paragraphs:
+  - zh: 宿主 Broker 逃逸来源转换把原始攻击者调用与宿主结果分置于不同 process tree、namespace 和审计面。容器侧可能只显示对 /var/run/docker.sock 的 connect/write、HTTP
+      request、gRPC message 或 callback state mutation；宿主侧则显示 dockerd/containerd/kubelet/runc、system helper 或 hypervisor service
+      以正常 root/service identity 创建进程、容器、mount 或文件。传统 process ancestry 从受信 daemon 开始，原 container caller、image 与 request body
+      不在同一事件中。
+    en: Host-Broker Escape-Provenance Translation places the original adversary call and host result in different process
+      trees, namespaces, and audit surfaces. The container side can show only a connect or write to /var/run/docker.sock,
+      an HTTP request, gRPC message, or callback-state mutation. The host side then shows dockerd, containerd, kubelet, runc,
+      a system helper, or a hypervisor service creating a process, container, mount, or file under an ordinary root or service
+      identity. Traditional process ancestry begins at the trusted daemon, and the original container caller, image, and request
+      body are absent from the same event.
+  - zh: 来源转换不等于日志删除。control socket access、peer credential、API authentication、request path/body、runtime event、transaction/container
+      ID、callback old/new、daemon child 与 resource result 均可能残留；困难在于这些键不天然双向连接，且合法 CI/build、orchestration、node agent 与运维同样调用
+      Broker。攻击者若选用常见 method 和 image，结果外观进一步接近正常基础设施。强制 caller-aware audit、request digest、transaction propagation 与 least-authority
+      control channel 会削弱该轴。
+    en: Provenance translation is not log deletion. Control-socket access, peer credential, API authentication, request path
+      or body, runtime event, transaction or container ID, callback old and new values, daemon child, and resource result
+      can remain. The difficulty is that these keys do not naturally join bidirectionally and legitimate CI or builds, orchestration,
+      node agents, and operations call the same brokers. If the adversary chooses common methods and images, the result resembles
+      ordinary infrastructure even more closely. Caller-aware audit, request digests, propagated transaction identifiers,
+      and least-authority control channels weaken the axis.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 本项纳入一个来自受限 workload/guest 的可归属 request 或 state write、一个实际消费它的 host broker transaction、由该 transaction 产生的 effective
+      host context，以及原 pre-state 无权完成而实际成功的 host-only outcome。只发现 mounted socket、开放 TCP port、可写 callback、Docker client binary、API
+      200、container create event 或 daemon child 都不够；request 可能只查询信息、被拒绝、创建 rootless/same-authority container 或没有产生宿主结果。
+    en: Inclusion requires an attributable request or state write from a constrained workload or guest, a host-broker transaction
+      that actually consumes it, effective host context produced by that transaction, and a successful host-only outcome unavailable
+      to original pre-state. A mounted socket, open TCP port, writable callback, Docker client binary, API 200 response, container-create
+      event, or daemon child alone is insufficient. A request can be read-only, denied, create a rootless or same-authority
+      container, or produce no host result.
+  - zh: 直接 syscall/kernel exploit 后同一进程进入 host namespace 而没有 Broker 解释时留在 NJT-0101 父级；容器进程直接经 path/handle 修改宿主资源归 NJS-0101-001。合法
+      Docker-in-Docker builder、CI runner、cluster autoscaler、node lifecycle controller、CSI/device plugin 与 incident responder
+      可能调用高权限 runtime；必须以 caller workload digest/spec、service account/certificate或 peer UID、允许 method/parameters、目标 node/resource、审批与窗口建立正例，不能因
+      Broker 是 root 或创建 privileged container 就自动定性。
+    en: A direct syscall or kernel exploit that moves the same process into a host namespace without broker interpretation
+      remains parent NJT-0101. Direct host-resource mutation by a container process through a path or handle belongs to NJS-0101-001.
+      Legitimate Docker-in-Docker builders, CI runners, cluster autoscalers, node-lifecycle controllers, CSI or device plugins,
+      and incident responders can invoke privileged runtimes. Positive baselines require caller workload digest and specification,
+      service account, certificate, or peer UID, allowed method and parameters, target node or resource, approval, and window.
+      A root broker or privileged-container creation alone is not malicious.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: 攻击者控制能够访问容器运行时套接字或未保护守护进程接口的工作负载后，发送创建或启动请求，要求宿主命名空间、设备、能力或宿主根目录绑定。高权限守护进程以自身权限解释请求并启动新工作负载，宿主进程与审计主要显示守护进程和新实例，而原调用者留在旧工作负载的套接字或网络事件中。新工作负载实际访问宿主资源时，才形成成功的
+        Broker 来源转换；部署执行可以作为相邻结果共同记录。
+      en: After controlling a workload that can access a container-runtime socket or unprotected daemon interface, the adversary
+        sends a create or start request asking for host namespaces, devices, capabilities, or a host-root bind. The privileged
+        daemon interprets the request under its own authority and starts a new workload, so host processes and audit primarily
+        show the daemon and new instance while the original caller remains in socket or network events from the old workload.
+        Successful broker provenance translation is established only when the new workload actually accesses host resources;
+        deployment execution can be recorded as an adjacent outcome.
+    - zh: 在 callback/helper 路径中，攻击者从容器写入一个由宿主 kernel/helper 读取的 control state，例如可配置 host-side helper path/argument 或 runtime-shim
+        request。消费可能发生在进程退出、资源释放、runtime 下一次动作或管理服务轮询时，host result 由 helper/service 身份产生。PACED 实验直接捕获 container write→host
+        read/execution→host file/command 的跨 namespace flow；事件级分析仍须排除合法回收、lifecycle hook 与未经消费写入。
+      en: In a callback or helper path, an adversary writes control state consumed by a host kernel or helper, such as a configurable
+        host-side helper path or arguments or a runtime-shim request. Consumption can occur on process exit, resource release,
+        the next runtime action, or administration-service polling, and the host result carries helper or service identity.
+        PACED experiments directly capture container write to host read or execution to host file or command across namespaces,
+        while event-level analysis still excludes legitimate cleanup, lifecycle hooks, and unconsumed writes.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者需要 container/guest execution 和一个可从该域触达、且权限超过 original caller 的 host Broker channel。同步路径还需构造有效 API version、method、authentication
+          或 peer credential、request body、image/command/mount/device/capability 参数；callback 路径需可写正确 state、知道消费条件和宿主解析语义。rootless
+          daemon、严格 socket group、mutual TLS、method-level RBAC、admission 与 host helper allowlist 可让请求保持同权、被拒或不被消费。
+        en: The adversary needs container or guest execution and a host-broker channel reachable from that domain whose authority
+          exceeds the original caller. A synchronous path also requires a valid API version, method, authentication or peer
+          credential, request body, image or command, mount, device, or capability parameters. A callback path requires authority
+          to write the correct state plus knowledge of consumption conditions and host parsing semantics. Rootless daemons,
+          strict socket groups, mutual TLS, method-level RBAC, admission, and host-helper allowlists can keep a request same-authority,
+          deny it, or prevent consumption.
+      - zh: 为获得匿迹收益，攻击者选择正常 runtime/control method、常见 image/name 与不过度异常的参数，并依赖宿主检测只信任 daemon ancestry 或 service account。它还要管理跨时间/对象的
+          correlation：原 container 可能在新 workload 启动前删除，callback 可能在稍后触发，request ID 可能不传到 child process。过度特权 spec、host-root
+          mapping、unexpected image、daemon errors 或短期大量 create 会暴露；request-aware audit 与跨 workload lineage 会消除来源断点。
+        en: 'To gain stealth, the adversary selects ordinary runtime or control methods, common images or names, and parameters
+          that are not excessively anomalous and relies on host detection trusting daemon ancestry or service account. It
+          must also manage correlation across time and objects: the original container can disappear before the new workload
+          starts, a callback can trigger later, and request ID may not propagate to a child process. Excessive privilege,
+          a host-root mapping, an unexpected image, daemon errors, or a create burst exposes the activity, while request-aware
+          audit and cross-workload lineage remove the provenance break.'
+    defender_model:
+      paragraphs:
+      - zh: 防守方需把 channel identity 与 runtime lifecycle 作为一等对象：source container/workload UID、image digest、process start key、peer
+          PID/UID/cgroup、service account/certificate、socket inode 或 destination、API path/method/body digest、request/trace
+          ID、daemon decision、runtime transaction、new container/VM ID、effective security context、host process tree 和 target
+          resource/result。对 UNIX socket 若 daemon 不记录 peer/container，应以 eBPF/audit connect/send、socket inode、PID/cgroup 与时间建立降级连接。
+        en: 'Defenders treat channel identity and runtime lifecycle as first-class objects: source container or workload UID,
+          image digest, process start key, peer PID, UID, or cgroup, service account or certificate, socket inode or destination,
+          API path, method, and body digest, request or trace ID, daemon decision, runtime transaction, new container or VM
+          ID, effective security context, host process tree, and target resource and result. For a UNIX socket whose daemon
+          omits peer or container identity, eBPF or audit connect and send, socket inode, PID or cgroup, and time form a downgraded
+          join.'
+      - zh: 可靠观察以单次请求为单位，而不是把所有动作归给常驻守护进程。需要知道调用者是否有权使用相应方法和参数、Broker 实际建立了什么命名空间或权限上下文，以及该上下文随后访问了哪些宿主资源。请求成功但没有新工作负载、结果上下文与调用者同权或请求无法连接到宿主事务时，都只能形成有限判断。合法持续集成和运维活动必须用调用者、制品、方法、参数、目标和批准窗口解释。
+        en: Reliable observation is organized around an individual request rather than attributing every action to a resident
+          daemon. Defenders need to know whether the caller was entitled to the method and parameters, what namespace or authority
+          context the broker actually created, and which host resources that context later accessed. A successful request
+          without a new workload, a result context with authority equal to the caller, or a request that cannot be linked
+          to the host transaction supports only a limited conclusion. Legitimate continuous-integration and operations activity
+          requires caller, artifact, method, parameter, target, and approved-window context.
+stealth_mechanisms:
+- mechanism_ref: NM-FD
+  role: primary
+  summary:
+    zh: 正常宿主基础设施成为恶意宿主结果的可见发起者
+    en: Normal host infrastructure becomes the visible initiator of a malicious host result
+  analysis:
+    paragraphs:
+    - zh: 攻击者从 container 向受信 Broker 提交可控 request/state，让 Broker 用正常 service identity、签名 binary 和标准 lifecycle 执行。行为设计把 original
+        attacker process 从结果谱系中替换为 dockerd/containerd/kubelet/runc/helper 或新 workload；痕迹从异常 container→host action 变成基础设施常见的
+        daemon transaction、child 与资源事件。防守方若按 parent signature、root service account 或 runtime reputation 分类，会把恶意结果与合法调度/运维混同，形成
+        Feature Disguise。caller/body→transaction→effective context 连接可反证；Docker daemon 语义、TeamTNT 工具和 PACED 实验支持，跨 Broker
+        匿迹意图为推断，confidence 为 medium。
+      en: The adversary submits a controllable request or state from a container to a trusted broker, which executes through
+        its normal service identity, signed binary, and standard lifecycle. The design replaces the original adversary process
+        in result provenance with dockerd, containerd, kubelet, runc, a helper, or a new workload. The trace changes from
+        an anomalous container-to-host action into ordinary infrastructure daemon transactions, children, and resource events.
+        Defenders classifying by parent signature, root service account, or runtime reputation group malicious outcomes with
+        legitimate scheduling or operations, creating Feature Disguise. Caller and body to transaction to effective-context
+        joins disconfirm it. Docker daemon semantics, TeamTNT tooling, and PACED experiments support the conclusion, but concealment
+        intent generalized across brokers is inferred, so confidence is medium.
+  evidence_refs:
+  - REF-000346
+  - REF-000350
+  - REF-000352
+  confidence: medium
+- mechanism_ref: NM-BT
+  role: secondary
+  summary:
+    zh: 原请求与宿主执行跨 channel、进程、namespace 或时间分离
+    en: Original request and host execution separate across channels processes namespaces or time
+  analysis:
+    paragraphs:
+    - zh: 攻击者把 action 表达为 socket/API message 或 host-consumed callback state，随后由 Broker 在另一 process tree/namespace 甚至另一时间产生结果。行为设计将直接调用变成异步或中介消费；痕迹从一条可沿
+        parent process 跟踪的边拆成 container channel event、broker transaction 与 host outcome，且 request ID 常不传到最终 process。只采集 host
+        EDR 或只保留 container logs 的防守方无法观察中间语义，成功越界落在监控边界之外并形成 Behavioral Transparency。whole-system provenance、socket peer 与
+        transaction propagation 能恢复；REF-000352 直接验证跨 namespace 链，confidence 为 high。
+      en: The adversary expresses an action as a socket or API message or host-consumed callback state, after which a broker
+        produces the result in another process tree or namespace and sometimes at another time. The design converts a direct
+        call into mediated or asynchronous consumption. The trace changes from one edge followable through process ancestry
+        into a container-channel event, broker transaction, and host outcome, while request ID often fails to reach the final
+        process. Defenders collecting host EDR only or retaining container logs only cannot observe the intermediate semantics,
+        leaving successful crossing outside monitoring and creating Behavioral Transparency. Whole-system provenance, socket
+        peer, and transaction propagation recover it. REF-000352 directly validates the cross-namespace chain, supporting
+        high confidence.
+  evidence_refs:
+  - REF-000345
+  - REF-000346
+  - REF-000352
+  confidence: high
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000098
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000099
+evidence:
+  claim_refs:
+  - CLM-000555
+  - CLM-000556
+  case_refs:
+  - CASE-000128
+  reference_refs:
+  - REF-000345
+  - REF-000346
+  - REF-000347
+  - REF-000350
+  - REF-000352
+research:
+  limitations:
+    paragraphs:
+    - zh: Docker 官方文档直接证明 rootful daemon、control socket/API 与宿主 root 效果之间的权限语义；PACED 直接复现 runtime/helper 的跨 namespace 来源链；TeamTNT
+        实战镜像直接包含 Docker TCP/UNIX socket escape 分支与 privileged child-container 参数。这些足以高置信定义来源转换和检测键，但 Aqua 对 socket 分支使用 attempts/if
+        successful 描述，没有逐 victim 发布完整 request→daemon→host result，因此本项在 CASE-000128 的事件成功为 medium，不能把工具存在当成已逃逸。
+      en: Docker documentation directly establishes authority semantics among a rootful daemon, its control socket or API,
+        and host-root effects. PACED directly reproduces cross-namespace provenance through runtime or helpers. TeamTNT images
+        used in attacks directly contain Docker TCP or UNIX-socket escape branches and privileged-child-container parameters.
+        This supports high-confidence definition of provenance translation and detection keys, but Aqua describes socket branches
+        as attempts or conditional on success and does not publish a complete request-to-daemon-to-host-result chain for each
+        victim. Event success for this child in CASE-000128 therefore remains medium, and tool presence is not successful
+        escape.
+    - zh: Docker 和 containerd 证据不能自动覆盖所有 kubelet、CRI、Windows 服务、ESXi 或云控制面实现。推广时必须验证 Broker 的实际权限高于原工作负载，并保留从调用者和请求到宿主事务的关系；某些
+        UNIX 套接字缺少逐请求审计，网关可能只保存远端主体，回调也可能没有事务标识，因此来源恢复能力随平台显著变化。
+      en: Evidence from Docker and containerd does not automatically cover every kubelet, CRI, Windows service, ESXi, or cloud-control
+        implementation. Extension requires proof that the broker has greater effective authority than the original workload
+        and preservation of the relationship from caller and request to host transaction. Some UNIX sockets lack per-request
+        audit, gateways may retain only the remote principal, and callbacks may lack transaction identifiers, so provenance
+        recovery varies substantially by platform.
+lifecycle:
+  status: review
+  version: 0.2.0
+  created: '2026-09-13'
+  modified: '2026-09-19'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []
+lineage:
+  attck_subtechnique_inherited: false

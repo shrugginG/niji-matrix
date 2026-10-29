@@ -1,0 +1,198 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000053
+strategy_ref: DET-000074
+name:
+  zh: Registry 事务—状态版本—API 视图—Consumer 谱系分析
+  en: Registry Transaction-State Version-API View-Consumer Lineage Analytic
+summary:
+  zh: 以稳定 key identity 连接 Registry writer、版本化状态和后继 consumer，并在同快照等价权限下比较 Win32、native 与 raw hive 发现伪隐藏对象。
+  en: Join Registry writer, versioned state, and downstream consumer by stable key identity and compare Win32, native, and raw-hive views under the same snapshot and equivalent privilege to find pseudo-hidden objects.
+domains:
+  - enterprise
+platforms:
+  - Windows
+logic:
+  paragraphs:
+    - zh: >-
+        分析首先把 Registry 对象创建/删除、value set 与 key/value rename 规范为写入事务，至少保存时间、设备、hive、writer ProcessGuid/PID、writer 用户、operation、目标、原始路径长度/字节、value 名/类型/hash、结果和事件 ID。使用周期快照、安装/策略清单和变更审批建立 key identity、ACL、last-write、owner 与内容的前一可信版本；Sysmon 事件可提供事务线索，但字段不完整时记录缺口而不虚构 raw 名称或读取事件。
+      en: >-
+        The analytic first normalizes Registry object create or delete, value set, and key or value rename into write transactions retaining at least time, device, hive, writer ProcessGuid or PID, writer user, operation, target, raw path length or bytes, value name, type and hash, outcome, and event ID. Periodic snapshots, install or policy inventory, and change approval establish the prior trusted version of key identity, ACL, last-write, owner, and content. Sysmon events can provide transaction evidence, but missing fields are recorded rather than inventing a raw name or read event.
+    - zh: >-
+        对可能服务 Persistence 的状态，分析按 key identity 连接以后 Registry read；没有读取遥测时，以 consumer 进程的启动参数、模块/脚本/服务配置、file association、后继进程或网络目的地建立替代连接。状态必须在原写入会话结束后仍存在，并在消费时保持相同或可解释版本。只有写入、持续状态和消费结果同时成立时输出 Registry 持久链；未知但未消费的值、一次性调优和上层技术只保留相应异常或转交邻接对象。
+      en: >-
+        For state that may serve Persistence, the analytic joins a later Registry read by key identity. When read telemetry is absent, it uses consumer-process startup arguments, module or script or service configuration, file association, downstream process, or network destination as substitute linkage. State must remain after the original writer session and have the same or an explainable version when consumed. Only writer, durable state, and consumer outcome together produce a Registry persistence chain. An unknown unconsumed value, one-time tuning, or upper-layer technique remains the appropriate anomaly or is referred to an adjacent object.
+    - zh: >-
+        对标准 Win32 查询返回错误、截断、默认值外观或缺失的对象，分析在同一 VSS/离线/冻结 hive 快照和等价读取权限下运行标准 Win32、native API 与 raw hive parser。每条结果保存 view type、querying principal、逻辑 key identity、原始名称、visible、error code、ACL 与 content hash；raw/native 存在而标准视图不可得只是视图异常，只有原始名称包含经过验证的 embedded null/counted-string 差异且 consumer 能读取时才归 NJS-0094-001。
+      en: >-
+        For an object that returns an error, truncation, default-value appearance, or absence in a standard Win32 query, the analytic runs standard Win32, native API, and a raw-hive parser against the same VSS, offline, or frozen-hive snapshot and equivalent read privilege. Each result retains view type, querying principal, logical key identity, raw name, visibility, error code, ACL, and content hash. Raw or native presence plus standard-view absence is only a view anomaly. It enters NJS-0094-001 only when the raw name validates an embedded-null or counted-string difference and a consumer can read it.
+    - zh: >-
+        风险评分分别计算来源、状态、视图和消费。来源异常包括非常见 writer、无安装事务或无批准；状态异常包括新持久值、异常 ACL/owner、内容与包不符；视图异常包括等价权限下稳定 API/raw 差及重复 query error；消费异常包括状态被启动链或进程读取后产生未知子进程、服务或网络。至少三个类别异常且消费成立才提升为高风险；确认 Kovter 类 null 名称或攻击者 writer 可提高结论，扫描竞争和合法软件事务必须降级。
+      en: >-
+        Risk scoring separates provenance, state, view, and consumption. Provenance anomalies include an uncommon writer, no install transaction, or no approval. State anomalies include new durable values, unusual ACL or owner, or content inconsistent with a package. View anomalies include stable API versus raw differential under equivalent privilege and repeated query errors. Consumption anomalies include a startup chain or process reading the state and producing an unknown child process, service, or network action. High risk requires anomalies in at least three classes plus consumption. A confirmed Kovter-style null name or adversary writer raises confidence, while scan races and legitimate software transactions lower it.
+data_requirements:
+  - source_type: registry-write-transaction
+    name:
+      zh: Registry 对象和值事务及 Writer
+      en: Registry object and value transactions plus writer
+    channel: Microsoft-Windows-Sysmon/Operational or equivalent Registry telemetry
+    required_fields:
+      - timestamp
+      - device_id
+      - hive_id
+      - writer_process_guid
+      - writer_process_id
+      - writer_user_id
+      - operation
+      - target_object
+      - raw_path_length_or_bytes
+      - value_name
+      - value_type
+      - value_hash
+      - outcome
+      - event_id
+  - source_type: registry-versioned-state
+    name:
+      zh: Registry Hive 快照与可信版本状态
+      en: Registry hive snapshot and trusted version state
+    channel: null
+    required_fields:
+      - snapshot_time
+      - device_id
+      - hive_id
+      - key_identity
+      - raw_key_or_value_name
+      - value_type
+      - value_hash
+      - acl
+      - last_write_time
+      - owner
+      - package_or_policy_id
+  - source_type: registry-view-differential
+    name:
+      zh: Win32、Native 与 Raw Hive 同快照枚举
+      en: Same-snapshot Win32, native, and raw-hive enumeration
+    channel: null
+    required_fields:
+      - acquisition_id
+      - timestamp
+      - device_id
+      - hive_id
+      - view_type
+      - query_api_or_parser
+      - querying_principal
+      - key_identity
+      - raw_name_length
+      - raw_name_bytes
+      - visible
+      - error_code
+      - acl
+      - content_hash
+  - source_type: registry-consumer-outcome
+    name:
+      zh: Registry Consumer 读取与后继结果
+      en: Registry consumer read and downstream outcome
+    channel: null
+    required_fields:
+      - timestamp
+      - device_id
+      - consumer_process_guid
+      - consumer_process_id
+      - consumer_image
+      - key_identity
+      - read_or_load_result
+      - child_process_or_service
+      - network_destination
+      - outcome
+  - source_type: registry-change-approval
+    name:
+      zh: Registry 变更、安装与策略审批
+      en: Registry change, install, and policy approval
+    channel: null
+    required_fields:
+      - change_id
+      - device_id
+      - owner
+      - approved_writer_or_package
+      - approved_path_or_key
+      - expected_value_hash
+      - expected_acl
+      - validity_window
+      - status
+observables:
+  - zh: 无安装/策略事务的非常见进程创建或修改持久 key/value，内容、ACL 或 owner 与前一可信版本不符。
+    en: An uncommon process with no install or policy transaction creates or changes a durable key or value whose content, ACL, or owner differs from the prior trusted version.
+  - zh: 标准 Win32 查询重复报错、截断或遗漏对象，而同快照等价权限的 native/raw 视图证明对象存在且原始名包含 embedded null。
+    en: Standard Win32 queries repeatedly error, truncate, or omit an object while an equivalent-privilege native or raw view of the same snapshot proves the object exists and its raw name contains an embedded null.
+  - zh: Regedit、reg query、Autoruns、native 枚举或 raw parser 对同一逻辑 key identity 返回不可解释的不同名称、可见性或内容 hash。
+    en: Regedit, reg query, Autoruns, native enumeration, or a raw parser returns unexplained different names, visibility, or content hashes for one logical key identity.
+  - zh: 先前写入的 Registry 状态在原会话结束、登录或重启后被 consumer 读取，并产生新进程、服务、载荷恢复或异常网络结果。
+    en: Registry state written earlier is read by a consumer after the original session, sign-in, or restart and produces a new process, service, payload recovery, or anomalous network outcome.
+  - zh: writer、key/value 版本、API/raw 视图差、consumer 与结果在对象存续期内形成完整可审查谱系。
+    en: Writer, key or value version, API versus raw view difference, consumer, and outcome form complete reviewable lineage during object lifetime.
+correlation:
+  window:
+    zh: >-
+      从 Registry 写入前一可信快照持续到 key/value 删除、consumer 不再引用且相关会话/载荷清除，默认最长九十日；同快照 API/raw 差分必须共享 acquisition ID。consumer read 到进程、服务或网络结果使用十分钟直接窗口，启动/登录恢复允许从最近启动边界向前连接。
+    en: >-
+      Span from the trusted snapshot preceding a Registry write until the key or value is removed, no consumer references it, and related session or payload is cleared, with a default maximum of ninety days. Same-snapshot API or raw differential must share an acquisition ID. Use a direct ten-minute window from consumer read to process, service, or network outcome, while startup or sign-in recovery can join back to the most recent lifecycle boundary.
+  dimensions:
+    - device
+    - hive
+    - key_identity
+    - raw_name
+    - acquisition
+    - writer_process_guid
+    - writer_user
+    - value_hash
+    - view_type
+    - query_error
+    - consumer_process_guid
+    - package_or_policy
+    - approval
+    - time
+false_positives:
+  - zh: 软件安装、升级、卸载、组策略刷新和合法应用自修复会批量创建、重写或删除 Registry 状态，并由随后应用启动消费。
+    en: Software installation, upgrade, removal, Group Policy refresh, and legitimate application self-repair create, rewrite, or delete Registry state in bulk and consume it on later application start.
+  - zh: 在线跨视图扫描期间值或 key 正在变化会形成高层 API 与 raw hive 的瞬时竞争差异。
+    en: A key or value changing during live cross-view scans creates a transient race discrepancy between a high-level API and raw hive.
+  - zh: WOW64、Registry virtualization、未装载用户 hive、不同权限和合法 RegHide/兼容性测试会产生可见性差，但不等于攻击者 null 路径。
+    en: WOW64, Registry virtualization, unloaded user hives, different privilege, and legitimate RegHide or compatibility testing create visibility differences without an adversary null path.
+blind_spots:
+  - zh: Registry 审计或 Sysmon 规则未覆盖目标路径、写入发生在传感器启动前，或原始事件未保留 writer ProcessGuid 时，来源链会缺失。
+    en: Provenance is lost when Registry audit or Sysmon rules do not cover the target path, writing occurs before sensor start, or raw events omit writer ProcessGuid.
+  - zh: in-process consumer 没有 Registry read 遥测，或者 consumer 解密/解压后不创建子进程时，只能由配置和结果间接连接。
+    en: When an in-process consumer has no Registry-read telemetry or does not create a child process after decrypting or decompressing state, only indirect configuration-to-outcome linkage is possible.
+  - zh: raw hive 未采集、用户 hive 未装载、磁盘加密或 parser 不支持当前 Windows 版本时，无法可靠比较完整对象名。
+    en: Raw-name comparison is unreliable when a hive is not acquired, a user hive is not loaded, disk encryption blocks access, or the parser does not support the current Windows version.
+  - zh: 攻击者控制批准 installer、签名软件包或基线生成过程时，Registry 状态可能带有看似合法的 package 与 owner。
+    en: Registry state can carry apparently legitimate package and owner when the adversary controls an approved installer, signed package, or baseline-generation process.
+tuning_guidance:
+  paragraphs:
+    - zh: >-
+        按设备角色、hive、路径、owner、软件包、writer、值类型和变更节奏建立版本基线。允许项绑定具体 package/hash、工单、发布窗口与预期 consumer，不能永久放行 HKCU/HKLM 大路径或所有签名 installer。对 Run、file association、服务、认证和 Office 路径按邻接技术保留独立语义标签。
+      en: >-
+        Build version baselines by device role, hive, path, owner, software package, writer, value type, and change cadence. Allowances bind to a concrete package or hash, change record, release window, and expected consumer rather than permanently allowing broad HKCU or HKLM paths or every signed installer. Retain separate adjacent-technique semantic labels for Run, file association, service, authentication, and Office paths.
+    - zh: >-
+        跨视图差分使用同一 acquisition ID、冻结快照和等价读取权限，规范 key identity 但同时保留原始名称长度/字节。查询错误单独计数并触发 native/raw 或 RegDelNull 类复核，不能静默跳过；在线扫描发现差异后，应在离线或 VSS 快照复现以排除竞争条件。
+      en: >-
+        Cross-view differential uses one acquisition ID, a frozen snapshot, and equivalent read privilege. Normalize key identity while retaining raw-name length and bytes. Count query errors separately and trigger native or raw or RegDelNull-style review rather than silently skipping them. Reproduce a live-scan discrepancy in an offline or VSS snapshot to exclude race conditions.
+    - zh: >-
+        输出分为“未批准写入”“持久状态异常”“API 视图异常”“伪隐藏 consumer 链”。只有最后一类要求 null/counted-string 因果与 consumer 结果同时成立。字段缺失或只有路径名时降低置信度；确认 Kovter 类跨工具差、攻击者 writer 和以后载荷结果时提高。清除前先保全 hive 与依赖，避免误删合法应用状态。
+      en: >-
+        Tier outputs as unapproved write, durable-state anomaly, API-view anomaly, and pseudo-hidden consumer chain. Only the last requires both null or counted-string causality and a consumer outcome. Lower confidence when fields are missing or only a path name is available; raise it for a Kovter-style cross-tool difference, adversary writer, and later payload outcome. Preserve the hive and dependencies before removal to avoid deleting legitimate application state.
+evidence_refs:
+  - REF-000188
+  - REF-000230
+  - REF-000308
+  - REF-000309
+  - REF-000310
+  - REF-000311
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: "2026-09-11"
+  modified: "2026-09-12"
+  contributors:
+    - Niji Matrix Research
+  reviewers: []

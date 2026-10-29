@@ -1,0 +1,99 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000164
+strategy_ref: DET-000155
+name:
+  zh: 域与路径交集证书差分
+  en: Domain-and-Path Certificate Differential
+summary:
+  zh: 识别同一域仅在特定出口路径收到未经批准的替代证书。
+  en: Identify a domain receiving an unapproved substitute certificate only on selected egress paths.
+domains:
+- enterprise
+platforms: []
+logic:
+  paragraphs:
+  - zh: 每五至十分钟从受管终端或受控探针对目标通信域和不相干对照域记录 SNI、目标地址、出口、完整证书链、公钥指纹和请求是否成功；从不经过同一出口的独立探针取同域证书。建立同域跨路径、同路径跨域的二乘二对照，只有目标域与特定路径交集反复出现未批准的替代链或公钥且内容请求成功，才上报选择性介入候选。随后确认终端是否接受该证书、真实服务是否继续收到连接以及正文有无额外端到端加密。
+    en: Every five to ten minutes, use managed endpoints or controlled probes to record SNI, destination, egress, full certificate
+      chain, public-key fingerprint, and request success for target communications domains and unrelated control domains.
+      Probe the same domain from a path outside the suspected egress. Build a two-by-two comparison of the same domain across
+      paths and different domains on one path. Report selective interception only when an unapproved substitute chain or key
+      repeatedly appears at the target-domain and path intersection with a successful content request. Then verify that the
+      endpoint accepted the certificate, the origin still received a connection, and the body lacked separate end-to-end encryption.
+data_requirements:
+- source_type: endpoint-tls-probe
+  name:
+    zh: 端点 TLS 探测
+    en: Endpoint TLS probe
+  channel: null
+  required_fields:
+  - event.timestamp
+  - endpoint.id
+  - requested.domain
+  - tls.sni
+  - peer.certificate.chain_fingerprint
+  - peer.certificate.spki_fingerprint
+  - tls.validation_result
+  - http.response_status
+- source_type: network-path-map
+  name:
+    zh: 网络出口与路由路径映射
+    en: Network egress and path map
+  channel: null
+  required_fields:
+  - event.timestamp
+  - endpoint.id
+  - destination.ip
+  - egress.id
+  - route.path_id
+- source_type: approved-proxy-certificate-inventory
+  name:
+    zh: 批准代理与证书清单
+    en: Approved proxy and certificate inventory
+  channel: null
+  required_fields:
+  - issuer.fingerprint
+  - proxy.id
+  - owner.id
+  - scope.domain
+  - valid.from
+  - valid.to
+observables:
+- zh: 同域同时间的证书公钥仅在特定出口改变
+  en: The same domain has a changed certificate public key only on selected egress
+- zh: 受影响与未受影响端点共享相同 SNI 但不同路径
+  en: Affected and unaffected endpoints share SNI but take different paths
+correlation:
+  window:
+    zh: 在同一十分钟探测周期比较，并保留二十四小时路径及批准例外历史。
+    en: Compare within one ten-minute probe cycle and retain twenty-four hours of path and approved-exception history.
+  dimensions:
+  - endpoint.id
+  - requested.domain
+  - tls.sni
+  - egress.id
+  - route.path_id
+  - peer.certificate.spki_fingerprint
+  - event.timestamp
+false_positives:
+- zh: 经批准的 TLS 检查、CDN 不同边缘节点、证书轮换及双栈出口差异。
+  en: Approved TLS inspection, different CDN edges, certificate rotation, and dual-stack egress differences.
+blind_spots:
+- zh: 外部无线和自带设备无探针覆盖、ECH 隐去 SNI、终端证书数据未留存，或攻击者只读取非 TLS 明文协议。
+  en: No probe coverage for external Wi-Fi or unmanaged devices, ECH hiding SNI, absent endpoint certificate records, or an
+    actor reading non-TLS plaintext protocols.
+tuning_guidance:
+  paragraphs:
+  - zh: 按域、CDN 边缘、出口和时间维护批准证书与代理例外，但批准代理也须检查是否越权扩大拦截范围；不能把证书替换直接升级为数据复制。
+    en: Maintain approved certificate and proxy exceptions by domain, CDN edge, egress, and time, but still check whether
+      an approved proxy exceeds its scope; do not promote certificate substitution directly into copied data.
+evidence_refs:
+- REF-000556
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-09-22'
+  modified: '2026-09-22'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

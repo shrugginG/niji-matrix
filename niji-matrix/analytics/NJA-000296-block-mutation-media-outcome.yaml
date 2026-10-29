@@ -1,0 +1,142 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000296
+strategy_ref: DET-000105
+name:
+  zh: 块设备破坏写入与介质结果分析
+  en: Block-Device Destructive Write and Media-Outcome Analytic
+summary:
+  zh: 输出 raw writer/driver、扇区范围、结构差和 mount/boot/数据集失败的闭合链。
+  en: Emit a closed chain of raw writer or driver, sector range, structural difference, and mount, boot, or dataset
+    failure.
+domains:
+- enterprise
+platforms:
+- Linux
+- Windows
+logic:
+  paragraphs:
+  - zh: Linux 使用 audit raw block node open/write attribution、blkparse device/PID/command/RWBS/sector/length/time/error、block
+      stats 和 lsblk before/after；Windows 需自建内核/raw-I/O sensor 提供 device/offset/length/operation/result，DeviceFileEvents
+      只补充工件，不能伪称有 sector。
+    en: On Linux use audit attribution for raw block-node open or write, blkparse device, PID, command, RWBS, sector,
+      length, time, and error, block stats, and lsblk before and after. Windows requires a custom kernel or raw-I/O
+      sensor for device, offset, length, operation, and result; DeviceFileEvents supplements artifacts and cannot
+      be claimed to contain sectors.
+  - zh: 按 asset/device/writer 在 15 分钟聚合写/丢弃范围，与 MBR/GPT/filesystem metadata hash/CRC、partition inventory、mount/boot
+      和业务 dataset 结果连接。小关键写入与全盘 wipe 分级，失败 IOCTL 是企图。
+    en: Aggregate write or discard scope by asset, device, and writer over fifteen minutes and join MBR, GPT, or filesystem
+      metadata hash or CRC, partition inventory, mount or boot, and business-dataset outcome. Grade small critical
+      writes versus full-disk wipes; failed IOCTL remains attempt.
+data_requirements:
+- source_type: raw-block-audit
+  name:
+    zh: 原始块设备访问审计
+    en: Raw block-device access audit
+  channel: Linux audit or custom Windows kernel sensor
+  required_fields:
+  - event.time
+  - asset.id
+  - process.id
+  - account.id
+  - device.id
+  - operation
+  - sector.offset
+  - block.count
+  - byte.count
+  - result
+  - ioctl.code
+- source_type: block-trace
+  name:
+    zh: 块 I/O trace 与统计
+    en: Block I/O traces and statistics
+  channel: blkparse and block stats or equivalent
+  required_fields:
+  - event.time
+  - device.id
+  - process.id
+  - command
+  - rwbs
+  - sector
+  - length
+  - error
+  - writes.completed
+  - discard.sectors
+- source_type: disk-structure-inventory
+  name:
+    zh: 磁盘结构与完整性清单
+    en: Disk structure and integrity inventory
+  channel: lsblk or storage inventory
+  required_fields:
+  - snapshot.time
+  - asset.id
+  - device.id
+  - partition.id
+  - filesystem.type
+  - mount.point
+  - metadata.hash
+  - metadata.crc
+  - bootable
+- source_type: media-availability
+  name:
+    zh: 介质可用性结果
+    en: Media availability outcome
+  channel: null
+  required_fields:
+  - event.time
+  - asset.id
+  - device.id
+  - mount.result
+  - boot.result
+  - dataset.result
+  - probe.success
+  - approval.id
+observables:
+- zh: 未经批准 raw writer 对关键区间或大范围块执行成功写/丢弃
+  en: An unapproved raw writer successfully writes or discards critical extents or broad blocks
+- zh: 结构差与 mount/boot/业务数据集失败闭合
+  en: A structural difference closes with mount, boot, or business-dataset failure
+correlation:
+  window:
+    zh: 写入范围 15 分钟，重启/mount/结果 30 分钟，结构快照按关键资产持续保留。
+    en: Use 15 minutes for write scope and 30 for reboot, mount, or outcome, retaining structure snapshots for critical
+      assets.
+  dimensions:
+  - asset.id
+  - device.id
+  - process.id
+  - account.id
+  - sector.offset
+  - partition.id
+  - event.time
+false_positives:
+- zh: 批准格式化、镜像部署、分区迁移、secure decommission、磁盘修复和压测
+  en: Approved formatting, imaging, partition migration, secure decommission, disk repair, and testing
+blind_spots:
+- zh: Windows 无 sector telemetry、存储控制器/设备内部 sanitize、主机日志随盘失效、加密/RAID 抽象或 snapshot 层不可见
+  en: Windows lacks sector telemetry, controller or device-internal sanitize, host logs fail with disk, encryption
+    or RAID abstraction, or invisible snapshot layer
+tuning_guidance:
+  paragraphs:
+  - zh: 按 exact device/asset、writer account、二进制/驱动签名、operation/IOCTL、sector scope 和工单调优；不全局放行签名分区工具。关键 extents 优先并外部流式收集。
+    en: Tune by exact device or asset, writer account, binary or driver signature, operation or IOCTL, sector scope,
+      and ticket; never globally allow signed partition tools. Prioritize critical extents and stream externally.
+evidence_refs:
+- REF-000988
+- REF-000989
+- REF-000990
+- REF-000992
+- REF-000993
+- REF-000994
+- REF-000840
+- REF-000366
+- REF-000995
+- REF-000996
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-10-04'
+  modified: '2026-10-04'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

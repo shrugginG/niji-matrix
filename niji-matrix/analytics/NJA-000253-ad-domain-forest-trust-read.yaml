@@ -1,0 +1,108 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000253
+strategy_ref: DET-000209
+name:
+  zh: AD 域林信任查询语义与主体谱系
+  en: AD Domain-Forest Trust Query Semantics and Actor Lineage
+summary:
+  zh: 识别 nltest、PowerShell、API 或目录信任查询，并与批准的 AD 管理任务比较。
+  en: Identify nltest, PowerShell, API, or directory trust queries and compare them with approved AD administration.
+domains:
+- enterprise
+platforms:
+- Windows
+- Active Directory
+logic:
+  paragraphs:
+  - zh: 将 `nltest /domain_trusts`、Get-ADTrust、可验证的 DsEnumerateDomainTrusts 调用和 trustedDomain LDAP 查询归一为信任拓扑读取。关联进程/脚本、IdentityQueryEvents
+      的主体、应用、query type/target/protocol 与批准的 AD 健康、迁移和治理任务；返回边不可见时只确认查询尝试，不推断完整图。
+    en: Normalize `nltest /domain_trusts`, Get-ADTrust, validated DsEnumerateDomainTrusts calls, and trustedDomain LDAP queries
+      as trust-topology reads. Join process or script evidence to IdentityQueryEvents actor, application, query type, target,
+      and protocol, comparing approved AD health, migration, and governance. Where returned edges are not visible, confirm
+      only the query attempt rather than a complete graph.
+data_requirements:
+- source_type: endpoint-process-script
+  name:
+    zh: Windows 进程和 PowerShell
+    en: Windows process and PowerShell
+  channel: Sysmon and PowerShell where enabled
+  required_fields:
+  - timestamp
+  - host_id
+  - user_id
+  - process_guid
+  - image
+  - command_line
+  - parent_guid
+  - script_block
+- source_type: identity-query-events
+  name:
+    zh: Microsoft IdentityQueryEvents
+    en: Microsoft IdentityQueryEvents
+  channel: Defender XDR advanced hunting
+  required_fields:
+  - timestamp
+  - account_upn
+  - application
+  - query_type
+  - query_target
+  - query
+  - protocol
+  - device_id
+- source_type: approved-trust-admin-work
+  name:
+    zh: 批准信任管理任务
+    en: Approved trust-administration work
+  channel: null
+  required_fields:
+  - principal
+  - source_host
+  - trust_scope
+  - job_window
+  - owner
+  - change_id
+observables:
+- zh: 非 AD 管理主体运行 nltest all_trusts 或读取 trustedDomain
+  en: A non-AD-admin actor runs nltest all_trusts or reads trustedDomain
+- zh: 同一主体在多域查询信任后出现独立认证尝试
+  en: The same actor queries trusts across domains before a separately modeled authentication attempt
+correlation:
+  window:
+    zh: 短窗 30 分钟重构单主体信任读取，长窗 7 日识别分散边查询；后继认证仅作 24 小时风险上下文。
+    en: Use 30 minutes to reconstruct one actor’s trust reads, seven days for dispersed edge queries, and later authentication
+      only as 24-hour risk context.
+  dimensions:
+  - forest
+  - domain
+  - principal
+  - source_host
+  - query_type
+  - trust_partner
+  - time
+false_positives:
+- zh: AD 健康检查、并购迁移、身份治理、访问审查、故障排查和响应调查会合法查询
+  en: AD health, merger migration, identity governance, access review, troubleshooting, and incident response legitimately
+    query trusts
+blind_spots:
+- zh: 进程事件看不到内存 API 参数，IdentityQueryEvents 需部署，LDAP 1644 非完整审计，缓存响应可能不触达 DC
+  en: Process events miss in-memory API parameters, IdentityQueryEvents requires deployment, LDAP 1644 is incomplete, and
+    cached responses may not reach a DC
+tuning_guidance:
+  paragraphs:
+  - zh: 按 AD 管理职责、来源主机、查询范围和工单建立有期限基线，不按 nltest 或 PowerShell 名称全局放行；后继票据或横移保持独立事件。
+    en: Baseline by AD administration duty, source host, query scope, and ticket with expiry. Do not globally allow nltest
+      or PowerShell, and retain later ticket or lateral activity as separate events.
+evidence_refs:
+- REF-000829
+- REF-000830
+- REF-000831
+- REF-000834
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-09-27'
+  modified: '2026-09-27'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

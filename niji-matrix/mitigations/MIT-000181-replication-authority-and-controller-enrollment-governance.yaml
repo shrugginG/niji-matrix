@@ -1,0 +1,45 @@
+schema_version: "2.0.0"
+type: mitigation
+id: MIT-000181
+name: {zh: 复制权威与控制器注册治理, en: Replication Authority and Controller-Enrollment Governance}
+summary: {zh: 限制 DC 注册、复制权限和 DRS 网络来源，并以不同权目录谱系保留证据，使单一高权会话难以静默伪造复制来源。, en: "Constrain DC enrollment, replication rights, and DRS network origins and retain differently authorized directory lineage so one privileged session cannot silently forge a replication source."}
+description:
+  paragraphs:
+    - zh: 本缓解把 DC promotion 和目录复制视为独立于普通域管理的高风险工作流。controller enrollment 使用专用 JIT 角色、双人批准、已登记 host/GUID/site、短时凭据和变更窗口；Replicate Directory Changes、Replicate Directory Changes All、SPN、Configuration partition 及 nTDSDSA/server 对象权限按最小主体审查。网络层只允许批准 DC/同步节点到 DC 的 DRSUAPI/RPC，并对例外绑定方向、naming context 和期限。
+      en: This mitigation treats DC promotion and directory replication as a high-risk workflow separate from ordinary domain administration. Controller enrollment uses a dedicated JIT role, two-person approval, registered host, GUID, and site, short-lived credentials, and a change window. Replicate Directory Changes, Replicate Directory Changes All, SPN, Configuration-partition, and nTDSDSA or server-object permissions are reviewed for the minimum principals. The network allows DRSUAPI or RPC to DCs only from approved DCs or synchronization nodes, with exceptions bound to direction, naming context, and expiry.
+    - zh: 目录对象和复制元数据以版本化、不可由域管理员单独删除的方式远程保存，controller inventory 与 promotion state 同步导出。发生异常时在网络边界阻断来源、吊销复制/注册权限、隔离主机并保全 registration/DRS/object 三段证据；先评估已复制对象的业务依赖再进行权威恢复，避免盲目回滚损坏 AD。
+      en: Directory objects and replication metadata are retained remotely in versioned storage that a domain administrator cannot delete alone, and controller inventory plus promotion state is exported with them. On anomaly, block the origin at a network boundary, revoke replication or enrollment rights, isolate the host, and preserve registration, DRS, and object evidence. Assess business dependencies of replicated objects before authoritative recovery so blind rollback does not damage AD.
+domains: [enterprise]
+measures:
+  - key: jit-two-person-controller-enrollment
+    name: {zh: JIT 双人 DC 注册, en: JIT Two-Person DC Enrollment}
+    description: {paragraphs: [{zh: 将 promotion/demotion、server/nTDSDSA、复制 SPN 和相关 Configuration partition 写权限放入专用 JIT 流程，审批绑定 host/GUID/site/时间并禁止普通 Domain Admin 常驻使用。, en: "Place promotion or demotion and server, nTDSDSA, replication-SPN, and related Configuration-partition write authority in a dedicated JIT workflow whose approval binds host, GUID, site, and time and is not persistently available to ordinary Domain Admin use."}]}
+    control_type: preventive
+  - key: least-replication-rights-and-network-origin
+    name: {zh: 最小复制权限与网络来源, en: Least Replication Rights and Network Origin}
+    description: {paragraphs: [{zh: 定期审查复制扩展权限与委派 ACL，只允许批准 DC/同步节点按固定方向和 naming context 使用 DRS RPC；非 DC 来源在独立网络控制点阻断或告警。, en: "Review replication extended rights and delegated ACLs regularly and allow DRS RPC only for approved DCs or synchronization nodes in fixed directions and naming contexts. Block or alert on non-DC origins at an independent network control point."}]}
+    control_type: preventive
+  - key: immutable-directory-replication-lineage
+    name: {zh: 不可变目录复制谱系, en: Immutable Directory Replication Lineage}
+    description: {paragraphs: [{zh: 在域管理权之外保留 controller inventory、对象 old-new、USN/version、originating DSA、DRS 事务和批准记录，使伪造来源及后续清理仍可重建。, en: "Retain controller inventory, object old and new state, USN or version, originating DSA, DRS transactions, and approvals outside domain-administration authority so a forged origin and subsequent cleanup remain reconstructable."}]}
+    control_type: detective-support
+  - key: controlled-ad-recovery
+    name: {zh: 受控 AD 恢复与权限撤销, en: Controlled AD Recovery and Authority Revocation}
+    description: {paragraphs: [{zh: 发现异常后撤销 enrollment/replication 权限、隔离来源、确认受影响对象/属性和复制范围，再按 Microsoft 支持的权威恢复与凭据轮换流程处置。, en: "After an anomaly revoke enrollment and replication authority, isolate the origin, identify affected objects, attributes, and replication scope, and then use supported authoritative-recovery and credential-rotation procedures."}]}
+    control_type: containment
+applications:
+  - target_ref: NJT-0171
+    use:
+      paragraphs:
+        - zh: 对每个 forest 维护批准 controller/DSA/SPN 与同步产品清单，将注册和复制权限从普通域管理中拆出；在 DC 与网络侧同时限制 DRS 来源，并把 registration、replication cycle 与目录版本远程关联。触发时先阻断未批准来源和冻结证据，再撤销权限、检查被复制对象并执行受控恢复。
+          en: Maintain an approved controller, DSA, SPN, and synchronization-product inventory for each forest and separate enrollment and replication authority from ordinary domain administration. Restrict DRS origins at both DC and network layers and remotely correlate registration, replication cycles, and directory versions. On a trigger, block the unapproved origin and freeze evidence before revoking rights, reviewing replicated objects, and performing controlled recovery.
+    expected_effect:
+      paragraphs:
+        - zh: 攻击者需要同时获得短时注册审批、复制权限、允许网络来源和不同权证据控制才能静默完成来源错位；未批准身份在注入前更可能被阻断，完成事件仍可重建。
+          en: The adversary must gain short-lived enrollment approval, replication rights, an allowed network origin, and control of differently authorized evidence to complete origin displacement silently. An unapproved identity is more likely to be blocked before injection, while completed events remain reconstructable.
+    limitations:
+      paragraphs:
+        - zh: 已完全控制多个合法 DC、JIT/审批系统和外部存储的攻击者仍可污染同权证据；严格网络限制会影响灾备、跨站点复制和目录同步，权威恢复错误可能造成更大业务损坏。
+          en: An adversary controlling multiple legitimate DCs, the JIT or approval system, and external storage can still contaminate evidence under one authority. Strict network restriction can affect recovery, inter-site replication, and directory synchronization, and an incorrect authoritative restore can cause greater business damage.
+evidence_refs: [REF-000748, REF-000749, REF-000750, REF-000751]
+lifecycle: {status: review, version: "1.0.0", created: "2026-09-23", modified: "2026-09-23", contributors: [Niji Matrix Research], reviewers: []}

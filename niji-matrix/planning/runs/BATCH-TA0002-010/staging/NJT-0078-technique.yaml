@@ -1,0 +1,91 @@
+schema_version: 2.0.0
+type: technique
+id: NJT-0078
+name: {zh: 受信软件部署执行, en: Trusted Software-Deployment Execution}
+summary: {zh: 攻击者从企业部署或配置管理控制面向既有受管 agent 提交恶意包、脚本或命令，使本地执行继承管理身份并跨 fleet 分散, en: Adversaries submit malicious packages scripts or commands from enterprise deployment or configuration control planes to existing managed agents making local execution inherit management identity and disperse across fleets}
+aliases: []
+classification:
+  tactic_refs: [TA0002]
+  origin: {kind: attack-retained, source_attack_id: T1072, source_attack_version: '19.1'}
+  decision_ref: DEC-TA0002-T1072
+definition_and_concept:
+  paragraphs:
+    - zh: 受信软件部署执行是攻击者控制或滥用企业软件部署、补丁、配置、端点管理、MDM/RMM 或安全管理控制面，把包、脚本、命令或任务分配给已经注册的受管 agent，并由 agent 在一个或多个端点执行的行为。直接目标是在无需逐台建立攻击者远程会话的情况下获得本地进程、软件安装、加密或其他影响，并借用管理平台的网络通道、目标集合和 SYSTEM/管理账户权限。
+      en: Trusted Software-Deployment Execution controls or abuses enterprise software deployment patching configuration endpoint-management MDM RMM or security-management control planes to assign packages scripts commands or jobs to already enrolled managed agents for execution on one or more endpoints. Its direct objective is local processes software installation encryption or other impact without establishing an adversary remote session on every host while borrowing management-platform network channels target collections and SYSTEM or administrative authority.
+    - zh: “软件部署工具”在这里按企业管理职责和 job→agent receipt→endpoint execution 链定义，不等同于任意可远控程序。SCCM/Intune、ePO、PDQ、BigFix、AWS Systems Manager 和网络设备配置平台只是实现；攻击者临时安装一个仅供单机交互的 RMM 更接近 Remote Services。技术在 agent 实际启动攻击者动作时成立，控制台登录或创建未下发 job 只是前置条件。
+      en: Software Deployment Tools here are defined by enterprise management responsibility and the job-to-agent-receipt-to-endpoint-execution chain rather than any remotely controllable program. SCCM or Intune ePO PDQ BigFix AWS Systems Manager and network-device configuration platforms are implementations while newly installing RMM for one-host interaction is closer to Remote Services. The technique is established when an agent actually starts the adversary action and console login or an undispatched job is only a prerequisite.
+stealth_characteristics:
+  paragraphs:
+    - zh: 受信软件部署执行把攻击者发起者留在中央控制面，把终端进程来源转换为签名管理 agent、软件分发服务或系统账户。APT32 经 ePO、AvosLocker 经 PDQ、Medusa 经 BigFix/PDQ 的案例均使恶意载荷沿企业已允许的管理通道到达。端点只看父进程、签名和网络来源时容易将其解释为补丁或支持活动，而控制面若只看 operator 登录则看不到每个终端结果。
+      en: Trusted Software-Deployment Execution leaves the adversary initiator in a central control plane and translates endpoint process provenance into signed management agents software-distribution services or system accounts. APT32 through ePO AvosLocker through PDQ and Medusa through BigFix or PDQ delivered malicious payloads over already permitted enterprise management channels. Endpoint views of parent signatures and network sources may read them as patch or support activity while a control-plane view of operator sign-ins alone omits endpoint outcomes.
+    - zh: 一个 operation 又可通过 collection、队列和 agent check-in 在不同终端和时间执行，造成分布式片段。管理平台 operator/role、script/package ID 与 digest、审批、target query 与解析成员、operation/job、agent receipt、端点 process tree、software install 和影响时间仍可跨层连接。共同 payload hash、operation ID 或异常范围会暴露 fan-out；新安装 agent、未批准工具和窗口外执行则提供额外偏差。
+      en: One operation may also execute across endpoints and times through collections queues and agent check-ins creating distributed fragments. Management-platform operator or role script or package ID and digest approval target query and resolved membership operation or job agent receipt endpoint process tree software installation and impact times remain joinable. Common payload hashes operation IDs or anomalous scope expose fan-out while newly installed agents unapproved tools and out-of-window execution add deviations.
+scope_boundary_definition:
+  paragraphs:
+    - zh: 本技术纳入经既有企业 fleet 管理控制面分配并由受管 agent 执行的恶意动作，包括安全管理、补丁、软件分发、MDM、RMM 和云混合管理。判定要求管理 job、目标或 agent receipt 与端点执行结果至少有一条可证明关系。合法补丁、软件安装、事件响应和批量运维产生相同 agent 进程，只有未经批准的 operator/package/scope 与异常结果组合才属于攻击。
+      en: The technique includes malicious actions assigned through an established enterprise fleet-management control plane and executed by managed agents including security management patching software distribution MDM RMM and hybrid cloud management. Classification requires at least one demonstrable relationship among management job target or agent receipt and endpoint outcome. Legitimate patching software installation incident response and bulk operations create the same agent processes and only an unapproved operator package or scope combined with anomalous outcome establishes attack.
+    - zh: 通过云 API 直接管理 VM 或 guest agent 的单项命令归 NJT-0064，容器/ESXi 管理通道归其专用对象，CI/CD runner 归 T1677，PsExec/SSH/VNC 等普通远程会话归 Remote Services。工具只有在承担可查询的 fleet、package 和 job 管理职责时属于 T1072。恶意软件包在消费者端后续启动可以同时属于其他执行或供应链技术，但本对象只负责部署控制面到首次端点动作。
+      en: Direct cloud API management of VMs or individual guest-agent commands belongs to NJT-0064 container or ESXi channels to their dedicated objects CI/CD runners to T1677 and ordinary PsExec SSH or VNC sessions to Remote Services. A tool belongs to T1072 only when it provides queryable fleet package and job management responsibilities. Later startup of a malicious package on consumers may also map to another execution or supply-chain technique while this object owns the path from deployment control plane to first endpoint action.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+      - zh: 攻击者在窃取部署管理员、服务账户、API token 或 MSP/RMM 控制面后，用现有 package/script 功能推送 loader、后门、侦察工具或 ransomware。目标可以是所有系统、特定 collection、服务器角色、地理区域或客户租户；一个中央 job 能在几分钟内产生大范围影响，也能随 agent check-in 在数小时内自然扩散。
+        en: After stealing deployment administrator service-account API-token or MSP or RMM control-plane access adversaries use existing package or script features to push loaders backdoors reconnaissance tools or ransomware. Targets may include all systems selected collections server roles regions or customer tenants. One central job can create broad impact within minutes or spread naturally over hours as agents check in.
+      - zh: 安全管理和补丁系统尤其具有高信任与广覆盖，APT32 入侵 ePO 后让所有系统从安全服务器拉取载荷。勒索运营者则可用 PDQ/BigFix 同时推动工具和加密。攻击者若控制目标查询，可选择关键资产或分组减少异常规模；但目前 reviewed 案例没有直接证明按批准窗口伪装或故意低慢分批，因此不把这些描述写入正式子项。
+        en: Security-management and patch systems have particularly high trust and broad coverage and after compromising ePO APT32 caused all systems to pull payloads from the security server. Ransomware operators can use PDQ or BigFix to push tools and encryption. Control of target queries may allow selection of critical assets or groups to reduce anomalous scale but reviewed cases do not directly prove approved-window camouflage or deliberate low-and-slow staging so those descriptions are excluded from formal children.
+  threat_model:
+    attacker_model:
+      paragraphs:
+        - zh: 攻击者需要访问部署控制面或其数据库/API，并拥有创建、批准或运行脚本/package、解析目标 collection 和使用 agent 权限的能力。它需要理解 agent check-in、缓存、执行账户、重试和网络拓扑。若平台强制 author/approver 分离、JIT、包签名与分阶段审批，攻击者可能需控制多个身份或供应链。
+          en: The adversary needs access to the deployment control plane or database or API and authority to create approve or run scripts or packages resolve target collections and use agent capabilities. Knowledge of agent check-in caching execution accounts retry and network topology is required. Platforms enforcing author and approver separation JIT package signing and staged approval may force compromise of multiple identities or supply chains.
+        - zh: 大范围 fan-out 提高操作效率也增加统一告警和业务故障风险。攻击者若选择全部端点会产生共同 payload 与时间峰值；选择小范围或等待 check-in 可降低峰值但延长暴露。agent 与服务器双向身份、网络分段和离线终端会限制可达性，错误 package 还可能失败并触发支持告警。
+          en: Broad fan-out improves efficiency but increases common alerts and business-failure risk. Selecting all endpoints produces common payload and temporal spikes while smaller scopes or check-in delay reduce peaks but lengthen exposure. Mutual agent and server identity segmentation and offline endpoints constrain reach and incorrect packages may fail and trigger support alerts.
+    defender_model:
+      paragraphs:
+        - zh: 防守方假定可取得控制面身份/会话、角色变化、script/package 定义和 digest、author/approver、target query 与解析成员、operation/job、agent check-in/receipt、缓存/下载、端点进程/文件/安装/网络及影响结果。稳定关联维度包括 tenant/site、operator、package/script、operation、collection、agent/device、payload 和 time。
+          en: Defenders are assumed to have control-plane identity and session role changes script or package definitions and digests author and approver target query and resolved members operation or job agent check-in and receipts cache or download endpoint process file installation network and impact outcomes. Stable dimensions include tenant or site operator package or script operation collection agent or device payload and time.
+        - zh: SaaS/MSP 跨租户日志不可得、平台不把 operator/operation ID 传递到 agent、终端 EDR 把管理 agent 放入信任排除，以及 job 历史快速轮转时会失去因果。集中控制面和终端团队常由不同人员管理，也会阻碍响应。缺少共同 ID 时可按 payload digest、服务器 URL、时间和目标集合概率关联，但应降低置信度。
+          en: Causality is lost when SaaS or MSP cross-tenant logs are unavailable platforms do not propagate operator or operation IDs to agents endpoint EDR excludes management agents or job history rotates quickly. Separate control-plane and endpoint teams also impede response. Without common IDs defenders may correlate probabilistically by payload digest server URL time and target collection but must lower confidence.
+stealth_mechanisms:
+  - mechanism_ref: NM-BT
+    role: primary
+    summary: {zh: 中央恶意任务在终端表现为受信 Agent 系统执行, en: Central malicious jobs appear as trusted-agent system execution on endpoints}
+    analysis:
+      paragraphs:
+        - zh: 攻击者在控制面提交动作，既有 agent 经正常协议下载并以 SYSTEM/管理身份启动，使端点进程谱系和网络来源符合软件部署行为，形成行为透明。APT32 ePO 和 AvosLocker PDQ 提供直接证据。agent 信誉不能覆盖 operator、package digest 和 scope 差异；把控制面 job/receipt 连接到子进程可恢复真实来源。
+          en: The adversary submits an action in the control plane and existing agents download it through normal protocols and launch it as SYSTEM or management identities so endpoint process lineage and network source conform to software deployment and create Behavioral Transparency. APT32 ePO and AvosLocker PDQ provide direct evidence. Agent reputation cannot override operator package digest and scope differences and joining control-plane jobs and receipts to child processes recovers true origin.
+    evidence_refs: [REF-000273, REF-000274, REF-000276]
+    confidence: high
+  - mechanism_ref: NM-ST
+    role: secondary
+    summary: {zh: 单一部署操作随 Agent 队列跨 Fleet 和时间扩散, en: One deployment operation disperses across fleet and time through agent queues}
+    analysis:
+      paragraphs:
+        - zh: 一个 package/job 通过 collection 与独立 agent check-in 产生多个本地事件，各主机只显示自身片段，控制面又可能只保留聚合状态，形成时空释痕。ePO 的全系统拉取、PDQ 的网络范围分发和 Medusa 的管理平台部署证明 fan-out；但未直接证明攻击者刻意低慢调度，故置信度 medium。operation ID、payload digest 和目标集合聚合可削弱分散。
+          en: One package or job produces many local events through collections and independent agent check-ins so each host shows one fragment while the control plane may retain only aggregate status creating Spatiotemporal Trace Dilution. ePO all-system pulls PDQ network-wide distribution and Medusa management-platform deployment prove fan-out but do not directly prove deliberate low-and-slow scheduling so confidence is medium. Aggregation by operation ID payload digest and target collection weakens dispersion.
+    evidence_refs: [REF-000273, REF-000274, REF-000275, REF-000277]
+    confidence: medium
+subtechnique_taxonomy:
+  narrative:
+    paragraphs:
+      - zh: 两个子技术按观察位置划分。受信管理 Agent 命令代理固定控制面发起者到本地受信 agent/SYSTEM 子进程的来源翻译，主要需要跨层 execution lineage；Fleet 范围分布式执行固定单一 operation 经 collection 与 agent 队列扩散为多端点片段，主要需要企业级 scope 聚合。一次部署可以同时具备两者，但每条结论分别依赖 agent 与 fleet 证据。
+        en: Two children partition observation location. Trusted Management-Agent Command Brokerage fixes provenance translation from a control-plane initiator to local trusted-agent or SYSTEM children and primarily requires cross-plane execution lineage. Fleet-Scope Distributed Execution fixes one operation dispersing through collections and agent queues into multi-endpoint fragments and primarily requires enterprise scope aggregation. One deployment may exhibit both but each conclusion depends separately on agent and fleet evidence.
+      - zh: 原“批准部署窗口伪装”因无直接攻击者意图证据被撤回，窗口只作为情境字段；原“分批分布式”去除未证实的低慢描述后保留 fan-out 变量。现有 package/job 复用作为 agent 代理中的定义完整性信号，产品、平台、包格式和新装单机 RMM 不构成 Niji 子项。
+        en: Existing approved-deployment-window camouflage is withdrawn for lack of direct adversary-intent evidence and window remains context only. Existing staged distributed wording drops unsupported low-and-slow claims and retains the fan-out variable. Reuse of packages or jobs is a definition-integrity signal within agent brokerage while product platform package format and newly installed single-host RMM are not Niji children.
+  coverage: established
+  subtechnique_refs: [NJS-0078-001, NJS-0078-002]
+defense:
+  detections: {coverage: available, strategy_refs: [DET-000089]}
+  mitigations: {coverage: available, mitigation_refs: [MIT-000090]}
+evidence:
+  claim_refs: [CLM-000293, CLM-000294, CLM-000295, CLM-000479, CLM-000480, CLM-000481, CLM-000482, CLM-000483, CLM-000484, CLM-000485, CLM-000486]
+  case_refs: [CASE-000096, CASE-000097, CASE-000098]
+  reference_refs: [REF-000130, REF-000273, REF-000274, REF-000275, REF-000276, REF-000277, REF-000278]
+research:
+  limitations:
+    paragraphs:
+      - zh: APT32、AvosLocker 与 Medusa 都证明企业部署工具被用于恶意 fleet 执行，但公开报告对 operator 身份、job ID、精确目标集合和 agent 日志披露不一致。agent 代理结论有直接支持可设 high，fan-out 的存在有直接支持但“利用分散规避”仍是分析推断，因此保持 medium。不同平台的脚本审批和日志字段必须本地验证。
+        en: APT32 AvosLocker and Medusa prove malicious fleet execution through enterprise deployment tools but public reports vary in disclosure of operator identity job IDs exact collections and agent logs. Agent brokerage has direct support at high confidence while fan-out exists directly but use of dispersion for evasion remains analytic inference and medium. Script approval and log fields require local validation by platform.
+      - zh: 合法补丁、事件响应和大规模软件升级会产生与攻击相同的 SYSTEM agent 子进程和 fleet fan-out，且业务紧急变更可能绕过常规审批。工具许可或数字签名只证明软件身份，不证明本次 operator、package 和 scope 合法。若 future reporting 直接证明攻击者选择批准窗口或小批次以规避检测，可重新评估延期轴，而不是在当前证据上保留。
+        en: Legitimate patching incident response and large software upgrades produce the same SYSTEM agent children and fleet fan-out and emergency changes may bypass normal approval. Tool allowance or signature proves software identity rather than legitimacy of the current operator package and scope. If future reporting directly proves adversary selection of approved windows or small batches to evade detection a timing axis may be reconsidered rather than retained on current evidence.
+lifecycle: {status: review, version: 2.0.0, created: '2026-09-10', modified: '2026-09-12', contributors: [Niji Matrix Research], reviewers: []}

@@ -1,0 +1,78 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000352
+strategy_ref: DET-000263
+name:
+  zh: 服务器组件状态、加载与结果纵向分析
+  en: Longitudinal Server-Component State Load and Outcome Analytic
+summary:
+  zh: 版本化服务器组件及其内容来源，把安装或注册连接到以后加载、调用和风险结果，并验证声明身份与签名或包事务一致性
+  en: Version server components and their content provenance join installation or registration to later load invocation and risky outcomes and validate declared identity against signatures and package transactions
+domains: [enterprise]
+platforms: [ESXi, Linux, Network Devices, Windows, macOS]
+logic:
+  paragraphs:
+  - zh: 分析把 Web 服务器 module 或脚本、Exchange Transport Agent、数据库过程或程序集、远程桌面组件、虚拟化安装包及等价扩展规范成 server_component_id，并为每个版本保存 component type、server role、scope、path/procedure、content digest、signature、publisher/vendor、declared version 或 acceptance、writer、owner、approval、package transaction 与 first/last seen。新建、修改、启用、禁用和删除均形成不可变版本，而不是只保留当前清单。
+    en: The analytic normalizes web-server modules or scripts Exchange Transport Agents database procedures or assemblies remote-desktop components virtualization installation packages and equivalent extensions into server_component_id. Each version retains component type server role scope path or procedure content digest signature publisher or vendor declared version or acceptance writer owner approval package transaction and first and last seen. Creation modification enablement disablement and deletion produce immutable versions rather than only current inventory.
+  - zh: 对每个未批准或身份不一致版本，分析连接服务器启动、服务重启、module/assembly/script/procedure load、管理调用和请求消费，再连接 component-local thread、child process、file change、network destination、response 或受保护资源结果。只有精确版本被消费且产生攻击者可控或高风险结果时输出 component_persistence_confirmed；状态存在但未加载为 component_integrity_risk，已加载但结果缺失为 outcome_unresolved。
+    en: For each unapproved or identity-inconsistent version the analytic joins server start service restart module assembly script or procedure load management invocation and request consumption then connects component-local threads child processes file changes network destinations responses or protected-resource outcomes. It emits component_persistence_confirmed only when the exact version is consumed and produces an adversary-controlled or high-risk result. Present but unloaded state remains component_integrity_risk and loaded state without an outcome remains outcome_unresolved.
+  - zh: 信任身份分支比较 descriptor、普通 inventory 和独立验证结果。名称、vendor、version、路径或 acceptance 看似批准但 signature、package digest、publisher、writer 或批准事务不一致时输出 trust_identity_differential；VIB 等平台同时保留声明 metadata 与 signature verify，避免一个遗留签名警告直接变成恶意结论。若组件随后被加载并产生结果，再合并为确认事件。
+    en: The trust-identity branch compares descriptors ordinary inventory and independent verification. It emits trust_identity_differential when a name vendor version path or acceptance appears approved but signature package digest publisher writer or approval transaction disagrees. Platforms such as VIB retain both declared metadata and signature verification so one legacy-signature warning does not become a malicious conclusion. Later load and outcome can promote the differential into a confirmed event.
+data_requirements:
+- source_type: server-component-inventory
+  name: {zh: 服务器组件当前与历史清单, en: Current and historical server-component inventory}
+  channel: null
+  required_fields: [timestamp, server_id, server_role, component_id, component_type, scope, path_or_procedure, enabled_state, declared_name, vendor, version, acceptance_level, first_seen, last_seen]
+- source_type: component-control-plane-audit
+  name: {zh: 组件安装、注册、启停与配置审计, en: Component installation registration enablement and configuration audit}
+  channel: null
+  required_fields: [timestamp, server_id, component_id, action, writer_id, old_state, new_state, package_transaction_id, approval_id, configuration_path, result]
+- source_type: component-package-integrity
+  name: {zh: 组件内容、签名与发布来源, en: Component content signature and publisher provenance}
+  channel: null
+  required_fields: [timestamp, component_id, content_digest, signature_state, signer_or_publisher, package_digest, descriptor_digest, declared_acceptance, verified_acceptance, source_repository]
+- source_type: server-component-runtime
+  name: {zh: 服务器启动、组件加载与调用, en: Server start component load and invocation}
+  channel: null
+  required_fields: [timestamp, server_id, service_instance_id, boot_id, component_id, component_version_digest, load_or_invocation_type, process_id, thread_id, request_or_transaction_id, result]
+- source_type: component-behavior-outcome
+  name: {zh: 组件后继进程、文件、网络与资源结果, en: Component successor process file network and resource outcomes}
+  channel: null
+  required_fields: [timestamp, server_id, component_id, component_version_digest, request_or_transaction_id, process_id, child_process_id, file_path, network_destination, resource_id, operation, authorization_decision, result]
+observables:
+- {zh: 新组件或配置版本没有批准包事务，却在后续服务启动或请求中被精确加载并产生命令解释器、文件写入或外联, en: A new component or configuration version lacks an approved package transaction yet is loaded during a later service start or request and produces a command interpreter file write or outbound connection}
+- {zh: 普通清单显示 PartnerSupported、熟悉 vendor 或合法路径，但独立 signature/package/publisher 验证与声明不一致, en: Ordinary inventory shows PartnerSupported a familiar vendor or a legitimate path while independent signature package or publisher validation disagrees with the declaration}
+- {zh: 组件注册 writer、owner 或来源仓库不符合服务器角色，且首次加载远晚于安装事件, en: Component registration writer owner or source repository is inconsistent with server role and first load occurs long after installation}
+- {zh: 服务器进程在特定组件版本加载后出现角色不符的子进程、敏感文件、异常网络或资源访问, en: A server process produces role-inconsistent child processes sensitive files anomalous network or resource access after loading a specific component version}
+- {zh: 组件已删除或恢复，但同一内容摘要、包或配置版本在重启后重新出现, en: A removed or restored component reappears after reboot with the same content digest package or configuration version}
+correlation:
+  window:
+    zh: 组件版本及批准历史至少保留九十天，并从安装或注册延伸到删除后一次重启；每次加载或调用向前关联最近有效版本，向后连接十五分钟内的进程、文件、网络和资源结果。关键服务器按生命周期延长至一年。
+    en: Retain component versions and approval history for at least ninety days and from installation or registration through one reboot after deletion. Each load or invocation joins the latest effective version and fifteen minutes of downstream process file network and resource outcomes. Critical servers extend lifecycle history to one year.
+  dimensions: [server, server_role, component, component_type, scope, component_version, content_digest, signature, publisher, descriptor, writer, approval, package_transaction, boot, service_instance, request_or_transaction, process, resource, network_destination, time]
+false_positives:
+- {zh: 合法软件更新、Web 部署、数据库维护、邮件过滤器和虚拟化驱动会新增组件并改变版本或签名, en: Legitimate software updates web deployment database maintenance mail filters and virtualization drivers add components and change versions or signatures}
+- {zh: 遗留、CommunitySupported 或迁移组件可能缺少现代签名，但仍有批准和已知来源, en: Legacy CommunitySupported or migrated components may lack modern signatures while retaining approval and known provenance}
+- {zh: 安全、备份和监控组件可能从服务器进程启动工具、写文件或外联, en: Security backup and monitoring components may start tools write files or use network from server processes}
+- {zh: 灾备恢复、集群漂移修复和镜像重建会在重启后重新部署组件, en: Disaster recovery cluster drift remediation and image rebuild redeploy components after reboot}
+blind_spots:
+- {zh: 服务器或设备不导出完整组件清单、签名验证或控制面 writer 时，身份差分只能降级推断, en: Identity differentials remain lower-confidence when servers or appliances expose no complete component inventory signature verification or control-plane writer}
+- {zh: 组件完全进程内执行且缺少 module、procedure 或 request 归因时，后继结果无法绑定精确版本, en: Downstream outcomes cannot bind the exact version when execution remains in process without module procedure or request attribution}
+- {zh: 控制面日志保留短于首次激活或管理身份与审计根同时失陷时，writer 和批准谱系丢失, en: Writer and approval lineage is lost when control-plane retention is shorter than first activation or management identity and audit root are compromised together}
+- {zh: 加密请求、邮件或数据库事务字段不可见时，请求资格化需要服务器内部 telemetry 补偿, en: Request qualification requires server-internal telemetry when encrypted HTTP mail or database transaction fields are unavailable}
+tuning_guidance:
+  paragraphs:
+  - zh: 按 server role、component type、scope、精确 component ID、content digest、publisher、version 和 approved owner 建立版本化基线。allowlist 必须绑定批准事务和期限，不能按名称、目录、vendor 或 signer 单项永久放行；升级窗口结束后收敛到新版本。
+    en: Build versioned baselines by server role component type scope exact component ID content digest publisher version and approved owner. Allowlists bind approval transaction and expiry and never permanently allow a name directory vendor or signer alone. Converge on the new version after upgrade windows close.
+  - zh: 将 signature/descriptor 差分与加载和结果分级：只有 metadata 不一致为完整性风险；未批准组件被加载为高风险；加载后产生命令、异常网络或敏感资源结果为确认。对正常服务器插件、数据库过程和邮件代理用独立 owner、包和业务结果模型降噪。
+    en: Tier signature or descriptor differentials with load and outcome. Metadata mismatch alone is integrity risk unapproved component load is high risk and command anomalous network or sensitive-resource outcome after load is confirmed. Tune legitimate server plugins database procedures and mail agents through independent owner package and business-outcome models.
+  - zh: 响应时先保全 descriptor、package、signature、配置、writer、请求与运行结果，再隔离组件和相关服务器流量；从可信包/映像恢复后验证组件不再加载、旧 selector 不再产生结果并轮换组件可访问的凭据。
+    en: During response preserve descriptor package signature configuration writer request and runtime outcomes before isolating the component and related server traffic. After restoration from trusted packages or images verify that the component no longer loads old selectors produce no result and credentials accessible to the component are rotated.
+evidence_refs: [REF-000208, REF-001159, REF-001160, REF-001161, REF-001162, REF-001163, REF-001164, REF-001165]
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-10-22'
+  modified: '2026-10-22'
+  contributors: [Niji Matrix Research]
+  reviewers: []

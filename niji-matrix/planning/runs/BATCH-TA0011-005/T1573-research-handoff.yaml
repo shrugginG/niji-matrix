@@ -1,0 +1,1418 @@
+handoff_schema_version: 2.0.0
+type: technique-research-handoff
+batch_ref: BATCH-TA0011-005
+work_item_ref: WORK-TA0011-T1573
+temporary_key_prefix: B5-T1573
+candidate:
+  source_type: attack
+  source_attack_id: T1573
+  name:
+    zh: 加密通道
+    en: Encrypted Channel
+recommendation:
+  decision: adapt
+  confidence: high
+  original_attack_subtechniques_imported: false
+  rationale:
+    paragraphs:
+    - zh: Enterprise ATT&CK 19.1 的 T1573 父级已将范围描述为攻击者施加加密算法，而不是仅依赖协议固有保护。CrowdStrike 对 3PARA RAT 恢复了固定字符串派生 DES/XOR key 及任务—结果链；联合政府
+        Snake 报告记录 PSK 与 Diffie-Hellman 建立每会话秘密、key material 和解密命令参数；NCSC 对 Cyclops Blink 证明每消息随机 AES key/IV 经硬编码 RSA public
+        key 封套，消息再置于 TLS 内，并恢复命令格式与模块结果。这些证据共同支持额外密码变换、接收端恢复和 C2 结果。
+      en: Enterprise ATT&CK 19.1 already describes T1573 as an adversary-applied encryption algorithm rather than reliance
+        on protections inherent in a protocol. CrowdStrike recovered 3PARA RAT's fixed-string-derived DES or XOR keying and
+        task-result chain. The joint-government Snake report documents PSK plus Diffie-Hellman session-secret establishment,
+        key material, and decrypted command parameters. NCSC establishes Cyclops Blink generating a random AES key and IV
+        for each message, enveloping them with a hardcoded RSA public key, placing messages beneath TLS, and recovering command
+        formats and module outcomes. Together these sources support an added cryptographic transform, receiver recovery, and
+        C2 outcome.
+    - zh: Niji 应作 adapt，因为 ATT&CK 子项按对称/非对称算法家族划分，且固定清单包含只使用 SSL/TLS 的案例。正式范围要求攻击者控制的附加密码层、key/material/receiver recovery
+        path 以及解密后的命令/结果。正常协议原生 TLS、单独高熵、算法/library 名称或 encrypted 标签不准入。子技术按密钥可复用范围、运行时秘密生命周期和检查边界划分。
+      en: Niji should adapt the source because ATT&CK children divide symmetric and asymmetric algorithm families and the
+        fixed inventory includes cases using SSL or TLS alone. Formal scope requires an attacker-controlled additional cryptographic
+        layer, a key, material, or receiver recovery path, and a command or result after decryption. Ordinary protocol-native
+        TLS, high entropy alone, an algorithm or library name, or an encrypted label does not qualify. Children use key reuse
+        scope, runtime-secret lifetime, and inspection boundary.
+  scope_notes:
+    zh: 每项正式结论必须连接 ciphertext、key/IV/public-private material 或可复现 derive/unwrap 逻辑、receiver decrypt，以及明文命令/结果或后继动作。只有 traffic
+      shape/TLS metadata 时维持 opaque-channel candidate。
+    en: Every formal conclusion must join ciphertext, key, IV, public or private material or reproducible derive or unwrap
+      logic, receiver decryption, and a plaintext command or result or successor action. Traffic shape or TLS metadata alone
+      supports only an opaque-channel candidate.
+proposed_content:
+  name:
+    zh: 攻击者密钥控制通道保护
+    en: Adversary-Keyed C2 Protection
+  summary:
+    zh: 攻击者在 C2 消息上额外施加自有密钥和恢复流程，使无对应秘密或端点明文观察的检查点无法恢复命令与结果。
+    en: Adversaries apply their own keying and recovery process to C2 messages so inspection points without the corresponding
+      secret or endpoint plaintext cannot recover commands and results.
+  definition_and_concept:
+    paragraphs:
+    - zh: 攻击者密钥控制通道保护指植入与控制端在承载协议之外对命令、参数、结果或消息封套执行密码变换，并通过嵌入/派生共享秘密、协商会话秘密或公钥封装消息密钥让接收端恢复明文。直接目的是在网络、代理或协议解密检查点隐藏 C2 语义；算法安全强弱不是定义条件，攻击者控制的
+        keying layer 必须实际决定内容可恢复性。
+      en: Adversary-Keyed C2 Protection means an implant and controller cryptographically transform commands, parameters,
+        results, or message envelopes beyond the carrier protocol and let the receiver recover plaintext through an embedded
+        or derived shared secret, negotiated session secret, or public-key envelope for a message key. Its direct purpose
+        is hiding C2 semantics at network, proxy, or protocol-decryption inspection points. Algorithm strength is not definitional;
+        the actor-controlled keying layer must actually determine content recoverability.
+    - zh: 判定需同时证明 ciphertext、密钥/材料/derive/unwrap 路径、receiver decrypt 和解密后的控制结果。静态分析可从字符串、配置或 key blob 重建 shared key；动态分析可从
+        handshake、crypto API、memory/key handle 与同一 flow 恢复 session key。即使私钥未知，也需样本代码和协议格式证明预期接收方如何恢复。Base64、压缩、普通 HTTPS 及只标记
+        encrypted 的厂商结论不足。
+      en: Classification requires ciphertext, a key, material, derive or unwrap path, receiver decryption, and a decrypted
+        control outcome. Static analysis can reconstruct a shared key from a string, configuration, or key blob. Dynamic analysis
+        can recover a session key from a handshake, cryptographic API, memory or key handle, and the same flow. Even when
+        a private key is unknown, sample code and protocol format must establish intended receiver recovery. Base64, compression,
+        ordinary HTTPS, and vendor labels that merely say encrypted are insufficient.
+  stealth_characteristics:
+    paragraphs:
+    - zh: 密码层把 command ID、参数、路径、shell output 和文件内容变为 ciphertext；协议解析器仍可见五元组、TLS/SNI/cert、HTTP length/timing 或 custom frame，但缺
+        key 时不能生成 C2 语义。key reuse 让一个样本/配置可能解密多段历史流量；session-scoped keying 将恢复窗口缩到握手与进程内存；嵌套加密让 TLS inspection 成功后仍只得到内层 ciphertext。
+      en: The cryptographic layer turns command IDs, parameters, paths, shell output, and file contents into ciphertext. Protocol
+        parsers still see five-tuples, TLS, SNI, certificates, HTTP length and timing, or custom frames but cannot produce
+        C2 semantics without the key. Key reuse can let one sample or configuration decrypt multiple historical flows. Session-scoped
+        keying narrows recovery to handshake and process-memory windows. Nested encryption leaves inner ciphertext even after
+        successful TLS inspection.
+    - zh: 加密不会隐藏 endpoint、process、key generation/import/derive API、handshake 顺序、key blob/config、内存 key schedule、加解密前后 buffer
+        长度/摘要及解密后的进程/文件动作。固定 key 泄露会扩大历史暴露，复杂协商会增加指纹与实现漏洞，嵌套层增加 CPU、帧开销和端点 hook 面。
+      en: Encryption does not hide endpoints, processes, key generation, import, or derivation APIs, handshake order, key
+        blobs or configuration, key schedules in memory, pre- and post-crypt buffer lengths or digests, or process and file
+        actions after decryption. Fixed-key leakage expands retrospective exposure, complex negotiation adds fingerprints
+        and implementation flaws, and nested layers add CPU, framing overhead, and endpoint hook surfaces.
+  scope_boundary_definition:
+    paragraphs:
+    - zh: 纳入要求攻击者附加密码 transform 与恢复路径覆盖持续 C2 消息，并能连接解密内容或控制结果。合法浏览器、更新器、VPN 或企业 agent 只用标准 TLS/mTLS 不属于本项；攻击者自建 C2 仅开启 HTTPS
+        也不足，除非还有独立消息密码层。算法、key length、OpenSSL/CNG、RSA/AES/RC4 名称不构成子技术。
+      en: Inclusion requires an attacker-added cryptographic transform and recovery path covering continuing C2 messages and
+        a link to decrypted content or control outcome. Legitimate browsers, updaters, VPNs, or enterprise agents using standards-conforming
+        TLS or mTLS alone are outside scope. An attacker-operated C2 merely enabling HTTPS is insufficient unless an independent
+        message cryptographic layer exists. Algorithm, key length, OpenSSL or CNG, and RSA, AES, or RC4 names do not define
+        children.
+    - zh: T1132 负责不依赖秘密、按表示规则恢复的编码；keyed XOR 只有提供 confidentiality 流程时才进入本项。NJT-0152 负责 padding、载体与服务契约外观，NJT-0115 负责文件、代码或一般内容的静态表示遮蔽；同一密码实现可在
+        artifact 与 C2 会话并列，但分析主体需分开。
+      en: T1132 owns encoding recoverable by a representation rule without a secret. Keyed XOR enters here only with a confidentiality
+        workflow. NJT-0152 owns padding, carriers, and service-contract appearance, while NJT-0115 owns static representation
+        obscuration of files, code, or general content. One cryptographic implementation can coexist for an artifact and a
+        C2 session, but analytic subjects remain separate.
+    - zh: T1572 负责可识别内层协议会话被外层隧道承载；外层隧道加密可并列本项，但封装/路由/边界穿越不由密码子项拥有。协议原生 TLS 即使采用非对称握手和对称记录保护，仍只是 carrier protection；Cyclops
+        Blink 一类 TLS 下再加每消息封套才满足附加层。
+      en: T1572 owns an identifiable inner protocol session carried by an outer tunnel. Outer-tunnel encryption can coexist
+        here, but cryptographic children do not own encapsulation, routing, or boundary crossing. Protocol-native TLS remains
+        carrier protection even with asymmetric handshake and symmetric record protection. An additional per-message envelope
+        beneath TLS, as in Cyclops Blink, qualifies.
+  application_scenarios_and_threat_model:
+    application_scenarios:
+      paragraphs:
+      - zh: 简单 RAT 可在 HTTP body 内用硬编码字符串派生 key 解密任务并用相同 key 加密 output；样本取得后可能回溯解密。高级 P2P 植入可用 PSK 与 Diffie-Hellman 建立每 session
+          key，命令参数再有内层 key。网络设备 botnet 可在 TLS 内为每消息生成随机 AES key/IV 并以 RSA 封套，TLS inspection 后仍需内层恢复。
+        en: A simple RAT can decrypt tasking in an HTTP body with a key derived from a hardcoded string and encrypt output
+          with the same key, allowing retrospective decryption after sample acquisition. An advanced P2P implant can establish
+          a per-session key through PSK and Diffie-Hellman with another inner key for command parameters. A network-device
+          botnet can generate a random AES key and IV per message beneath TLS and envelope them with RSA, requiring inner
+          recovery after TLS inspection.
+    threat_model:
+      attacker_model:
+        paragraphs:
+        - zh: 攻击者需在两端正确实现 key generation/distribution/agreement、IV/nonce、方向、版本、padding/integrity 与错误处理。可复用 key 简单但泄露影响广；session
+            key 降低跨会话暴露却增加 handshake/state；嵌套 crypto 抵抗协议检查却增加 framing 和端点成本。key reuse、弱 group 或验证错误会提供解密机会。
+          en: The actor must correctly implement key generation, distribution or agreement, IV or nonce, direction, version,
+            padding or integrity, and error handling. Reusable keys are simple but disclosure has broad impact. Session keys
+            limit cross-session exposure but add handshake and state. Nested cryptography resists protocol inspection but
+            adds framing and endpoint cost. Key reuse, weak groups, or validation errors create decryption opportunities.
+      defender_model:
+        paragraphs:
+        - zh: 防守方可有 PCAP/flow/TLS 日志、样本/配置、端点进程/网络、授权 memory capture、crypto API instrumentation、批准测试/诊断的 TLS keylog，以及解密命令结果。以
+            flow/session ID、process start key、sample/config hash、key identifier/digest、direction、message sequence 和时间连接。只有
+            ciphertext/entropy 时不能声称 key/plaintext，生产环境不得无限制泄露合法 TLS secrets。
+          en: The defender may have PCAP, flow and TLS logs, samples and configuration, endpoint process and network telemetry,
+            authorized memory capture, cryptographic API instrumentation, TLS key logs for approved test or diagnosis, and
+            decrypted command outcomes. Joins use flow or session ID, process start key, sample or configuration hash, key
+            identifier or digest, direction, message sequence, and time. Ciphertext or entropy alone cannot establish a key
+            or plaintext, and production detection must not expose legitimate TLS secrets without limit.
+  stealth_mechanisms:
+  - mechanism_ref: NM-DO
+    role: primary
+    summary:
+      zh: 攻击者密钥把可解析控制语义变为无密钥不可恢复的 ciphertext
+      en: Adversary keying turns parseable control semantics into ciphertext unrecoverable without the secret
+    analysis:
+      paragraphs:
+      - zh: 攻击者在承载协议外对 command/result 应用 key-dependent transform，检查点只见 ciphertext，须经 receiver-compatible recovery/decrypt
+          才出现语义。3PARA、Snake 和 Cyclops Blink 分别证明固定派生 key、session agreement 与 message envelope。恢复 key/逻辑并验证 plaintext outcome
+          可拆除遮蔽。
+        en: The actor applies a key-dependent transform to commands and results beyond the carrier protocol, leaving inspection
+          points with ciphertext until receiver-compatible recovery and decryption reveal semantics. 3PARA, Snake, and Cyclops
+          Blink establish fixed derived keys, session agreement, and message envelopes respectively. Recovering the key or
+          logic and validating a plaintext outcome removes the obscuration.
+    evidence_keys:
+    - B5-T1573-REF-3PARA
+    - B5-T1573-REF-SNAKE
+    - B5-T1573-REF-CYCLOPS
+    confidence: high
+  - mechanism_ref: NM-BT
+    role: secondary
+    summary:
+      zh: 运行时或嵌套密钥把明文边界移出常规网络检查
+      en: Runtime or nested keying moves the plaintext boundary beyond ordinary network inspection
+    analysis:
+      paragraphs:
+      - zh: session secret 只在 endpoint runtime 出现，或 inner envelope 位于解密后 TLS body 内，使 proxy/NDR 没有 attacker-layer key。关键解密行为存在于进程
+          crypto context/memory，落在常规网络观察外。Snake 与 Cyclops Blink 直接支持；端点 instrumentation/key recovery 可恢复观察。
+        en: A session secret appears only at endpoint runtime, or an inner envelope sits inside a decrypted TLS body, leaving
+          a proxy or NDR without the attacker-layer key. Critical decryption behavior exists in process cryptographic context
+          and memory outside ordinary network observation. Snake and Cyclops Blink directly support this effect; endpoint
+          instrumentation and key recovery restore visibility.
+    evidence_keys:
+    - B5-T1573-REF-SNAKE
+    - B5-T1573-REF-CYCLOPS
+    confidence: high
+  subtechnique_taxonomy:
+    coverage: established
+    proposed_child_keys:
+    - B5-T1573-SUB-REUSABLE-KEY
+    - B5-T1573-SUB-RUNTIME-SECRET
+    - B5-T1573-SUB-NESTED-BOUNDARY
+    narrative:
+      paragraphs:
+      - zh: 三项候选按 key recovery 与检查差异划分。可复用植入密钥保护让相同 embedded/derived secret 跨消息/会话存在，支持样本/配置恢复与历史解密；运行时会话秘密建立让 key 由 handshake
+          或随机 message envelope 产生，恢复依赖特定 session 的握手、memory 或 crypto API；嵌套密码检查边界把 attacker layer 放在协议原生 TLS 内，需 carrier decrypt
+          后再恢复 inner layer。第三轴可与前两项并列。
+        en: Three candidates use key-recovery and inspection differentials. Reusable Implant-Key Protection keeps one embedded
+          or derived secret across messages or sessions, allowing sample or configuration recovery and retrospective decryption.
+          Runtime Session-Secret Establishment generates a key through a handshake or random message envelope, making recovery
+          specific to a session's handshake, memory, or cryptographic API. Nested Cryptographic Inspection Boundary places
+          the attacker layer inside protocol-native TLS and requires inner recovery after carrier decryption. The third axis
+          can coexist with either key-lifetime child.
+      - zh: 对称/非对称、算法、key length、TLS/library/product 不成项；固定 ATT&CK children 仅作 keying 实现广度。若只能证明 encrypted 而不能恢复 key/material
+          path 和 C2 plaintext/result，父级与子项都 deferred。
+        en: Symmetric or asymmetric labels, algorithm, key length, TLS, library, and product do not define children; fixed
+          ATT&CK children are implementation breadth only. Evidence that shows only encrypted without a key or material path
+          and C2 plaintext or result leaves parent and children deferred.
+proposed_subtechniques:
+- key: B5-T1573-SUB-REUSABLE-KEY
+  name:
+    zh: 可复用植入密钥保护
+    en: Reusable Implant-Key Protection
+  summary:
+    zh: 攻击者让样本或配置中的同一秘密/派生输入跨消息或会话保护 C2，使密钥恢复前内容不可读而恢复后可回溯解密。
+    en: Adversaries protect C2 across messages or sessions with the same secret or derivation input in an implant or configuration,
+      preventing content recovery until key extraction but enabling retrospective decryption afterward.
+  stable_variable: reusable_secret_or_derivation_input_persists_across_multiple_C2_messages_or_sessions
+  trace_change: different_flows_share_a_key_fingerprint_derivation_or_repeatable_decryption_path
+  defender_observation_difference: sample_or_configuration_key_recovery_can_unlock_historical_traffic_without_per_session_memory_capture
+  prerequisites: implant_or_config_contains_secret_or_derivation_material_and_receiver_uses_compatible_decrypt_logic
+  evidence_keys:
+  - B5-T1573-REF-3PARA
+  - B5-T1573-REF-NIST-KEYS
+  confidence: high
+  definition_and_concept:
+    paragraphs:
+    - zh: 可复用植入密钥保护是攻击者在样本、配置、硬编码字符串或稳定派生输入中保存跨多条消息/会话使用的 secret，使发送端和接收端无需每次协商便可加解密 C2。直接目标是用低运营成本隐藏命令与结果；稳定变量是 key/material
+        scope 跨会话可复用，而不是 DES、AES、XOR 或 key length。
+      en: Reusable Implant-Key Protection means an actor stores a secret in a sample, configuration, hardcoded string, or
+        stable derivation input and reuses it across multiple C2 messages or sessions so sender and receiver encrypt and decrypt
+        without negotiating each time. The direct goal is hiding commands and results at low operational cost. The stable
+        variable is reusable key or material scope across sessions rather than DES, AES, XOR, or key length.
+    - zh: 3PARA RAT 使用固定字符串的 MD5 派生 DES-CBC key 解密任务，失败时以同字符串派生 8-byte XOR key，并用同一方法加密 task output 后 HTTP POST 回传。CrowdStrike
+        同时恢复 command set 和 output path，满足 key recovery、receiver decrypt 与 C2 result。
+      en: 3PARA RAT derives a DES-CBC key from the MD5 of a fixed string to decrypt tasking, falls back to an eight-byte XOR
+        key derived from the same string, and encrypts task output with the same method before HTTP POST return. CrowdStrike
+        also recovered the command set and output path, satisfying key recovery, receiver decryption, and C2 result.
+  stealth_characteristics:
+    paragraphs:
+    - zh: 可复用植入密钥保护让所有捕获会话在取得 secret 前只呈现相似 ciphertext/长度/时序，但相同 key/derivation 会留下跨样本和历史 PCAP 的稳定恢复点。一旦样本或配置泄露，防守可验证 padding/command
+        format、重算 plaintext digest 并回溯整个 cryptoperiod；若每主机配置不同，恢复范围相应缩小。
+      en: Reusable Implant-Key Protection leaves captured sessions with ciphertext, lengths, and timing until the secret is
+        obtained but creates a stable recovery point across samples and historical PCAP through the same key or derivation.
+        Once a sample or configuration is acquired, defenders can validate padding and command format, recompute plaintext
+        digests, and decrypt the cryptoperiod retrospectively. Per-host configuration narrows that scope.
+    - zh: 高熵或重复长度不证明 reuse；需 key/material 或可复现 derivation 和至少两条消息/会话的成功解密。合法软件也嵌入 API credentials、public keys 或 test keys，且
+        key string 出现不等于被用于 C2。
+      en: High entropy or repeated lengths do not prove reuse. Evidence needs key material or reproducible derivation and
+        successful decryption of at least two messages or sessions. Legitimate software also embeds API credentials, public
+        keys, or test keys, and a key string does not establish C2 use.
+  scope_boundary_definition:
+    paragraphs:
+    - zh: 纳入要求可复用 secret/derive input、对应 crypt operation、receiver decrypt 及命令/结果。只嵌入 public key 但每消息随机 secret 的主要变量归兄弟运行时秘密；固定
+        TLS certificate/private key 只服务协议原生 TLS 时排除。静态文件解密而无持续 C2 归 NJT-0115。
+      en: Inclusion requires a reusable secret or derivation input, corresponding cryptographic operation, receiver decryption,
+        and command or result. A merely embedded public key with a random secret per message belongs primarily to the runtime-secret
+        sibling. A fixed TLS certificate or private key serving only protocol-native TLS is excluded. Static file decryption
+        without continuing C2 belongs to NJT-0115.
+  application_scenarios_and_threat_model:
+    application_scenarios:
+      paragraphs:
+      - zh: 攻击者可在小型 RAT 中硬编码 passphrase/seed，让多个受害者的 HTTP C2 body 使用同一 key。防守取得一份样本后，可从代理/PCAP 筛选同 framing 流量并批量尝试 decrypt，确认命令、shell
+          output 或 file operation。
+        en: An actor can hardcode a passphrase or seed in a small RAT so HTTP C2 bodies across victims use the same key. After
+          obtaining one sample, defenders can select similarly framed traffic from proxy data or PCAP, apply decryption, and
+          confirm commands, shell output, or file operations.
+    threat_model:
+      attacker_model:
+        paragraphs:
+        - zh: 攻击者需控制样本秘密分发和两端版本；reuse 简化部署但单样本泄露可暴露所有同 key 流量。按 campaign/host 派生能缩小影响却增加配置和服务端 key inventory。
+          en: The actor must control sample-secret distribution and versions on both ends. Reuse simplifies deployment but
+            one sample can expose all traffic using that key. Campaign- or host-specific derivation narrows impact but increases
+            configuration and server key inventory.
+      defender_model:
+        paragraphs:
+        - zh: 防守方假定可取得合法授权的 sample/config/memory 与 PCAP/flow，保存 sample hash、key source/digest、derive inputs、cipher framing、flow/session、direction/message
+            sequence 和解密结果。没有 ciphertext 原始字节或 padding/integrity 校验时，错误 key 可能产生伪 plaintext。
+          en: The defender is assumed to obtain an authorized sample, configuration, or memory plus PCAP or flow and retain
+            sample hash, key source and digest, derivation inputs, cipher framing, flow or session, direction and message
+            sequence, and decryption result. Without original ciphertext bytes or padding and integrity validation, a wrong
+            key can produce false plaintext.
+  stealth_mechanisms:
+  - mechanism_ref: NM-DO
+    role: primary
+    summary:
+      zh: 可复用 secret 持续遮蔽多个会话的控制语义
+      en: A reusable secret persistently obscures control semantics across sessions
+    analysis:
+      paragraphs:
+      - zh: 攻击者用同 secret/derive path 把多条 C2 plaintext 变为 ciphertext，网络检查缺 key 时无法读取；3PARA 的固定字符串和双解密路径直接支持。样本恢复 key 后跨历史会话解密，遮蔽被集中逆转。
+        en: The actor uses one secret or derivation path to turn multiple C2 plaintexts into ciphertext that network inspection
+          cannot read without the key. 3PARA's fixed string and dual decryption path directly support this behavior. Recovering
+          the key from a sample reverses the obscuration across historical sessions.
+    evidence_keys:
+    - B5-T1573-REF-3PARA
+    confidence: high
+  research_limitations:
+    paragraphs:
+    - zh: CrowdStrike 报告直接给出 3PARA key derivation、fallback、task output 和 commands，但不提供可下载 PCAP，也不能证明所有 3PARA 变体/受害者共享同 key。历史解密能力需由主
+        Agent 在可用样本与流量上验证。
+      en: CrowdStrike directly reports 3PARA key derivation, fallback, task output, and commands but provides no downloadable
+        PCAP and cannot establish that every 3PARA variant or victim shares one key. Retrospective decryption requires validation
+        on available samples and traffic.
+- key: B5-T1573-SUB-RUNTIME-SECRET
+  name:
+    zh: 运行时范围秘密建立
+    en: Runtime-Scoped Secret Establishment
+  summary:
+    zh: 攻击者通过握手、随机生成或公钥封套为单会话/消息建立秘密，使静态样本不足以直接恢复其他流量。
+    en: Adversaries establish a secret per session or message through handshake, random generation, or public-key envelope,
+      making a static sample insufficient to recover other traffic directly.
+  stable_variable: traffic_secret_is_generated_or_agreed_at_runtime_with_session_or_message_scope
+  trace_change: handshake_or_wrapped_key_material_precedes_ciphertext_and_plaintext_exists_only_in_endpoint_runtime_context
+  defender_observation_difference: recovery_requires_session_specific_handshake_private_material_memory_or_crypto_API_state
+  prerequisites: runtime_entropy_key_agreement_or_transport_and_receiver_side_key_recovery_logic
+  evidence_keys:
+  - B5-T1573-REF-SNAKE
+  - B5-T1573-REF-CYCLOPS
+  - B5-T1573-REF-OPENSSL-SEAL
+  - B5-T1573-REF-CNG-DH
+  confidence: high
+  definition_and_concept:
+    paragraphs:
+    - zh: 运行时范围秘密建立是攻击者在连接或消息创建时协商/生成 fresh secret，并通过 key agreement、PSK mix、public-key wrap 或 equivalent material 让接收端恢复。直接目标是限制一个
+        key 泄露对其他会话/消息的影响，并让静态样本只暴露 protocol/公钥而非所有 plaintext key。
+      en: Runtime-Scoped Secret Establishment means an actor negotiates or generates a fresh secret when a connection or message
+        is created and lets the receiver recover it through key agreement, PSK mixing, public-key wrapping, or equivalent
+        material. The direct goal is limiting one key disclosure across other sessions or messages and leaving static samples
+        with protocol or public keys rather than all plaintext traffic keys.
+    - zh: Snake 的 enc layer 用 PSK 与 Diffie-Hellman 经 12 步建立 unique session key 并保护 command header/inner payload；Cyclops Blink
+        对每 message 随机生成 AES key/IV，再以硬编码 RSA public key 封套。两者 scope 不同但共同变量是 runtime secret 与特定 traffic unit 绑定。
+      en: Snake's enc layer combines a PSK and Diffie-Hellman through twelve steps to establish a unique session key protecting
+        command headers and inner payloads. Cyclops Blink randomly generates an AES key and IV for each message and envelopes
+        them with a hardcoded RSA public key. Their scopes differ, but both bind a runtime secret to a specific traffic unit.
+  stealth_characteristics:
+    paragraphs:
+    - zh: 运行时范围秘密建立让同家族不同 session/message 的 ciphertext key 不同，样本中的 public/PSK material 可能不足以单独 decrypt；防守需把 handshake/wrapped
+        key、PCAP 和 endpoint memory/API context 同时保留。残余包括 public values、wrapped-key length、message sequence、key handle lifetime、random
+        generation 和 decrypt 后 command action。
+      en: Runtime-Scoped Secret Establishment gives different sessions or messages in one family different traffic keys, so
+        public or PSK material in a sample may be insufficient by itself. Defenders must preserve handshake or wrapped key,
+        PCAP, and endpoint memory or API context together. Residuals include public values, wrapped-key length, message sequence,
+        key-handle lifetime, random generation, and command action after decryption.
+    - zh: 合法 TLS、SSH、IPsec、QUIC 和应用 E2EE 也建立 session keys；只有 attacker-added layer 与 recovered C2 result 才成立。一个 crypto API
+        call、DH public value 或 random key generation 不足。
+      en: Legitimate TLS, SSH, IPsec, QUIC, and application end-to-end encryption also establish session keys. Only an attacker-added
+        layer with a recovered C2 result qualifies. One cryptographic API call, DH public value, or random-key generation
+        is insufficient.
+  scope_boundary_definition:
+    paragraphs:
+    - zh: 纳入要求 runtime key event/material、同 session/message ciphertext、receiver recovery/decrypt 和 C2 plaintext/result。协议原生
+        TLS key schedule 排除；公钥仅验证签名而不恢复 C2 secret 排除；嵌入固定 shared secret 跨会话使用归可复用 sibling。
+      en: Inclusion requires a runtime key event or material, ciphertext from the same session or message, receiver recovery
+        and decryption, and C2 plaintext or result. Protocol-native TLS key schedules are excluded. A public key used only
+        for signature verification without C2 secret recovery is excluded. A fixed shared secret reused across sessions belongs
+        to the reusable sibling.
+  application_scenarios_and_threat_model:
+    application_scenarios:
+      paragraphs:
+      - zh: P2P implant 可用 PSK 识别 peer，再交换 DH values 产生 session key；appliance bot 可为每 beacon message 生成 content key/IV 并以
+          controller public key wrap。网络 hunt 需从对应 host 获取 memory/crypto context 或利用已知实现缺陷，不能把其他 session key 套用。
+        en: A P2P implant can use a PSK to identify peers and exchange DH values to derive a session key. An appliance bot
+          can generate a content key and IV for each beacon message and wrap them with a controller public key. Network hunting
+          needs memory or cryptographic context from the corresponding host or a known implementation flaw and cannot apply
+          another session's key.
+    threat_model:
+      attacker_model:
+        paragraphs:
+        - zh: 攻击者需保持 entropy、key agreement/wrap、peer authentication、KDF 和 key destruction 正确。weak group、重复 random、public/private
+            key misuse 或 key handle 泄露会降低隔离；复杂 handshake 也留下多步指纹。
+          en: The actor must correctly maintain entropy, key agreement or wrapping, peer authentication, KDF, and key destruction.
+            Weak groups, repeated random values, public or private key misuse, or key-handle leakage reduce isolation, while
+            complex handshakes leave multistep fingerprints.
+      defender_model:
+        paragraphs:
+        - zh: 防守方可在经授权 endpoint 捕获 process memory/crypto API 参数或 key handle metadata，并与 PCAP flow/message ID/time 关联。API 文档只证明
+            material/handle 存在，不保证 EDR 默认记录；无 instrumentation 时只能按握手形态提出候选。
+          en: A defender can capture process memory, cryptographic API parameters, or key-handle metadata on an authorized
+            endpoint and join it to PCAP flow, message ID, and time. API documentation establishes material and handle semantics
+            but not default EDR collection. Without instrumentation, handshake shape supports only a candidate.
+  stealth_mechanisms:
+  - mechanism_ref: NM-BT
+    role: primary
+    summary:
+      zh: 每会话/消息秘密把可解密状态限制在短暂端点 runtime
+      en: Per-session or message secrets confine decryptable state to transient endpoint runtime
+    analysis:
+      paragraphs:
+      - zh: 攻击者把 key 建立放在 session/message runtime，网络日志有 handshake/ciphertext 但无 secret，关键 plaintext boundary 只在进程短暂存在。Snake
+          和 Cyclops Blink 直接支持。捕获同一 session memory/API material 后可恢复观察。
+        en: The actor establishes keys at session or message runtime, leaving network logs with handshake and ciphertext but
+          no secret while the plaintext boundary exists briefly in the process. Snake and Cyclops Blink directly support this
+          effect. Capturing memory or API material for the same session restores observation.
+    evidence_keys:
+    - B5-T1573-REF-SNAKE
+    - B5-T1573-REF-CYCLOPS
+    confidence: high
+  research_limitations:
+    paragraphs:
+    - zh: Snake 报告详述 session key、PSK、DH 步骤及 weak parameter，可支持恢复模型；Cyclops 报告详述 envelope/command format，但 defender 未取得 controller
+        private key 的现实范围需单独说明。两源不提供通用 API event schema 或性能阈值。
+      en: The Snake report details session keys, PSKs, DH steps, and weak parameters and supports the recovery model. Cyclops
+        Blink details envelope and command format, but real defender access to controller private material requires separate
+        qualification. Neither source provides a universal API event schema or performance threshold.
+- key: B5-T1573-SUB-NESTED-BOUNDARY
+  name:
+    zh: 嵌套密码检查边界
+    en: Nested Cryptographic Inspection Boundary
+  summary:
+    zh: 攻击者把自有消息密码层放在协议原生加密内，使成功解开 TLS/外层协议的检查点仍只能看到内层 ciphertext。
+    en: Adversaries place their own message cryptographic layer inside protocol-native encryption so inspection that successfully
+      decrypts TLS or the outer protocol still sees inner ciphertext.
+  stable_variable: attacker_added_inner_ciphertext_remains_after_carrier_protocol_decryption
+  trace_change: outer_decrypt_yields_structured_but_still_encrypted_message_envelopes_instead_of_commands
+  defender_observation_difference: requires_application_layer_key_recovery_or_endpoint_plaintext_instrumentation_beyond_TLS_inspection
+  prerequisites: protocol_native_secure_carrier_plus_independent_inner_keying_and_receiver_decrypt_logic
+  evidence_keys:
+  - B5-T1573-REF-CYCLOPS
+  - B5-T1573-REF-TLS13
+  - B5-T1573-REF-TLS-KEYLOG
+  confidence: high
+  definition_and_concept:
+    paragraphs:
+    - zh: 嵌套密码检查边界是攻击者在 TLS/其他原生 secure carrier 已保护的 payload 内再放置独立 keying 的 encrypted envelope。直接目标是让解密 proxy、TLS keylog
+        或 server private key 只恢复 carrier plaintext，而 command/result 仍需 attacker-layer key。稳定变量是 plaintext boundary 位于第二层，而非
+        TLS/library 名称。
+      en: Nested Cryptographic Inspection Boundary means an actor places an independently keyed encrypted envelope inside
+        a payload already protected by TLS or another native secure carrier. The direct goal is having a decryption proxy,
+        TLS key log, or server private key recover only carrier plaintext while commands and results still need the attacker-layer
+        key. The stable variable is a second-layer plaintext boundary rather than TLS or library name.
+    - zh: Cyclops Blink 明确以 custom binary protocol underneath TLS 通信，并逐消息 AES-CBC 加密；NCSC 进一步恢复 wrapped key/IV、decrypted command
+        format 与 commands。这直接证明 TLS layer 和 attacker message layer 各自独立。
+      en: Cyclops Blink explicitly communicates with a custom binary protocol underneath TLS and encrypts each message with
+        AES-CBC. NCSC additionally recovered wrapped key and IV handling, decrypted command format, and commands, directly
+        establishing independent TLS and attacker message layers.
+  stealth_characteristics:
+    paragraphs:
+    - zh: 嵌套密码检查边界让 TLS termination 后的 body 仍具高熵/固定 envelope 而非业务或命令语义，按“TLS 已解密”假定内容可检查的控制产生盲区。仍可观察 outer/inner length、message
+        boundary、wrapped key、process crypto calls 和 endpoint action；恢复 inner key 后可把两层 flow→message→command 串联。
+      en: Nested Cryptographic Inspection Boundary leaves a high-entropy or fixed-envelope body after TLS termination rather
+        than business or command semantics, creating a blind spot for controls that assume TLS decryption makes content inspectable.
+        Outer and inner lengths, message boundaries, wrapped keys, process cryptographic calls, and endpoint actions remain
+        observable. Recovering the inner key links flow to message to command across both layers.
+    - zh: 合法应用层 E2EE、messaging、financial envelope 和 client-side encryption 也在 TLS 内携带 ciphertext；没有批准应用目录、key custody 和 endpoint
+        result 时不能定性。TLS 1.3/ECH 还可能连 outer metadata 都收缩。
+      en: Legitimate application-layer end-to-end messaging, financial envelopes, and client-side encryption also carry ciphertext
+        inside TLS. Without an approved-application catalog, key custody, and endpoint result, classification is not possible.
+        TLS 1.3 or ECH can further reduce outer metadata.
+  scope_boundary_definition:
+    paragraphs:
+    - zh: 纳入要求 outer protocol decrypt 的证据、inner ciphertext、独立 inner key recovery 和解密后 C2。仅 TLS 或 VPN 排除；TLS inside tunnel
+        的完整内层 session topology 归 T1572，若 tunnel payload 另有 attacker message crypto 可并列。inner content 的 padding/carrier/service
+        mimic 另归 NJT-0152。
+      en: Inclusion requires evidence of outer-protocol decryption, inner ciphertext, independent inner-key recovery, and
+        C2 after inner decryption. TLS or VPN alone is excluded. An intact inner-session topology inside an encrypted tunnel
+        belongs to T1572; attacker message crypto inside the tunnel can coexist. Padding, carriers, or service mimicry of
+        inner content belongs separately to NJT-0152.
+  application_scenarios_and_threat_model:
+    application_scenarios:
+      paragraphs:
+      - zh: 边界 TLS inspection 可解开 appliance 到 C2 的 HTTPS/TLS，却只得到包含 wrapped message key、IV 和 ciphertext 的 binary frame。调查需从
+          appliance sample/memory 或 controller material 恢复 inner key，才能识别 terminate、update C2、module load 等 commands。
+        en: Boundary TLS inspection can decrypt an appliance's HTTPS or TLS connection to C2 yet recover only a binary frame
+          with wrapped message key, IV, and ciphertext. Investigation needs appliance sample or memory or controller material
+          to recover the inner key before identifying terminate, C2-update, module-load, and other commands.
+    threat_model:
+      attacker_model:
+        paragraphs:
+        - zh: 攻击者需维护 carrier TLS 与 inner envelope 两套 state/keys 并处理重传/分片；收益是 TLS inspection 无法直接读命令，代价是可识别 envelope、重复 crypto
+            APIs 和更复杂错误面。
+          en: The actor must maintain two state and key systems for carrier TLS and the inner envelope and handle retransmission
+            and fragmentation. The benefit is that TLS inspection cannot directly read commands; the cost is an identifiable
+            envelope, repeated cryptographic APIs, and a more complex error surface.
+      defender_model:
+        paragraphs:
+        - zh: 防守方需区分 tls_decryption_status 与 inner_decryption_status，保存 outer flow/session、decrypted body ref、inner message/key
+            ID、process/crypto context 和 endpoint outcome。TLS key logging只适用于获批诊断/测试并保护合法 secrets，不能当作生产默认措施。
+          en: The defender must distinguish tls_decryption_status from inner_decryption_status and retain outer flow or session,
+            decrypted-body reference, inner message and key ID, process and cryptographic context, and endpoint outcome. TLS
+            key logging is limited to approved diagnosis or test with protection of legitimate secrets and is not a default
+            production measure.
+  stealth_mechanisms:
+  - mechanism_ref: NM-BT
+    role: primary
+    summary:
+      zh: 内层密码让 carrier 解密检查仍看不到控制明文
+      en: Inner cryptography keeps control plaintext outside carrier-decryption inspection
+    analysis:
+      paragraphs:
+      - zh: 攻击者在 TLS body 内加入独立 envelope，使 proxy 解决第一层后仍缺 inner key，真实 command 行为落在端点 runtime。Cyclops Blink 提供直接样本证据。记录 outer
+          body 与 inner recovery/endpoint outcome 可弥合盲区。
+        en: The actor adds an independent envelope inside the TLS body, leaving the proxy without the inner key after solving
+          the first layer and keeping command behavior in endpoint runtime. Cyclops Blink provides direct sample evidence.
+          Recording outer body, inner recovery, and endpoint outcome closes the gap.
+    evidence_keys:
+    - B5-T1573-REF-CYCLOPS
+    confidence: high
+  research_limitations:
+    paragraphs:
+    - zh: Cyclops Blink 是高质量政府样本分析并明确给出两层与 command format，但单一家族不能证明所有 nested encryption 有相同 envelope 或检测差。RFC TLS/keylog 仅说明
+        carrier/key recovery 机制，不证明恶意 inner layer；生产 keylog 还存在严重 secret exposure 风险。
+      en: Cyclops Blink is a high-quality government sample analysis with explicit layers and command format, but one family
+        cannot establish a common envelope or detection differential for all nested encryption. TLS and key-log RFCs establish
+        carrier and recovery mechanics rather than a malicious inner layer, and production key logging creates serious secret-exposure
+        risk.
+defense_candidates:
+  detection_strategies:
+  - key: B5-T1573-DET-KEY-RECOVERY
+    name:
+      zh: 密钥材料—ciphertext—控制明文恢复
+      en: Key Material–Ciphertext–Control Plaintext Recovery
+    detects_keys:
+    - B5-T1573-PARENT
+    - B5-T1573-SUB-REUSABLE-KEY
+    - B5-T1573-SUB-RUNTIME-SECRET
+    objective:
+      zh: 将样本/配置或运行时 key material 与对应 flow/message ciphertext 连接，执行受控 decrypt 并以命令格式和端点结果验证明文。
+      en: Join sample, configuration, or runtime key material to matching flow or message ciphertext, perform controlled decryption,
+        and validate plaintext through command format and endpoint outcome.
+    analytic_keys:
+    - B5-T1573-NJA-REUSABLE-KEY
+    - B5-T1573-NJA-RUNTIME-SECRET
+  - key: B5-T1573-DET-NESTED
+    name:
+      zh: 外层解密—内层封套—端点明文关联
+      en: Outer Decryption–Inner Envelope–Endpoint Plaintext Correlation
+    detects_keys:
+    - B5-T1573-PARENT
+    - B5-T1573-SUB-NESTED-BOUNDARY
+    objective:
+      zh: 区分 carrier TLS 解密与 attacker inner decrypt，证明外层明文仍为 ciphertext，并把 inner recovery 连接到 C2 command/result。
+      en: Distinguish carrier TLS decryption from attacker-layer inner decryption, prove that outer plaintext remains ciphertext,
+        and join inner recovery to a C2 command or result.
+    analytic_keys:
+    - B5-T1573-NJA-NESTED
+  detection_analytics:
+  - key: B5-T1573-NJA-REUSABLE-KEY
+    strategy_key: B5-T1573-DET-KEY-RECOVERY
+    name:
+      zh: 样本/配置可复用密钥与历史流量解密
+      en: Sample or Configuration Reusable-Key Retrospective Decryption
+    target_keys:
+    - B5-T1573-PARENT
+    - B5-T1573-SUB-REUSABLE-KEY
+    logic:
+      zh: 从经授权取得的 sample/config/memory 记录 key source、derive input、algorithm/mode、IV/nonce 规则、direction 和 framing，以不可逆 key
+        digest 标识材料；选择同 sample family/配置和 framing 的 PCAP messages，按方向尝试 decrypt。只有 padding/tag/MAC、已知 command header/ID、字段长度和至少一个端点
+        process/file outcome 同时通过才标记 recovered_C2_plaintext。用同一 key path 成功恢复至少两个 message/session 才确认 reusable scope；单个可读字符串、熵降低或仅
+        decrypt success 不足。
+      en: From an authorized sample, configuration, or memory image, record key source, derivation input, algorithm and mode,
+        IV or nonce rule, direction, and framing, identifying material with a nonreversible key digest. Select PCAP messages
+        with the same sample family or configuration and framing and attempt decryption by direction. Mark recovered_C2_plaintext
+        only when padding, tag, or MAC, a known command header or ID, field lengths, and at least one endpoint process or
+        file outcome agree. Confirm reusable scope only after the same key path recovers at least two messages or sessions.
+        One readable string, reduced entropy, or decryption success alone is insufficient.
+    data_requirements:
+    - source_type: sample_config_key
+      channel: malware analysis or authorized endpoint acquisition
+      required_fields:
+      - sample_sha256
+      - config_digest
+      - key_source
+      - key_digest
+      - derivation_input_digest
+      - algorithm_mode
+      - iv_nonce_rule
+      - direction
+      - version
+    - source_type: packet_message
+      channel: PCAP or lossless payload capture
+      required_fields:
+      - timestamp
+      - flow_id
+      - src_ip
+      - src_port
+      - dest_ip
+      - dest_port
+      - direction
+      - message_sequence
+      - ciphertext_offset
+      - ciphertext_length
+      - ciphertext_digest
+      - raw_message_ref
+    - source_type: decrypt_result
+      channel: controlled analysis workspace
+      required_fields:
+      - analysis_id
+      - key_digest
+      - flow_id
+      - message_sequence
+      - success
+      - validation_method
+      - plaintext_digest
+      - command_id
+      - parse_error
+    - source_type: endpoint_outcome
+      channel: EDR process/file/network
+      required_fields:
+      - timestamp
+      - device_id
+      - process_start_key
+      - parent_start_key
+      - executable
+      - command_line
+      - file_path
+      - operation
+      - remote_endpoint
+    observables:
+    - same_key_path_across_sessions
+    - validated_command_plaintext
+    - output_encrypted_with_same_path
+    - endpoint_outcome_matches_command
+    correlation:
+      window: Key/config cryptoperiod recovered from sample; packet-to-outcome 0–10 minutes or one malware task cycle
+      dimensions:
+      - sample_sha256
+      - config_digest
+      - key_digest
+      - flow_id
+      - message_sequence
+      - direction
+      - process_start_key
+      - time
+    false_positives:
+    - legitimate_custom_protocol_with_embedded_test_or_device_key
+    - forensic_test_traffic
+    - approved_legacy_agent
+    - accidentally_reused_application_secret
+    blind_spots:
+    - per_host_or_rotated_key
+    - unavailable_raw_payload
+    - missing_IV_or_direction
+    - custom_padding_without_integrity
+    - injected_process_breaking_family_mapping
+    tuning_guidance:
+      zh: key 明文只存于隔离分析域，生产检测用 key digest、sample/config identity 与 command/result features；按版本维护 decryptor。无法验证 command format/MAC/outcome
+        时标为 decryption_candidate，不输出 plaintext 结论。
+      en: Keep plaintext keys only in an isolated analysis domain and use key digest, sample or configuration identity, and
+        command or result features in production detection. Version decryptors. Without command-format, MAC, or outcome validation,
+        report decryption_candidate rather than plaintext recovery.
+    evidence_keys:
+    - B5-T1573-REF-3PARA
+    - B5-T1573-REF-NIST-KEYS
+    - B5-T1573-REF-MDE-PROC-REUSE
+    - B5-T1573-REF-MDE-NET-REUSE
+  - key: B5-T1573-NJA-RUNTIME-SECRET
+    strategy_key: B5-T1573-DET-KEY-RECOVERY
+    name:
+      zh: 同会话握手/crypto context 密钥恢复
+      en: Same-Session Handshake or Crypto-Context Key Recovery
+    target_keys:
+    - B5-T1573-PARENT
+    - B5-T1573-SUB-RUNTIME-SECRET
+    logic:
+      zh: 对已知 implant 在授权环境记录 key agreement/wrap/generation API 或 memory object 的 process_start_key、api/provider、operation、key_handle/token、scope、public/wrapped
+        material digest、IV/nonce digest、input/output length/digest 和 timestamp；与同 process/flow 的 handshake/message ID 配对，在隔离域恢复
+        session/message secret 并 decrypt。仅当 material scope 与 flow/message 一致、receiver path 可复现、plaintext command/result 和
+        endpoint outcome 匹配时确认。API 文档证明参数语义，不表示系统默认产生日志；无 instrumentation 时只输出 handshake_candidate。
+      en: For a known implant in an authorized environment, record process_start_key, API or provider, operation, key handle
+        or token, scope, public or wrapped-material digest, IV or nonce digest, input and output lengths or digests, and time
+        for key agreement, wrapping, generation, or memory objects. Pair these with handshake or message IDs from the same
+        process and flow, recover the session or message secret in an isolated workspace, and decrypt. Confirm only when material
+        scope matches the flow or message, the receiver path is reproducible, plaintext command or result and endpoint outcome
+        agree. API documentation establishes parameter semantics, not default system logging; without instrumentation report
+        handshake_candidate only.
+    data_requirements:
+    - source_type: crypto_context
+      channel: authorized eBPF/ETW/API hook or memory acquisition
+      required_fields:
+      - timestamp
+      - device_id
+      - process_start_key
+      - module
+      - api_provider
+      - api_name
+      - operation
+      - key_handle_token
+      - key_scope
+      - public_material_digest
+      - wrapped_key_digest
+      - iv_nonce_digest
+      - input_length
+      - input_digest
+      - output_length
+      - output_digest
+    - source_type: handshake_packet
+      channel: PCAP
+      required_fields:
+      - timestamp
+      - flow_id
+      - direction
+      - handshake_step
+      - public_value_digest
+      - wrapped_key_digest
+      - message_id
+      - payload_length
+      - raw_packet_ref
+    - source_type: endpoint_process_network
+      channel: EDR
+      required_fields:
+      - timestamp
+      - device_id
+      - process_start_key
+      - executable
+      - module_hash
+      - remote_ip
+      - remote_port
+      - protocol
+      - child_or_file_outcome
+    - source_type: controlled_decrypt
+      channel: isolated analysis workspace
+      required_fields:
+      - analysis_id
+      - flow_id
+      - message_id
+      - secret_digest
+      - recovery_source
+      - validation_method
+      - plaintext_digest
+      - command_id
+      - success
+    observables:
+    - custom_multistep_key_exchange
+    - per_message_wrapped_secret
+    - crypto_context_bound_to_C2_flow
+    - recovered_plaintext_and_outcome
+    correlation:
+      window: Exact session or message lifetime; memory/API capture from key creation through destroy plus one task cycle
+      dimensions:
+      - device_id
+      - process_start_key
+      - flow_id
+      - message_id
+      - key_handle_token
+      - wrapped_key_digest
+      - secret_digest
+      - time
+    false_positives:
+    - legitimate_E2EE_application
+    - custom_enterprise_protocol
+    - TLS_SSH_IPsec_or_QUIC_key_schedule
+    - authorized_security_or_backup_agent
+    blind_spots:
+    - no_endpoint_instrumentation
+    - kernel_or_hardware_crypto
+    - key_erased_before_capture
+    - process_injection
+    - asynchronous_crypto_offload
+    - private_key_only_on_controller
+    tuning_guidance:
+      zh: 先排除 OS/protocol native TLS/SSH/VPN providers 和批准 app；instrumentation 仅针对高风险 process/sample 并记录 digest/handle 而非长期
+        key 明文。一个 API call 不告警，必须闭合 material→message→plaintext→outcome。
+      en: Exclude OS and protocol-native TLS, SSH, and VPN providers and approved applications first. Instrument only high-risk
+        processes or samples and retain digests or handles rather than long-lived plaintext keys. One API call does not alert;
+        close material to message to plaintext to outcome.
+    evidence_keys:
+    - B5-T1573-REF-SNAKE
+    - B5-T1573-REF-CYCLOPS
+    - B5-T1573-REF-OPENSSL-SEAL
+    - B5-T1573-REF-CNG-DH
+    - B5-T1573-REF-NIST-KEYS
+  - key: B5-T1573-NJA-NESTED
+    strategy_key: B5-T1573-DET-NESTED
+    name:
+      zh: TLS carrier 明文中的独立 ciphertext 封套
+      en: Independent Ciphertext Envelope inside TLS Carrier Plaintext
+    target_keys:
+    - B5-T1573-PARENT
+    - B5-T1573-SUB-NESTED-BOUNDARY
+    logic:
+      zh: 从 TLS/flow 日志取得 uid、SNI/cert、process 与 tls_decryption_status；在合法授权解密/测试环境将 outer plaintext 存为 content_ref，识别 stable
+        inner frame、wrapped-key/IV slots、message ID 与 ciphertext。将 inner envelope 与同 process 的 crypto context/receiver decrypt
+        连接，并以 recovered command format/outcome 确认。outer TLS 未解密时只能 opaque_nested_candidate；只因 body 高熵不确认。RFC 9850 keylog 仅用于批准诊断/测试，且其
+        secrets 必须按敏感 key material 保护。
+      en: Obtain uid, SNI or certificate, process, and tls_decryption_status from TLS and flow logs. In an authorized decryption
+        or test environment, store outer plaintext as a content reference and identify stable inner framing, wrapped-key and
+        IV slots, message ID, and ciphertext. Join the inner envelope to cryptographic context and receiver decryption in
+        the same process and confirm through recovered command format and outcome. Without outer TLS decryption, report opaque_nested_candidate
+        only; high-entropy body alone does not confirm. RFC 9850 key logs are limited to approved diagnosis or test and their
+        secrets require sensitive-key protection.
+    data_requirements:
+    - source_type: tls_flow
+      channel: Zeek ssl.log/conn.log or equivalent
+      required_fields:
+      - ts
+      - uid
+      - id.orig_h
+      - id.orig_p
+      - id.resp_h
+      - id.resp_p
+      - server_name
+      - version
+      - cipher
+      - established
+      - cert_chain_fuids
+      - process_start_key
+    - source_type: authorized_outer_decrypt
+      channel: test/decryption proxy or endpoint keylog where permitted
+      required_fields:
+      - timestamp
+      - flow_id
+      - client_random_or_session_id
+      - tls_decryption_status
+      - content_ref
+      - content_length
+      - content_digest
+    - source_type: inner_envelope
+      channel: content parser
+      required_fields:
+      - flow_id
+      - message_id
+      - framing_version
+      - wrapped_key_digest
+      - iv_nonce_digest
+      - ciphertext_offset
+      - ciphertext_length
+      - ciphertext_digest
+    - source_type: endpoint_crypto_outcome
+      channel: endpoint instrumentation/EDR
+      required_fields:
+      - timestamp
+      - process_start_key
+      - api_name
+      - key_scope
+      - message_id
+      - plaintext_digest
+      - command_id
+      - process_or_file_outcome
+    observables:
+    - outer_decrypt_success_inner_ciphertext
+    - stable_envelope_layout
+    - independent_inner_key_recovery
+    - decrypted_command_and_endpoint_outcome
+    correlation:
+      window: One TLS session and its inner message/task cycles; retain content and key references only under approved incident
+        policy
+      dimensions:
+      - flow_id
+      - uid
+      - process_start_key
+      - client_random_or_session_id
+      - message_id
+      - wrapped_key_digest
+      - time
+    false_positives:
+    - legitimate_E2EE_messaging
+    - client_side_encrypted_storage
+    - financial_or_healthcare_envelopes
+    - enterprise_agent_application_crypto
+    blind_spots:
+    - no_outer_decryption
+    - ECH_or_proxy_gap
+    - inner_padding_or_fragmentation
+    - controller_private_key_unavailable
+    - endpoint_hardware_crypto
+    tuning_guidance:
+      zh: 维护批准 E2EE/app-layer encryption 的 process/service/key owner 清单；未知 inner ciphertext 只有在 unapproved process、稳定 envelope、inner
+        recovery 与恶意 outcome 组合时升级。避免生产环境全局 keylog。
+      en: Maintain approved E2EE and application-layer encryption process, service, and key-owner inventories. Elevate unknown
+        inner ciphertext only with an unapproved process, stable envelope, inner recovery, and malicious outcome. Avoid global
+        production key logging.
+    evidence_keys:
+    - B5-T1573-REF-CYCLOPS
+    - B5-T1573-REF-TLS13
+    - B5-T1573-REF-TLS-KEYLOG
+    - B5-T1573-REF-ZEEK-TLS-REUSE
+    - B5-T1573-REF-ZEEK-CONN-REUSE
+    - B5-T1573-REF-OPENSSL-SEAL
+  mitigations:
+  - key: B5-T1573-MIT-KEY-RECOVERY
+    name:
+      zh: C2 密钥恢复与受控解密处置
+      en: C2 Key Recovery and Controlled Decryption Response
+    description:
+      zh: 在事件响应中联合保全样本/配置/内存、原始流量和 crypto context，在隔离域恢复密钥并把验证结果用于回溯、阻断与主机隔离。
+      en: During incident response, jointly preserve samples, configuration, memory, raw traffic, and cryptographic context,
+        recover keys in an isolated domain, and use validated results for retrospective hunting, blocking, and host containment.
+    measures:
+    - key: synchronized_artifact_traffic_capture
+      control_type: detective-support
+      description:
+        zh: 对疑似 implant 同步保存 sample/config/memory、PCAP/flow、process start 与时间，避免 key cryptoperiod 与流量错位。
+        en: Synchronously preserve sample, configuration, memory, PCAP or flow, process start, and time for a suspected implant
+          so key cryptoperiod and traffic remain aligned.
+    - key: isolated_key_recovery_and_validation
+      control_type: detective-support
+      description:
+        zh: 在不同权隔离分析域保存 key material，生产侧只发布 key digest、decryptor version、validated command/result features 与 scope。
+        en: Keep key material in a differently authorized isolated analysis domain and publish only key digests, decryptor
+          versions, validated command or result features, and scope to production systems.
+    - key: process_endpoint_containment
+      control_type: containment
+      description:
+        zh: 对验证的 sample/process/key scope 隔离设备、阻断 endpoint 与 task/result signatures，并按 decrypt history 扩展受影响主机。
+        en: Isolate devices and block endpoints and task or result signatures for validated sample, process, and key scope,
+          expanding affected hosts from decryption history.
+    applications:
+    - target_key: B5-T1573-PARENT
+      use:
+        zh: 将 key recovery 作为确认门，恢复 command/result 后再执行范围扩展与处置。
+        en: Use key recovery as a confirmation gate and expand scope and response after recovering commands or results.
+      expected_effect:
+        zh: 把 opaque C2 转成可验证行为并利用同 key/协议回溯历史。
+        en: Turn opaque C2 into verifiable behavior and retrospectively hunt history using the same key or protocol.
+      limitations:
+        zh: key 可能已销毁或只在 controller，memory capture 有敏感数据与稳定性风险，错误解密会造成误判。
+        en: Keys may be destroyed or exist only at the controller, memory capture carries sensitive-data and stability risks,
+          and incorrect decryption can misclassify.
+    - target_key: B5-T1573-SUB-REUSABLE-KEY
+      use:
+        zh: 从 sample/config 提取并 version key/derive path，对 cryptoperiod 内历史 message 批量验证并查找同配置主机。
+        en: Extract and version the key or derivation path from sample or configuration, validate historical messages in its
+          cryptoperiod, and find hosts with the same configuration.
+      expected_effect:
+        zh: 将攻击者 key reuse 转化为跨会话回溯优势。
+        en: Turn adversary key reuse into a cross-session retrospective advantage.
+      limitations:
+        zh: per-host/campaign key 与未知 IV/方向缩小覆盖，长期保存 plaintext key 增加防守风险。
+        en: Per-host or campaign keys and unknown IV or direction narrow coverage, and long-lived plaintext-key storage increases
+          defender risk.
+    - target_key: B5-T1573-SUB-RUNTIME-SECRET
+      use:
+        zh: 对高价值已知 implant 触发短时 memory/API/handshake capture，按 session/message scope 恢复后立即销毁或封存 secret。
+        en: Trigger short-lived memory, API, and handshake capture for high-value known implants, recover by session or message
+          scope, and immediately destroy or vault the secret.
+      expected_effect:
+        zh: 在短暂 key lifetime 内恢复 plaintext 并避免把一个 key 错用于其他会话。
+        en: Recover plaintext within the transient key lifetime without misapplying one key to other sessions.
+      limitations:
+        zh: 需要及时 endpoint 控制与高精度关联；硬件/内核 crypto 或远端 private key 可阻断恢复。
+        en: Timely endpoint control and precise correlation are required; hardware or kernel cryptography or a remote private
+          key can block recovery.
+    evidence_keys:
+    - B5-T1573-REF-3PARA
+    - B5-T1573-REF-SNAKE
+    - B5-T1573-REF-CYCLOPS
+    - B5-T1573-REF-NIST-KEYS
+  - key: B5-T1573-MIT-PLAINTEXT-BOUNDARY
+    name:
+      zh: 端点明文边界与嵌套密码治理
+      en: Endpoint Plaintext-Boundary and Nested-Cryptography Governance
+    description:
+      zh: 对批准应用层加密建立 process/service/key owner 清单，在高风险端点于加密前/解密后采集最小化结果，并以应用控制和进程出口限制未批准 crypto C2。
+      en: Inventory process, service, and key owners for approved application-layer encryption, collect minimized outcomes
+        before encryption or after decryption on high-risk endpoints, and constrain unapproved cryptographic C2 with application
+        control and process egress.
+    measures:
+    - key: approved_crypto_inventory
+      control_type: governance
+      description:
+        zh: 登记需要 nested/E2EE 的软件、模块、目的地、key owner、数据类别和诊断方式，未知进程不能仅凭 TLS 放行。
+        en: Register software, module, destination, key owner, data class, and diagnostic method requiring nested or E2EE
+          protection; unknown processes do not receive trust merely from TLS.
+    - key: minimized_endpoint_plaintext_telemetry
+      control_type: detective-support
+      description:
+        zh: 在授权场景记录 pre-encrypt/post-decrypt buffer digest/length、command class 与 outcome，不常态保存业务明文或 key。
+        en: In authorized cases record pre-encryption or post-decryption buffer digest and length, command class, and outcome
+          without routinely retaining business plaintext or keys.
+    - key: application_control_and_process_egress
+      control_type: preventive
+      description:
+        zh: 阻止未知二进制/脚本加载 crypto 模块并限制高价值设备上未批准 process 到外部 endpoint 的连接。
+        en: Prevent unknown binaries or scripts from loading cryptographic modules and restrict unapproved processes from
+          external endpoints on high-value devices.
+    applications:
+    - target_key: B5-T1573-SUB-NESTED-BOUNDARY
+      use:
+        zh: 将 TLS decrypt success 与 inner decrypt status 分开；未知 nested envelope 必须由批准 app inventory 或 endpoint outcome 解释，否则阻断/隔离。
+        en: Separate TLS decrypt success from inner-decrypt status; require approved application inventory or endpoint outcome
+          to explain an unknown nested envelope or block and isolate it.
+      expected_effect:
+        zh: 消除“TLS 已解密即内容可见”的假设盲区，并在端点恢复 inner command 证据。
+        en: Remove the assumption that TLS decryption makes content visible and recover inner-command evidence at the endpoint.
+      limitations:
+        zh: 合法 E2EE/隐私数据限制采集，App Control 兼容性和被盗批准进程会降低效果；RFC keylog 不适合作为生产默认。
+        en: Legitimate E2EE and privacy constrain collection, App Control compatibility and compromised approved processes
+          reduce effect, and RFC key logging is unsuitable as a production default.
+    evidence_keys:
+    - B5-T1573-REF-CYCLOPS
+    - B5-T1573-REF-TLS-KEYLOG
+    - B5-T1573-REF-APP-CONTROL-REUSE
+taxonomy_axis_model:
+  key_lifetime_axis:
+    values:
+    - reusable_implant_secret
+    - runtime_scoped_secret
+    relation: mutually_exclusive_at_the_evaluated_traffic_secret_scope
+    defense_difference:
+      zh: 可复用 secret 可由样本/配置恢复后跨历史会话应用；运行时 secret 必须在相关 handshake、message 或 process lifetime 内取得并严格限定 scope。
+      en: A reusable secret can be recovered from a sample or configuration and applied across historical sessions, whereas
+        a runtime secret must be acquired during the relevant handshake, message, or process lifetime and strictly scoped.
+  inspection_location_axis:
+    value: attacker_ciphertext_remains_after_carrier_decryption
+    relation: orthogonal_to_key_lifetime_axis
+    defense_difference:
+      zh: 该轴先验证 carrier decrypt 是否成功，再确认得到的 body 仍是具有独立 key/recovery path 的 ciphertext；它解决检查位置缺口，而不是 secret 的存续期。
+      en: This axis first verifies successful carrier decryption and then establishes that the resulting body remains ciphertext
+        with an independent key and recovery path. It addresses an inspection-location gap rather than secret lifetime.
+  allowed_combinations:
+  - children:
+    - B5-T1573-SUB-RUNTIME-SECRET
+    - B5-T1573-SUB-NESTED-BOUNDARY
+    evidence: B5-T1573-REF-CYCLOPS
+    rationale:
+      zh: Cyclops Blink 在 TLS 内为每条消息生成随机 AES key/IV 并以 RSA 封套，直接同时证明 message-scoped secret 与 TLS 后的内层检查边界。
+      en: Cyclops Blink generates a random AES key and IV per message beneath TLS and envelopes them with RSA, directly establishing
+        both a message-scoped secret and an inner inspection boundary after TLS.
+  - children:
+    - B5-T1573-SUB-REUSABLE-KEY
+    - B5-T1573-SUB-NESTED-BOUNDARY
+    evidence: none_in_current_case_set
+    rationale:
+      zh: 概念上可组合，但本批无直接案例；正式实例不得从固定 key 或 TLS 单独推定组合，需另证同一流的 outer decrypt、reusable inner key 与 decrypted C2 result。
+      en: The combination is conceptually possible but lacks a direct case in this batch. A formal instance must not infer
+        it from a fixed key or TLS alone and requires evidence of outer decryption, a reusable inner key in the same flow,
+        and a decrypted C2 result.
+  non_combinations:
+  - subject: symmetric_or_asymmetric_algorithm_family
+    reason: implementation_detail_not_a_stable_stealth_variable
+  - subject: protocol_native_TLS_only
+    reason: no_independent_attacker_layer_or_inner_plaintext_boundary
+existing_library_reuse:
+  reference_refs:
+  - REF-000625
+  - REF-000920
+  - REF-000634
+  - REF-000604
+  - REF-000598
+  - REF-000772
+  claim_refs: []
+  case_refs: []
+  strategy_refs: []
+  analytic_refs: []
+  mitigation_refs: []
+  relationship_refs: []
+library_candidates:
+  references:
+  - key: B5-T1573-REF-ATTACK-REUSE
+    resolution_recommendation: reuse
+    existing_id: REF-000625
+    title: MITRE ATT&CK Enterprise 19.1 STIX snapshot
+    locator: /tmp/enterprise-attack-19.1.json
+    source_type: authoritative-framework-snapshot
+    supports:
+    - fixed_parent_definition
+    - fixed_child_coverage
+  - key: B5-T1573-REF-3PARA
+    resolution_recommendation: create
+    title: Putter Panda — CrowdStrike Intelligence Report
+    publisher: CrowdStrike
+    url: https://cdn0.vox-cdn.com/assets/4589853/crowdstrike-intelligence-report-putter-panda.original.pdf
+    source_type: original-malware-analysis
+    supports:
+    - reusable_key_derivation
+    - receiver_decrypt
+    - task_and_result_chain
+    limitations:
+      zh: 报告给出样本逻辑、固定字符串派生和命令/结果路径，但未发布可供本批复验的完整 PCAP；结论不能外推到所有 3PARA 版本。
+      en: The report provides sample logic, fixed-string derivation, and command and result paths but no complete PCAP for
+        this batch to reproduce, and the conclusion cannot be generalized to every 3PARA version.
+  - key: B5-T1573-REF-SNAKE
+    resolution_recommendation: create
+    title: Hunting Russian Intelligence Snake Malware
+    publisher: CISA, FBI, NSA, and international partners
+    url: https://www.cisa.gov/sites/default/files/2023-05/aa23-129a_snake_malware_2.pdf
+    source_type: joint-government-malware-analysis
+    supports:
+    - PSK_DH_session_key
+    - receiver_key_material
+    - decrypted_commands
+    - implementation_weakness
+    limitations:
+      zh: 报告详述所分析版本的协议与 key material；弱 DH 参数和可解密性属于该实现，不能视为所有运行时会话密钥方案的属性，也不是通用端点日志规范。
+      en: The report details protocol and key material for the analyzed versions. Its weak Diffie-Hellman parameter and decryptability
+        belong to that implementation and do not characterize every runtime-session key scheme or define a general endpoint
+        logging contract.
+  - key: B5-T1573-REF-CYCLOPS
+    resolution_recommendation: create
+    title: Cyclops Blink Malware Analysis Report
+    publisher: UK National Cyber Security Centre
+    url: https://www.ncsc.gov.uk/files/Cyclops-Blink-Malware-Analysis-Report.pdf
+    source_type: original-government-malware-analysis
+    supports:
+    - per_message_random_key_IV
+    - RSA_envelope
+    - TLS_outer_layer
+    - recovered_command_protocol
+    limitations:
+      zh: 证据来自一个 malware family；硬编码 RSA private-key material 的其他用途或不可达代码不应被推定为每个通道方向的实际行为，正式结论只使用报告明确追踪的 seal/open 与命令路径。
+      en: Evidence comes from one malware family. Other uses of hardcoded RSA private-key material or unreachable code must
+        not be inferred as behavior in every channel direction; formal claims use only seal or open and command paths traced
+        by the report.
+  - key: B5-T1573-REF-TLS13
+    resolution_recommendation: create
+    title: RFC 8446 — The Transport Layer Security (TLS) Protocol Version 1.3
+    publisher: IETF
+    url: https://www.rfc-editor.org/rfc/rfc8446.html
+    source_type: authoritative-protocol-standard
+    supports:
+    - carrier_TLS_boundary
+    - TLS_key_schedule_context
+    limitations: TLS semantics support the carrier boundary only and do not establish malicious inner encryption.
+  - key: B5-T1573-REF-TLS-KEYLOG
+    resolution_recommendation: create
+    title: RFC 9850 — Keying Material Exporters for Transport Layer Security Key Logging
+    publisher: IETF
+    url: https://www.rfc-editor.org/rfc/rfc9850.html
+    source_type: authoritative-protocol-standard
+    supports:
+    - authorized_TLS_diagnostic_decryption
+    - keylog_fields_and_risk
+    limitations: The RFC limits key logging to controlled debugging or diagnostic use and explicitly warns against production
+      deployment; it is not a default detection feed.
+  - key: B5-T1573-REF-NIST-KEYS
+    resolution_recommendation: create
+    title: NIST SP 800-57 Part 1 Revision 5 — Recommendation for Key Management
+    publisher: NIST
+    url: https://csrc.nist.gov/pubs/sp/800/57/pt1/r5/final
+    source_type: authoritative-security-guidance
+    supports:
+    - cryptoperiod
+    - key_compromise
+    - recovery_and_custody_controls
+    limitations: Key-management guidance informs defensive custody and scope; it contains no malware detection claim.
+  - key: B5-T1573-REF-OPENSSL-SEAL
+    resolution_recommendation: create
+    title: OpenSSL EVP_SealInit documentation
+    publisher: OpenSSL Project
+    url: https://docs.openssl.org/4.0/man3/EVP_SealInit/
+    source_type: authoritative-api-documentation
+    supports:
+    - random_envelope_key_IV
+    - public_key_wrapping_semantics
+    limitations: The API describes semantics and parameters; its use alone is legitimate and neither proves malware nor supplies
+      default telemetry.
+  - key: B5-T1573-REF-CNG-DH
+    resolution_recommendation: create
+    title: Diffie-Hellman Keys and BCryptSecretAgreement
+    publisher: Microsoft
+    urls:
+    - https://learn.microsoft.com/en-us/windows/win32/seccrypto/diffie-hellman-keys
+    - https://learn.microsoft.com/en-us/windows/win32/api/bcrypt/nf-bcrypt-bcryptsecretagreement
+    source_type: authoritative-api-documentation
+    supports:
+    - runtime_key_agreement_objects
+    - API_field_semantics
+    limitations: Documentation establishes API behavior only; it does not state that Windows records these fields by default
+      or that their use is malicious.
+  - key: B5-T1573-REF-ZEEK-TLS-REUSE
+    resolution_recommendation: reuse
+    existing_id: REF-000920
+    title: Zeek ssl.log documentation
+    url: https://docs.zeek.org/en/current/reference/logs/ssl.html
+    supports:
+    - TLS_flow_fields
+  - key: B5-T1573-REF-ZEEK-CONN-REUSE
+    resolution_recommendation: reuse
+    existing_id: REF-000634
+    title: Zeek conn.log documentation
+    url: https://docs.zeek.org/en/current/logs/conn.html
+    supports:
+    - flow_uid_and_tuple
+  - key: B5-T1573-REF-MDE-NET-REUSE
+    resolution_recommendation: reuse
+    existing_id: REF-000604
+    title: Microsoft Defender XDR DeviceNetworkEvents table
+    url: https://learn.microsoft.com/en-us/defender-xdr/advanced-hunting-devicenetworkevents-table
+    supports:
+    - endpoint_process_network_join
+  - key: B5-T1573-REF-MDE-PROC-REUSE
+    resolution_recommendation: reuse
+    existing_id: REF-000598
+    title: Microsoft Defender XDR DeviceProcessEvents table
+    url: https://learn.microsoft.com/en-us/defender-xdr/advanced-hunting-deviceprocessevents-table
+    supports:
+    - process_start_and_parent_join
+  - key: B5-T1573-REF-APP-CONTROL-REUSE
+    resolution_recommendation: reuse
+    existing_id: REF-000772
+    title: Windows App Control documentation
+    url: https://learn.microsoft.com/en-us/windows/security/application-security/application-control/windows-defender-application-control/
+    supports:
+    - application_control_mitigation
+  claims:
+  - key: B5-T1573-CLAIM-ADMISSION
+    claim:
+      zh: T1573 在 Niji 中应 adapt 为攻击者附加且可证明恢复路径的密码 C2；协议原生 TLS、熵或 encrypted 标签不足。
+      en: Niji should adapt T1573 to adversary-added cryptographic C2 with a provable recovery path; protocol-native TLS,
+        entropy, or an encrypted label is insufficient.
+    evidence_keys:
+    - B5-T1573-REF-ATTACK-REUSE
+    - B5-T1573-REF-3PARA
+    - B5-T1573-REF-SNAKE
+    - B5-T1573-REF-CYCLOPS
+    confidence: high
+  - key: B5-T1573-CLAIM-REUSABLE
+    claim:
+      zh: 3PARA 的固定字符串派生 DES/XOR 路径跨任务和结果复用，并由已恢复命令集闭合 C2 结果。
+      en: 3PARA reuses a fixed-string-derived DES or XOR path across tasking and results, with the recovered command set closing
+        the C2 outcome.
+    evidence_keys:
+    - B5-T1573-REF-3PARA
+    confidence: high
+  - key: B5-T1573-CLAIM-RUNTIME
+    claim:
+      zh: Snake 的 PSK+DH 会话秘密和 Cyclops Blink 的每消息随机 secret 均使 key recovery 限定于运行时 scope，区别于样本内跨会话固定 secret。
+      en: Snake's PSK plus Diffie-Hellman session secret and Cyclops Blink's random per-message secret scope recovery to runtime,
+        unlike a sample-resident cross-session fixed secret.
+    evidence_keys:
+    - B5-T1573-REF-SNAKE
+    - B5-T1573-REF-CYCLOPS
+    confidence: high
+  - key: B5-T1573-CLAIM-NESTED
+    claim:
+      zh: Cyclops Blink 的每消息封套位于 TLS 内，证明 carrier TLS 解密和 attacker-layer 解密是两个独立观察边界；其同一案例也与运行时秘密子项组合。
+      en: Cyclops Blink's per-message envelope sits beneath TLS, establishing separate carrier-TLS and attacker-layer decryption
+        boundaries; the same case also combines with the runtime-secret child.
+    evidence_keys:
+    - B5-T1573-REF-CYCLOPS
+    - B5-T1573-REF-TLS13
+    - B5-T1573-REF-OPENSSL-SEAL
+    confidence: high
+  - key: B5-T1573-CLAIM-DEFENSE
+    claim:
+      zh: 可实施检测需将 flow/message、key/material scope、receiver-compatible decrypt、明文 command/result 与 endpoint outcome 连接；API/TLS/flow
+        文档只提供字段语义，不能单独定性。
+      en: Implementable detection must join flow or message, key or material scope, receiver-compatible decryption, plaintext
+        command or result, and endpoint outcome. API, TLS, and flow documentation supplies field semantics but cannot classify
+        activity by itself.
+    evidence_keys:
+    - B5-T1573-REF-NIST-KEYS
+    - B5-T1573-REF-OPENSSL-SEAL
+    - B5-T1573-REF-CNG-DH
+    - B5-T1573-REF-TLS-KEYLOG
+    - B5-T1573-REF-ZEEK-TLS-REUSE
+    - B5-T1573-REF-MDE-NET-REUSE
+    - B5-T1573-REF-MDE-PROC-REUSE
+    confidence: medium
+  cases:
+  - key: B5-T1573-CASE-3PARA
+    name: 3PARA RAT reusable derived-key task and result channel
+    summary:
+      zh: CrowdStrike 逆向出固定字符串 MD5 派生 DES-CBC key、失败时的 8-byte XOR key、任务解密和结果加密后 HTTP POST 的完整路径，并列出命令能力。
+      en: CrowdStrike reversed the fixed-string MD5-derived DES-CBC key, eight-byte XOR fallback, task decryption, and encrypted
+        HTTP POST result path and enumerated command capability.
+    evidence_keys:
+    - B5-T1573-REF-3PARA
+    supports_children:
+    - B5-T1573-SUB-REUSABLE-KEY
+    observation_status: reverse_engineered_sample_logic_and_protocol
+  - key: B5-T1573-CASE-SNAKE
+    name: Snake PSK and Diffie-Hellman session protection
+    summary:
+      zh: 联合政府分析恢复 Snake 队列内 PSK/RSA/CAST material、12-step DH 会话建立、command header/inner payload 保护和解密命令参数，证明会话范围 secret 与
+        receiver recovery。
+      en: Joint-government analysis recovered Snake queue PSK, RSA, and CAST material, its 12-step Diffie-Hellman session
+        establishment, protected command headers and inner payloads, and decrypted command parameters, establishing session-scoped
+        secrets and receiver recovery.
+    evidence_keys:
+    - B5-T1573-REF-SNAKE
+    supports_children:
+    - B5-T1573-SUB-RUNTIME-SECRET
+    observation_status: reverse_engineering_and_operational_hunt_report
+  - key: B5-T1573-CASE-CYCLOPS
+    name: Cyclops Blink per-message envelope beneath TLS
+    summary:
+      zh: NCSC 追踪到 TLS 下的 custom protocol 每消息生成随机 AES-256-CBC key/IV，经硬编码 RSA public key 封套，并恢复接收端格式与更新 C2、调整 beacon、加载模块等命令路径。
+      en: NCSC traced a custom protocol beneath TLS that generated a random AES-256-CBC key and IV per message, enveloped
+        them with a hardcoded RSA public key, and recovered receiver format and command paths for updating C2, changing beacon
+        intervals, and loading modules.
+    evidence_keys:
+    - B5-T1573-REF-CYCLOPS
+    - B5-T1573-REF-OPENSSL-SEAL
+    supports_children:
+    - B5-T1573-SUB-RUNTIME-SECRET
+    - B5-T1573-SUB-NESTED-BOUNDARY
+    observation_status: reverse_engineered_sample_logic_and_protocol
+  detection_strategies:
+  - B5-T1573-DET-KEY-RECOVERY
+  - B5-T1573-DET-NESTED
+  detection_analytics:
+  - B5-T1573-NJA-REUSABLE-KEY
+  - B5-T1573-NJA-RUNTIME-SECRET
+  - B5-T1573-NJA-NESTED
+  mitigations:
+  - B5-T1573-MIT-KEY-RECOVERY
+  - B5-T1573-MIT-PLAINTEXT-BOUNDARY
+  relationships: []
+research:
+  taxonomy_breadth_review:
+    attack_subtechnique_count: 2
+    attack_subtechnique_ids:
+    - T1573.001
+    - T1573.002
+    represented_dimensions:
+    - symmetric_cryptography
+    - asymmetric_cryptography
+    breadth_trigger: ordinary
+    coverage_resolutions:
+    - attack_id: T1573.001
+      attack_name: Symmetric Cryptography
+      resolution: planning-reference-only
+      notes:
+        zh: 为可复用 secret 和运行时生成的 bulk key 提供实现证据；不按 symmetric 标签直接成为 NJS。
+        en: Supplies implementation evidence for reusable secrets and runtime-generated bulk keys and does not become an NJS
+          by the symmetric label.
+    - attack_id: T1573.002
+      attack_name: Asymmetric Cryptography
+      resolution: planning-reference-only
+      notes:
+        zh: 为 runtime key agreement、message-key wrapping 和嵌套 carrier 场景提供实现证据；不按 asymmetric/TLS 标签直接成为 NJS。
+        en: Supplies implementation evidence for runtime key agreement, message-key wrapping, and nested-carrier scenarios
+          and does not become an NJS by the asymmetric or TLS label.
+    candidate_stealth_axes_examined:
+    - axis: key_lifetime_reusable
+      resolution: formal-candidate
+      child_key: B5-T1573-SUB-REUSABLE-KEY
+    - axis: key_lifetime_runtime_scoped
+      resolution: formal-candidate
+      child_key: B5-T1573-SUB-RUNTIME-SECRET
+    - axis: inspection_location_nested_after_carrier_decrypt
+      resolution: formal-orthogonal-candidate
+      child_key: B5-T1573-SUB-NESTED-BOUNDARY
+    - axis: symmetric_vs_asymmetric
+      resolution: rejected-as-algorithm-family
+    - axis: cipher_key_length_library_or_product
+      resolution: rejected-as-implementation-detail
+    - axis: protocol_native_TLS_only
+      resolution: excluded-without-attacker-added-layer
+    - axis: reversible_encoding_without_secret
+      resolution: adjacent-T1132
+    - axis: padding_carrier_or_service_contract
+      resolution: adjacent-NJT-0152
+    - axis: static_artifact_representation
+      resolution: adjacent-NJT-0115
+    - axis: intact_inner_protocol_in_outer_tunnel
+      resolution: adjacent-T1572
+    second_pass_required: false
+    second_pass_completed: false
+    proposed_niji_child_count: 3
+    breadth_gap_explained: true
+    reviewer_notes:
+      zh: 两个 ATT&CK 子项只覆盖算法家族，不能直接复制。开放搜索以 key lifetime 与 inspection location 收敛出三项候选：前两项在所评估 traffic secret scope 上互斥，第三项为可组合的正交检查轴；Cyclops
+        Blink 直接支持 runtime+nested，本批不直接支持 reusable+nested。
+      en: The two ATT&CK children cover algorithm families and cannot be copied. Open search converged on key lifetime and
+        inspection location. The first two candidates are mutually exclusive at the evaluated traffic-secret scope, while
+        the third is an orthogonal combinable inspection axis. Cyclops Blink directly supports runtime plus nested; this batch
+        does not directly support reusable plus nested.
+  evidence_coverage:
+    parent_behavior_keys:
+    - REF-000625
+    - B5-T1573-REF-3PARA
+    - B5-T1573-REF-SNAKE
+    - B5-T1573-REF-CYCLOPS
+    boundary_keys:
+    - B5-T1573-REF-TLS13
+    - B5-T1573-REF-TLS-KEYLOG
+    - B5-T1573-REF-OPENSSL-SEAL
+    - B5-T1573-REF-CNG-DH
+    mechanism_support:
+    - mechanism: NM-DO
+      evidence_keys:
+      - B5-T1573-REF-3PARA
+      - B5-T1573-REF-SNAKE
+      - B5-T1573-REF-CYCLOPS
+    - mechanism: NM-BT
+      evidence_keys:
+      - B5-T1573-REF-SNAKE
+      - B5-T1573-REF-CYCLOPS
+    child_existence_support:
+    - child_key: B5-T1573-SUB-REUSABLE-KEY
+      evidence_keys:
+      - B5-T1573-REF-3PARA
+    - child_key: B5-T1573-SUB-RUNTIME-SECRET
+      evidence_keys:
+      - B5-T1573-REF-SNAKE
+      - B5-T1573-REF-CYCLOPS
+    - child_key: B5-T1573-SUB-NESTED-BOUNDARY
+      evidence_keys:
+      - B5-T1573-REF-CYCLOPS
+    unsupported_or_deferred:
+    - protocol-native TLS without an independent attacker cryptographic layer
+    - high entropy encrypted labels algorithm or key length without receiver-compatible recovery
+    - symmetric or asymmetric families used directly as Niji children
+    - reusable plus nested dual classification without a direct same-flow case
+  content_depth_review:
+    compared_with_njt_0001: true
+    field_responsibilities_complete: true
+    candidate_specific_prose: true
+    repeated_prose_reviewed: true
+    notes:
+      zh: 父级和三项候选均分别覆盖定义、匿迹变化、残余痕迹、范围与反例、场景、攻防前提、机理、证据及限制；防御按 key lifetime 和 plaintext boundary 分离，没有按算法替换名称。
+      en: The parent and all three candidates separately cover definition, stealth change, residue, scope and counterexamples,
+        scenarios, attacker and defender assumptions, mechanisms, evidence, and limitations. Defense is separated by key lifetime
+        and plaintext boundary rather than renamed by algorithm.
+  automation_review:
+    canonical_prose_bulk_generated: false
+    mechanical_uses:
+    - YAML_parsing
+    - evidence_key_resolution
+    - field_presence_check
+  limitations:
+    paragraphs:
+    - zh: 3PARA、Snake 与 Cyclops Blink 是三组实现证据，不构成所有 encrypted C2 的流行度或完备样本；无原始 PCAP 时不能在本批复验全部 decrypt path。
+      en: 3PARA, Snake, and Cyclops Blink are three implementation evidence sets rather than prevalence or exhaustive coverage
+        of encrypted C2; without original PCAP this batch cannot reproduce every decryption path.
+    - zh: high entropy、TLS、crypto API call、算法或 key length 都可能来自正常软件；缺少 receiver-compatible recovery 与 command/result outcome
+        时必须保持 candidate。
+      en: High entropy, TLS, cryptographic API calls, algorithms, and key lengths commonly occur in legitimate software; without
+        receiver-compatible recovery and a command or result outcome, classification must remain a candidate.
+    - zh: endpoint memory/API instrumentation 不是操作系统默认数据源，可能产生隐私、稳定性和密钥泄露风险；只能在授权范围内短时采集并隔离 key material。RFC 9850 也明确不支持把
+        TLS key logging 作为生产默认。
+      en: Endpoint memory and API instrumentation is not an operating-system default data source and can create privacy, stability,
+        and key-disclosure risk; collect it only temporarily within authorized scope and isolate key material. RFC 9850 likewise
+        does not support TLS key logging as a production default.
+    - zh: 嵌套检查边界与 key lifetime 是正交轴；只有 Cyclops Blink 直接支持 runtime+nested。本批没有 reusable+nested 的直接案例，正式写入时不得用概念可组合性代替证据。
+      en: The nested inspection boundary and key lifetime are orthogonal axes. Only Cyclops Blink directly supports runtime
+        plus nested. This batch lacks a direct reusable plus nested case, so formal authoring must not substitute conceptual
+        composability for evidence.
+  rejected_mechanisms:
+  - mechanism: NM-ST
+    reason: No timing or cadence variable independently defines the behavior
+  - mechanism: NM-FD
+    reason: Cryptographic recoverability rather than false service identity is the direct effect
+  open_questions:
+  - zh: 是否接受第三项作为可与 key-lifetime 子项并列的正交 NJS；若正式矩阵要求兄弟项互斥，应将其降为父级 observable/defense profile，而不是强行与前两项同轴。
+    en: Decide whether to accept the third candidate as an orthogonal NJS that can coexist with a key-lifetime child. If formal
+      siblings must be mutually exclusive, reduce it to a parent observable or defense profile rather than forcing it onto
+      the first axis.
+  - zh: 主 Agent 应根据共享治理决定新增 REF/DET/NJA/MIT ID；本交接只给 temporary keys，且未写正式/共享文件。
+    en: The main agent should decide new REF, DET, NJA, and MIT IDs under shared governance. This handoff contains temporary
+      keys only and writes no formal or shared files.
+integration:
+  status: pending
+  resolutions: []

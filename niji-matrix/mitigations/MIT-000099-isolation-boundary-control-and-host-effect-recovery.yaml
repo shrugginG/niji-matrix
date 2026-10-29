@@ -1,0 +1,147 @@
+schema_version: 2.0.0
+type: mitigation
+id: MIT-000099
+name:
+  zh: 隔离边界控制与宿主效果恢复
+  en: Isolation-Boundary Control and Host-Effect Recovery
+summary:
+  zh: 以强隔离、最小 capability/宿主映射、受保护 Broker 通道、可验证跨层来源与宿主效果级恢复，阻断或缩短从工作负载到宿主权限的逃逸链。
+  en: Use strong isolation, minimum capabilities and host mappings, protected broker channels, verifiable cross-layer provenance, and host-effect recovery to block or shorten workload-to-host authority escape chains.
+description:
+  paragraphs:
+  - zh: >-
+      本缓解把 container/guest 与 host 之间的边界视为一个可版本化安全对象，而不是把 privileged、hostPath、runtime socket 或 CVE 分散交给无关联的配置检查。组织应为每类 workload 记录预期隔离强度、rootless/user namespace 或 runtime class、允许 capability/device/host resource、Broker channel/method、creator/owner、resolved digest、node scope 和有效窗口；默认拒绝 workload 直接控制 rootful daemon、宿主根/设备、host namespace 与可配置 host helper。确需高权限的基础设施工作负载使用专用 node、隔离 identity 与精确资源/method allowlist。
+    en: >-
+      This mitigation treats the boundary between container or guest and host as a versioned security object rather than distributing privileged mode, hostPath, runtime sockets, and CVEs among unrelated configuration checks. For each workload class, record intended isolation strength, rootless or user namespace or runtime class, allowed capabilities, devices, and host resources, broker channels and methods, creator and owner, resolved digest, node scope, and validity window. Deny workload control of rootful daemons, host root or devices, host namespaces, and configurable host helpers by default. Infrastructure workloads that genuinely require high authority use dedicated nodes, isolated identities, and exact resource or method allowances.
+  - zh: >-
+      处置不能止于删除 container 或关闭 socket。响应应先保全 workload spec/runtime map、container/cgroup/namespace、socket/API/callback request、daemon/helper transaction、canonical host resource 与 side effect；随后停止可疑 workload 和 Broker transaction，撤销 channel credential，隔离 node/host，恢复可信 runtime/hypervisor 与被改写 host object，并枚举从该边界产生的账户、token、任务、服务、module、进程、其他 workload 和 lateral access。若无法证明 host effect 已清除，重建节点或 hypervisor 优先于在可能受控的宿主上自证恢复。
+    en: >-
+      Response cannot stop after deleting a container or closing a socket. Preserve workload specification and runtime map, container, cgroup, and namespaces, socket, API, or callback request, daemon or helper transaction, canonical host resource, and side effect first. Then stop the suspicious workload and broker transaction, revoke channel credentials, isolate the node or host, restore trusted runtime or hypervisor and altered host objects, and enumerate accounts, tokens, tasks, services, modules, processes, other workloads, and lateral access created through the boundary. If removal of host effects cannot be proved, rebuilding the node or hypervisor is preferable to self-attestation from a potentially controlled host.
+domains: [enterprise]
+measures:
+- key: strong-workload-host-isolation
+  name:
+    zh: 强工作负载—宿主隔离
+    en: Strong Workload-to-Host Isolation
+  description:
+    paragraphs:
+    - zh: >-
+        对不受信或多租户代码使用 VM/microVM、sandboxed runtime 或等价强边界；普通容器启用 user namespaces/rootless、默认 seccomp、AppArmor/SELinux 与不可提升权限，禁用共享 host PID/IPC/network，限制 kernel attack surface。按 workload trust class 选择 runtime class 与 dedicated node，不能把 namespace 容器等同于强安全边界。
+      en: >-
+        Use VMs or microVMs, sandboxed runtimes, or equivalent strong boundaries for untrusted or multi-tenant code. For ordinary containers, enable user namespaces or rootless operation, default seccomp, AppArmor or SELinux, and no-new-privileges; disable shared host PID, IPC, or network and reduce kernel attack surface. Select runtime class and dedicated nodes by workload trust class rather than treating namespace containers as strong security boundaries.
+  control_type: preventive
+- key: least-capability-device-and-host-mapping
+  name:
+    zh: 最小 capability、设备与宿主映射
+    en: Minimum Capability Device and Host Mapping
+  description:
+    paragraphs:
+    - zh: >-
+        admission 默认拒绝 privileged、未批准 host namespace、CAP_SYS_ADMIN/CAP_SYS_MODULE 等高风险 capability、host root/runtime socket/raw device 与 Bidirectional propagation。确需 hostPath 时绑定 canonical source、container alias、read-only 且尽可能 recursive read-only、无危险 submount、允许 operation 与 node scope；device plugin 仅暴露必要 device IDs，不能授予全部 /dev。
+      en: >-
+        Admission denies privileged mode, unapproved host namespaces, high-risk capabilities such as CAP_SYS_ADMIN or CAP_SYS_MODULE, host root, runtime sockets, raw devices, and bidirectional propagation by default. A required hostPath binds canonical source, container alias, read-only and where possible recursive-read-only state, absence of dangerous submounts, allowed operations, and node scope. Device plugins expose only required device IDs rather than all of /dev.
+  control_type: preventive
+- key: protected-host-broker-channels
+  name:
+    zh: 受保护的宿主 Broker 通道
+    en: Protected Host-Broker Channels
+  description:
+    paragraphs:
+    - zh: >-
+        不把 rootful Docker/CRI/kubelet/hypervisor socket 挂入普通 workload，不暴露未认证 daemon API。使用 rootless 或专用代理、mutual TLS、workload identity、method/parameter-level RBAC、短期凭据和 destination policy；Broker 必须验证 host mount、namespace、capability、device、image digest 与 target node，并把 original caller/request ID 传播到 transaction、new object 和 child process。
+      en: >-
+        Do not mount rootful Docker, CRI, kubelet, or hypervisor sockets into ordinary workloads or expose unauthenticated daemon APIs. Use rootless or dedicated proxies, mutual TLS, workload identity, method- and parameter-level RBAC, short-lived credentials, and destination policy. A broker validates host mounts, namespaces, capabilities, devices, image digest, and target node and propagates original caller and request ID into transactions, new objects, and child processes.
+  control_type: preventive
+- key: immutable-boundary-map-and-provenance
+  name:
+    zh: 不可变边界映射与跨层来源
+    en: Immutable Boundary Maps and Cross-Layer Provenance
+  description:
+    paragraphs:
+    - zh: >-
+        将 manifest/admission、runtime actual map、container/cgroup/namespace、mount source/alias/inode、global link、socket peer/API body、callback old/new、daemon decision、transaction/new context、host process/resource 与 authorization outcome 实时送往 workload/host 管理员不能删除的存储。短命 workload 删除前强制 snapshot，索引同时支持 alias→canonical resource 与 caller→Broker→outcome。
+      en: >-
+        Export manifest and admission, actual runtime maps, container, cgroup, and namespaces, mount source, alias, and inode, global links, socket peer or API body, callback old and new values, daemon decision, transaction or new context, host process or resource, and authorization outcome in real time to storage workload and host administrators cannot delete. Force snapshots before short-lived workload deletion and index both alias-to-canonical-resource and caller-to-broker-to-outcome paths.
+  control_type: detective-support
+- key: runtime-kernel-hypervisor-integrity
+  name:
+    zh: Runtime、kernel 与 hypervisor 完整性
+    en: Runtime Kernel and Hypervisor Integrity
+  description:
+    paragraphs:
+    - zh: >-
+        维护受支持 kernel/runtime/hypervisor 版本、签名与 measured boot，快速修补可从 workload 触达的 escape flaws；保护 runc/containerd/shim、daemon config、cgroup helper、hypervisor service 与 socket ACL，阻止 container 写入。用独立 canary 验证 untrusted workload 无法访问 host root、runtime control、raw device 或 host-only operation，但不得在生产运行破坏性 escape exploit。
+      en: >-
+        Maintain supported kernel, runtime, and hypervisor versions, signatures, and measured boot and rapidly patch escape flaws reachable from workloads. Protect runc, containerd, shims, daemon configuration, cgroup helpers, hypervisor services, and socket ACLs from container writes. Use an independent canary to verify an untrusted workload cannot reach host root, runtime control, raw devices, or host-only operations without running destructive escape exploits in production.
+  control_type: preventive
+- key: host-effect-containment-and-rebuild
+  name:
+    zh: 宿主效果遏制、撤销与重建
+    en: Host-Effect Containment Revocation and Rebuild
+  description:
+    paragraphs:
+    - zh: >-
+        一旦确认 crossing，隔离 node/host 和相关 control plane，停止原/新 workload 与 Broker task，撤销 runtime/API/node credential，保存 memory/disk/runtime state。按 side-effect graph 恢复 host files/registry/config、删除未授权账户/keys/tasks/services/modules、终止进程与会话并检查其他 workloads；对 kernel/runtime/hypervisor integrity 无法独立验证的宿主从可信镜像重建并轮换其可访问的 secrets。
+      en: >-
+        Once crossing is confirmed, isolate the node or host and related control plane, stop original and new workloads and broker tasks, revoke runtime, API, and node credentials, and preserve memory, disk, and runtime state. Restore host files, registry, and configuration; remove unauthorized accounts, keys, tasks, services, and modules; terminate processes and sessions; and inspect other workloads through a side-effect graph. Rebuild a host whose kernel, runtime, or hypervisor integrity cannot be independently verified from a trusted image and rotate secrets it could access.
+  control_type: containment
+applications:
+- target_ref: NJT-0101
+  use:
+    paragraphs:
+    - zh: >-
+        对隔离工作负载至宿主权限逃逸，先按 workload trust class 选择 container、sandbox、VM 或 dedicated node 边界，再把所有 capability、host resource 与 Broker channel 纳入一个批准对象。部署前模拟该 workload 能否完成 host-only read/write/execute/control；运行时把 boundary primitive/request、effective host context/resource 与结果连接。发现 attempt 时保存证据并收紧边界；确认 host result 时按可能已控制宿主处置，而不是只重启 Pod。
+      en: >-
+        For Isolated-Workload-to-Host Authority Escape, first select container, sandbox, VM, or dedicated-node boundary by workload trust class and place every capability, host resource, and broker channel in one approval object. Before deployment, simulate whether the workload can perform host-only read, write, execute, or control. At runtime, join boundary primitive or request, effective host context or resource, and outcome. On an attempt, preserve evidence and tighten the boundary. On a confirmed host result, respond as potential host compromise rather than merely restarting the Pod.
+  expected_effect:
+    paragraphs:
+    - zh: >-
+        该应用减少可从普通 workload 触达的 boundary primitives，使 UID 0 或应用 RCE 仍受 user namespace、LSM、capability/device 与 runtime isolation 约束；同时让剩余越界必须穿过已记录且可关联的 map/channel。攻击者需要额外突破强边界、独立身份与不可变来源，成功窗口缩短，boundary_risk 与真正 elevation 可被分级。
+      en: >-
+        This application reduces boundary primitives reachable from ordinary workloads so UID 0 or application RCE remains constrained by user namespaces, LSM, capabilities and devices, and runtime isolation. It also forces remaining crossings through recorded and correlatable maps or channels. The adversary must defeat an additional strong boundary, independent identity, and immutable provenance, shortening the success window and allowing boundary risk to be distinguished from actual elevation.
+  limitations:
+    paragraphs:
+    - zh: >-
+        强隔离、dedicated nodes 与完整 syscall/file/API capture 会增加成本、性能开销与运维复杂度；GPU、storage、network/security agents 和 build workloads 可能确需高能力。并非所有 runtime/hypervisor 提供 request propagation 或 canonical resource ID，内核级 compromise 还能篡改 host telemetry。控制需分 trust class 渐进部署，并把无法独立验证的宿主视为需重建，不能让可用性压力把所有高权限 workload 永久放行。
+      en: >-
+        Strong isolation, dedicated nodes, and complete syscall, file, and API capture add cost, overhead, and operational complexity, while GPU, storage, network or security agents and build workloads can genuinely need high capability. Not every runtime or hypervisor exposes request propagation or canonical resource IDs, and kernel compromise can alter host telemetry. Controls require staged deployment by trust class and treatment of independently unverifiable hosts as rebuild candidates rather than permanently allowing every privileged workload under availability pressure.
+- target_ref: NJS-0101-001
+  use:
+    paragraphs:
+    - zh: >-
+        对宿主资源命名空间别名投射，为每个批准 mapping 保存 canonical host source、container alias、mount/object namespace、inode/file ID/device、read-only/recursive 状态、propagation、allowed operations 与版本。默认使用专用只读资源而非 host root，阻断危险 submount、raw device 和 global-link target。运行时把每个 container file/device/object event 解析回 canonical host object；未经批准的敏感 write/ioctl 立即停止 workload、保全 map 与恢复 host object。
+      en: >-
+        For Host-Resource Namespace-Alias Projection, preserve canonical host source, container alias, mount or object namespace, inode or file ID or device, read-only and recursive state, propagation, allowed operations, and version for every approved mapping. Use dedicated read-only resources rather than host root by default and block dangerous submounts, raw devices, and global-link targets. At runtime, resolve every container file, device, or object event back to a canonical host object. On an unapproved sensitive write or ioctl, stop the workload, preserve the map, and restore the host object.
+  expected_effect:
+    paragraphs:
+    - zh: >-
+        该应用缩小攻击者可选 alias，并消除“container-relative path 等于 container resource”的错误假设。即使某个 mapping 因业务保留，canonical resolution 也会把原容器进程对宿主 credential、cron、runtime 或 device 的直接访问升级为明确 boundary event；攻击者必须同时伪造 runtime map、inode/object identity 与 host integrity，别名带来的数据遮蔽收益显著降低。
+      en: >-
+        This application reduces aliases available to the adversary and removes the false assumption that a container-relative path denotes a container resource. Even when business retains a mapping, canonical resolution promotes direct access by the original container process to host credentials, cron, runtime, or devices into an explicit boundary event. The adversary must also forge runtime mapping, inode or object identity, and host integrity, materially reducing data-obscuration benefit from the alias.
+  limitations:
+    paragraphs:
+    - zh: >-
+        readOnly 可能不是递归只读，nested mount、FUSE、network filesystem、device 与 Windows object manager 会使用不同规范身份；部分 EDR 不记录 inode/file ID，短命 Pod 删除后映射会丢失。合法 observability/backup/storage 工作负载会访问敏感 host paths，简单路径阻断可破坏生产。策略必须按实际 runtime map 和 allowed operation 校准，并在无法解析 canonical target 时保留 ambiguity，而不能把 /host 名称当作结论。
+      en: >-
+        Read-only state may not be recursively read-only, and nested mounts, FUSE, network filesystems, devices, and the Windows object manager use different canonical identities. Some EDR omits inode or file ID and mappings disappear after short-lived Pod deletion. Legitimate observability, backup, and storage workloads access sensitive host paths, so simple path blocking can disrupt production. Policy requires calibration against actual runtime maps and allowed operations and must retain ambiguity when canonical targets cannot be resolved rather than treating a /host name as a verdict.
+- target_ref: NJS-0101-002
+  use:
+    paragraphs:
+    - zh: >-
+        对宿主 Broker 逃逸来源转换，移除普通 workload 的 rootful socket/API/callback write，必要调用经专用 proxy 与 workload identity 执行；按 method 和完整 requested/resolved parameters 限权并传播 request/trace ID。每次 create/exec/helper transaction 记录 peer/caller、body hash、daemon decision、new context 与 first host operation。未经批准的 host mount/device/capability 请求在 Broker 前阻断；确认结果后同时撤销原 caller credential、新 workload 和 Broker task。
+      en: >-
+        For Host-Broker Escape-Provenance Translation, remove rootful socket or API and callback-write access from ordinary workloads and route necessary calls through a dedicated proxy and workload identity. Authorize by method and complete requested and resolved parameters and propagate request or trace ID. Record peer or caller, body hash, daemon decision, new context, and first host operation for every create, exec, or helper transaction. Block unapproved host mounts, devices, or capabilities before the broker acts. After a confirmed result, revoke original caller credential, new workload, and broker task together.
+  expected_effect:
+    paragraphs:
+    - zh: >-
+        该应用阻止攻击者把容器内执行直接转换为 rootful daemon 权限，并让合法 Broker 活动携带不可丢失的 original caller。宿主侧看到 dockerd/kubelet/helper 时不再依赖其信誉，而能回溯具体 request、参数与 workload；攻击者必须窃取独立 workload identity、绕过 parameter policy 并破坏多层 transaction history，来源转换和特征伪装收益下降。
+      en: >-
+        This application prevents direct conversion of in-container execution into rootful-daemon authority and makes legitimate broker activity carry a non-discardable original caller. When dockerd, kubelet, or a helper appears on the host side, analysis no longer relies on its reputation and can trace the exact request, parameters, and workload. The adversary must steal an independent workload identity, bypass parameter policy, and alter multi-layer transaction history, reducing provenance-translation and feature-disguise benefits.
+  limitations:
+    paragraphs:
+    - zh: >-
+        旧 runtime/UNIX socket 可能不支持逐请求 caller/body audit，shared CI identity 会合并来源，callback/helper 也可能没有 transaction ID。rootless 模式、proxy 和参数级策略会影响兼容性与构建性能；紧急 node repair 仍需 break-glass。若只关闭 socket 而已创建的 privileged workload、host process 或 side effect 未清理，风险仍在；缺 request-to-outcome 键时必须保持 provenance_gap 并辅以 eBPF/受控审计，而不能自动信任 daemon。
+      en: >-
+        Legacy runtimes or UNIX sockets can lack per-request caller or body audit, shared CI identities merge origins, and callbacks or helpers can omit transaction IDs. Rootless mode, proxies, and parameter-level policy can affect compatibility and build performance, while emergency node repair still needs break-glass access. Closing a socket leaves risk when a privileged workload, host process, or side effect already exists. Missing request-to-outcome keys remain provenance_gap and require eBPF or controlled audit support rather than automatic trust in the daemon.
+evidence_refs: [REF-000213, REF-000345, REF-000346, REF-000347, REF-000348, REF-000349, REF-000350, REF-000351, REF-000352]
+lifecycle: {status: review, version: 0.1.0, created: '2026-09-13', modified: '2026-09-13', contributors: [Niji Matrix Research], reviewers: []}

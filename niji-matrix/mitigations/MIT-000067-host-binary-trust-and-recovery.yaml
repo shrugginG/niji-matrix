@@ -1,0 +1,143 @@
+schema_version: 2.0.0
+type: mitigation
+id: MIT-000067
+name:
+  zh: 主机二进制信任、执行与恢复控制
+  en: Host-Binary Trust, Execution, and Recovery Controls
+summary:
+  zh: 以可信包、受限写入、签名/完整性验证、更新保护和证据化恢复阻止被修改二进制持续运行。
+  en: Prevent modified binaries from persistent execution through trusted packages, restricted writes, signature and integrity verification, update
+    protection, and evidence-preserving recovery.
+description:
+  paragraphs:
+  - zh: 从只读包或厂商映像建立二进制基线，限制写入与调试权限，在加载/执行前验证签名和内容，并保护更新通道。发现差异时先保存文件、内存、写入和执行证据，再隔离目标、重装可信包并验证调用链；不能只改文件名或信任路径。
+    en: Establish binary baselines from read-only packages or vendor images, restrict write and debug authority, verify signature and content
+      before load or execution, and protect update channels. On difference, preserve file, memory, writer, and execution evidence before isolating
+      the target, reinstalling a trusted package, and validating callers. Renaming or trusting path alone is insufficient.
+domains:
+- enterprise
+measures:
+- key: binary-baseline-enforcement
+  name:
+    zh: 二进制基线与写入约束
+    en: Binary Baseline and Write Constraint
+  description:
+    paragraphs:
+    - zh: 固定包版本、哈希/段哈希、签名、权限和允许写入者，阻止非包管理修改关键软件。
+      en: Pin package version, hash or segment hashes, signature, permission, and allowed writers and block nonpackage mutation of critical software.
+  control_type: preventive
+- key: evidence-reinstall-verify
+  name:
+    zh: 证据保全、重装与验证
+    en: Preserve, Reinstall, and Verify
+  description:
+    paragraphs:
+    - zh: 保全被改文件与运行证据后从可信介质重装，修复权限和更新锁，验证重启及正常调用不再产生异常。
+      en: Preserve the changed file and runtime evidence before reinstalling from trusted media, repairing permission and update locks, and verifying
+        reboot and normal invocation no longer produce anomalies.
+  control_type: containment
+- key: trusted-package-whole-image-restoration
+  name:
+    zh: 可信包整映像验证与重装
+    en: Trusted-Package Whole-Image Verification and Reinstallation
+  description:
+    paragraphs:
+    - zh: 关键路径持续比对厂商签名、包版本与完整 hash，禁止无包事务的整体替换。发现失配时先保全映像与写入来源，再从可信只读介质/仓库重装完整包、验证依赖和服务配置，不把改名或简单覆盖未知文件视为恢复。
+      en: Continuously compare vendor signature, package version, and complete hash at critical paths and prohibit whole replacement without a
+        package transaction. On mismatch, preserve image and write provenance, then reinstall the complete package from trusted read-only media
+        or repository and verify dependencies and service configuration rather than treating rename or simple overwrite of an unknown file as
+        recovery.
+  control_type: containment
+- key: binary-wrapper-and-original-copy-governance
+  name:
+    zh: 二进制包装器与原始副本关系治理
+    en: Binary Wrapper and Original-Copy Relationship Governance
+  description:
+    paragraphs:
+    - zh: 登记允许的启动器、shim、插桩和被调用原程序关系；应用控制同时验证感染入口、隐藏副本、第二映像与最终目标。未批准的双阶段接力先隔离两份文件并保全控制流证据，再从可信包恢复，避免只删除隐藏副本留下感染体。
+      en: Register allowed launcher, shim, instrumentation, and invoked-original relationships. Application control validates infected entry,
+        hidden copy, second image, and final target together. Isolate both files and preserve control-flow evidence for an unapproved two-stage
+        handoff before restoring from a trusted package, avoiding deletion of only the hidden copy while leaving the infected body.
+  control_type: preventive
+applications:
+- target_ref: NJT-0087
+  use:
+    paragraphs:
+    - zh: 对受害主机软件执行包级清单、写入最小权限和执行前完整性检查；未知差异先隔离调用并保全证据，再恢复完整软件组件。
+      en: Apply package inventory, least write authority, and pre-execution integrity checks to victim-host software. Isolate callers and preserve
+        evidence for an unknown difference before restoring the complete component.
+  expected_effect:
+    paragraphs:
+    - zh: 减少可修改对象并使路径身份不能覆盖内容差异，迫使攻击者控制更新/签名链或反复修改。
+      en: Reduces mutable objects and prevents path identity from overriding content differences, forcing control of update or signing chains
+        or repeated mutation.
+  limitations:
+    paragraphs:
+    - zh: 厂商定制、热补丁和设备固件使基线复杂；错误恢复可中断服务，内存补丁需运行时控制。
+      en: Vendor customization, hotpatching, and appliance firmware complicate baselines. Incorrect recovery can interrupt service and memory-only
+        patching requires runtime controls.
+- target_ref: NJS-0087-001
+  use:
+    paragraphs:
+    - zh: 对关键代码段采用分段或逐页哈希和已知良性比较，不以文件大小近似、路径或多数内容相同放行。
+      en: Use segment or page hashes and known-good comparison for critical code and never allow based on approximate size, path, or majority-content
+        equality.
+  expected_effect:
+    paragraphs:
+    - zh: 单字节或局部控制流补丁仍产生稳定差异并被阻断或恢复。
+      en: One-byte or local control-flow patches still produce stable differences and are blocked or restored.
+  limitations:
+    paragraphs:
+    - zh: 合法热补丁也会产生小差异，需包事务与签名证明；运行时自修改代码需要专门基线。
+      en: Legitimate hotpatches also create small differences and require package-transaction and signature proof. Runtime self-modifying code
+        requires specialized baselines.
+- target_ref: NJS-0087-002
+  use:
+    paragraphs:
+    - zh: 对整映像路径身份替换，把标准路径绑定到厂商包、版本、签名、完整 hash、安装事务和允许写入者。任何无对应事务的全映像变化立即阻断后继执行并保全文件，再从可信包重装和验证服务功能。
+      en: For Whole-Image Path-Identity Substitution, bind a standard path to vendor package, version, signature, complete hash, installation
+        transaction, and allowed writer. Block successor execution for any whole-image change without a matching transaction, preserve the file,
+        then reinstall from a trusted package and verify service function.
+  expected_effect:
+    paragraphs:
+    - zh: 该应用取消标准路径的隐式信誉，使恶意版本不能仅凭原名称和调用关系通过，并提供整包恢复而非不确定局部清理。
+      en: This application removes implicit trust from a standard path so a malicious version cannot pass through original name and invocation
+        alone and supplies complete-package recovery rather than uncertain local cleanup.
+  limitations:
+    paragraphs:
+    - zh: 本地编译、厂商热修复和自更新会合法改变完整映像，旧设备可能没有包数据库或签名。严格阻断可中断关键服务，必须预先缓存可信版本和测试回滚。
+      en: Local builds, vendor hotfixes, and self-update legitimately change whole images, while legacy devices may lack package database or signatures.
+        Strict blocking can interrupt critical services, requiring cached trusted versions and tested rollback.
+- target_ref: NJS-0087-003
+  use:
+    paragraphs:
+    - zh: 对行为保持型二进制包裹，除文件完整性外，限制未登记 wrapper 调用隐藏副本、解密/映射第二映像或在网络/文件恶意效果后启动原程序。处置同时隔离感染体与保存的原始副本，保全入口和接力证据后从可信包重装。
+      en: For Behavior-Preserving Binary Wrapper Trojanization, supplement file integrity by constraining unregistered wrappers that invoke hidden
+        copies, decrypt or map a second image, or start the original program after malicious network or file effects. Response isolates both infected
+        body and preserved original copy and reinstalls from a trusted package after preserving entry and handoff evidence.
+  expected_effect:
+    paragraphs:
+    - zh: 该应用使正常用户功能不能替代内容与控制流信任，迫使攻击者放弃原始接力或暴露隐藏副本、双阶段执行和额外恶意效果。
+      en: This application prevents normal user function from substituting for content and control-flow trust, forcing the adversary to abandon
+        original-function handoff or expose hidden copy, two-stage execution, and additional malicious effects.
+  limitations:
+    paragraphs:
+    - zh: 合法 launcher、兼容层、安全代理和软件保护器也具有双阶段结构，内存控制流阻断成本高。策略需以签名包关系和审计基线逐应用启用，不能对所有子进程或映射统一拦截。
+      en: Legitimate launchers, compatibility layers, security agents, and software protectors also have two-stage structure, while memory control-flow
+        enforcement is costly. Policy must be enabled per application from signed-package relationship and audit baseline rather than blocking
+        all child processes or mappings uniformly.
+evidence_refs:
+- REF-000155
+- REF-000163
+- REF-000164
+- REF-000179
+- REF-000180
+- REF-000181
+lifecycle:
+  status: review
+  version: 1.1.0
+  created: '2026-09-11'
+  modified: '2026-09-11'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

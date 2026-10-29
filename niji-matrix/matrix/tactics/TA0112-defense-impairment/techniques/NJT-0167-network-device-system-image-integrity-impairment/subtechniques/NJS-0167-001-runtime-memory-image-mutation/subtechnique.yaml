@@ -1,0 +1,63 @@
+schema_version: "2.0.0"
+type: evasion-subtechnique
+id: NJS-0167-001
+name: {zh: 运行内存映像即时修改, en: Runtime-Memory Image Mutation}
+summary: {zh: 攻击者只修改当前 boot 的运行代码，使闪存映像保持可信而安全功能即时改变并在重载后消失。, en: Adversaries modify code only in the current boot so the flash image remains trusted while security functions change immediately and the mutation disappears after reload.}
+aliases: []
+parent_ref: NJT-0167
+lineage: {attck_subtechnique_inherited: false}
+definition_and_concept:
+  paragraphs:
+    - zh: 运行内存映像即时修改是攻击者利用调试、排障、内存写或等价能力改变网络设备当前 boot 中的操作系统代码、函数或模块，而不修改被下次启动读取的持久映像。直接目标是在保留可信 flash/hash 和设备身份的情况下立即改变转发、观察、认证或安全逻辑。
+      en: Runtime-Memory Image Mutation is adversary use of debugging, troubleshooting, memory-write, or equivalent capability to change operating-system code, functions, or modules in the current boot of a network device without modifying the persistent image read at the next boot. Its direct objective is immediate change to forwarding, observation, authentication, or security logic while preserving trusted flash hash and device identity.
+    - zh: 此变量的权威边界是同一 boot_id 内“持久映像可信、运行代码不同”，并且差异在重载后消失。临时配置、进程内普通数据、合法热补丁或未改变设备映像信任面的模块行为不自动纳入；必须有代码区段/模块完整性和功能结果。
+      en: The authoritative boundary is a trusted persistent image and different running code under the same boot_id, with the difference disappearing after reload. Temporary configuration, ordinary in-process data, an approved hot patch, or module behavior that does not change the device image trust plane is not automatically included. Code-section or module integrity and a functional outcome are required.
+stealth_characteristics:
+  paragraphs:
+    - zh: 运行内存映像即时修改让 flash、boot target、版本字符串和配置备份全部保持正常，恶意逻辑只存在于当前内存。常规合规扫描因此把设备视为批准映像，重载又会清除关键证据；Cisco 事件显示修改可通过 debug CLI 完成并从 core dump 发现。残余集中于 AAA/CLI、内存 hash、模块/函数差、core dump 与功能 canary。
+      en: Runtime-Memory Image Mutation leaves flash, boot target, version string, and configuration backup normal while malicious logic exists only in current memory. Routine compliance scans therefore see an approved image, and reload destroys key evidence. Cisco incidents show mutation through debug CLI and discovery in core dumps. Residue concentrates in AAA or CLI, memory hashes, module or function differences, core dumps, and functional canaries.
+    - zh: 若设备提供外部运行证明或定期内存摘要，差异可在重载前暴露；若只有设备 OS 自报，受侵内核可伪造结果。崩溃、诊断和厂商热补丁是正常反例，需要 actor、工单、区段和结果校准。
+      en: External runtime attestation or periodic memory digests can expose the difference before reload, while a compromised kernel can forge OS self-reports. Crashes, diagnostics, and vendor hot patches are normal counterexamples calibrated by actor, ticket, section, and outcome.
+scope_boundary_definition:
+  paragraphs:
+    - zh: 纳入要求持久映像与可信来源一致、当前 boot 的代码/模块可复现不同、变化来自未批准操作，并产生安全或观察结果；仅 debug 命令、内存异常或重载后恢复本身不足。写入 flash/ROMMON 并跨重载消费归 NJS-0167-002，可信旧版本运行归 NJT-0127。
+      en: Include only when the persistent image matches trusted provenance, current-boot code or module differs reproducibly, the mutation follows an unapproved operation, and a security or observation outcome follows. A debug command, memory anomaly, or recovery after reload alone is insufficient. Flash or ROMMON writes consumed across reload belong to NJS-0167-002, and running a trusted old version belongs to NJT-0127.
+    - zh: 普通运行时配置、动态路由/ACL、内存中的会话密钥与数据结构若没有代码完整性差，分别归配置、策略或其他对象。设备/架构/函数名不形成兄弟项。
+      en: Ordinary runtime configuration, dynamic routing or ACL, session keys, and data structures in memory without a code-integrity difference belong to configuration, policy, or other objects. Device, architecture, and function name do not define siblings.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+      - zh: 攻击者获得网络设备高权后，借厂商调试或排障命令修改运行 IOS，为选定流量加入复制、NAT、后门触发或防御绕过，同时避免触碰闪存。活动窗口持续到重载或崩溃；攻击者可能利用设备高可用要求延长窗口。
+        en: After privileged network-device access, an adversary uses vendor debug or troubleshooting commands to modify running IOS and add selected-traffic duplication, NAT, backdoor triggers, or defensive bypass without touching flash. The interval lasts until reload or crash, and the adversary can exploit availability requirements to prolong it.
+  threat_model:
+    attacker_model:
+      paragraphs:
+        - zh: 需要 debug/内存写权限、准确架构与函数知识以及测试反馈，错误修改可能导致 line card 或整机崩溃。限制调试账户、JIT、命令审计和内存保护提高成本，计划重载会终止能力但也提醒攻击者。
+          en: The adversary needs debug or memory-write authority, accurate architecture and function knowledge, and test feedback; mistakes can crash a line card or device. Restricted diagnostic accounts, JIT, command audit, and memory protection raise cost, while a planned reload ends capability but can alert the actor.
+    defender_model:
+      paragraphs:
+        - zh: 防守方有可信 flash/hash、boot_id、运行内存或 core dump、模块/函数 map、AAA/CLI session 和网络/认证 canary。必须先保存内存再重载；没有内存证明时，只能把功能异常与调试活动记为高风险推断。
+          en: Defenders have trusted flash hash, boot_id, running memory or core dump, module or function maps, AAA or CLI sessions, and network or authentication canaries. Memory must be preserved before reload; without memory attestation, functional anomaly plus debug activity remains a high-risk inference.
+stealth_mechanisms:
+  - mechanism_ref: NM-FD
+    role: primary
+    summary: {zh: 正常闪存和版本外观掩盖当前 boot 的运行代码差, en: Normal flash and version appearance conceal the running-code difference in the current boot}
+    analysis:
+      paragraphs:
+        - zh: 攻击者只改变运行内存，使可见 flash、版本和配置继续匹配批准资产；防守按持久状态分类时将设备视为健康，实际转发/安全逻辑却已变化。运行内存—flash 差分和独立功能结果揭示这种特征伪装。
+          en: The adversary changes running memory only, leaving visible flash, version, and configuration matching the approved asset. Defenders classifying by persistent state treat the device as healthy while forwarding or security logic has changed. A running-memory to flash differential plus independent functional outcome exposes the feature disguise.
+    evidence_refs: [REF-000467, REF-000720]
+    confidence: high
+defense:
+  detections: {coverage: available, strategy_refs: [DET-000190]}
+  mitigations: {coverage: available, mitigation_refs: [MIT-000171]}
+evidence:
+  claim_refs: [CLM-000822, CLM-000824, CLM-000825]
+  case_refs: [CASE-000231]
+  reference_refs: [REF-000467, REF-000720]
+research:
+  limitations:
+    paragraphs:
+      - zh: Cisco 运行时事件为直接高置信证据，但设备/架构有限。许多网络设备无法远程导出完整内存，core dump 又常只在故障时生成；采样 hash 可能漏掉未知区段。没有运行证据时不得用 flash 正常反推安全，也不得用一次 canary 失败断言映像修改。
+        en: Cisco runtime incidents provide direct high-confidence evidence but cover limited devices and architectures. Many network devices cannot export complete memory remotely, and core dumps often appear only after failure; sampled hashes can miss unknown sections. Without running evidence, a normal flash cannot imply safety and one failed canary cannot establish image mutation.
+lifecycle: {status: review, version: "0.1.0", created: "2026-09-23", modified: "2026-09-23", contributors: [Niji Matrix Research], reviewers: []}

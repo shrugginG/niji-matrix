@@ -1,0 +1,63 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000040
+strategy_ref: DET-000062
+name: {zh: CI 输入解析与 Runner 结果因果分析, en: CI Input Resolution and Runner Outcome Causality Analytic}
+summary: {zh: 解析每次 run 的真实定义、输入与权限，并将其连接到 runner 进程、秘密、网络和制品差异, en: Resolve each run's actual definition inputs and permissions and connect them to runner process secret network and artifact differences}
+domains: [enterprise]
+platforms: [SaaS, Windows, Linux, macOS]
+logic:
+  paragraphs:
+    - zh: 分析首先为每次 workflow run 固定 repository、event、base/head commit、解析后的 workflow digest、trigger、token scope、job、runner 与 environment，并从定义差异和输入图中标记三类入口。直接入口是新增或修改可执行 job/permission/trigger；间接入口是主定义稳定但 source、script、test、action digest、artifact 或 cache writer 改变；外部入口是 fork、PR 或低权 workflow 产生的值被具权 run 消费。所有值都必须按实际 checkout 和 resolved digest 计算，而不能只用可变 branch 或 tag 名称。
+      en: The analytic first fixes repository event base and head commits resolved workflow digest trigger token scope job runner and environment for every workflow run and labels three entry classes from definition differences and the input graph. Direct entry is an added or changed executable job permission or trigger. Indirect entry has a stable main definition but changed source script test action digest artifact or cache writer. External entry has values from a fork pull request or low-privilege workflow consumed by a privileged run. Values are computed from actual checkout and resolved digests rather than mutable branch or tag names.
+    - zh: 随后把入口连接到 runner 上的 step、process tree、file write、package/compiler 行为、secret/API access、runner registration、network destination 与 artifact digest。高风险需要至少一个入口异常和一个敏感结果共享 run/job/runner 或 artifact lineage；如果 job 成功但出现历史未见的工具下载、秘密读取、外部目的地、源到产物差分或 workflow 注册行为，进一步提高评分。只有定义变化而无执行，或只有网络异常而无对应输入时保持低置信告警。
+      en: The analytic then joins the entry to step process tree file writes package or compiler behavior secret or API access runner registration network destinations and artifact digests on the runner. High risk requires at least one entry anomaly and one sensitive outcome sharing run job runner or artifact lineage. A successful job with first-seen tool downloads secret reads external destinations source-to-output differences or workflow registration raises the score further. Definition change without execution or network anomaly without corresponding input remains a low-confidence alert.
+data_requirements:
+  - source_type: source-control-audit
+    name: {zh: 源代码管理与评审审计, en: Source-control and review audit}
+    channel: null
+    required_fields: [timestamp, organization_id, repository_id, actor_id, commit_id, parent_commit_id, pull_request_id, head_repository, head_sha, base_sha, changed_path, review_state, signature_state]
+  - source_type: workflow-definition-snapshot
+    name: {zh: 流水线定义与解析输入快照, en: Workflow definition and resolved-input snapshot}
+    channel: null
+    required_fields: [repository_id, commit_id, workflow_id, workflow_digest, trigger_type, permission_set, referenced_path, referenced_uri, resolved_digest, cache_key, artifact_input_id]
+  - source_type: cicd-control-plane
+    name: {zh: CI/CD Run、Job 与 Runner 控制面, en: CI/CD run job and runner control plane}
+    channel: null
+    required_fields: [timestamp, repository_id, event_id, workflow_id, run_id, triggering_run_id, job_id, runner_id, runner_type, principal_id, token_scope, environment_id, checked_out_ref, result]
+  - source_type: runner-runtime
+    name: {zh: Runner 进程与文件运行时, en: Runner process and file runtime}
+    channel: null
+    required_fields: [timestamp, runner_id, job_id, process_id, parent_process_id, executable, command_line, file_path, file_hash, file_action, user_id]
+  - source_type: secret-api-audit
+    name: {zh: 秘密、令牌与平台 API 审计, en: Secret token and platform API audit}
+    channel: null
+    required_fields: [timestamp, run_id, job_id, principal_id, secret_id, token_id, api_operation, target_resource, permission, result]
+  - source_type: network-artifact-provenance
+    name: {zh: Runner 网络、制品与来源证明, en: Runner network artifact and provenance}
+    channel: null
+    required_fields: [timestamp, run_id, job_id, runner_id, network_destination, protocol, artifact_id, artifact_digest, source_commit, builder_id, provenance_subject, verification_result]
+observables:
+  - {zh: workflow 新增可执行 job、扩大权限或改变触发器后，派生 run 在受信 runner 上访问秘密或未见目的地, en: A workflow adds an executable job expands permissions or changes a trigger before the derived run accesses secrets or a first-seen destination on a trusted runner}
+  - {zh: workflow digest 未变，但 action、脚本、tarball、制品或缓存解析为新 digest，并在正常 step 内产生异常子进程或产物, en: The workflow digest remains stable while an action script tarball artifact or cache resolves to a new digest and produces an anomalous child process or output inside a normal step}
+  - {zh: fork/PR 或低权 run 产生的 SHA、元数据或制品被具权 workflow 消费，随后发生 token、runner registration 或外部网络操作, en: A SHA metadata value or artifact from a fork pull request or low-privilege run is consumed by a privileged workflow followed by token runner-registration or external-network activity}
+  - {zh: 源提交和声明输入不变但制品 digest 或来源证明发生差异，且 runner 文件事件显示构建期间短暂替换, en: Source commit and declared inputs remain unchanged while artifact digest or provenance differs and runner file events show temporary build-time substitution}
+correlation:
+  window: {zh: 从候选定义或输入进入仓库前七天开始，持续到最后一个派生 run、制品发布、秘密/API 访问或 runner 注册后二十四小时；外部贡献链至少保留九十天索引。, en: Begin seven days before a candidate definition or input enters the repository and continue through twenty-four hours after the last derived run artifact publication secret or API access or runner registration while retaining external-contribution join indexes for at least ninety days.}
+  dimensions: [organization, repository, pull_request, base_commit, head_commit, workflow_digest, event, run, triggering_run, job, runner, principal, resolved_input_digest, artifact, token, time]
+false_positives:
+  - {zh: 经批准的 workflow 重构、权限迁移或新增发布 job 会同时改变定义和敏感访问, en: Approved workflow refactoring permission migration or new release jobs can change definitions and sensitive access together}
+  - {zh: 新依赖、构建工具升级或缓存失效可产生首次下载、子进程和制品 digest 变化, en: New dependencies build-tool upgrades or cache invalidation can produce first-seen downloads child processes and artifact digest changes}
+  - {zh: 安全测试和受控红队会故意提交恶意 PR、注册测试 runner 或验证秘密隔离, en: Security testing and authorized red teams may deliberately submit malicious pull requests register test runners or validate secret isolation}
+blind_spots:
+  - {zh: SaaS 平台不导出解析后的 workflow、token scope、原始 event payload 或跨 run artifact lineage 时，外部与间接输入难以还原, en: External and indirect inputs are difficult to recover when SaaS platforms do not export resolved workflows token scope raw event payloads or cross-run artifact lineage}
+  - {zh: 自托管或短驻 runner 缺少进程、文件和网络遥测且任务结束即销毁时，只能看到控制面成功结果, en: When self-hosted or ephemeral runners lack process file and network telemetry and are destroyed at job end only successful control-plane outcomes remain visible}
+  - {zh: 第三方 action、动态下载或私有构建服务不提供 digest 与内部步骤，会形成输入图黑盒, en: Third-party actions dynamic downloads or private build services without digests and internal steps create black boxes in the input graph}
+tuning_guidance:
+  paragraphs:
+    - zh: 按 repository、workflow、job、environment 和 runner 类型建立版本化基线，分别评分定义差异、输入来源、权限变化与敏感结果；release、dependabot 和批准的 workflow-maintainer 例外必须绑定具体路径、actor、digest、权限和有效期。对首次出现的 action 或网络目的地不直接定罪，而是要求与 source/PR、resolved digest、进程或秘密访问至少一个关联键相交。
+      en: Build versioned baselines by repository workflow job environment and runner type and score definition difference input provenance permission change and sensitive outcome separately. Release Dependabot and approved workflow-maintainer exceptions must bind concrete paths actors digests permissions and validity periods. Do not convict a first-seen action or destination alone and instead require intersection with at least one source or pull-request resolved-digest process or secret-access key.
+    - zh: 为高权限 release workflow 设置更低阈值，并把外部贡献、可变 tag、无来源证明产物、自托管 runner 注册和跨 workflow 制品消费视为风险乘数。数据缺失必须写入告警置信度；不得永久白名单 CI 服务身份、runner 父进程、维护时段或成功退出码，因为这些正是该技术借用的外观。
+      en: Use lower thresholds for privileged release workflows and treat external contributions mutable tags artifacts without provenance self-hosted runner registration and cross-workflow artifact consumption as risk multipliers. Missing data must be reflected in alert confidence. Never permanently allowlist CI service identities runner parents maintenance windows or successful exit codes because those are the appearances this technique borrows.
+evidence_refs: [REF-000252, REF-000253, REF-000254, REF-000255, REF-000256, REF-000257]
+lifecycle: {status: review, version: 2.0.0, created: '2026-09-10', modified: '2026-09-12', contributors: [Niji Matrix Research], reviewers: []}

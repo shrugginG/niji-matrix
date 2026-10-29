@@ -1,0 +1,173 @@
+schema_version: 2.0.0
+type: technique
+id: NJT-0201
+name:
+  zh: 移除账户访问
+  en: Account Access Removal
+summary:
+  zh: 攻击者保留既有账户外观却置换合法 owner 的认证器或撤除授权边，使合法主体实际失去访问。
+  en: Adversaries preserve the appearance of an existing account while displacing the legitimate owner's authenticators
+    or evicting authorization edges so the principal actually loses access.
+aliases:
+- T1531
+classification:
+  tactic_refs:
+  - TA0040
+  origin:
+    kind: attack-adapted
+    source_attack_id: T1531
+    source_attack_version: '19.1'
+  decision_ref: DEC-TA0040-T1531
+definition_and_concept:
+  paragraphs:
+  - zh: 移除账户访问是攻击者删除、替换或撤销既有合法用户、管理员、服务主体或租户 owner 所需的认证器、恢复路径、角色、组、委托或访问策略，使其在变更后实际无法认证或访问预期资源。直接对象是合法主体的访问可用性，不是攻击者能否继续使用该账户。
+    en: Account Access Removal deletes, replaces, or revokes authenticators, recovery paths, roles, groups, delegations,
+      or access policy needed by an existing legitimate user, administrator, service principal, or tenant owner so
+      the principal actually cannot authenticate or access expected resources afterward. The direct object is availability
+      of legitimate-principal access, not whether the attacker can continue using the account.
+  - zh: Niji 关注账户身份/启用状态与 owner 真实访问之间的错位：认证器被排他置换时账户仍存在，授权边撤除时认证仍可成功。正式完成门槛是合法主体 post-state 失败；管理变更 alone 只是风险。
+    en: Niji focuses on mismatch between account identity or enabled state and actual owner access. The account remains
+      present after exclusive authenticator displacement, and authentication may still succeed after authorization-edge
+      eviction. Formal completion requires legitimate-principal post-state failure; an administrative mutation alone
+      is risk.
+stealth_characteristics:
+  paragraphs:
+  - zh: 认证器置换保留账户名称、年龄、启用状态和攻击者控制方法，粗粒度目录监控显示熟悉身份；owner 密码/MFA/恢复方法已失效。授权边撤除保留认证成功和账户健康，资源求值阶段才 deny。单看账户状态或登录成功都会遗漏一类影响。
+    en: Authenticator displacement preserves account name, age, enabled state, and attacker-controlled methods, so
+      coarse directory monitoring sees a familiar identity while owner password, MFA, or recovery path no longer works.
+      Authorization-edge eviction preserves successful authentication and account health until resource evaluation
+      denies access. Account-state-only or successful-sign-in-only views each miss one impact.
+  - zh: 残余包括 directoryAudit initiator/targets/modifiedProperties/correlationId、认证方法/角色/组 old-new、signIn status/device/risk/CA、资源
+      deny、owner/break-glass 测试与审批。不可变审计和周期图快照恢复差分。
+    en: Residue includes directoryAudit initiator, targets, modifiedProperties and correlationId, authentication-method
+      or role or group old and new state, signIn status, device, risk and CA, resource denial, owner or break-glass
+      tests, and approval. Immutable audit and periodic graph snapshots restore the differential.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 纳入攻击者控制的持久身份状态负向变化以及合法 owner 实际认证/授权失败。只重置密码但 owner 仍有其他路径、删除会话 token 后可重新登录、暂时风险阻断或失败变更不完成。合法 offboarding、fraud
+      response、账户恢复、角色到期与法务 hold 是反例。
+    en: Include adversary-controlled negative durable identity-state mutation and actual legitimate-owner authentication
+      or authorization failure. Password reset with another owner path, session-token revocation followed by reauthentication,
+      temporary risk block, or failed mutation does not complete. Legitimate offboarding, fraud response, account
+      recovery, entitlement expiry, and legal hold are counterexamples.
+  - zh: 新增并行认证器/授权边以维持攻击者访问归 NJT-0083；全局认证决策篡改归 NJT-0093；中央防御策略损伤归 NJT-0125；权限提升需证明攻击者新增 authority。一个事件可并记，但合法 owner
+      lockout 证据不可省。
+    en: Adding parallel authenticators or authorization edges for attacker persistence belongs to NJT-0083, global
+      authentication-decision changes to NJT-0093, central defensive-policy impairment to NJT-0125, and privilege
+      escalation requires added attacker authority. One incident can co-map, but legitimate-owner lockout evidence
+      remains required.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: 攻击者可使用 SSPR 重置密码、删除 owner 原认证方法并注册攻击者方法，或在建立自己管理员后移除其他 Global Administrators/关键组和委托，使组织失去租户控制。
+      en: An attacker can use SSPR to reset a password, remove original owner methods, and enroll attacker methods,
+        or after creating its own admin remove other Global Administrators, critical groups, and delegations so the
+        organization loses tenant control.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者需要身份恢复/认证方法或角色/组/委托写权限，并了解 owner 的全部替代路径与传播延迟。审批、PIM/JIT、方法数量/恢复策略、独立 break-glass 和不可变日志限制效果。
+        en: The attacker needs identity-recovery or authenticator or role, group, or delegation write authority and
+          knowledge of all owner alternatives and propagation delay. Approval, PIM or JIT, method count and recovery
+          policy, independent break-glass, and immutable logs constrain it.
+    defender_model:
+      paragraphs:
+      - zh: 防守方连接状态变更、old-new 图、审批、owner sign-in、资源访问 deny 与 break-glass 演练。平台若不暴露 method ID，只能主体级推断；短留存会遗漏延迟 lockout。
+        en: Defenders join state mutation, old-new graph, approval, owner sign-in, resource denial, and break-glass
+          exercises. Platforms without method IDs permit principal-level inference only; short retention misses delayed
+          lockout.
+stealth_mechanisms:
+- mechanism_ref: NM-FD
+  role: primary
+  summary:
+    zh: 熟悉账户实体掩盖合法 owner 认证路径被置换
+    en: A familiar account entity disguises displacement of the legitimate owner's authentication path
+  analysis:
+    paragraphs:
+    - zh: 攻击者保留账户身份和启用外观，只替换 owner 认证/恢复方法。粗粒度实体规则看似正常，恶意与合法控制共享主体特征，形成特征伪装；方法 old-new 和 owner 失败揭示。
+      en: The attacker preserves account identity and enabled appearance while replacing owner authentication or recovery
+        methods. Coarse entity rules remain normal and malicious and legitimate control share principal features,
+        producing feature disguise; method old-new and owner failure reveal it.
+  evidence_refs:
+  - REF-000167
+  - REF-000985
+  - REF-000986
+  confidence: high
+- mechanism_ref: NM-BT
+  role: secondary
+  summary:
+    zh: 认证成功与资源授权拒绝分布在不同决策平面
+    en: Successful authentication and resource denial are distributed across decision planes
+  analysis:
+    paragraphs:
+    - zh: 攻击者撤除授权边，身份提供者仍认证熟悉主体，资源面才拒绝访问。只看 sign-in health 的守方看不到 Impact，需连接图变化和 resource deny，形成行为透明。
+      en: The attacker evicts authorization edges, leaving the identity provider authenticating a familiar principal
+        while the resource plane denies access. Sign-in-health-only defenders miss Impact and need graph mutation
+        plus resource denial, producing behavioral transparency.
+  evidence_refs:
+  - REF-000103
+  - REF-000985
+  - REF-000986
+  confidence: high
+subtechnique_taxonomy:
+  narrative:
+    paragraphs:
+    - zh: 身份保留式认证器置换锁定改变 owner 能否用密码/MFA/恢复方法认证，账户仍存在；授权图边撤除锁定改变已认证主体能否通过角色/组/委托/策略访问资源。两个终态和恢复动作不同。
+      en: Identity-Preserving Authenticator-Displacement Lockout changes whether the owner can authenticate with password,
+        MFA, or recovery methods while the account remains. Authorization-Graph Edge-Eviction Lockout changes whether
+        an authenticated principal can access resources through roles, groups, delegations, or policy. Their terminal
+        states and recovery actions differ.
+    - zh: ATT&CK 无子项。账户类型、平台、密码与 MFA 介质不形成 NJS；session-only revocation 不持久，新增攻击者访问状态由 NJT-0083 负责。
+      en: ATT&CK has no children. Account type, platform, password versus MFA medium do not define NJS; session-only
+        revocation is not durable and NJT-0083 owns added attacker access state.
+  coverage: established
+  subtechnique_refs:
+  - NJS-0201-001
+  - NJS-0201-002
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000233
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000063
+evidence:
+  claim_refs:
+  - CLM-000989
+  - CLM-000990
+  - CLM-000991
+  - CLM-000992
+  - CLM-000993
+  - CLM-000994
+  case_refs:
+  - CASE-000285
+  - CASE-000286
+  reference_refs:
+  - REF-000984
+  - REF-000103
+  - REF-000167
+  - REF-000985
+  - REF-000986
+  - REF-000987
+  - REF-000790
+  - REF-000376
+  - REF-000143
+research:
+  limitations:
+    paragraphs:
+    - zh: Microsoft 案例高置信支持两类锁定结果，但租户字段和方法 ID 并非所有平台一致。管理员变更不等于 owner 已失败，必须验证 post-state。
+      en: Microsoft cases strongly support both lockout outcomes, but tenant fields and method IDs are not uniform
+        across platforms. An administrative mutation does not equal owner failure and post-state must be verified.
+    - zh: 正常 offboarding、账户恢复和 fraud response 产生相似负向变化；审批、owner、时限和 break-glass 结果决定反例。
+      en: Normal offboarding, account recovery, and fraud response create similar negative mutations; approval, owner,
+        duration, and break-glass outcome determine counterexamples.
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-10-04'
+  modified: '2026-10-04'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

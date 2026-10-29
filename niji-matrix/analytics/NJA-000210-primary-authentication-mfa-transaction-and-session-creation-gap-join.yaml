@@ -1,0 +1,122 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000210
+strategy_ref: DET-000189
+name:
+  zh: 主认证、MFA 事务与会话创建缺口联查
+  en: Primary Authentication, MFA Transaction, and Session-Creation Gap Join
+summary:
+  zh: 主认证、MFA 事务与会话创建缺口联查输出分层异常结果。
+  en: Primary Authentication, MFA Transaction, and Session-Creation Gap Join emits a graded anomaly result.
+domains:
+- enterprise
+platforms:
+- Identity Provider
+- SaaS
+- IaaS
+- Windows
+logic:
+  paragraphs:
+  - zh: 以应用最终会话创建为中心，向前五分钟关联同一主体、应用和 session/request 的主认证、MFA 请求、挑战、批准/拒绝、state 生成与校验、授权码交换和 bypass/fail-open 决策。正常需要 MFA 的路径若有主认证成功和会话成功，却没有供应商
+      request/approval 或 code exchange，并出现本地辅 Cookie 校验，则输出 auxiliary_completion_gap。只有合法记住设备、break-glass 或 fail-open 策略命中且在有效期内才降权；若应用没有 Cookie/state
+      遥测，结果标为 chain_incomplete。
+    en: Center on final application-session creation and look back five minutes for primary authentication, MFA request, challenge, approval or
+      denial, state generation and validation, authorization-code exchange, and bypass or fail-open decision for the same principal, application,
+      and session or request. If a path requiring MFA has successful primary authentication and session creation but no provider request, approval,
+      or code exchange and has local auxiliary-cookie validation, emit auxiliary_completion_gap. Down-weight only a valid remembered-device, break-glass,
+      or fail-open policy match. If the application lacks cookie or state telemetry, label the result chain_incomplete.
+data_requirements:
+- source_type: application-authentication-session
+  channel: OWA or web application authentication and session audit
+  required_fields:
+  - timestamp
+  - application_id
+  - principal_id
+  - primary_auth_result
+  - auxiliary_state_result
+  - session_id
+  - request_or_correlation_id
+  - source_ip
+  - user_agent_or_client
+  - final_result
+  name:
+    zh: application-authentication-session
+    en: Application Authentication Session
+- source_type: mfa-provider-transaction
+  channel: Duo or equivalent MFA provider audit
+  required_fields:
+  - timestamp
+  - integration_or_application_id
+  - principal_id
+  - mfa_request_id
+  - challenge_method
+  - result
+  - source_ip
+  name:
+    zh: mfa-provider-transaction
+    en: Mfa Provider Transaction
+- source_type: authorization-state-exchange
+  channel: application integration callback audit
+  required_fields:
+  - timestamp
+  - application_id
+  - session_id
+  - state_hash
+  - authorization_code_hash
+  - exchange_result
+  - bypass_or_fail_open_reason
+  name:
+    zh: authorization-state-exchange
+    en: Authorization State Exchange
+observables:
+- zh: 主认证成功
+  en: Primary authentication succeeds
+- zh: 缺少 MFA 请求或批准
+  en: An MFA request or approval is absent
+- zh: 应用接受本地辅状态
+  en: The application accepts local auxiliary state
+- zh: 缺少状态或授权码交换
+  en: State or authorization-code exchange is absent
+- zh: 应用最终创建会话
+  en: The application creates a final session
+correlation:
+  window:
+    zh: 以一次主认证、辅状态判断和最终会话为中心关联前后五分钟；跨系统时钟偏差超过窗口则保留未决。
+    en: Correlate five minutes around one primary authentication, auxiliary-state decision, and final session; preserve unresolved status when
+      cross-system clock skew exceeds the window.
+  dimensions:
+  - application_id
+  - integration_or_application_id
+  - principal_id
+  - session_id
+  - request_or_correlation_id
+  - mfa_request_id
+  - state_hash
+  - source_ip
+  - time
+false_positives:
+- zh: 合法 remember-device、break-glass、分阶段 MFA、供应商故障 fail-open、服务账户、会话续期和日志延迟可省略交互挑战，必须由明确策略、owner 与有效期解释。
+  en: Legitimate remembered-device, break-glass, staged MFA, provider-outage fail-open, service accounts, session renewal, and delayed logs can
+    omit interactive challenge and require an explicit policy, owner, and validity interval.
+blind_spots:
+- zh: 旧应用可能只记录最终 allow，不记录辅 Cookie 摘要或 state；供应商和应用无共同 ID 时只能主体时间关联；攻击者控制应用服务器可篡改本地日志。
+  en: Legacy applications may record only final allow and omit auxiliary-cookie digest or state. Without a shared provider and application identifier,
+    only principal-time correlation is possible. An adversary controlling the application server can alter local logs.
+tuning_guidance:
+  paragraphs:
+  - zh: 按应用和策略版本维护“需要哪些步骤”的状态机，不能全局假定每次登录均有交互 MFA。白名单精确绑定 principal class、device/session、policy ID、原因和到期。高价值邮箱和管理入口对无供应商事务的 session 提高优先级，并定期以测试账户验证
+      state/code 与日志关联而不记录原始 Cookie。
+    en: Maintain a required-step state machine by application and policy version rather than globally assuming every sign-in has interactive MFA.
+      Allowances bind exactly to principal class, device or session, policy ID, reason, and expiry. Prioritize sessions without provider transactions
+      for high-value mailboxes and management surfaces, and regularly test state or code logging with a test account without recording raw cookies.
+evidence_refs:
+- REF-000509
+- REF-000717
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-09-23'
+  modified: '2026-09-23'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

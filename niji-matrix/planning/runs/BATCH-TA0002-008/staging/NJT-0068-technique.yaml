@@ -1,0 +1,81 @@
+schema_version: "2.0.0"
+type: technique
+id: NJT-0068
+name: {zh: 受信虚拟化管理通道执行, en: Trusted Virtualization Management-Channel Execution}
+summary: {zh: 攻击者从受控 ESXi 主机经 VMware Guest Operations 和来宾工具代理执行命令，使远端主体留在 hypervisor 侧、来宾结果呈现为受信 vmtoolsd 后继进程。, en: Adversaries execute commands from a controlled ESXi host through VMware Guest Operations and the guest-tools agent leaving the remote principal at the hypervisor while guest outcomes appear as trusted vmtoolsd descendants.}
+aliases: [ESXi Administration Command]
+classification:
+  tactic_refs: [TA0002]
+  origin: {kind: attack-adapted, source_attack_id: T1675, source_attack_version: '19.1'}
+  decision_ref: DEC-TA0002-T1675
+definition_and_concept:
+  paragraphs:
+  - zh: 受信虚拟化管理通道执行是攻击者在已控制或已获授权的 ESXi/vCenter 管理层调用 VMware Guest Operations，通过来宾内 VMware Tools 服务启动程序、枚举进程或配合文件操作，从 hypervisor 向一个或多个 VM 内执行攻击者命令的技术。直接目标是不建立来宾网络登录而取得来宾执行；对象从具体 Guest Operations 请求开始，到目标 VM 中 vmtoolsd/VMware Tools 产生首个程序结果为止。
+    en: Trusted Virtualization Management-Channel Execution uses VMware Guest Operations from a controlled or authorized ESXi or vCenter management layer to have the in-guest VMware Tools service start programs, list processes, or support file operations, executing adversary commands in one or more VMs from the hypervisor. Its direct objective is guest execution without a guest network logon. The object begins with a concrete Guest Operations request and ends when vmtoolsd or VMware Tools produces the first program outcome in the target VM.
+  - zh: 概念锚是“hypervisor 主体/进程—Guest Operations 方法—目标 VM—来宾工具代理—结果”的跨层因果链，不是 Python 脚本、API 方法、Windows/Linux 或某个漏洞。StartProgramInGuest 是典型执行动作，ListProcesses/FileTransfer 可为链条提供上下文但单独不一定构成 Execution。ESXi 本地 shell 命令若不进入来宾归 T1059.012 等对象，VMCI 自定义后门通信也不是本技术。
+    en: The conceptual anchor is the cross-plane chain from hypervisor principal or process through a Guest Operations method, target VM, guest-tools agent, and outcome, not a Python script, API method, Windows or Linux, or one vulnerability. StartProgramInGuest is the representative execution action; ListProcesses or file transfer can supply context but alone may not constitute Execution. An ESXi-local shell command that never enters a guest belongs to objects such as T1059.012, and custom VMCI backdoor communication is outside this technique.
+stealth_characteristics:
+  paragraphs:
+  - zh: 核心匿迹矛盾是攻击者必须让 hypervisor 和来宾工具协同执行，却希望来宾 EDR 只把命令归因于合法 `vmtoolsd.exe`/`vmtoolsd`，而虚拟化团队只看到分散的 GuestOps 事件。Mandiant 在 VIRTUALPITA 事件中同时恢复了 ESXi `/bin/rdt`—shell—Python 链和来宾 `vmtoolsd.exe` 子进程，直接说明两端各持半条因果。若没有 VM ID、API 时间、主体和进程结果统一关联，远端发起者在来宾视角被管理代理替代。
+    en: The central stealth tension is that hypervisor and guest tools must cooperate while the adversary wants guest EDR to attribute the command only to legitimate `vmtoolsd.exe` or `vmtoolsd`, and virtualization teams to see dispersed GuestOps events. In VIRTUALPITA activity Mandiant recovered both the ESXi `/bin/rdt`-shell-Python chain and guest `vmtoolsd.exe` child process, directly showing each side holds half of causality. Without unified VM ID, API time, principal, and process outcome, the management agent substitutes for the remote initiator in the guest view.
+  - zh: UNC3886 进一步利用 CVE-2023-20867 绕过来宾认证，使成功 Guest Operations 不生成默认 Windows 4624/4634 或 Linux 访问事件，放大观察断点；但 `vmware.log` 的 GuestOps 记录、ESXi 与 Tools 版本、管理主体、目标 VM、API 方法、vmtoolsd 后继进程和文件/网络结果仍是残余。备份、支持、自动化和合法运维可产生相同 API，故方法名或 vmtoolsd 父级不能单独定性。
+    en: UNC3886 further exploited CVE-2023-20867 to bypass guest authentication so successful Guest Operations produced no default Windows 4624 or 4634 or Linux access event, widening the break. Yet `vmware.log` GuestOps records, ESXi and Tools versions, management principal, target VM, API method, vmtoolsd descendant, and file or network outcomes remain residuals. Backup, support, automation, and legitimate operations can use the same API, so method name or vmtoolsd parent alone is not a verdict.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 纳入从 ESXi/vCenter 管理层经 Guest Operations 实际在来宾启动攻击者控制程序或命令的行为，要求至少识别目标 VM、管理侧动作和来宾结果。仅拥有 Guest Operations 权限、枚举 VM、传输文件但未执行、或来宾中普通 vmtoolsd 活动都不足以确认。使用合法凭据、vpxuser 或认证绕过只是授权方式差异。
+    en: Scope includes adversary-controlled programs or commands actually started in a guest through Guest Operations from ESXi or vCenter, requiring at least target VM, management-side action, and guest outcome. Guest Operations permission alone, VM enumeration, file transfer without execution, or ordinary in-guest vmtoolsd activity is insufficient. Legitimate credentials, vpxuser, or authentication bypass are authorization variants.
+  - zh: 云厂商 VM Agent 命令归 NJT-0064，容器 exec 归 NJT-0066，普通 SSH/RDP 归远程服务，hypervisor 本机管理命令归解释器/ESXi 相应对象。VIRTUALPITA 等后门在建立 hypervisor 控制或 VMCI C2 时属于其他技术，只有其调用 Guest Operations 向来宾执行的部分进入本对象。
+    en: Provider VM Agent commands belong to NJT-0064, container exec to NJT-0066, ordinary SSH or RDP to remote services, and hypervisor-local administration commands to interpreter or ESXi-local objects. Backdoors such as VIRTUALPITA belong elsewhere when establishing hypervisor control or VMCI command and control; only their Guest Operations execution into guests enters this object.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: 攻击者取得 ESXi root、vpxuser、vCenter 管理能力或利用相应漏洞后，可绕过来宾网络分段，对 Windows、Linux 或 PhotonOS VM 执行发现、文件操作、凭据访问或载荷启动。该路径对来宾无开放管理端口、EDR 不覆盖 hypervisor、虚拟化日志本地短留的环境尤其有效，并可从一台主机触达多个来宾。
+      en: After obtaining ESXi root, vpxuser, vCenter management capability, or an applicable exploit, an adversary can bypass guest network segmentation and execute discovery, file operations, credential access, or payload launch in Windows Linux or PhotonOS VMs. The path is effective when guests expose no management port, EDR does not cover the hypervisor, and virtualization logs are retained locally for a short period, and one host can reach multiple guests.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者通常需要 hypervisor 高权限、目标 VM 运行 VMware Tools，以及来宾凭据/令牌；CVE-2023-20867 曾移除最后一项但仍要求受控 ESXi 与兼容版本。补丁、Tools 缺失、Guest Operations 权限收缩、lockdown mode 和管理网隔离会限制路径。错误调用、无代理 VM 或失败认证可能产生异常日志。
+        en: The adversary usually needs high hypervisor privilege, VMware Tools running in the target VM, and guest credentials or token. CVE-2023-20867 removed the last requirement for affected versions but still required controlled ESXi and compatibility. Patching, absent Tools, restricted Guest Operations privilege, lockdown mode, and management-network isolation constrain the path. Failed calls, agentless VMs, or authentication failures can produce anomalies.
+    defender_model:
+      paragraphs:
+      - zh: 防守方需取得 vCenter/ESXi 会话与权限、GuestOps API、每 VM `vmware.log`、hostd/vpxa 等管理日志、VM inventory/ID、Tools 状态，以及来宾认证、vmtoolsd 进程、子进程、文件和网络。检测必须显式允许“管理动作成功但来宾认证事件缺失”的分支；时间同步、日志集中和不可篡改保留是把两层连接的前提。
+        en: Defenders need vCenter or ESXi sessions and privileges, GuestOps API, per-VM `vmware.log`, management logs such as hostd or vpxa, VM inventory and ID, Tools state, plus guest authentication, vmtoolsd process, child process, file, and network telemetry. Detection must explicitly allow a branch where management action succeeds without a guest authentication event. Time synchronization, centralized logging, and tamper-resistant retention are prerequisites for joining both layers.
+stealth_mechanisms:
+- mechanism_ref: NM-BT
+  role: primary
+  summary: {zh: hypervisor 发起者与来宾执行结果跨层分离, en: Hypervisor initiator and guest execution outcome separate across layers}
+  analysis:
+    paragraphs:
+    - zh: Guest Operations 将远端主体和请求留在 ESXi，将本地执行交给 vmtoolsd；来宾认证绕过还可移除常用登录事件。关键行为在任一单一监控面都只显示合法局部，符合行为透明。VIRTUALPITA 和 UNC3886 两次调查直接支持 high；`vmware.log` GuestOps、API 记录与来宾结果的联合可恢复因果，说明它不是绝对无痕。
+      en: Guest Operations leaves remote principal and request on ESXi while delegating local execution to vmtoolsd; guest authentication bypass can also remove expected logon events. Either single monitoring plane shows only a legitimate fragment, producing Behavioral Transparency. VIRTUALPITA and UNC3886 investigations directly support high confidence. Joining `vmware.log` GuestOps, API records, and guest outcomes restores causality, showing the behavior is not traceless.
+  evidence_refs: [REF-000053, REF-000208, REF-000209, REF-000210]
+  confidence: high
+- mechanism_ref: NM-FD
+  role: secondary
+  summary: {zh: 来宾命令借用受信 vmtoolsd 服务来源, en: Guest commands borrow trusted vmtoolsd service provenance}
+  analysis:
+    paragraphs:
+    - zh: 来宾侧程序由已安装且正常负责 VM 管理的 vmtoolsd 派生，进程父级和服务身份与合法支持操作共享特征，形成特征伪装。VIRTUALPITA 直接显示命令位于 `vmtoolsd.exe` 下；完整命令、非常见子进程、无对应变更、GuestOps 时间和文件结果仍可反证。该机制是同一通道在来宾端的表现，不另拆子技术。
+      en: Guest programs descend from installed vmtoolsd normally responsible for VM management, sharing parent and service identity with legitimate support operations and producing Feature Disguise. VIRTUALPITA directly shows commands below `vmtoolsd.exe`; complete command, unusual child, absent change record, GuestOps time, and file outcome remain disconfirming. This is the guest-side expression of the same channel and does not form a separate child.
+  evidence_refs: [REF-000208, REF-000210]
+  confidence: high
+subtechnique_taxonomy:
+  narrative:
+    paragraphs:
+    - zh: ATT&CK 无子项，开放搜索检查了 hypervisor-to-guest 观察断点、来宾认证事件缺失、vmtoolsd 父级和 VMCI 后门。前两项与 vmtoolsd 父级分别是同一 Guest Operations 通道的授权实现和两端表现，拆分会让一次事件重复分类；VMCI 自定义后门则改变直接对象，归 C2/持久化或横向移动。
+      en: ATT&CK has no children. Open search examined the hypervisor-to-guest observation break, missing guest authentication events, vmtoolsd parentage, and VMCI backdoors. Authentication behavior and vmtoolsd parentage are implementations or opposite vantages of the same Guest Operations channel and would duplicate one event if split. A custom VMCI backdoor changes the direct object and belongs to command and control, persistence, or lateral movement.
+    - zh: 因此父级已完整表达唯一稳定变量：攻击者选择受信虚拟化管理通道，使发起者和结果跨层分离。按 API 方法、漏洞、来宾 OS 或凭据类型拆分只复制产品实现，coverage 保持 none-justified；若未来证据出现不依赖该通道且具有独立残余和防守响应的第二变量，再重新开放分类。
+      en: "The parent therefore expresses the one stable variable: adversary choice of a trusted virtualization management channel that separates initiator and outcome across layers. Partition by API method, vulnerability, guest OS, or credential type would duplicate product implementation, so coverage remains none-justified. Taxonomy should reopen only if future evidence establishes a second variable independent of this channel with distinct residuals and defensive response."
+  coverage: none-justified
+  subtechnique_refs: []
+defense: {detections: {coverage: available, strategy_refs: [DET-000080]}, mitigations: {coverage: available, mitigation_refs: [MIT-000080]}}
+evidence:
+  claim_refs: [CLM-000263, CLM-000401, CLM-000402, CLM-000403, CLM-000404, CLM-000405]
+  case_refs: [CASE-000071, CASE-000072]
+  reference_refs: [REF-000120, REF-000053, REF-000208, REF-000209, REF-000210]
+research:
+  limitations:
+    paragraphs:
+    - zh: 公开现场证据集中于同一 Mandiant/UNC3886 调查谱系，但覆盖凭据化 VIRTUALPITA 和利用 CVE-2023-20867 的无认证 GuestOps 两种实现，并有 Broadcom API 文档与独立检测/加固材料支持。不能据此断言所有 vmtoolsd 子进程都危险，或补丁后 Guest Operations 不再可被有效凭据滥用。零子技术是证据化边界结论，不是研究缺失。
+      en: Public field evidence concentrates in the Mandiant and UNC3886 investigation lineage, but covers credentialed VIRTUALPITA and unauthenticated CVE-2023-20867 GuestOps implementations with Broadcom API documentation and separate detection or hardening material. It does not make every vmtoolsd child malicious or imply patched Guest Operations cannot be abused with valid credentials. Zero children is an evidence-based boundary conclusion rather than missing research.
+lifecycle: {status: review, version: 1.1.0, created: '2026-09-10', modified: '2026-09-12', contributors: [Niji Matrix Research], reviewers: []}

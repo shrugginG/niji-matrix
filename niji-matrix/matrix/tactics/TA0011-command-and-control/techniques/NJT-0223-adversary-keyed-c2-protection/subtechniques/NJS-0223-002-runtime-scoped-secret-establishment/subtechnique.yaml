@@ -1,0 +1,126 @@
+schema_version: 2.0.0
+type: evasion-subtechnique
+id: NJS-0223-002
+parent_ref: NJT-0223
+name:
+  zh: 运行时范围秘密建立
+  en: Runtime-Scoped Secret Establishment
+summary:
+  zh: 攻击者通过握手、随机生成或公钥封套为单会话/消息建立秘密，使静态样本不足以直接恢复其他流量。
+  en: Adversaries establish a secret per session or message through handshake, random generation, or public-key envelope,
+    making a static sample insufficient to recover other traffic directly.
+aliases: []
+lineage:
+  attck_subtechnique_inherited: false
+definition_and_concept:
+  paragraphs:
+  - zh: 运行时范围秘密建立是攻击者在连接或消息创建时协商/生成 fresh secret，并通过 key agreement、PSK mix、public-key wrap 或 equivalent material 让接收端恢复。直接目标是限制一个
+      key 泄露对其他会话/消息的影响，并让静态样本只暴露 protocol/公钥而非所有 plaintext key。
+    en: Runtime-Scoped Secret Establishment means an actor negotiates or generates a fresh secret when a connection or message
+      is created and lets the receiver recover it through key agreement, PSK mixing, public-key wrapping, or equivalent material.
+      The direct goal is limiting one key disclosure across other sessions or messages and leaving static samples with protocol
+      or public keys rather than all plaintext traffic keys.
+  - zh: Snake 的 enc layer 用 PSK 与 Diffie-Hellman 经 12 步建立 unique session key 并保护 command header/inner payload；Cyclops Blink
+      对每 message 随机生成 AES key/IV，再以硬编码 RSA public key 封套。两者 scope 不同但共同变量是 runtime secret 与特定 traffic unit 绑定。
+    en: Snake's enc layer combines a PSK and Diffie-Hellman through twelve steps to establish a unique session key protecting
+      command headers and inner payloads. Cyclops Blink randomly generates an AES key and IV for each message and envelopes
+      them with a hardcoded RSA public key. Their scopes differ, but both bind a runtime secret to a specific traffic unit.
+stealth_characteristics:
+  paragraphs:
+  - zh: 运行时范围秘密建立让同家族不同 session/message 的 ciphertext key 不同，样本中的 public/PSK material 可能不足以单独 decrypt；防守需把 handshake/wrapped
+      key、PCAP 和 endpoint memory/API context 同时保留。残余包括 public values、wrapped-key length、message sequence、key handle lifetime、random
+      generation 和 decrypt 后 command action。
+    en: Runtime-Scoped Secret Establishment gives different sessions or messages in one family different traffic keys, so
+      public or PSK material in a sample may be insufficient by itself. Defenders must preserve handshake or wrapped key,
+      PCAP, and endpoint memory or API context together. Residuals include public values, wrapped-key length, message sequence,
+      key-handle lifetime, random generation, and command action after decryption.
+  - zh: 合法 TLS、SSH、IPsec、QUIC 和应用 E2EE 也建立 session keys；只有 attacker-added layer 与 recovered C2 result 才成立。一个 crypto API call、DH
+      public value 或 random key generation 不足。
+    en: Legitimate TLS, SSH, IPsec, QUIC, and application end-to-end encryption also establish session keys. Only an attacker-added
+      layer with a recovered C2 result qualifies. One cryptographic API call, DH public value, or random-key generation is
+      insufficient.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 纳入要求 runtime key event/material、同 session/message ciphertext、receiver recovery/decrypt 和 C2 plaintext/result。协议原生
+      TLS key schedule 排除；公钥仅验证签名而不恢复 C2 secret 排除；嵌入固定 shared secret 跨会话使用归可复用 sibling。
+    en: Inclusion requires a runtime key event or material, ciphertext from the same session or message, receiver recovery
+      and decryption, and C2 plaintext or result. Protocol-native TLS key schedules are excluded. A public key used only for
+      signature verification without C2 secret recovery is excluded. A fixed shared secret reused across sessions belongs
+      to the reusable sibling.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: P2P implant 可用 PSK 识别 peer，再交换 DH values 产生 session key；appliance bot 可为每 beacon message 生成 content key/IV 并以 controller
+        public key wrap。网络 hunt 需从对应 host 获取 memory/crypto context 或利用已知实现缺陷，不能把其他 session key 套用。
+      en: A P2P implant can use a PSK to identify peers and exchange DH values to derive a session key. An appliance bot can
+        generate a content key and IV for each beacon message and wrap them with a controller public key. Network hunting
+        needs memory or cryptographic context from the corresponding host or a known implementation flaw and cannot apply
+        another session's key.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者需保持 entropy、key agreement/wrap、peer authentication、KDF 和 key destruction 正确。weak group、重复 random、public/private
+          key misuse 或 key handle 泄露会降低隔离；复杂 handshake 也留下多步指纹。
+        en: The actor must correctly maintain entropy, key agreement or wrapping, peer authentication, KDF, and key destruction.
+          Weak groups, repeated random values, public or private key misuse, or key-handle leakage reduce isolation, while
+          complex handshakes leave multistep fingerprints.
+    defender_model:
+      paragraphs:
+      - zh: 防守方可在经授权 endpoint 捕获 process memory/crypto API 参数或 key handle metadata，并与 PCAP flow/message ID/time 关联。API 文档只证明
+          material/handle 存在，不保证 EDR 默认记录；无 instrumentation 时只能按握手形态提出候选。
+        en: A defender can capture process memory, cryptographic API parameters, or key-handle metadata on an authorized endpoint
+          and join it to PCAP flow, message ID, and time. API documentation establishes material and handle semantics but
+          not default EDR collection. Without instrumentation, handshake shape supports only a candidate.
+stealth_mechanisms:
+- mechanism_ref: NM-BT
+  role: primary
+  summary:
+    zh: 每会话/消息秘密把可解密状态限制在短暂端点 runtime
+    en: Per-session or message secrets confine decryptable state to transient endpoint runtime
+  analysis:
+    paragraphs:
+    - zh: 攻击者把 key 建立放在 session/message runtime，网络日志有 handshake/ciphertext 但无 secret，关键 plaintext boundary 只在进程短暂存在。Snake
+        和 Cyclops Blink 直接支持。捕获同一 session memory/API material 后可恢复观察。
+      en: The actor establishes keys at session or message runtime, leaving network logs with handshake and ciphertext but
+        no secret while the plaintext boundary exists briefly in the process. Snake and Cyclops Blink directly support this
+        effect. Capturing memory or API material for the same session restores observation.
+  evidence_refs:
+  - REF-001147
+  - REF-001148
+  confidence: high
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000259
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000228
+evidence:
+  claim_refs:
+  - CLM-001110
+  case_refs:
+  - CASE-000340
+  - CASE-000341
+  reference_refs:
+  - REF-001147
+  - REF-001148
+  - REF-001152
+  - REF-001153
+research:
+  limitations:
+    paragraphs:
+    - zh: Snake 报告详述 session key、PSK、DH 步骤及 weak parameter，可支持恢复模型；Cyclops 报告详述 envelope/command format，但 defender 未取得 controller
+        private key 的现实范围需单独说明。两源不提供通用 API event schema 或性能阈值。
+      en: The Snake report details session keys, PSKs, DH steps, and weak parameters and supports the recovery model. Cyclops
+        Blink details envelope and command format, but real defender access to controller private material requires separate
+        qualification. Neither source provides a universal API event schema or performance threshold.
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-10-05'
+  modified: '2026-10-05'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

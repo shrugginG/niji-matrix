@@ -1,0 +1,123 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000267
+strategy_ref: DET-000217
+name:
+  zh: 交互活动与资源消费者闭环分析
+  en: Interactive Activity and Resource-Consumer Loop Analytic
+summary:
+  zh: 输出同一未经授权进程在空闲期消费、活动期退出并反复恢复的负相关模式。
+  en: Emit a repeated negative-correlation pattern where the same unauthorized process consumes during idle, exits
+    during activity, and resumes.
+domains:
+- enterprise
+platforms:
+- Windows
+logic:
+  paragraphs:
+  - zh: 从 DeviceProcessEvents 形成消费者与编排器进程 lineage，加入 DeviceNetworkEvents 的目的地和字节及 Perf 的进程/实例 CPU 或 GPU 计数。采集会话锁定/解锁、登录
+      ID 和可信输入空闲值；以进程唯一键而非名称追踪。
+    en: Build consumer and orchestrator process lineage from DeviceProcessEvents, add destination and bytes from DeviceNetworkEvents
+      and process or instance CPU or GPU counters from Perf. Collect session lock and unlock, logon ID, and trusted
+      input-idle value; track by process unique key rather than name.
+  - zh: 在一至十五分钟活动转换窗口计算资源负载在活动后下降、空闲后恢复的重复序列，并在 24 小时聚合累计用量、矿池/代理输出及 owner。至少两次闭环、未经批准消费者和实际输出提升置信；只有固定夜间计划或低上限不满足。
+    en: Over one-to-fifteen-minute activity transitions, calculate repeated load decline after activity and resumption
+      after idle. Aggregate total usage, pool or proxy output, and owner over 24 hours. At least two loops, an unapproved
+      consumer, and actual output raise confidence; fixed nighttime schedules or low caps alone do not qualify.
+data_requirements:
+- source_type: endpoint-process-lineage
+  name:
+    zh: 端点消费者进程谱系
+    en: Endpoint consumer process lineage
+  channel: DeviceProcessEvents
+  required_fields:
+  - timestamp
+  - device.id
+  - process.unique.id
+  - process.name
+  - process.command.line
+  - account.sid
+  - initiating.process.unique.id
+  - report.id
+- source_type: endpoint-network-flow
+  name:
+    zh: 进程关联网络流
+    en: Process-linked network flow
+  channel: DeviceNetworkEvents
+  required_fields:
+  - timestamp
+  - device.id
+  - process.unique.id
+  - remote.ip
+  - remote.port
+  - protocol
+  - bytes.sent
+  - bytes.received
+- source_type: process-resource-counter
+  name:
+    zh: 进程或实例资源计数
+    en: Process or instance resource counters
+  channel: Azure Monitor Perf or equivalent
+  required_fields:
+  - time.generated
+  - computer
+  - object.name
+  - counter.name
+  - instance.name
+  - counter.value
+- source_type: user-activity-state
+  name:
+    zh: 用户与会话活动状态
+    en: User and session activity state
+  channel: null
+  required_fields:
+  - event.time
+  - device.id
+  - session.id
+  - logon.id
+  - activity.state
+  - idle.seconds
+observables:
+- zh: 同一消费者在活动出现后降低资源并在空闲恢复
+  en: The same consumer lowers resource use after activity and resumes during idle
+- zh: 重复闭环与未经批准矿池/收益网络或 owner 缺失相连
+  en: Repeated loops join an unapproved pool or profit network or missing owner
+correlation:
+  window:
+    zh: 活动转换一至十五分钟，累计用量与 owner 二十四小时，基线三十天。
+    en: Use one to fifteen minutes for activity transitions, 24 hours for total usage and owner, and a 30-day baseline.
+  dimensions:
+  - device.id
+  - process.unique.id
+  - session.id
+  - activity.state
+  - instance.name
+  - remote.ip
+  - event.time
+false_positives:
+- zh: 批准的空闲维护、渲染、索引、备份、科学计算和 GPU 作业调度
+  en: Approved idle maintenance, rendering, indexing, backup, scientific computing, and GPU job scheduling
+blind_spots:
+- zh: 计数无进程维度、输入状态只限会话、进程注入、分布式低用量、矿池中继或未管理端点
+  en: Counters without process dimension, session-limited input state, process injection, distributed low usage, pool
+    relay, or unmanaged endpoints
+tuning_guidance:
+  paragraphs:
+  - zh: 维护批准的 idle job registry、owner、二进制签名和网络目的。阈值按设备角色与 GPU/CPU 能力调优，不全局放行签名工具；反馈闭环比固定百分比更重要。
+    en: Maintain an approved idle-job registry, owner, binary signature, and destinations. Tune by device role and
+      GPU or CPU capability without globally allowing signed tools; the feedback loop matters more than one percentage.
+evidence_refs:
+- REF-000900
+- REF-000905
+- REF-000906
+- REF-000907
+- REF-000598
+- REF-000604
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-10-04'
+  modified: '2026-10-04'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

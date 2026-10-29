@@ -1,0 +1,473 @@
+handoff_schema_version: '2.0.0'
+type: technique-research-handoff
+batch_ref: BATCH-TA0011-005
+work_item_ref: WORK-TA0011-T1571
+temporary_key_prefix: B5-T1571
+candidate:
+  source_type: attack
+  source_attack_id: T1571
+  name: {zh: 非标准端口, en: Non-Standard Port}
+recommendation:
+  decision: adapt
+  confidence: high
+  original_attack_subtechniques_imported: false
+  rationale:
+    paragraphs:
+      - zh: >-
+          保留 T1571 所代表的协议—端口错配问题，但将“非标准”从固定端口表改写为环境预期差：同一 source role、destination/service 与 policy 下，流量实际协议或应用语义不同于该端口被允许、解析或记录时的预期，并且这种差异造成 filter allow、parser failure/错选或日志语义缺失。DFIR Report 在真实入侵中观察 FlawedGrace 以 custom binary protocol 经 TCP/443 C2，缺少 SSL certificate 与 JA3；VMware 通过协议仿真在 TCP/443 验证 Winnti 4.0 的 custom request/response；BitSight 为 PseudoManuscrypt 实现其 UDP/53 与 TCP/443 proprietary protocol 并通过 sinkhole 获得感染遥测。三者都证明端口标签不能代表真实 C2 语义。
+        en: >-
+          Retain the protocol-to-port mismatch problem represented by T1571, but rewrite non-standard from a fixed port table into an environmental expectation differential. For a given source role, destination or service, and policy, the actual protocol or application semantics differ from what the port was expected to allow, parse, or record, and the difference produces filter allow, parser failure or wrong selection, or missing log semantics. In a real intrusion, The DFIR Report observed FlawedGrace using a custom binary C2 protocol over TCP/443 without SSL certificates or JA3. VMware validated Winnti 4.0 custom requests and responses over TCP/443 through protocol emulation. BitSight implemented PseudoManuscrypt's proprietary UDP/53 and TCP/443 protocol and obtained infection telemetry through sinkholing. All three establish that a port label does not identify real C2 semantics.
+      - zh: >-
+          采用 adapt 而非按 well-known/non-standard 数字保留原表述。正式准入必须同时有 actual semantics、environment expected service/policy、解析/过滤/日志差分与后继 C2；单个高位端口、443/53 出站、unknown-tcp、扫描命中或“端口不常见”不足。官方 Zeek DPD、Suricata app_proto mismatch/failed 与 Palo Alto App-ID/application-default 证明可以独立记录 actual protocol 和 policy outcome，也说明现代 port-independent inspection 会削弱匿迹。开放 taxonomy 搜索最终建议零 NJS，因为 filter allowance 与 parser displacement 是同一攻击者控制错配在不同防守面上的后果，而非稳定兄弟变量。
+        en: >-
+          Adapt rather than retain a numeric well-known versus non-standard formulation. Formal admission requires actual semantics, an environment-expected service or policy, a parsing, filtering, or logging differential, and successor C2. One high port, outbound 443 or 53, unknown-tcp, a scan hit, or an uncommon-port label is insufficient. Official Zeek DPD, Suricata app_proto mismatch or failed fields, and Palo Alto App-ID and application-default controls establish independent recording of actual protocol and policy outcome and show that modern port-independent inspection reduces stealth. The open taxonomy search recommends zero NJS because filter allowance and parser displacement are consequences of the same attacker-controlled mismatch at different defensive planes rather than stable sibling variables.
+proposed_content:
+  name: {zh: 端口预期语义错配, en: Port-Expectation Semantic Mismatch}
+  summary:
+    zh: 攻击者让实际 C2 协议或应用语义与环境对所用端口的服务预期不一致，使按端口过滤、解析或记录的防守面错误放行、错分或缺失语义。
+    en: An adversary makes actual C2 protocol or application semantics disagree with the environment's service expectation for the selected port, causing port-based filtering, parsing, or logging to allow, misclassify, or omit semantics.
+  aliases: [Non-Standard Port, Protocol-Port Mismatch, T1571]
+  classification:
+    tactic_refs: [TA0011]
+    origin: {kind: attack-adapted, source_attack_id: T1571, source_attack_version: '19.1'}
+    decision_key: B5-T1571-DECISION
+  definition_and_concept:
+    paragraphs:
+      - zh: >-
+          端口预期语义错配是攻击者配置 C2 client/server、listener 或 session，使线上实际协议/应用语义与目标环境为该 source—destination—port 组合登记或默认假定的服务不同。实际语义可以是 HTTP/SSH/TLS 等真实应用事务，也可以是 custom/raw framed protocol；直接目的在于借 port-based allow rule、parser activation 或 service label 避免阻断或降低语义可见性。端口号、IANA 表、协议名和高低端口本身不构成技术，环境 expected_service 与 detected_semantics 的差才构成。
+        en: >-
+          Port-Expectation Semantic Mismatch is adversary configuration of a C2 client and server, listener, or session such that actual on-wire protocol or application semantics differ from the service registered or assumed by the target environment for the source-to-destination-to-port combination. Actual semantics may be a real application transaction such as HTTP, SSH, or TLS or a custom or raw framed protocol. The direct purpose is to borrow a port-based allow rule, parser activation, or service label to avoid blocking or reduce semantic visibility. Port number, IANA table, protocol name, and high or low port do not constitute the technique; the difference between environment expected_service and detected_semantics does.
+      - zh: >-
+          证据门包含四层：可观察 flow 和使用端口；由 payload-aware analyzer、protocol emulation 或 endpoint implementation 证明的 actual semantics；CMDB/policy/rule/parser 配置证明的 expected service 与 filter/log decision；以及同一 flow/endpoint process 的 task、response、command execution、result 或持续 beacon。若没有 parser/filter/log 差，只能记录端口配置；若没有 successor C2，只能记录协议异常；两者都不能单独完成正式 T1571。
+        en: >-
+          The evidence gate has four layers: an observable flow and selected port; actual semantics established by payload-aware analysis, protocol emulation, or endpoint implementation; expected service and filter or log decision established by CMDB, policy, rule, or parser configuration; and a task, response, command execution, result, or continuing beacon from the same flow or endpoint process. Without a parser, filter, or logging differential, only port configuration is known. Without successor C2, only a protocol anomaly is known. Neither independently completes formal T1571.
+  stealth_characteristics:
+    paragraphs:
+      - zh: >-
+          在 port-based 防火墙中，TCP/443 或 UDP/53 可能因“Web/DNS 可用”而放行，即使 payload 不是 TLS/DNS；在 port-selected sensor 中，预期 analyzer 可能错误启动、失败后留下 unknown/null、或日志沿用表面 service label。目标分析者若只查看 destination port、port category 或缺少 service 字段，会把 custom C2 或另一应用解释为允许服务。2012 流量研究实际发现被描述为 TLS 的样本中只有部分使用 TLS，并指出研究者可能仅按端口分类；Zeek 官方示例也展示 443/TLS analyzer failure 与 plain HTTP response。
+        en: >-
+          In a port-based firewall, TCP/443 or UDP/53 may be allowed because Web or DNS is needed even when payload is not TLS or DNS. In a port-selected sensor, the expected analyzer can start incorrectly, fail into unknown or null, or leave logs carrying the surface service label. Analysts reviewing only destination port, port category, or records without a service field can interpret custom C2 or another application as an allowed service. A 2012 traffic study found that only some samples described as TLS actually used TLS and identified likely researcher classification by port alone. Zeek's official example separately shows TLS-analyzer failure on 443 followed by a plain HTTP response.
+      - zh: >-
+          匿迹仍有稳定残迹：first payload bytes、handshake/response、Zeek service/confirmation/violation/failure、Suricata app_proto 与 directional mismatch、firewall Application/non_standard_dest_port/rule/action、endpoint process/remote port，以及 command/result。Port-independent DPD、协议仿真和 application-aware policy 可以恢复实际语义。加密内容、未知 proprietary protocol、采样、短流量或只收 NetFlow 时会保留 blind spot，但 unknown 不自动等于恶意。
+        en: >-
+          Stable residue remains: first payload bytes, handshake or response, Zeek service, confirmation, violation, or failure, Suricata app_proto and directional mismatch, firewall Application, non_standard_dest_port, rule and action, endpoint process and remote port, and command or result. Port-independent DPD, protocol emulation, and application-aware policy recover actual semantics. Encrypted content, an unsupported proprietary protocol, sampling, short flows, or NetFlow-only collection preserve blind spots, but unknown does not automatically mean malicious.
+  scope_boundary_definition:
+    paragraphs:
+      - zh: >-
+          纳入实际 C2 semantics 与 environment expected service/port 不一致并产生防守差分的 flow。HTTP on 14146、SSH on 443、custom binary on 443 或 proprietary messages on UDP/53 都可满足，但必须证明具体环境的 expected mapping、parser/filter/log effect 和 C2 result。合法 internal custom service、开发测试、备用管理 port、service mesh、port sharing、TLS offload、STARTTLS、vendor appliance 或迁移期间临时 port 只要已登记并被正确解析/授权，就是反例；“不在 IANA 默认端口”不等于攻击。
+        en: >-
+          Scope includes a flow where actual C2 semantics disagree with environment-expected service and port and produce a defensive differential. HTTP on 14146, SSH on 443, custom binary on 443, or proprietary messages on UDP/53 can qualify, but the specific environment's expected mapping, parser, filter, or log effect, and C2 result must be established. A legitimate internal custom service, development test, alternate management port, service mesh, port sharing, TLS offload, STARTTLS, vendor appliance, or migration-time temporary port is a counterexample when registered and correctly parsed or authorized. A port outside an IANA default is not automatically an attack.
+      - zh: >-
+          T1095/NJT-0208 拥有直接 applicationless carriage：custom/raw TCP、UDP 或 ICMP 的 session/packet semantics；T1571 只拥有该 carriage 与端口预期的错配。因此 FlawedGrace/Winnti/PseudoManuscrypt 可同时属于 T1095 与 T1571，但 raw TCP on 443 不因 port 变成 HTTPS。NJT-0160 拥有真实 application transaction，不论端口；HTTP/SSH/TLS 在环境预期外 port 使用时可与 T1571 并列，不能用 port mismatch 替代应用会话证据。
+        en: >-
+          T1095 and NJT-0208 own direct applicationless carriage: custom or raw TCP, UDP, or ICMP session or packet semantics. T1571 owns only mismatch between that carriage and port expectation. FlawedGrace, Winnti, and PseudoManuscrypt can therefore satisfy both T1095 and T1571, but raw TCP on 443 does not become HTTPS because of the port. NJT-0160 owns real application transactions regardless of port. HTTP, SSH, or TLS on an environment-unexpected port may co-classify with T1571, but port mismatch cannot substitute for application-session evidence.
+      - zh: >-
+          T1090 拥有代理/中继和路径关系，目标 port 不代表 relay；T1572 要求完整或可识别 inner session 被 outer protocol/tunnel 承载，直接把 custom frames 放在 TCP/443 不是 tunneling。T1205 拥有特殊序列/内容触发隐藏 listener/功能，触发 port 和后继 channel port 不是其子项；只有信号之后持续 C2 又具有 semantic-port mismatch 时才并列 T1571。T1573 encryption 与 NJT-0152 fake TLS/service camouflage 也可并列，但各自需要密码或可见特征证据。
+        en: >-
+          T1090 owns proxy or relay and path relationships; a destination port does not establish a relay. T1572 requires an intact or recognizable inner session carried by an outer protocol or tunnel; putting custom frames directly on TCP/443 is not tunneling. T1205 owns a special sequence or content that activates a hidden listener or function; the signal port and successor channel port are not its children. T1571 coexists only where continuing C2 after activation also has a semantic-to-port mismatch. T1573 encryption and NJT-0152 fake TLS or service camouflage can coexist but each requires its own cryptographic or visible-feature evidence.
+  application_scenarios_and_threat_model:
+    application_scenarios:
+      paragraphs:
+        - zh: >-
+            在只按 TCP/443 放行 Web egress 的环境，implant 可直接用 custom binary protocol 与 C2 通信。DFIR Report 的 FlawedGrace 在真实入侵中从 injected svchost.exe 连接多台 TCP/443 C2，却没有 SSL certificate/JA3；VMware 对 Winnti 4.0 的 emulator 在 TCP/443 发出 custom encrypted request 并收到可解密、含有效 header/payload type 的 response。这些案例证明 actual semantics 与 HTTPS expectation 不同且后继 C2 成立。
+          en: >-
+            In an environment allowing Web egress by TCP/443, an implant can communicate with C2 using a custom binary protocol directly. In a real intrusion, The DFIR Report observed FlawedGrace connecting from injected svchost.exe to several TCP/443 C2 endpoints without SSL certificates or JA3. VMware's Winnti 4.0 emulator sent a custom encrypted request over TCP/443 and received a decryptable response with valid header and payload type. These cases establish actual semantics differing from HTTPS expectation plus successor C2.
+        - zh: >-
+            类似地，PseudoManuscrypt 在 UDP/53 与 TCP/443 上实现自己的两层 messaging protocol；BitSight 通过实现协议和 sinkhole 收到约五万感染遥测。这里 UDP/53 并不自动成为 DNS，TCP/443 也不自动成为 TLS。若一个环境注册了 proprietary appliance service 并用 content-aware parser 正确识别，则同样端口组合不产生本技术；expected mapping 必须来自当地 policy/inventory，而非案例本身。
+          en: >-
+            Similarly, PseudoManuscrypt implements its own two-layer messaging protocol over UDP/53 and TCP/443. BitSight implemented that protocol and received telemetry from roughly fifty thousand infections through sinkholing. UDP/53 does not automatically become DNS and TCP/443 does not automatically become TLS. If an environment registers a proprietary appliance service and correctly recognizes it through content-aware parsing, the same port combination does not produce this technique. Expected mapping must come from local policy and inventory rather than the case itself.
+  threat_model:
+    attacker_model:
+      paragraphs:
+        - zh: >-
+            攻击者须控制 client/server 或 listener 配置、选择目标可达且被允许/少审查的 port，并实现能交换任务/结果的实际 protocol。获得匿迹收益还需预测目标 filter/parser/log 基于 port 的假设；现代 DPD/App-ID 会削弱该收益。若 actual protocol 有明显 invalid handshake、未知 payload、长连接或异常 process，误配反而提高可见度；自定义协议还增加开发、兼容和 server 运维成本。
+          en: >-
+            The actor must control client and server or listener configuration, choose a reachable port that is allowed or weakly inspected, and implement an actual protocol able to exchange tasks or results. Stealth benefit also requires predicting the target filter, parser, or logging assumptions based on port. Modern DPD and App-ID reduce that benefit. An invalid handshake, unknown payload, long connection, or anomalous process can make the mismatch more conspicuous, while a custom protocol adds development, compatibility, and server-maintenance cost.
+      defender_model:
+        paragraphs:
+          - zh: >-
+              防守方假定有 network flow 与至少一个 payload-aware analyzer/firewall，以及 endpoint process/network 或 protocol-emulation/C2 outcome。CMDB/policy 提供 source role、destination service、rule、allowed application/port 和 owner。检测先计算 expected_service，再从 DPD/App-ID/app_proto/handshake 得出 detected_semantics，连接 policy action 与 successor C2。没有 actual semantics 或 local expected mapping 时只能输出 unknown/unregistered，不断言 T1571。
+            en: >-
+              The defender is assumed to have network flow plus at least one payload-aware analyzer or firewall and either endpoint process and network or protocol-emulation and C2 outcome. CMDB and policy provide source role, destination service, rule, allowed application and port, and owner. Detection computes expected_service first, derives detected_semantics from DPD, App-ID, app_proto, or handshake, and joins policy action with successor C2. Without actual semantics or a local expected mapping, output only unknown or unregistered and do not assert T1571.
+          - zh: >-
+              合法 custom service inventory 必须版本化 source/destination/port/protocol/parser/signature/purpose/expiry，避免把所有 non-default traffic 告警。TLS/QUIC/ECH、VPN、proxy、NAT、采样和不支持 proprietary protocol 会降低解析；parser failed 既可表示攻击也可表示短流、丢包或未知正常应用。endpoint process 或已验证 C2 response 可提高置信，但不能反推缺失的 policy effect。
+            en: >-
+              Legitimate custom-service inventory must version source, destination, port, protocol, parser, signature, purpose, and expiry to avoid alerting on all non-default traffic. TLS, QUIC, ECH, VPN, proxy, NAT, sampling, and unsupported proprietary protocols reduce parsing. Parser failed can mean attack, a short flow, packet loss, or an unknown legitimate application. Endpoint process or a validated C2 response raises confidence but cannot backfill a missing policy effect.
+  stealth_mechanisms:
+    - mechanism_ref: NM-FD
+      role: primary
+      summary: {zh: 端口所暗示的服务身份替代实际 C2 协议语义, en: Service identity implied by the port substitutes for actual C2 protocol semantics}
+      analysis:
+        paragraphs:
+          - zh: >-
+              攻击者把 custom/raw 或另一 application protocol 放到环境映射为 Web/DNS/其他允许服务的 port，痕迹中的 destination port/service label 与真实 semantics 分离。依赖 port category 的规则和分析者把 expected service 当成 actual，恶意 flow 借用正常服务外观，形成特征伪装。FlawedGrace、Winnti、PseudoManuscrypt 和流量研究支持 mismatch；payload-aware DPD/App-ID/handshake 可恢复，置信度 high。
+            en: >-
+              The actor places a custom or raw or different application protocol on a port the environment maps to Web, DNS, or another allowed service, separating destination-port service label from real semantics. Rules and analysts relying on port category treat expected service as actual, allowing the malicious flow to borrow normal service appearance and produce Feature Disguise. FlawedGrace, Winnti, PseudoManuscrypt, and traffic research support the mismatch; payload-aware DPD, App-ID, and handshake analysis recover it, supporting high confidence.
+      evidence_keys: [B5-T1571-REF-FLAWEDGRACE, B5-T1571-REF-WINNTI, B5-T1571-REF-PSEUDOMANUSCRYPT, B5-T1571-REF-PORT-MISCLASS-STUDY]
+      confidence: high
+    - mechanism_ref: NM-BT
+      role: secondary
+      summary: {zh: 错误或失败的端口选定解析器使 C2 事务不进入预期语义日志, en: Wrong or failed port-selected parsing keeps C2 transactions out of expected semantic logs}
+      analysis:
+        paragraphs:
+          - zh: >-
+              若 sensor 按 port 启动错误 analyzer，或 unsupported custom protocol 只生成 TCP flow/unknown/null，任务与结果不会进入 TLS/HTTP/DNS 等事务日志。只查询预期 service log 的检测看到空白或失败而不关联 C2，形成行为透明。Zeek analyzer confirmation/violation、Suricata app_proto/failed/mismatch 证明可记录该观察断点；现代 DPD 启用时机理显著削弱，因此置信度 medium。
+            en: >-
+              If a sensor starts the wrong analyzer by port or an unsupported custom protocol produces only TCP flow, unknown, or null, tasks and results do not enter TLS, HTTP, DNS, or other expected transaction logs. Detection querying only the expected service log sees a blank or failure without joining C2, producing Behavioral Transparency. Zeek analyzer confirmation and violation and Suricata app_proto, failed, and mismatch fields establish that observation break. Modern DPD materially weakens the mechanism, so confidence is medium.
+      evidence_keys: [B5-T1571-REF-ZEEK-DPD, B5-T1571-REF-SURICATA-EVE-PROTO, B5-T1571-REF-SURICATA-APP-LAYER, B5-T1571-REF-PORT-MISCLASS-STUDY]
+      confidence: medium
+  subtechnique_taxonomy:
+    narrative:
+      paragraphs:
+        - zh: >-
+            已完成零子项开放搜索。Port-policy allowance borrowing 与 port-selected parser displacement 分别改变 filter decision 和 semantic log，但攻击者控制的共同变量都是 actual semantics—expected service mismatch；具体结果取决于 defender deployment，不能稳定分成兄弟子技术。父级 mechanisms 与 Analytic 分支保留这两个效果。
+          en: >-
+            A zero-child open search is complete. Port-policy allowance borrowing and port-selected parser displacement affect filter decision and semantic log respectively, but the common attacker-controlled variable is the mismatch between actual semantics and expected service. The specific outcome depends on defender deployment and cannot stably form sibling children. Parent mechanisms and Analytic branches retain both effects.
+        - zh: >-
+            Recognized alternative application 与 unsupported custom protocol 的区别由 NJT-0160/T1095 直接对象和 parser coverage 决定，不是 T1571 sibling；well-known/high/ephemeral/listener port、TCP/UDP、HTTP/SSH/TLS、tool、platform、inbound/outbound 均为实现或情境。动态计算 port 属 T1568，相同 port 上 fake TLS/service surface 可并列 NJT-0152，信号激活归 T1205。没有独立 NJS 证据与 defense identity，故正式数量为零。
+          en: >-
+            The difference between a recognized alternative application and an unsupported custom protocol is owned by NJT-0160 or T1095 direct objects and parser coverage, not a T1571 sibling. Well-known, high, ephemeral, or listener port, TCP or UDP, HTTP, SSH or TLS, tool, platform, and inbound or outbound are implementations or context. Dynamically computed ports belong to T1568, fake TLS or service surfaces on the same port may coexist with NJT-0152, and signal activation belongs to T1205. No independent NJS evidence and defense identity remains, so the formal child count is zero.
+    coverage: none-justified
+    temporary_subtechnique_keys: []
+proposed_subtechniques: []
+defense_candidates:
+  detection_strategies:
+    - temporary_key: B5-T1571-DET-SEMANTIC-PORT-DIFFERENTIAL
+      name: {zh: 实际协议语义—端口预期—策略结果差分, en: Actual Protocol Semantics to Port Expectation and Policy Outcome Differential}
+      objective:
+        zh: 从当地 port-service policy 建 expected_service，以 port-independent parser 得 actual semantics，连接 allow/log decision 与 endpoint 或 protocol-validated C2 outcome。
+        en: Derive expected_service from local port-service policy, obtain actual semantics through port-independent parsing, and join allow or log decision to endpoint or protocol-validated C2 outcome.
+      subjects: [parent]
+      domains: [enterprise]
+      analytic_keys: [B5-T1571-NJA-SEMANTIC-PORT-DIFFERENTIAL]
+      candidate_resolution: create
+  detection_analytics:
+    - temporary_key: B5-T1571-NJA-SEMANTIC-PORT-DIFFERENTIAL
+      name: {zh: 端口预期、解析确认/失败与后继 C2 关联分析, en: Port Expectation Parser Confirmation or Failure and Successor C2 Correlation Analytic}
+      purpose:
+        zh: 分级输出 unregistered_port、semantic_mismatch、port_policy_allowance、parser_displacement 和 mismatch_c2_confirmed，避免把 rare port/unknown protocol 单点当作攻击。
+        en: Emit unregistered_port, semantic_mismatch, port_policy_allowance, parser_displacement, and mismatch_c2_confirmed separately, avoiding classification from a rare port or unknown protocol alone.
+      raw_to_normalized_fields:
+        - source: zeek-connection
+          channel: Zeek conn.log
+          raw_fields: [ts, uid, id.orig_h, id.orig_p, id.resp_h, id.resp_p, proto, service, duration, orig_bytes, resp_bytes, conn_state, missed_bytes, history, orig_pkts, resp_pkts]
+          normalized_fields: [event_time, network_session_id, source_ip, source_port, destination_ip, destination_port, transport, detected_services, duration, bytes_to_server, bytes_to_client, connection_state, missing_bytes, transport_history, packets_to_server, packets_to_client]
+        - source: zeek-analyzer
+          channel: Zeek analyzer.log and protocol transaction logs
+          raw_fields: [ts, analyzer_kind, analyzer_name, uid, id.orig_h, id.orig_p, id.resp_h, id.resp_p, proto, failure_reason]
+          normalized_fields: [event_time, analyzer_kind, attempted_analyzer, network_session_id, source_ip, source_port, destination_ip, destination_port, transport, parser_failure_reason]
+        - source: suricata-eve
+          channel: Suricata EVE flow/anomaly/alert
+          raw_fields: [timestamp, flow_id, src_ip, src_port, dest_ip, dest_port, proto, app_proto, app_proto_orig, app_proto_expected, app_proto_ts, app_proto_tc, event_type, direction, alert.action, alert.signature_id, anomaly, flow.bytes_toserver, flow.bytes_toclient]
+          normalized_fields: [event_time, network_session_id, source_ip, source_port, destination_ip, destination_port, transport, detected_application, original_application, expected_parser_application, application_to_server, application_to_client, sensor_event_type, direction, sensor_action, signature_id, parser_anomaly, bytes_to_server, bytes_to_client]
+        - source: application-aware-firewall
+          channel: NGFW/App-ID traffic log
+          raw_fields: [ReceiveTime, GeneratedTime, SourceAddress, DestinationAddress, RuleName, SourceUser, Application, SourceZone, DestinationZone, SessionID, SourcePort, DestinationPort, Flags, Protocol, Action, BytesSent, BytesReceived, SessionEndReason, RuleUUID, AppFlapCount, NonStandardDestinationPort]
+          normalized_fields: [receive_time, event_time, source_ip, destination_ip, policy_rule, principal_id, firewall_application, source_zone, destination_zone, firewall_session_id, source_port, destination_port, policy_flags, transport, policy_action, bytes_to_server, bytes_to_client, session_end_reason, policy_rule_id, application_changes, nonstandard_port_flag]
+        - source: endpoint-process-network-outcome
+          channel: Microsoft Defender XDR DeviceNetworkEvents/Sysmon plus process and file events
+          raw_fields: [Timestamp, DeviceId, RemoteIP, RemotePort, RemoteUrl, Protocol, InitiatingProcessUniqueId, InitiatingProcessFileName, InitiatingProcessCommandLine, outcome_action, child_process, file_path]
+          normalized_fields: [event_time, device_id, destination_ip, destination_port, remote_host, transport, process_start_key, process_image, command_line, c2_outcome_type, outcome_process, object_path]
+        - source: expected-service-policy
+          channel: CMDB, firewall policy, proxy/parser configuration, and custom-service registry
+          raw_fields: [policy_version, source_role, destination_role, destination_identity, transport, port, expected_service, allowed_application, parser_profile, rule_id, owner, purpose, valid_from, valid_to]
+          normalized_fields: [policy_version, source_role, destination_role, destination_identity, transport, destination_port, expected_service, allowed_application, parser_profile, policy_rule_id, service_owner, approved_purpose, valid_from, valid_to]
+      logic:
+        zh: >-
+          对每个 session 用 source/destination role、destination identity、transport、port、rule 与时间查找 versioned expected_service；无登记时输出 unregistered_port 而非 mismatch。actual semantics 优先使用 Zeek confirmed service、Suricata app_proto directional fields、firewall Application 或协议仿真 handshake；port number 永不直接赋值 actual。若 actual 与 expected 不同输出 semantic_mismatch。若 firewall action=allow 且 matched rule/service 只基于 port 或 nonstandard flag/application-default 不匹配，输出 port_policy_allowance；若 expected analyzer failure、service null/unknown、directional app mismatch 或 semantic transaction 缺失，输出 parser_displacement。最后连接同 process 的 command/result/child/file、重复 bidirectional beacon 或可验证 C2 response；只有 mismatch + defensive effect + successor C2 同时成立才输出 mismatch_c2_confirmed。
+        en: >-
+          For every session, find a versioned expected_service using source and destination role, destination identity, transport, port, rule, and time. Emit unregistered_port rather than mismatch where no registration exists. Prefer Zeek confirmed service, Suricata app_proto directional fields, firewall Application, or protocol-emulation handshake for actual semantics; never assign actual from port number. Emit semantic_mismatch when actual differs from expected. Emit port_policy_allowance when firewall action is allow and the matched rule or service is port-only or the nonstandard flag and application-default relationship disagrees. Emit parser_displacement when the expected analyzer fails, service is null or unknown, directional applications disagree, or semantic transactions are absent. Finally join commands, results, children, or files from the same process, a repeated bidirectional beacon, or a validated C2 response. Emit mismatch_c2_confirmed only when mismatch, defensive effect, and successor C2 all coexist.
+      correlation:
+        window: 15 minutes session-to-endpoint outcome; 24 hours for recurring beacon or protocol-emulation response; policy version valid at event time
+        dimensions: [network_session_id, firewall_session_id, device_id, process_start_key, source_role, destination_identity, destination_port, expected_service, detected_application, attempted_analyzer, policy_rule_id, policy_version, c2_outcome_id, time]
+      observables:
+        - payload-aware parser confirms HTTP SSH or another application on a port expected for a different service
+        - TLS or DNS analyzer fails on 443 or 53 while custom bidirectional traffic continues
+        - firewall allows session under port-based rule but App-ID or independent parser reports another application or unknown
+        - endpoint process maintains the mismatched flow and produces command/result or follow-on action
+      false_positives: [registered internal custom applications, development and testing, alternate vendor management ports, service meshes, port sharing, STARTTLS or opportunistic upgrade, TLS termination, reverse proxies, VPN, migration exceptions, protocol detection bugs]
+      blind_spots: [encrypted or proprietary semantics unsupported, payload sampling, very short or one-direction flows, DPD disabled, parser signatures missing, NAT or proxy obscures destination identity, endpoint process telemetry missing, firewall application changes during session]
+      tuning_guidance:
+        zh: expected_service 必须来自当地 inventory/policy 与 owner，不用 IANA 单独定性。为合法 custom service 登记 exact source/destination/application/parser/port/purpose/expiry。unknown/failed 只启动调查，需 C2 outcome 或 validated protocol response 升级。对 443/53 不设全局例外；按 role 与 destination baseline。定期以批准测试流量验证 DPD/App-ID/parser coverage 和 field mapping。
+        en: expected_service must come from local inventory and policy with an owner, never IANA alone. Register exact source, destination, application, parser, port, purpose, and expiry for legitimate custom services. Unknown or failed starts investigation only and requires a C2 outcome or validated protocol response for escalation. Do not globally exempt 443 or 53; baseline by role and destination. Regularly validate DPD, App-ID, parser coverage, and field mappings with approved test traffic.
+      evidence_keys: [B5-T1571-REF-FLAWEDGRACE, B5-T1571-REF-WINNTI, B5-T1571-REF-PSEUDOMANUSCRYPT, B5-T1571-REF-ZEEK-DPD, B5-T1571-REF-SURICATA-EVE-PROTO, B5-T1571-REF-SURICATA-APP-LAYER, B5-T1571-REF-PAN-TRAFFIC-FIELDS, REF-000604, REF-000230]
+      confidence: high
+  mitigations:
+    - temporary_key: B5-T1571-MIT-PROTOCOL-PORT-CONGRUENCE
+      name: {zh: 应用语义与端口策略一致性治理, en: Application Semantics and Port Policy Congruence Governance}
+      candidate_resolution: create
+      description:
+        zh: 用 application-aware policy、port-independent parsing 与正式 custom-service registry 取代粗粒度 port allowlist，并保留 mismatch 与 C2 结果关联证据。
+        en: Replace coarse port allowlists with application-aware policy, port-independent parsing, and a formal custom-service registry while retaining evidence that joins mismatch to C2 outcome.
+      measures:
+        - key: application-aware-allow-policy
+          name: {zh: 应用感知放行策略, en: Application-Aware Allow Policy}
+          control_type: preventive
+          implementation:
+            zh: 出站/入站 policy 按 source role、destination owner、actual App-ID/application 和 service default 定义，优先 application-default；未知或不匹配应用默认拒绝/重置。合法非默认服务只给 exact source/destination/application/port 的限时 exception。
+            en: Define ingress and egress policy by source role, destination owner, actual App-ID or application, and service default, preferring application-default. Deny or reset unknown and mismatched applications by default. Give legitimate nondefault services time-bounded exceptions for exact source, destination, application, and port.
+        - key: port-independent-protocol-detection
+          name: {zh: 端口无关协议检测, en: Port-Independent Protocol Detection}
+          control_type: detective-support
+          implementation:
+            zh: 在关键边界启用 Zeek DPD、Suricata app-layer detection 或等价 DPI，记录 service/app_proto confirmation、violation、failed、directional mismatch、expected/orig fields，并与 flow/session ID 保持一致；对 parser coverage 运行 canary。
+            en: Enable Zeek DPD, Suricata app-layer detection, or equivalent DPI at critical boundaries, recording service or app_proto confirmation, violation, failed, directional mismatch, and expected or original fields with stable flow or session IDs. Run canaries to test parser coverage.
+        - key: custom-service-registration
+          name: {zh: 自定义服务登记, en: Custom Service Registration}
+          control_type: governance
+          implementation:
+            zh: 为 internal/vendor custom services 登记 owner、source/destination roles、protocol semantics、port、parser/signature、authentication、purpose、release/version 与 expiry；变更触发 policy/parser 更新，不使用永久“任意 TCP”例外。
+            en: Register owner, source and destination roles, protocol semantics, port, parser or signature, authentication, purpose, release or version, and expiry for internal and vendor custom services. Changes trigger policy and parser updates and never receive a permanent any-TCP exception.
+        - key: endpoint-process-and-c2-outcome-correlation
+          name: {zh: 端点进程与 C2 结果关联, en: Endpoint Process and C2 Outcome Correlation}
+          control_type: detective-support
+          implementation:
+            zh: 将 mismatch flow 连接 endpoint process、listener、child/file/command/result 和 threat response；无法解析 payload 时仍按 process role、destination、bidirectionality 与 repeated timing 保留 candidate，不用 port 单独处置。
+            en: Join mismatched flows to endpoint process, listener, child, file, command, result, and threat response. Where payload cannot be parsed, retain candidates by process role, destination, bidirectionality, and recurrence without enforcing on port alone.
+      applications:
+        - target: parent
+          use:
+            zh: 对所有允许 port 运行 content-aware application identification，将 actual application 与 local expected registry 比较；mismatch 阻断或隔离，合法 custom service 用最小范围例外并持续复核。
+            en: Run content-aware application identification on every allowed port and compare actual application with the local expected registry. Block or isolate mismatches, while legitimate custom services receive minimum-scope exceptions and continual review.
+          expected_effect:
+            zh: 攻击者不能仅选择 443/53/允许高位 port 继承 Web/DNS/管理服务信任，parser/log 也能保留 actual/expected 差供检测。
+            en: The actor cannot inherit Web, DNS, or management-service trust merely by selecting 443, 53, or an allowed high port, and parser and logs retain actual-versus-expected difference for detection.
+          limitations:
+            zh: 加密/未知协议、性能、legacy/custom apps、误解析和 TLS inspection 限制会迫使 exception；严格 enforcement 可能中断业务，需 staged rollout 和 owner validation。
+            en: Encryption or unknown protocols, performance, legacy or custom applications, misparsing, and TLS-inspection limits force exceptions. Strict enforcement can disrupt business and needs staged rollout with owner validation.
+      evidence_keys: [B5-T1571-REF-PALO-APPDEFAULT, B5-T1571-REF-PAN-TRAFFIC-FIELDS, B5-T1571-REF-ZEEK-DPD, B5-T1571-REF-SURICATA-EVE-PROTO, B5-T1571-REF-SURICATA-APP-LAYER]
+existing_library_reuse:
+  reference_refs: [REF-000625, REF-000634, REF-000604, REF-000230, REF-001041]
+  claim_refs: []
+  case_refs: []
+  strategy_refs: []
+  analytic_refs: []
+  mitigation_refs: []
+  relationship_refs: []
+library_candidates:
+  references:
+    - temporary_key: B5-T1571-REF-FLAWEDGRACE
+      title: {zh: 一次优雅的彻底破坏：FlawedGrace 自定义 C2, en: A Truly Graceful Wipe Out}
+      url: https://thedfirreport.com/2023/06/12/a-truly-graceful-wipe-out/
+      publisher: The DFIR Report
+      published: '2023-06-12'
+      source_type: incident-report
+      locator: FlawedGrace custom binary protocol; C2 endpoints on TCP/443; no SSL certificate or JA3; active injected svchost.exe connection; memory C2 traces
+      credibility: high
+      limitation: 直接证明真实入侵中的 custom semantics/443/successor C2，但不公开受害 firewall rule 或 parser log，filter/log differential 必须由当地部署证据补足。
+    - temporary_key: B5-T1571-REF-WINNTI
+      title: {zh: Winnti 4.0 主动 C2 发现与协议仿真, en: Threat Analysis Active C2 Discovery Using Protocol Emulation Part 2 Winnti 4.0}
+      url: https://blogs.vmware.com/security/2020/02/threat-analysis-active-c2-discovery-using-protocol-emulation-part2-winnti-4-0.html
+      publisher: VMware Threat Analysis Unit
+      published: '2020-02'
+      source_type: sample-analysis-and-experiment
+      locator: TCP/443 selection; custom encrypted packet header; protocol emulator; validated active C2 response and payload types
+      credibility: high
+      limitation: 实验直接验证 actual custom protocol 与 active response，不证明某企业 port-based filter 曾误放行或某 sensor 实际错分。
+    - temporary_key: B5-T1571-REF-PSEUDOMANUSCRYPT
+      title: {zh: PseudoManuscrypt Sinkhole 与专有 UDP53/TCP443 协议, en: From Zero to 50k Infections PseudoManuscrypt Sinkholing Part 1}
+      url: https://www.bitsight.com/blog/zero-50k-infections-pseudomanuscrypt-sinkholing-part-1
+      publisher: BitSight
+      published: null
+      source_type: sample-analysis-and-sinkhole-observation
+      locator: proprietary two-layer messaging protocol on UDP/53 and TCP/443; protocol implementation; sinkhole infection telemetry
+      credibility: high
+      limitation: Sinkhole 证明 proprietary semantics 和感染通信，不给每个受害网络 expected DNS/TLS policy 或 parser decision。
+    - temporary_key: B5-T1571-REF-PORT-MISCLASS-STUDY
+      title: {zh: Web C2 检测中的端口协议实测差分, en: Detection of Web Based Command and Control Channels}
+      url: https://essay.utwente.nl/fileshare/file/61232/MSc_M_Warmer.pdf
+      publisher: University of Twente
+      author: Martijn Warmer
+      published: '2012'
+      source_type: research-thesis
+      locator: sandbox traffic study; only half of port-443 families used TLS; HTTP/custom protocols on 443; researcher port-only misclassification explanation; valid-TLS-record IDS distinction
+      credibility: medium
+      limitation: 老旧实验样本与网络栈不能代表现代 prevalence/效果，但直接支持 port-based misclassification 与 content validation 原理。
+    - temporary_key: B5-T1571-REF-ZEEK-DPD
+      title: {zh: Zeek 动态协议检测与 analyzer.log, en: Zeek Dynamic Protocol Detection and analyzer.log}
+      url: https://docs.zeek.org/en/master/reference/logs/analyzer.html
+      publisher: Zeek Project
+      published: null
+      source_type: official-documentation
+      locator: port-independent analyzer tree; payload signatures; confirm/reject; analyzer_kind/name uid tuple failure_reason; TLS-on-443 failure and HTTP response example
+      credibility: high
+      limitation: 文档证明 parser/log capability 和示例差分，不证明特定恶意 family 或任何部署已启用相同版本/retention。
+    - temporary_key: B5-T1571-REF-SURICATA-EVE-PROTO
+      title: {zh: Suricata EVE 顶层应用协议字段, en: Suricata EVE Top-Level Application Protocol Fields}
+      url: https://docs.suricata.io/en/suricata-8.0.0/_generated/eve-index.html
+      publisher: Open Information Security Foundation
+      published: null
+      source_type: official-documentation
+      locator: app_proto app_proto_expected app_proto_orig app_proto_ts app_proto_tc flow_id tuple direction event fields
+      credibility: high
+      limitation: 字段存在不保证 parser 支持 proprietary protocol 或 collection 已启用。
+    - temporary_key: B5-T1571-REF-SURICATA-APP-LAYER
+      title: {zh: Suricata 通用应用层协议与失败事件规则, en: Suricata Generic Application-Layer Protocol and Failure Keywords}
+      url: https://docs.suricata.io/en/suricata-6.0.20/rules/app-layer.html
+      publisher: Open Information Security Foundation
+      published: null
+      source_type: official-documentation
+      locator: app-layer-protocol detected and failed; app-layer-event; detection bail-out and skipped conditions
+      credibility: high
+      limitation: failed/skipped 可由短流、单向流或未知合法协议引起，不能自动证明 attack 或 T1571。
+    - temporary_key: B5-T1571-REF-PALO-APPDEFAULT
+      title: {zh: Palo Alto Networks application-default 端口语义强制, en: Safely Enable Applications on Default Ports}
+      url: https://docs.paloaltonetworks.com/ngfw/administration/app-id/application-default
+      publisher: Palo Alto Networks
+      published: null
+      source_type: official-documentation
+      locator: App-ID default and secure ports; application-default; differences from port-based policy; unexpected-port blocking
+      credibility: high
+      limitation: Product-specific control supports implementability, not universal mapping or incident proof; custom apps need local definitions.
+    - temporary_key: B5-T1571-REF-PAN-TRAFFIC-FIELDS
+      title: {zh: PAN-OS Traffic Log 字段, en: PAN-OS Traffic Log Fields}
+      url: https://docs.paloaltonetworks.com/ngfw/help/12-2/traffic-log-fields
+      publisher: Palo Alto Networks
+      published: null
+      source_type: official-documentation
+      locator: Application rule action Session ID source/destination port protocol bytes Rule UUID App Flap Count and non-standard destination-port flag
+      credibility: high
+      limitation: 字段是 vendor implementation，不保证另一 firewall 等价；Application value 仍受 App-ID coverage 与 decryption 影响。
+  claims:
+    - temporary_key: B5-T1571-CLM-ADMISSION
+      statement:
+        zh: 端口预期语义错配需要 actual protocol/application、local expected service、defensive parse/filter/log differential 和 successor C2 四层证据，不能按数字端口自动准入。
+        en: >-
+          Port-expectation semantic mismatch requires four evidence layers: actual protocol or application, local expected service, defensive parsing, filtering, or logging differential, and successor C2; numeric port alone cannot admit it.
+      evidence_keys: [REF-000625, B5-T1571-REF-FLAWEDGRACE, B5-T1571-REF-WINNTI, B5-T1571-REF-PSEUDOMANUSCRYPT, B5-T1571-REF-ZEEK-DPD, B5-T1571-REF-SURICATA-EVE-PROTO]
+      confidence: high
+    - temporary_key: B5-T1571-CLM-PORT-LABEL
+      statement:
+        zh: TCP/443 或 UDP/53 的 port label 不能证明 TLS/DNS；真实事件与实测研究显示 custom/HTTP semantics 可占用这些端口，payload-aware parser 能恢复。
+        en: A TCP/443 or UDP/53 port label does not establish TLS or DNS. Field cases and measured research show custom or HTTP semantics on these ports, recoverable through payload-aware parsing.
+      evidence_keys: [B5-T1571-REF-FLAWEDGRACE, B5-T1571-REF-WINNTI, B5-T1571-REF-PSEUDOMANUSCRYPT, B5-T1571-REF-PORT-MISCLASS-STUDY]
+      confidence: high
+    - temporary_key: B5-T1571-CLM-PARSER-FIELDS
+      statement:
+        zh: Zeek confirmation/failure 与 Suricata app_proto expected/orig/directional/failed 字段支持 port-independent actual semantics 与 parser displacement 记录，但 unknown/failed 仍需 C2 outcome。
+        en: Zeek confirmation or failure and Suricata app_proto expected, original, directional, and failed fields support recording port-independent actual semantics and parser displacement, while unknown or failed still requires a C2 outcome.
+      evidence_keys: [B5-T1571-REF-ZEEK-DPD, B5-T1571-REF-SURICATA-EVE-PROTO, B5-T1571-REF-SURICATA-APP-LAYER]
+      confidence: high
+    - temporary_key: B5-T1571-CLM-ZERO-CHILD
+      statement:
+        zh: filter allowance 与 parser displacement 是同一 semantics—expected-port mismatch 在不同防守面的结果；recognized/custom、端口/协议/方向等其余划分由相邻对象或实现决定，当前不支持独立 NJS。
+        en: Filter allowance and parser displacement are defensive-plane outcomes of one semantics-to-expected-port mismatch. Remaining recognized-versus-custom, port, protocol, and direction partitions are determined by adjacent objects or implementation, so current evidence supports no independent NJS.
+      evidence_keys: [REF-000625, B5-T1571-REF-ZEEK-DPD, B5-T1571-REF-SURICATA-EVE-PROTO, B5-T1571-REF-PALO-APPDEFAULT]
+      confidence: high
+  cases:
+    - temporary_key: B5-T1571-CASE-FLAWEDGRACE
+      name: {zh: FlawedGrace TCP/443 自定义二进制 C2, en: FlawedGrace Custom Binary C2 over TCP 443}
+      central_facts:
+        zh: DFIR Report 真实入侵中 FlawedGrace 从 injected svchost 连接多台 port 443 C2，使用 custom binary 而没有 SSL certificate/JA3；支持 actual semantics 与 C2，local filter/log effect 未公开。
+        en: In a real intrusion, The DFIR Report observed FlawedGrace connecting from injected svchost to multiple port-443 C2 endpoints with a custom binary protocol and no SSL certificate or JA3. It supports actual semantics and C2 while local filter or log effect is not public.
+      evidence_keys: [B5-T1571-REF-FLAWEDGRACE]
+      confidence: high
+    - temporary_key: B5-T1571-CASE-WINNTI
+      name: {zh: Winnti 4.0 TCP/443 协议仿真验证, en: Winnti 4.0 TCP 443 Protocol-Emulation Validation}
+      central_facts:
+        zh: VMware emulator 在 443 发送 custom encrypted packet，收到响应、解密 header 和 payload type 并确认 active server；证明双向 C2 semantics，不证明企业 policy effect。
+        en: VMware's emulator sent a custom encrypted packet on 443, received a response, decrypted header and payload type, and confirmed an active server. It proves bidirectional C2 semantics, not an enterprise policy effect.
+      evidence_keys: [B5-T1571-REF-WINNTI]
+      confidence: high
+    - temporary_key: B5-T1571-CASE-PSEUDOMANUSCRYPT
+      name: {zh: PseudoManuscrypt UDP53/TCP443 专有消息与 Sinkhole, en: PseudoManuscrypt Proprietary UDP53 TCP443 Messaging and Sinkhole}
+      central_facts:
+        zh: BitSight 实现 PseudoManuscrypt 自有协议并通过 sinkhole 收到感染 telemetry，证明 53/443 上非 DNS/TLS semantics 与后继 malware communication；各受害 expected policy 不公开。
+        en: BitSight implemented PseudoManuscrypt's protocol and received infected-host telemetry through sinkholing, establishing non-DNS or TLS semantics and successor malware communication on 53 and 443. Victim expected policies are not public.
+      evidence_keys: [B5-T1571-REF-PSEUDOMANUSCRYPT]
+      confidence: high
+  detection_strategies: [B5-T1571-DET-SEMANTIC-PORT-DIFFERENTIAL]
+  detection_analytics: [B5-T1571-NJA-SEMANTIC-PORT-DIFFERENTIAL]
+  mitigations: [B5-T1571-MIT-PROTOCOL-PORT-CONGRUENCE]
+  relationships: []
+research:
+  taxonomy_breadth_review:
+    attack_subtechnique_count: 0
+    attack_subtechnique_ids: []
+    represented_dimensions: [parent has no fixed-baseline ATT&CK children]
+    breadth_trigger: ordinary-open-search
+    coverage_resolutions: []
+    candidate_stealth_axes_examined:
+      - axis: port-policy-allowance-borrowing
+        resolution: parent-core
+        reason: Filter effect of the parent semantic mismatch; depends on defender policy rather than a second attacker variable.
+      - axis: port-selected-parser-displacement
+        resolution: parent-core
+        reason: Logging effect of the same mismatch; port-independent DPD removes it and it is not a stable sibling.
+      - axis: recognized-alternative-application-versus-custom-protocol
+        resolution: adjacent-technique
+        reason: NJT-0160 versus T1095 owns actual carriage semantics and parser support is environment-dependent.
+      - axis: well-known-high-ephemeral-or-listener-port
+        resolution: not-stealth-distinct
+        reason: Numeric range and direction do not independently change traces or defense.
+      - axis: dynamic-port-selection
+        resolution: adjacent-technique
+        reason: Runtime port derivation belongs to T1568; T1571 can coexist only when the derived pairing mismatches expectation.
+      - axis: fake-service-handshake-or-content
+        resolution: adjacent-technique
+        reason: NJT-0152 owns visible service-contract camouflage; port mismatch remains parent context.
+    second_pass_required: false
+    second_pass_completed: false
+    proposed_niji_child_count: 0
+    breadth_gap_explained: true
+    reviewer_notes:
+      zh: >-
+        零 ATT&CK 子项未停止开放搜索。六条轴按 attacker control、trace、defender effect、adjacent owner 与 defense identity 收敛；filter/parser 是父级两个机制/Analytic branch，不是 NJS。正式 taxonomy coverage 应为 none-justified，不是 deferred，因为没有待决 formal child；未来只有出现独立攻击变量和差异 defense 的证据才重开。
+      en: >-
+        Zero ATT&CK children did not stop the open search. Six axes converged by attacker control, trace, defender effect, adjacent owner, and defense identity. Filter and parser are two parent mechanisms or Analytic branches rather than NJS. Formal taxonomy coverage should be none-justified rather than deferred because no formal child remains pending; reopen only when evidence supports an independent attacker variable and distinct defense.
+  evidence_coverage:
+    parent_behavior_keys: [REF-000625, B5-T1571-REF-FLAWEDGRACE, B5-T1571-REF-WINNTI, B5-T1571-REF-PSEUDOMANUSCRYPT]
+    boundary_keys: [REF-000625, B5-T1571-REF-ZEEK-DPD, B5-T1571-REF-SURICATA-EVE-PROTO, B5-T1571-REF-PALO-APPDEFAULT]
+    mechanism_support:
+      - {mechanism: NM-FD, evidence_keys: [B5-T1571-REF-FLAWEDGRACE, B5-T1571-REF-WINNTI, B5-T1571-REF-PSEUDOMANUSCRYPT, B5-T1571-REF-PORT-MISCLASS-STUDY]}
+      - {mechanism: NM-BT, evidence_keys: [B5-T1571-REF-ZEEK-DPD, B5-T1571-REF-SURICATA-EVE-PROTO, B5-T1571-REF-SURICATA-APP-LAYER, B5-T1571-REF-PORT-MISCLASS-STUDY]}
+    child_existence_support: []
+    unsupported_or_deferred:
+      - numeric port or IANA mapping alone used as attack evidence
+      - incident actual semantics treated as proof of a victim local firewall or parser decision
+      - parser unknown failed or null alone treated as malicious
+      - high low inbound outbound TCP UDP or protocol names used as children
+      - custom internal service alerted without versioned environment expectation
+      - proxy tunnel trigger encryption or camouflage absorbed into port mismatch
+  content_depth_review:
+    compared_with_njt_0001: true
+    field_responsibilities_complete: true
+    candidate_specific_prose: true
+    repeated_prose_reviewed: true
+    notes:
+      zh: 父级覆盖环境预期定义、四层证据门、filter/parser 两类 effect、残余字段、custom-service 反例、六项相邻边界、两类实案、攻防模型、机理、零子项收敛和针对性防御。
+      en: The parent covers environmental expectation, a four-layer evidence gate, filter and parser effects, residual fields, custom-service counterexamples, six adjacent boundaries, two incident patterns, attacker and defender models, mechanisms, zero-child convergence, and targeted defense.
+  automation_review:
+    canonical_prose_bulk_generated: false
+    mechanical_uses: [YAML syntax validation, temporary-reference closure validation, canonical-reference resolution]
+  limitations:
+    paragraphs:
+      - zh: >-
+          FlawedGrace、Winnti 与 PseudoManuscrypt 直接证明 actual protocol semantics、selected port 和 successor C2，但没有公开各受害组织的 firewall policy、proxy expectation 或 parser output。因此它们不能单独证明“bypass filtering”或“log misclassification”已经在具体现场发生；正式判定必须补 local policy/rule/action 与 analyzer result。没有该部署证据时只记录 protocol-port mismatch candidate，而非完整 stealth effect。
+        en: >-
+          FlawedGrace, Winnti, and PseudoManuscrypt directly establish actual protocol semantics, selected port, and successor C2, but they do not publish each victim organization's firewall policy, proxy expectation, or parser output. They therefore do not independently prove that filtering was bypassed or logs were misclassified at a particular site. Formal classification must add local policy, rule and action, and analyzer result. Without that deployment evidence, record only a protocol-port mismatch candidate rather than a complete stealth effect.
+      - zh: >-
+          Zeek、Suricata 与 PAN-OS 文档证明字段和控制可实施，不证明检测率或任何恶意意图。Zeek analyzer failure 可由协议升级/错误服务产生，Suricata failed/skipped 可由短流和单向流产生，App-ID 可在 session 中变化且受解密/签名覆盖限制。所列 15 分钟/24 小时窗口是工程起点；需要以当地 canary、PCAP replay 和 legitimate custom services 校准。
+        en: >-
+          Zeek, Suricata, and PAN-OS documentation establishes implementable fields and controls, not detection rates or malicious intent. Zeek analyzer failure can arise from protocol upgrades or misconfigured services, Suricata failed or skipped can arise from short and one-direction flows, and App-ID can change during a session and depends on decryption and signature coverage. The stated fifteen-minute and twenty-four-hour windows are engineering starting points requiring calibration with local canaries, PCAP replay, and legitimate custom services.
+      - zh: >-
+          2012 study directly demonstrates port-based malware/TLS misclassification and content-validation value, but its samples, TLS ecosystem and IDS are old;只用于 causal support，不用于 current prevalence/threshold。Proprietary encryption may prevent actual semantics recovery; protocol emulation can prove a known family response but probing live C2 has legal/operational constraints and cannot be assumed available. Absence of semantic parse never proves absence or presence of T1571.
+        en: >-
+          The 2012 study directly demonstrates port-based malware and TLS misclassification and the value of content validation, but its samples, TLS ecosystem, and IDS are old. It supports causality rather than current prevalence or thresholds. Proprietary encryption may prevent recovery of actual semantics. Protocol emulation can prove a known-family response, but probing live C2 has legal and operational constraints and cannot be assumed available. Absence of semantic parsing proves neither absence nor presence of T1571.
+  rejected_mechanisms:
+    - mechanism_ref: NM-ST
+      reason:
+        zh: 改变 port 不必在时间/空间分散 trace；多端点/轮换由其他技术研究，当前无独立释痕证据。
+        en: Changing port does not inherently distribute traces across time or space. Multiple endpoints and rotation belong elsewhere and current evidence lacks an independent dilution mechanism.
+    - mechanism_ref: NM-DO
+      reason:
+        zh: Port mismatch 不必改变 payload representation；encoding/encryption/encapsulation 由 T1132/T1573/T1572 负责。
+        en: Port mismatch need not change payload representation; encoding, encryption, and encapsulation belong to T1132, T1573, and T1572.
+  open_questions:
+    - 主 Agent在正式 integration 中保持 subtechnique_taxonomy.coverage=none-justified；不要用 deferred 表示已经完成且无 formal child 的结论。
+    - REF-000625 locator 需扩展 T1571 固定 19.1 parent；不得重复 STIX URL。
+    - REF-001041 可复用 EVE common flow fields；app_proto_expected/orig/ts/tc 应由 B5 新 Suricata schema REF 支持，避免过度扩展原 locator。
+    - 若正式 Web 页面把“非标准端口”理解为 rare numeric port，应在 bilingual definition 中显著展示 environment expected_service 与 four-layer gate，防止回退到 port-number IOC。
+integration:
+  status: pending
+  resolutions: []

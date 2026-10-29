@@ -1,0 +1,50 @@
+schema_version: "2.0.0"
+type: detection-analytic
+id: NJA-000211
+strategy_ref: DET-000190
+name: {zh: 运行内存—可信映像差分分析, en: Running-Memory to Trusted-Image Differential Analytic}
+summary: {zh: 识别闪存映像保持可信而运行内存代码、模块或函数被即时修改并改变设备安全结果的情况。, en: "Identify a trusted flash image whose running-memory code, modules, or functions are changed in place and alter device security outcomes."}
+domains: [enterprise]
+platforms: [Network Devices]
+logic:
+  paragraphs:
+    - zh: 为每台设备保存型号、boot_id、可信厂商映像 digest/签名、flash image hash、boot target、版本输出和加载模块/函数 map。采集 AAA/CLI/config 事件中 debug、memory write、troubleshooting、module load 或异常命令的 actor/session/time。通过受支持的远程证明、内存页摘要、core dump 或原厂取证工具取得同一 boot_id 的 running_image_hash、关键函数/模块 hash 与内存区域权限，并映射回可信映像对应区段。
+      en: Retain device model, boot_id, trusted vendor image digest or signature, flash-image hash, boot target, version output, and loaded module or function map. From AAA, CLI, and configuration audit, collect actor, session, and time for debug, memory-write, troubleshooting, module-load, or anomalous commands. Use supported remote attestation, memory-page digests, core dumps, or vendor forensics to obtain running_image_hash, critical function or module hashes, and memory-region permissions for the same boot_id and map them back to trusted-image sections.
+    - zh: flash/boot target 与批准映像一致而运行区段稳定不同，且差异连接未批准 writer 或恶意模块，并导致流量复制、认证绕过、遥测/完整性测试失败等结果时输出 runtime_image_mutation。只见单次内存差异但设备崩溃/诊断上下文明确，输出 diagnostic_change；没有功能结果时输出 integrity_anomaly。重载后差异消失提高 runtime-only 置信度，但不能为了验证而先重启销毁证据。
+      en: Emit runtime_image_mutation when flash and boot target match the approved image, a stable running section differs, the difference joins an unapproved writer or malicious module, and an outcome such as traffic duplication, authentication bypass, or failed telemetry or integrity canary follows. A one-time memory difference under a clear crash or diagnostic context is diagnostic_change, while missing functional outcome yields integrity_anomaly. Disappearance after reload raises runtime-only confidence, but defenders must not reboot first and destroy evidence merely to test it.
+data_requirements:
+  - source_type: trusted-network-image-baseline
+    name: {zh: 可信厂商与闪存映像基线, en: Trusted Vendor and Flash-Image Baseline}
+    channel: Vendor image repository and device inventory
+    required_fields: [timestamp, device_id, model, approved_version, approved_image_hash, signature_status, flash_image_hash, boot_target, boot_id]
+  - source_type: device-aaa-cli-audit
+    name: {zh: 网络设备 AAA 与 CLI/调试审计, en: Network Device AAA and CLI or Debug Audit}
+    channel: TACACS RADIUS or device audit
+    required_fields: [timestamp, device_id, actor_id, session_id, source_ip, command_or_operation, privilege_level, result, approval_id]
+  - source_type: running-memory-integrity
+    name: {zh: 运行内存、模块与 core dump 完整性, en: Running Memory Module and Core-Dump Integrity}
+    channel: Vendor runtime attestation or forensic acquisition
+    required_fields: [timestamp, device_id, boot_id, running_image_hash, region_or_module_id, memory_hash, expected_hash, memory_permissions, acquisition_method]
+  - source_type: network-device-functional-outcome
+    name: {zh: 网络设备安全与观察功能结果, en: Network Device Security and Observation Function Outcome}
+    channel: Independent network and control canary
+    required_fields: [timestamp, device_id, boot_id, control_id, expected_result, observed_result, traffic_or_auth_correlation_id]
+observables:
+  - {zh: flash hash 与批准映像一致但同 boot_id 的运行内存/函数 hash 不同, en: Flash hash matches the approved image while running memory or function hash differs under the same boot_id}
+  - {zh: 未批准 debug 或内存写操作与运行差异时间相邻, en: An unapproved debug or memory-write operation is temporally adjacent to the running differential}
+  - {zh: 独立流量、认证或遥测 canary 在差异后产生异常结果, en: An independent traffic authentication or telemetry canary yields an anomalous result after the difference}
+correlation:
+  window: {zh: 从可疑 CLI/调试前一小时到当前 boot_id 结束，并在重载前保存取证 acquisition。, en: "Correlate one hour before suspicious CLI or debug activity through the end of the current boot_id and preserve forensic acquisition before reload."}
+  dimensions: [device_id, boot_id, actor_id, session_id, approved_image_hash, running_image_hash, region_or_module_id, control_id, time]
+false_positives:
+  - {zh: 经批准的热补丁、原厂诊断、故障注入或内存纠错使运行代码与闪存暂时不同, en: "Approved hot patch, vendor diagnostics, fault injection, or memory correction temporarily changes running code from flash"}
+  - {zh: 取证工具或符号映射版本错误产生无法复现的 hash 差, en: Forensic-tool or symbol-map version mismatch creates a nonreproducible hash difference}
+blind_spots:
+  - {zh: 设备不支持内存证明或 core dump 被攻击者清除时，只能依赖功能侧信号, en: Devices without memory attestation or with attacker-cleared core dumps leave only functional side signals}
+  - {zh: 受侵内核/设备 OS 可以伪造同权的 version 和 memory output, en: A compromised kernel or device OS can forge co-authorized version and memory output}
+tuning_guidance:
+  paragraphs:
+    - zh: 按型号、版本和 boot_id 维护内存 map 与允许热补丁清单，只有可复现区段差和独立结果才升级。诊断账户白名单绑定命令、设备、窗口与工单，不能永久放行 debug 权限；先保全内存和会话，再在隔离条件下重载比较。
+      en: Maintain memory maps and allowed hot-patch inventories by model, version, and boot_id and elevate only reproducible section differences with independent outcomes. Diagnostic-account allowlists bind command, device, window, and ticket rather than permanently allowing debug authority. Preserve memory and session first, then reload under isolation for comparison.
+evidence_refs: [REF-000467, REF-000720]
+lifecycle: {status: review, version: "1.0.0", created: "2026-09-23", modified: "2026-09-23", contributors: [Niji Matrix Research], reviewers: []}

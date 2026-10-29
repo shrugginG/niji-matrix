@@ -1,0 +1,80 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000124
+strategy_ref: DET-000115
+name:
+  zh: 邮件显示来源—传输认证差分
+  en: Email Displayed-Provenance–Transport-Authentication Differential
+summary:
+  zh: 输出显示 From 与 MAIL FROM、DKIM 域、连接基础设施或 DMARC 对齐不一致且仍被投递的社会工程邮件。
+  en: Produce social-engineering mail whose displayed From conflicts with MAIL FROM, DKIM domain, connecting infrastructure, or DMARC alignment and is still delivered.
+domains:
+- enterprise
+platforms:
+- Office Suite
+- SaaS
+logic:
+  paragraphs:
+  - zh: 从原始消息与 SMTP trace 解析显示 From、MAIL FROM、Return-Path、Reply-To、DKIM d=、连接 IP、SPF/DKIM/DMARC/ARC 结果、收件策略与最终动作，并与合法代理发送和合作方基线比较。显示身份借用受信域，但传输/签名域不对齐、DMARC 缺失或失败且消息仍被投递，随后出现回复、链接、凭据或披露结果时，输出 email_transport_provenance_forgery。
+    en: Parse displayed From, MAIL FROM, Return-Path, Reply-To, DKIM d=, connecting IP, SPF, DKIM, DMARC, and ARC results, recipient policy, and final action from raw messages and SMTP traces and compare them with legitimate delegated-sender and partner baselines. Emit email_transport_provenance_forgery when displayed identity borrows a trusted domain, transport or signing domains do not align, DMARC is absent or fails and the message is still delivered, and a reply, link, credential, or disclosure outcome follows.
+data_requirements:
+- source_type: raw-mail-authentication-and-delivery
+  name:
+    zh: 原始邮件、域认证与投递追踪
+    en: Raw mail, domain authentication, and delivery trace
+  channel: null
+  required_fields:
+  - event.timestamp
+  - message.id
+  - recipient.id
+  - header.from
+  - smtp.mail_from
+  - header.return_path
+  - header.reply_to
+  - dkim.signing_domain
+  - network.source_ip
+  - spf.result
+  - dkim.result
+  - dmarc.result
+  - dmarc.policy
+  - arc.result
+  - delivery.action
+  - user.action
+  - outcome
+observables:
+- zh: 显示 From 为受信组织域，但 MAIL FROM 和 DKIM 域均不对齐且 DMARC 失败后仍投递
+  en: Displayed From uses a trusted organizational domain while neither MAIL FROM nor DKIM domain aligns and delivery still occurs after DMARC failure
+- zh: Reply-To 或连接基础设施与显示身份无历史关系，用户随后回复、访问链接或披露信息
+  en: Reply-To or connecting infrastructure has no historical relationship with displayed identity and the user then replies, follows a link, or discloses information
+correlation:
+  window:
+    zh: 覆盖一次 SMTP 接收、策略判定、最终投递与直接用户结果，并按 DMARC 汇总报告保留跨活动发送基础设施；具体期限依据邮件追踪和用户交互保留设定。
+    en: Cover one SMTP receipt, policy decision, final delivery, and direct user outcome and retain sending infrastructure across campaigns through aggregate DMARC reporting. Set the concrete limit from message-trace and user-interaction retention.
+  dimensions:
+  - message.id
+  - recipient.id
+  - header.from
+  - smtp.mail_from
+  - dkim.signing_domain
+  - network.source_ip
+false_positives:
+- zh: 合法邮件转发、邮件列表、营销或 CRM 服务、合作方网关改写、共享发送基础设施和错误域配置
+  en: Legitimate forwarding, mailing lists, marketing or CRM services, partner-gateway rewriting, shared sending infrastructure, and incorrect domain configuration
+blind_spots:
+- zh: 原始头被网关移除、SMTP trace 不可得、ARC 链未保留、外部个人邮箱或用户结果未记录
+  en: Raw headers removed by a gateway, unavailable SMTP trace, unretained ARC chain, external personal mailboxes, or unrecorded user outcomes
+tuning_guidance:
+  paragraphs:
+  - zh: 为合法代理发送建立 From—MAIL FROM—DKIM—ARC 组合和 owner，优先强制 DMARC reject/quarantine 并审查临时 allow。严重度依赖受信显示域、认证/对齐差分、宽松投递与社会工程结果，不按单一 SPF 或 DKIM 失败告警。
+    en: Baseline legitimate delegated sending with From-to-MAIL-FROM-to-DKIM-to-ARC combinations and owners, prioritize enforced DMARC reject or quarantine, and review temporary allows. Base severity on a trusted displayed domain, authentication or alignment differential, permissive delivery, and social-engineering outcome rather than one SPF or DKIM failure.
+evidence_refs:
+- REF-000404
+- REF-000437
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-09-21'
+  modified: '2026-09-21'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

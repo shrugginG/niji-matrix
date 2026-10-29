@@ -1,0 +1,138 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000279
+strategy_ref: DET-000225
+name:
+  zh: 敏感读取到介质写入及跨系统接续分析
+  en: Sensitive-Read to Media-Write and Cross-System Continuation Analytic
+summary:
+  zh: 重建源读取、介质写入、卸载保管、异地接入和接收结果的完整链。
+  en: Reconstruct source read, media write, unmount and custody, later attachment, and receiver outcome.
+domains:
+- enterprise
+platforms: []
+logic:
+  paragraphs:
+  - zh: 将设备接入和断开规范化为组织介质资产、系统所见序列号或设备 ID、卷标识、盘符、主机与会话起止。介质挂载期间，把已配置 SACL 或 EDR 的敏感对象读取连接到同一进程或后继复制进程在该盘符上的文件创建、重命名和可得摘要；只有写入成功且随后出现卸载、拔出或批准台账之外的保管变化，才输出父项候选。对跨观察域子项，在数日到数周窗口内寻找同一资产或内容摘要于不同主机/区域再次接入，并连接接收侧读取、复制、代理上传或明确交付记录；缺少接收侧时保留“已写入并离区”的证据级别，不声称看见最终取用。
+    en: Normalize device attachment and disconnection to organizational media asset, observed serial or device ID,
+      volume identity, drive letter, host, and session bounds. During the mount session, join sensitive-object reads
+      from configured SACL or EDR telemetry to file creation, rename, and available digest on that drive by the
+      same or successor copy process. Produce a parent candidate only when a successful write is followed by unmount,
+      removal, or custody change outside the approved ledger. For the cross-observation child, search over days
+      to weeks for the same asset or content digest on a different host or zone and join receiver-side reads, copies,
+      proxy uploads, or an explicit delivery record. If the receiver is absent, retain only the “written and exited
+      the zone” evidence level rather than claiming final retrieval was observed.
+data_requirements:
+- source_type: media-device-event
+  name:
+    zh: 介质接入、断开与设备身份
+    en: Media Attachment, Disconnection, and Device Identity
+  channel: Microsoft Defender Device Control/DeviceEvents or equivalent endpoint device telemetry
+  required_fields:
+  - timestamp
+  - device-id
+  - action-type
+  - additional-fields.device-id
+  - additional-fields.serial-number
+  - additional-fields.drive-letter
+- source_type: endpoint-sensitive-object-access
+  name:
+    zh: 敏感对象读取
+    en: Sensitive Object Access
+  channel: EDR file-access telemetry or Windows Security Event 4663 with deployment-validated SACLs
+  required_fields:
+  - timestamp
+  - device-id
+  - process-id-or-unique-key
+  - user-or-logon-id
+  - object-name
+  - access-type
+- source_type: media-file-activity
+  name:
+    zh: 介质路径文件活动
+    en: Media-Path File Activity
+  channel: Microsoft Defender XDR DeviceFileEvents or equivalent endpoint file telemetry
+  required_fields:
+  - timestamp
+  - device-id
+  - action-type
+  - folder-path
+  - file-name
+  - initiating-process-file-name
+  - initiating-process-unique-id
+- source_type: receiver-network-or-upload
+  name:
+    zh: 接收侧外联或上传
+    en: Receiver-Side Egress or Upload
+  channel: DeviceNetworkEvents plus proxy/upload audit where available
+  required_fields:
+  - timestamp
+  - device-id
+  - initiating-process-unique-id
+  - remote-ip-or-url
+  - action-type
+  - upload-result
+- source_type: media-transfer-ledger
+  name:
+    zh: 介质保管与内容清单
+    en: Media Custody and Content Manifest
+  channel: null
+  required_fields:
+  - asset-id
+  - observed-serial
+  - custodian
+  - source-host
+  - destination-host-or-zone
+  - checkout-time
+  - checkin-time
+  - approver
+  - content-manifest
+observables:
+- zh: 敏感对象被写入可携介质，随后卸载并在不同主机或区域接入
+  en: A sensitive object is written to portable media, then unmounted and attached in another host or zone
+- zh: 介质、保管人、内容摘要和接收侧读取在同一次流转中一致
+  en: Medium, custodian, content digest, and receiver-side read agree within one transfer trip
+correlation:
+  window:
+    zh: 覆盖一次完整保管周期，默认三十日，并保留每次接入/卸载的严格顺序。
+    en: Cover one complete custody cycle, thirty days by default, while preserving strict order of every attach
+      and unmount.
+  dimensions:
+  - organizational-media-asset
+  - observed-serial
+  - volume-id
+  - source-device-id
+  - destination-device-id
+  - content-digest-when-available
+  - initiating-process-unique-id
+  - custodian
+  - transfer-record
+false_positives:
+- zh: 批准离线补丁、备份、取证、设备维护和跨区数据交换
+  en: Approved offline patching, backup, forensics, device maintenance, and cross-zone data exchange
+blind_spots:
+- zh: 隔离系统无代理，保管台账缺失或介质序列号伪造
+  en: An air-gapped system has no agent, custody ledger is missing, or media serial is spoofed
+- zh: 离区后攻击者接收机不可观察
+  en: The adversary receiver is unobservable after media leaves the zone
+tuning_guidance:
+  paragraphs:
+  - zh: 按介质资产、用户、源目标区和批准内容建立精确台账；对备份或取证例外限定工单、时间、进程、内容摘要和目的区，不因设备常用或序列号获准而永久忽略敏感读取后的新写入。至少保留到最长合法轮转周期结束。
+    en: Baseline exact media asset, user, source and destination zones, and approved content. Scope backup or forensic
+      exceptions to a ticket, time, process, content digest, and destination zone. Do not permanently suppress new
+      post-sensitive-read writes because a device is common or its serial approved. Retain events through the longest
+      legitimate rotation period.
+evidence_refs:
+- REF-000938
+- REF-000596
+- REF-000597
+- REF-000475
+- REF-000604
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-10-04'
+  modified: '2026-10-04'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

@@ -1,0 +1,132 @@
+schema_version: 2.0.0
+type: evasion-subtechnique
+id: NJS-0075-002
+parent_ref: NJT-0075
+name:
+  zh: 观察窗口外延期激活
+  en: Observation-Window-Deferred Activation
+summary:
+  zh: 攻击者把任务登记与首次关键执行分隔到沙箱、triage 或默认 SIEM 关联窗口之外
+  en: Adversaries separate task registration and first critical execution beyond sandbox triage or default SIEM correlation
+    windows
+aliases:
+- Long-Horizon Deferred Scheduled Execution
+lineage:
+  attck_subtechnique_inherited: false
+definition_and_concept:
+  paragraphs:
+  - zh: 观察窗口外延期激活是攻击者登记有效调度对象，却把首次下载、解密、载荷启动或其他关键动作安排在预期沙箱、初始响应或日志关联窗口结束之后。延迟可以由绝对时间、跨日计数、重启次数、登录、日历或 controller 补跑实现。直接目标是让注册时的发起者和最终执行时的调度器进程不在同一观察片段出现；稳定变量是相对于防守窗口的有意时间距离，而不是任何较长计划。
+    en: Observation-Window-Deferred Activation registers a valid scheduled object but places first download decryption payload
+      start or another critical action after an expected sandbox initial-response or log-correlation window. Delay may use
+      absolute time day counters reboot counts logon calendars or controller catch-up. Its objective is to prevent the registrant
+      at creation and scheduler process at final execution from appearing in one observation segment. The stable variable
+      is intentional temporal distance relative to defender windows rather than any long schedule.
+stealth_characteristics:
+  paragraphs:
+  - zh: 观察窗口外延期激活在创建时可能只显示无害任务，后续载荷则由调度器在数小时或数日后启动，原始 dropper、用户会话或告警工单已经结束。Nitrokod 通过多次跨日重启和十五天任务延迟使沙箱无法观察后续阶段，并在创建任务后清除日志，直接体现时间与保留耦合。短周期检测因此把两端误认为独立事件。
+    en: Observation-Window-Deferred Activation may show only an inert task at creation before the scheduler launches the payload
+      hours or days later after the original dropper user session or alert case has ended. Nitrokod used restarts across days
+      and a fifteen-day task delay to outlast sandboxes and cleared logs after task creation directly demonstrating coupling
+      between time and retention. Short-window detection therefore treats the two ends as unrelated events.
+  - zh: 任务定义、next-run、trigger_time、last-run、稳定 object ID、重启/登录和最终进程仍提供可关联痕迹。真正的长期保留、按未来触发预注册 hunt、沙箱时间推进和对未执行任务的动作分析会削弱匿迹；离线主机补跑、维护冻结和正常月度任务也会造成长间隔，不能单独定性。
+    en: Task definition next-run trigger time last-run stable object ID reboot or logon and final process remain correlatable.
+      Long retention pre-registration hunts on future triggers sandbox time advancement and action analysis of dormant tasks
+      weaken stealth. Offline catch-up maintenance freezes and legitimate monthly jobs also create long gaps and cannot establish
+      malice alone.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 本轴要求有证据表明攻击者选择的延迟针对或实际跨越防守观察窗口，并且同一任务或任务链最终产生执行。正常定期备份、RandomizedDelay、CronJob missed-schedule 补跑和从未运行的任务排除。任务若创建后立即触发并删除归
+      NJS-0075-004；持续存在但从管理视图隐藏归 NJS-0075-003；仅在维护时段运行而主要效果是外观合形归 NJS-0075-001。
+    en: The axis requires evidence that adversary-selected delay targets or actually crosses a defender observation window
+      and that the same task or task chain eventually executes. Normal periodic backup RandomizedDelay CronJob catch-up and
+      tasks that never run are excluded. Immediate trigger and deletion belongs to NJS-0075-004 durable objects hidden from
+      management views to NJS-0075-003 and maintenance-window execution whose primary effect is conformity to NJS-0075-001.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: 攻击者在投递恶意安装器后把矿工、C2 或第二阶段安排到数日以后，或在入侵和破坏行动之间预置任务，用以避开样本沙箱、值班响应和短保留 EDR。跨重启计数适合真实用户设备，日历/at 适合绝对时间，systemd/Kubernetes
+        可借启动补跑或 controller 计划保持最终执行。
+      en: Adversaries use the axis after malicious installation to schedule miners C2 or second stages days later or preposition
+        tasks between intrusion and disruptive action to avoid sample sandboxes shift response and short-retention EDR. Reboot
+        counters suit real-user devices absolute calendars or at suit selected times and systemd or Kubernetes catch-up semantics
+        can preserve eventual execution.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者需要估计沙箱和响应窗口、可靠保存状态，并容忍目标在延迟期间被修复、离线或重启。为了保证最终执行，可能组合多个任务、注册表计数或 catch-up 设置，这会增加对象和状态痕迹；过长延迟降低行动及时性，过短则不能跨越窗口。
+        en: The adversary needs estimates of sandbox and response windows reliable state storage and tolerance for remediation
+          downtime or reboot during delay. Multiple tasks registry counters or catch-up settings may improve eventual execution
+          but add objects and state traces. Excessive delay reduces operational timeliness while insufficient delay fails
+          to cross the window.
+    defender_model:
+      paragraphs:
+      - zh: 防守方需要在任务创建时解析未来触发和动作，将 object ID 加入长周期 watchlist，并在重启、登录和 controller reconciliation 后连接首次/关键运行。若日志保留短于延迟或终端 ID
+          在重装后变化，创建者到进程的链会丢失；只在任务运行时告警无法判断早期来源。
+        en: Defenders need to parse future triggers and actions at task creation add object IDs to long-term watchlists and
+          join first or critical runs after reboots logons and controller reconciliation. If retention is shorter than delay
+          or device identity changes after rebuild the creator-to-process chain is lost. Alerting only when the task runs
+          cannot recover early origin.
+stealth_mechanisms:
+- mechanism_ref: NM-ST
+  role: primary
+  summary:
+    zh: 关键载荷在创建者离开观察窗口后才运行
+    en: Critical payload runs after its creator leaves the observation window
+  analysis:
+    paragraphs:
+    - zh: 攻击者把任务创建、日志清理和关键载荷安排在不同日期或重启周期，使沙箱和短期调查只看到一段链，形成时空释痕。Nitrokod 的十五天下载和后续跨日解压/执行是直接实例。稳定任务 ID、未来触发索引与长保留可重新连接事件，而任意延迟本身不能证明匿迹意图。
+      en: The adversary places task creation log clearing and critical payload on different days or reboot cycles so sandboxes
+        and short investigations see one chain segment creating Spatiotemporal Trace Dilution. Nitrokod's fifteen-day download
+        and later-day extraction and execution is a direct example. Stable task IDs future-trigger indexes and long retention
+        reconnect events while arbitrary delay alone does not prove stealth intent.
+  evidence_refs:
+  - REF-000260
+  confidence: high
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000087
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000088
+evidence:
+  claim_refs:
+  - CLM-000286
+  - CLM-000460
+  - CLM-000466
+  - CLM-000469
+  - CLM-000470
+  - CLM-000572
+  - CLM-000573
+  - CLM-000574
+  case_refs:
+  - CASE-000091
+  reference_refs:
+  - REF-000127
+  - REF-000260
+  - REF-000263
+  - REF-000264
+  - REF-000265
+  - REF-000266
+  - REF-000372
+  - REF-000373
+  - REF-000374
+  - REF-000375
+research:
+  limitations:
+    paragraphs:
+    - zh: Nitrokod 明确把多日延期用于沙箱规避，但这是单一恶意生态案例；许多企业任务合法按月运行或在离线后补跑。跨平台官方文档证明调度语义但不证明攻击意图，因此部署时必须同时要求未经批准的定义/创建者和异常执行结果，且按照本地保留窗口定义“观察窗口外”。
+      en: Nitrokod explicitly used multi-day delay for sandbox evasion but represents one malware ecosystem and many enterprise
+        tasks legitimately run monthly or catch up after downtime. Cross-platform documentation establishes scheduler semantics
+        rather than adversary intent so deployments must also require unapproved definition or creator and anomalous execution
+        outcome and define outside the observation window relative to local retention.
+lifecycle:
+  status: review
+  version: 2.2.0
+  created: '2026-09-10'
+  modified: '2026-09-19'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

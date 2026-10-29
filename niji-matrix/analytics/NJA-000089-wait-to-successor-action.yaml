@@ -1,0 +1,96 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000089
+strategy_ref: DET-000104
+name:
+  zh: 静默等待到后继动作差分
+  en: Quiescent Wait-to-Successor Differential
+summary:
+  zh: 输出休眠、计时器或时间门控与等待后首个敏感行为的长周期关系。
+  en: Produce long-horizon relationships between sleep, timer or time gating, and the first sensitive behavior after waiting.
+domains:
+- enterprise
+platforms:
+- Windows
+- Linux
+- macOS
+logic:
+  paragraphs:
+  - zh: 按 sample hash 和 process start key 记录等待操作、计时器对象、到期时间、时钟比较、进程状态与等待前输入。在同一运行实体上连接等待后首个载荷、通信、发现或破坏动作，并与同类应用业务依赖和正常等待分布比较。同一样本在正常时间与一致加速时间下结果显著不同，且无业务依赖等待后出现恶意结果时，输出 quiescent_delayed_successor。
+    en: Record wait operations, timer objects, due time, clock comparison, process state, and pre-wait input by sample hash
+      and process start key. Join the first payload, communication, discovery, or impact action after waiting within the same
+      entity and compare against peer business dependencies and normal wait distributions. Emit quiescent_delayed_successor
+      when one sample differs materially under normal versus coherently accelerated time and a malicious outcome follows waiting
+      without a business dependency.
+data_requirements:
+- source_type: process-wait-and-timer-telemetry
+  name:
+    zh: 进程等待、计时器与时钟遥测
+    en: Process wait, timer, and clock telemetry
+  channel: null
+  required_fields:
+  - event.timestamp
+  - host.id
+  - sample.hash
+  - process.start_key
+  - operation
+  - wait.started_at
+  - wait.ended_at
+  - timer.id
+  - timer.due_time
+  - clock.type
+  - process.state
+- source_type: successor-action-telemetry
+  name:
+    zh: 后继敏感动作遥测
+    en: Successor sensitive-action telemetry
+  channel: null
+  required_fields:
+  - event.timestamp
+  - host.id
+  - sample.hash
+  - process.start_key
+  - action.type
+  - payload.stage
+  - target
+  - outcome
+observables:
+- zh: 长时间低事件密度等待后出现首个敏感动作
+  en: A first sensitive action appears after a long low-event-density wait
+- zh: 同一样本在正常与一致加速时间下的后继结果不同
+  en: The same sample has different successor outcomes under normal and coherently accelerated time
+correlation:
+  window:
+    zh: 覆盖运行实体从等待前输入到等待后首个敏感动作的完整寿命；环境按样本类型、业务等待基线和分析协议记录具体期限。
+    en: Cover the complete entity lifetime from pre-wait input through the first sensitive action after waiting. Record the
+      concrete limit by sample class, business-wait baseline, and analysis protocol.
+  dimensions:
+  - host.id
+  - sample.hash
+  - process.start_key
+  - timer.id
+  - clock.type
+  - action.type
+false_positives:
+- zh: 合法退避、同步、用户等待、批处理窗口、维护时间和长会话应用
+  en: Legitimate backoff, synchronization, user waiting, batch windows, maintenance timing, and long-session applications
+blind_spots:
+- zh: 等待期间进程身份丢失、计时器状态不可见、沙箱过早结束或多时钟加速不一致
+  en: Process identity lost during waiting, invisible timer state, sandbox ending early, or inconsistent acceleration across clocks
+tuning_guidance:
+  paragraphs:
+  - zh: 按应用角色和业务依赖建立等待分布，不使用统一时长阈值。优先关联等待前输入和等待后敏感结果，并在沙箱中同步推进墙钟、单调时钟和计时器后再解释差分。
+    en: Baseline wait distributions by application role and business dependency rather than use one duration threshold. Prioritize
+      joining pre-wait input to post-wait sensitive outcome and interpret differential only after wall clock, monotonic clock,
+      and timers are advanced coherently in the sandbox.
+evidence_refs:
+- REF-000387
+- REF-000418
+lifecycle:
+  status: review
+  version: 0.2.0
+  created: '2026-09-19'
+  modified: '2026-09-21'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

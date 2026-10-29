@@ -1,0 +1,136 @@
+schema_version: 2.0.0
+type: evasion-subtechnique
+id: NJS-0156-001
+parent_ref: NJT-0156
+name:
+  zh: 委托执行式数据销毁
+  en: Delegated-Execution Data Destruction
+summary:
+  zh: 攻击者改写销毁规则，让存储服务稍后删除目标对象，使原始操作者与损失事件分离。
+  en: An adversary changes a destructive rule so a storage service later deletes target objects, separating the
+    original operator from the loss event.
+aliases: []
+lineage:
+  attck_subtechnique_inherited: false
+definition_and_concept:
+  paragraphs:
+  - zh: 委托执行式数据销毁是攻击者更改会被平台自动消费的对象删除规则，将后续数据移除交给存储服务执行。直接影响仍是业务对象无法按原用途读取；分类变量是规则写入者与实际删除者在身份、时点和遥测平面上的分离，不是对象存储介质或生命周期产品功能本身。
+    en: Delegated-Execution Data Destruction is an adversary change to an object-deletion rule automatically consumed
+      by a platform, leaving subsequent data removal to the storage service. The impact remains loss of business
+      use; the classification variable is separation of rule writer and actual deleter across identity, timing,
+      and telemetry plane, not the storage medium or lifecycle feature itself.
+  - zh: 目前有结论级支持的实现是对象存储生命周期配置：一个已授权配置写入可以覆盖许多对象，而结果由服务异步产生。不能从这一实现推断所有策略引擎都有相同审计语义，正式范围由可证明的决策到执行因果链限定。
+    en: 'The conclusion-level supported implementation is object-storage lifecycle configuration: one authorized
+      configuration write can cover many objects, while the service creates outcomes asynchronously. This example
+      does not establish identical audit semantics across policy engines. A demonstrable decision-to-execution chain
+      bounds the formal scope.'
+stealth_characteristics:
+  paragraphs:
+  - zh: 委托执行式数据销毁把一次攻击者规则变更转化成后来由服务主体产生的过期事件。仅按对象删除 API 告警的防守方可能看不到逐对象的攻击者调用，或从结果事件只读到服务身份；历史规则、变更身份、生命周期原因、对象键与版本仍能恢复归因。
+    en: Delegated-Execution Data Destruction turns one adversary rule change into later expiry events under a service
+      principal. Defenders alerting only on object-delete APIs may see no per-object attacker call, or only the
+      service identity in result events. Historical rules, change identity, lifecycle reason, object key, and version
+      can still restore attribution.
+  - zh: 服务调度还使配置写入与损失落在不同观察窗口，造成事前风险与事后故障看似分离。事件不会必然缺失：开启了 CloudTrail 生命周期数据事件、EventBridge 或通知并保存规则快照时，这种分离可被跨平面关联反制。
+    en: 'Service scheduling can place configuration change and loss in different observation windows, making a pre-impact
+      risk and later outage appear unrelated. Events are not necessarily absent: CloudTrail lifecycle data events,
+      EventBridge or notifications, and preserved rule snapshots allow cross-plane correlation to counter the split.'
+scope_boundary_definition:
+  paragraphs:
+  - zh: 只有攻击者更改了已启用规则，使关键对象或版本更早到期，并能连接之后由平台执行的删除，才纳入本项。正常保留到期、获批变更、直接 DeleteObject 和单独删除备份均不属于它。对象返回 404 时必须检查删除标记与旧版本，不能自动宣称永久损失。
+    en: Include only an adversary change to an enabled rule that makes critical objects or versions expire earlier
+      and can be joined to later platform deletion. Ordinary retention expiry, approved changes, direct DeleteObject,
+      and separate backup deletion fall outside this child. A 404 requires checking delete markers and prior versions
+      rather than assuming permanent loss.
+  - zh: 该子项不按云服务商、桶类型、前缀或保留天数拆分；若攻击者仅设置规则而没有对象达到条件，证据最多支持企图或前期配置异常。与 T1486 的客户密钥服务端重加密不同，本项的结果是服务删除或隐藏对象，不是以新密钥保留密文。
+    en: The child is not split by provider, bucket type, prefix, or retention days. If no object becomes eligible
+      after the rule change, evidence supports an attempt or pre-impact configuration anomaly at most. Unlike T1486
+      customer-key service re-encryption, this outcome removes or hides objects rather than preserving ciphertext
+      under a new key.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: 攻击者拥有关键业务桶的生命周期配置权却未必有逐对象删除权时，可以扩大前缀或标签过滤器、压短当前或非当前版本到期条件，让服务在下一次评估中移除目标。防守方按用户发起的大量删除请求设阈值时，规则变更可能先于值班窗口而服务事件后来才出现。
+      en: An adversary with lifecycle configuration authority over a critical business bucket, but not necessarily
+        per-object delete rights, can broaden prefix or tag filters or shorten current or noncurrent version expiry
+        so the service removes targets at its next evaluation. A defender thresholding mass user-initiated delete
+        calls may see the rule change in one shift and service outcomes in another.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者需要改写生命周期规则的权限、知道关键对象过滤范围并容忍非即时结果。版本控制、对象锁、不同对象的资格状态和及时回滚都限制影响；恶意规则若被审计或审批拦截，结果可能尚未发生。
+        en: The attacker needs lifecycle-rule edit authority, knowledge of critical object filters, and tolerance
+          for delayed results. Versioning, Object Lock, object eligibility, and prompt rollback limit impact. If
+          audit or approval catches the malicious rule, an outcome may not yet have occurred.
+    defender_model:
+      paragraphs:
+      - zh: 防守方应保留 CloudTrail 管理事件、规则前后配置快照、生命周期结果事件、版本清单和受影响业务对象清单，按桶、过滤器、规则版本和时间连接。仅保留对象数据事件无法重建写规则主体；仅有规则写入也不能断言对象已损失。服务异步执行和缺失通知会降低精确关联度。
+        en: Defenders should retain CloudTrail management events, before-and-after rule snapshots, lifecycle result
+          events, version inventories, and lists of affected business objects, joining by bucket, filter, rule revision,
+          and time. Object data events alone cannot reconstruct the rule writer; a rule write alone does not prove
+          object loss. Asynchronous service action and absent notifications reduce join precision.
+stealth_mechanisms:
+- mechanism_ref: NM-BT
+  role: primary
+  summary:
+    zh: 存储服务执行掩盖先前规则写入主体
+    en: Storage-service execution obscures the earlier rule writer
+  analysis:
+    paragraphs:
+    - zh: 攻击者扩大或提前对象到期规则，控制面记录其配置写入，随后存储服务在另一时间以服务身份产生删除或删除标记。只看结果事件的防守方失去原操作者和规则意图，跨平面归因成本上升；把规则差分、批准记录和生命周期原因连至对象版本即可恢复链条。
+      en: The adversary broadens or accelerates an object-expiry rule, leaving a control-plane configuration write.
+        Later, the storage service creates deletion or delete-marker events under its own identity. A defender seeing
+        only outcomes lacks the original operator and rule intent, raising cross-plane attribution cost; joining
+        rule diffs and approvals to lifecycle reasons and object versions restores the chain.
+  evidence_refs:
+  - REF-000648
+  - REF-000649
+  - REF-000650
+  - REF-000651
+  - REF-000513
+  confidence: medium
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000174
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000158
+evidence:
+  claim_refs:
+  - CLM-000779
+  - CLM-000780
+  case_refs: []
+  reference_refs:
+  - REF-000648
+  - REF-000649
+  - REF-000650
+  - REF-000651
+  - REF-000652
+  - REF-000653
+  - REF-000654
+  - REF-000655
+  - REF-000513
+research:
+  limitations:
+    paragraphs:
+    - zh: AWS 文档能确认服务执行、通知和版本结果，Palo Alto Networks 的分析支持恶意规则如何避开仅监视直接对象访问的逻辑；它不是已披露受害事件。尚不能声称实际受害者的业务损失、攻击者主观意图或通用漏检率，故不设子项案例引用。
+      en: AWS documents service execution, notifications, and version effects, while Palo Alto Networks' analysis
+        supports how a malicious rule can evade direct-object-access-only monitoring. It is not a disclosed victim
+        incident. Actual victim loss, subjective intent, and a general miss rate cannot be asserted, so this child
+        has no case reference.
+    - zh: 规则资格、执行延迟和是否产生永久删除因桶的版本与保留设置而异；管理事件字段和通知的规则标识也要在目标环境验证。若守方保留规则修订并观察服务事件，这一分类仍成立，但预期匿迹收益会显著降低。
+      en: Rule eligibility, execution lag, and permanent removal vary with bucket version and retention settings.
+        Management-event fields and notification rule identifiers require validation in the target environment.
+        The taxonomy remains valid when defenders retain revisions and observe service events, but expected stealth
+        benefit falls substantially.
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-09-22'
+  modified: '2026-09-22'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

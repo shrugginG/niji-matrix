@@ -1,0 +1,172 @@
+schema_version: 2.0.0
+type: technique
+id: NJT-0097
+name:
+  zh: 操作系统前启动持久控制
+  en: Pre-OS Boot Persistence Control
+summary:
+  zh: 攻击者控制 OS 接管前的固件、启动状态或来源，并通过度量边界外放置或外部启动源重定向降低主机观察和来源关联。
+  en: Adversaries control firmware boot state or source before OS takeover and reduce host observation and provenance correlation
+    through placement outside an attestation boundary or external boot-source redirection.
+aliases:
+- Pre-OS Boot
+classification:
+  tactic_refs:
+  - TA0003
+  - TA0005
+  origin:
+    kind: attack-adapted
+    source_attack_id: T1542
+    source_attack_version: '19.1'
+  decision_ref: DEC-TA0003-T1542
+definition_and_concept:
+  paragraphs:
+  - zh: 操作系统前启动持久控制是攻击者修改系统/组件固件、MBR/VBR、EFI 分区、NVRAM/ROM monitor 或网络启动配置，使恶意代码在操作系统与主机传感器启动前执行，或让设备在启动时取得攻击者镜像。直接目标是把访问能力放到
+      OS 重装、磁盘恢复或普通端点处置不能覆盖的启动层。
+    en: Pre-OS Boot Persistence Control modifies system or component firmware, MBR or VBR, EFI partitions, NVRAM or ROM monitor,
+      or network-boot configuration so malicious code executes before the operating system and host sensors or the device
+      retrieves an adversary image at boot. Its direct objective is to place access capability in a boot layer not covered
+      by OS reinstall, disk recovery, or ordinary endpoint remediation.
+  - zh: 概念锚是 root of trust 到 OS 接管之间的持久代码、关键数据和来源谱系，不是硬件型号、固件/bootkit 名称或传输协议。主机软件二进制归 NJT-0087，运行中网络设备系统镜像修改归 T1601，OS 自启动归
+      NJT-0084，内部云/容器镜像归 NJT-0092。
+    en: The conceptual anchor is durable code, critical data, and provenance between the root of trust and OS takeover rather
+      than hardware model, firmware or bootkit label, or transfer protocol. Host software binaries belong to NJT-0087, modification
+      of a running network-device system image to T1601, OS autostart to NJT-0084, and internal cloud or container images
+      to NJT-0092.
+stealth_characteristics:
+  paragraphs:
+  - zh: 主机 EDR、文件完整性和 OS 日志通常在恶意启动代码之后才运行，因此可能只看到由已被控制环境呈现的正常状态。组件固件还可能不在平台测量/attestation 集合中；外部 netboot 则把本地 boot pointer、网络下载和实际运行
+      image 分散到不同设备和团队。两类变量分别制造测量覆盖缺口和来源关联断点。
+    en: Host EDR, file integrity, and OS logs commonly run after malicious boot code and may see only normal state presented
+      by an already controlled environment. Component firmware may also sit outside the platform measurement or attestation
+      set. External netboot separates a local boot pointer, network retrieval, and actual running image across devices and
+      teams. The variables respectively create a measurement-coverage gap and a provenance-correlation break.
+  - zh: flash/raw disk 写入、firmware update actor、EFI/boot hash、NVRAM/boot variables、TPM measurements、vendor signature、设备组件
+      inventory、TFTP/FTP/SCP 流量、image hash、reboot 和 OS 首个 driver/process 仍可恢复链条。合法固件更新、灾难恢复、PXE/TFTP 运维和设备换件是强反例。
+    en: Flash or raw-disk writes, firmware-update actor, EFI or boot hash, NVRAM or boot variables, TPM measurements, vendor
+      signature, component inventory, TFTP or FTP or SCP traffic, image hash, reboot, and first OS driver or process can still
+      recover the chain. Legitimate firmware update, disaster recovery, PXE or TFTP administration, and component replacement
+      are strong counterexamples.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 纳入攻击者控制的 OS 前启动代码、关键数据或来源状态，以及它在启动后恢复访问或使活动位于主机 OS 传感器与度量边界之外的结果。持久化语境要求启动后恢复访问；行动隐匿语境要求可证明的主机观察差异。两者都要求 boot object、measurement
+      或 source 与运行结果可关联。平台、固件类别、组件类型和网络协议不形成子项。
+    en: Scope includes adversary-controlled pre-OS boot code, critical data, or source state plus either restoration of access
+      after boot or activity operating outside host OS sensor and measurement boundaries. The Persistence context requires
+      restored post-boot access, while the Stealth context requires a demonstrable host-observation difference. Both require
+      a correlatable boot object, measurement or source, and runtime outcome. Platform, firmware class, component type, and
+      network protocol do not form children.
+  - zh: 仅发现固件漏洞而无修改、只破坏固件导致不可用、合法 unsigned legacy boot、运行后再修改 OS 组件或从内部镜像置备分别排除/归邻接。安全启动通过也不能单独证明安全，需确认测量范围实际覆盖目标组件和来源。
+    en: A firmware vulnerability without modification, destructive firmware corruption causing only unavailability, legitimate
+      unsigned legacy boot, post-boot OS component modification, or provisioning from an internal image is excluded or adjacent.
+      Secure-boot success alone does not prove safety; the measurement set must actually cover the target component and source.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: 高权限攻击者 flash UEFI/外围设备 firmware、修改 boot sector/EFI 文件或 ROMMON/TFTP boot pointer，使设备每次重启先运行 implant 或从攻击者源加载系统，再向
+        OS 注入后门/恢复远控。
+      en: A privileged adversary flashes UEFI or peripheral firmware modifies a boot sector or EFI file or changes a ROMMON
+        or TFTP boot pointer so each restart executes an implant first or loads a system from the adversary source and then
+        injects a backdoor or restores remote control into the OS.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 需要 firmware/raw disk/boot config 高权限、硬件和格式知识、签名/兼容镜像及安全重启能力；错误写入会 brick 设备，硬件 root of trust 和写保护提高成本。
+        en: The adversary needs privileged firmware raw-disk or boot-configuration access hardware and format knowledge a
+          signed or compatible image and ability to restart safely. Incorrect writes can brick the device and hardware roots
+          of trust plus write protection raise cost.
+    defender_model:
+      paragraphs:
+      - zh: 需要独立于 OS 的 root of trust、完整组件/firmware 清单、更新和 raw write 审计、每次 boot measurement、网络启动流量与运行 image identity；只依赖主机
+          agent 存在结构盲区。
+        en: The defender needs an OS-independent root of trust complete component and firmware inventory update and raw-write
+          audit per-boot measurements network-boot traffic and running-image identity. Host-agent-only observation has a structural
+          blind spot.
+stealth_mechanisms:
+- mechanism_ref: NM-BT
+  role: primary
+  summary:
+    zh: OS 前执行与未覆盖组件落在主机监控和度量范围外
+    en: Pre-OS execution and uncovered components fall outside host monitoring and measurement scope
+  analysis:
+    paragraphs:
+    - zh: 攻击者把代码放在传感器启动前或 root-of-trust 未测量的 firmware/boot 对象，主机检测获取的状态已经由恶意层影响，关键行为没有进入有效观察，形成行为透明。OS 外写入审计、attestation 和独立
+        image verification 可恢复。
+      en: The adversary places code before sensors start or in a firmware or boot object not measured by the root of trust
+        so host detection receives state already influenced by the malicious layer. Critical behavior never enters effective
+        observation and produces Behavioral Transparency. Out-of-OS write audit attestation and independent image verification
+        can recover it.
+  evidence_refs:
+  - REF-000193
+  - REF-000194
+  confidence: high
+- mechanism_ref: NM-FD
+  role: secondary
+  summary:
+    zh: 标准网络启动功能承载攻击者控制镜像来源
+    en: Standard network-boot functionality carries an adversary-controlled image source
+  analysis:
+    paragraphs:
+    - zh: 攻击者修改 boot pointer 让设备通过正常 TFTP/netboot 机制取得恶意 image，命令、协议和启动过程呈现合法管理外观，恶意来源借用标准功能形成特征伪装；server、hash 和批准差异仍可识别。
+      en: The adversary changes a boot pointer so the device obtains a malicious image through normal TFTP or netboot mechanisms.
+        Commands protocol and boot flow retain legitimate administrative appearance while the malicious source borrows standard
+        functionality and produces Feature Disguise. Server hash and approval differences remain distinguishing evidence.
+  evidence_refs:
+  - REF-000193
+  - REF-000195
+  confidence: high
+subtechnique_taxonomy:
+  narrative:
+    paragraphs:
+    - zh: 度量边界外固件驻留固定攻击代码位于主机传感器或平台 attestation 未覆盖对象，检测需组件级 inventory、measurement 和恢复根；外部启动源重定向固定本地 boot pointer 到远程 image
+        的来源分离，检测需配置—网络—running image 关联。前者可完全本地，后者可加载未持久写入本地 flash 的远端 image，边界稳定。
+      en: Attestation-Boundary Firmware Placement fixes adversary code in an object outside host sensors or platform attestation
+        and requires component-level inventory measurement and recovery roots. External Boot-Source Redirection fixes provenance
+        separation from a local boot pointer to a remote image and requires configuration-network-running-image correlation.
+        The first can be wholly local while the second can load a remote image without persistently writing local flash, so
+        the boundary is stable.
+    - zh: 五项 ATT&CK 子项全部覆盖但未导入。system firmware、bootkit 与 ROMMON 的 below-OS 层是父级核心；component firmware 提供度量边界证据；TFTP boot 提供外部来源证据。measurement-conforming
+        substitution 因缺少一般化结论级证据保持 defer。
+      en: All five ATT&CK children are covered but not imported. The below-OS layer of system firmware, bootkit, and ROMMON
+        is parent core. Component firmware supplies measurement-boundary evidence and TFTP boot external-source evidence.
+        Measurement-conforming substitution remains deferred for lack of general conclusion-level evidence.
+  coverage: established
+  subtechnique_refs:
+  - NJS-0097-001
+  - NJS-0097-002
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000077
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000077
+evidence:
+  claim_refs:
+  - CLM-000386
+  - CLM-000387
+  - CLM-000388
+  case_refs: []
+  reference_refs:
+  - REF-000193
+  - REF-000194
+  - REF-000195
+research:
+  limitations:
+    paragraphs:
+    - zh: ATT&CK 直接支持 below-OS 主机防御盲区、组件固件逃避完整性和 TFTP 标准功能加载恶意 image；NIST 提供保护—检测—恢复模型。实际 measurement coverage、firmware readback
+        和远程日志能力高度依赖硬件/vendor，无法用统一字段保证。合法 netboot 与更新必须靠批准、签名和 running image 比对排除。
+      en: ATT&CK directly supports the below-OS host-defense blind spot component firmware evading integrity checks and malicious
+        images loaded through standard TFTP functionality while NIST supplies a protect-detect-recover model. Actual measurement
+        coverage firmware readback and remote logging depend strongly on hardware and vendor and cannot be guaranteed by one
+        field set. Legitimate netboot and updates require approval signature and running-image comparison.
+lifecycle:
+  status: review
+  version: 0.2.0
+  created: '2026-09-11'
+  modified: '2026-09-19'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

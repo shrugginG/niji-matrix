@@ -1,0 +1,113 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000261
+strategy_ref: DET-000213
+name:
+  zh: Windows 业务服务停止调用与结果分析
+  en: Windows Business-Service Stop Caller and Outcome Analytic
+summary:
+  zh: 输出未经批准的服务控制者、有序停止状态和实际业务不可用链。
+  en: Emit a chain of unapproved service controller, orderly stopped state, and actual business unavailability.
+domains:
+- enterprise
+platforms:
+- Windows
+logic:
+  paragraphs:
+  - zh: 采集 DeviceProcessEvents/4688 中 net.exe、sc.exe、PowerShell、WMI 和其他调用者，规范化服务控制命令并按设备、主体、登录会话、进程唯一键和服务名关联。直接 API
+      路径没有包装器时，使用服务句柄访问或 EDR API 行为；调用后两分钟内验证运行→停止待定→停止或启动类型变化。
+    en: Collect net.exe, sc.exe, PowerShell, WMI, and other callers from DeviceProcessEvents or 4688, normalize service-control
+      actions, and correlate by device, principal, logon session, process unique key, and service name. For direct
+      APIs without wrappers, use service-handle access or EDR API behavior. Verify running to stop-pending to stopped
+      or start-type change within two minutes.
+  - zh: 在五分钟内连接服务依赖和外部健康失败，在三十分钟内连接维护审批、远程来源及后继加密/删除，但后继只提升事件链置信度。目标必须在业务服务清单中；安全与恢复职责转交相邻 owner。
+    en: Within five minutes join dependencies and external health failure, and within thirty minutes join maintenance
+      approval, remote origin, and successor encryption or deletion, with successors raising chain confidence only.
+      The target must be in the business-service inventory; security and recovery roles route to adjacent owners.
+data_requirements:
+- source_type: endpoint-process-event
+  name:
+    zh: 端点进程与命令事件
+    en: Endpoint process and command events
+  channel: DeviceProcessEvents or Security 4688
+  required_fields:
+  - event.timestamp
+  - device.id
+  - process.unique.id
+  - process.name
+  - process.command.line
+  - account.sid
+  - logon.id
+  - parent.process.unique.id
+- source_type: service-state-event
+  name:
+    zh: 服务控制与状态事件
+    en: Service control and state events
+  channel: null
+  required_fields:
+  - event.timestamp
+  - device.id
+  - service.name
+  - service.role
+  - controller.process.id
+  - requested.control
+  - state.before
+  - state.after
+  - start.type
+- source_type: business-health-probe
+  name:
+    zh: 独立业务健康与审批
+    en: Independent business health and approval
+  channel: null
+  required_fields:
+  - event.timestamp
+  - service.name
+  - health.result
+  - business.owner
+  - approval.id
+  - maintenance.window
+observables:
+- zh: 未经批准主体请求标准停止并出现停止终态
+  en: An unapproved principal requests a standard stop and the service reaches stopped
+- zh: 服务停止与独立业务健康失败及后继数据活动相连
+  en: Service stop joins an independent health failure and successor data activity
+correlation:
+  window:
+    zh: 停止状态序列两分钟，业务结果五分钟，审批与攻击链三十分钟；按服务启动耗时调优。
+    en: Use two minutes for state sequence, five for business outcome, and thirty for approval and attack-chain context;
+      tune by service startup and shutdown behavior.
+  dimensions:
+  - device.id
+  - service.name
+  - account.sid
+  - logon.id
+  - process.unique.id
+  - event.timestamp
+false_positives:
+- zh: 批准补丁、升级、故障转移、容量维护、管理员排障和依赖服务编排
+  en: Approved patching, upgrades, failover, capacity maintenance, administrator troubleshooting, and dependency orchestration
+blind_spots:
+- zh: 直接 API 无句柄遥测、远程管理来源丢失、agent 与服务一起失效或业务健康探针缺失
+  en: Direct APIs without handle telemetry, lost remote-management origin, agent failure with the service, or absent
+    business-health probe
+tuning_guidance:
+  paragraphs:
+  - zh: 按服务角色、owner、常见控制程序和维护窗口建基线，但不对 SYSTEM 或管理员永久放行。严重度需要未经批准控制与独立业务结果组合；命令命中但状态未变只报企图。
+    en: Baseline by service role, owner, common controller, and maintenance window without permanently allowing SYSTEM
+      or administrators. Severity requires unapproved control plus independent business outcome; command hits without
+      state change remain attempts.
+evidence_refs:
+- REF-000866
+- REF-000867
+- REF-000868
+- REF-000598
+- REF-000869
+- REF-000871
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-10-04'
+  modified: '2026-10-04'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

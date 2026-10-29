@@ -1,0 +1,69 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000066
+strategy_ref: DET-000089
+name: {zh: 管理任务、Agent 回执与跨端点执行分析, en: Management Job Agent Receipt and Cross-Endpoint Execution Analytic}
+summary: {zh: 重建 operator 到 package、目标集合、Agent 回执和端点结果的部署事务，并聚合一个 operation 的 Fleet 范围, en: Reconstruct deployment transactions from operator through package target collection and agent receipts to endpoint outcomes and aggregate the fleet scope of one operation}
+domains: [enterprise]
+platforms: [SaaS, Windows, Linux, macOS, Network Devices]
+logic:
+  paragraphs:
+    - zh: 分析先对部署站点或 tenant 中的 authentication、role、script/package create/update/approve/run、target query 和 operation 建立不可变记录。每个 operation 固定 actor/session、author/approver、content digest、command、execution account、resolved target membership、scheduled window 与 approval/change ID，并与 agent 的 receipt、cache/download、start/result 对齐。若 author 与 approver 异常合并、内容在批准后改变、scope 突增或操作来自非常用身份，标记控制面风险。
+      en: The analytic first creates immutable records of authentication role script or package create update approve and run target queries and operations in each deployment site or tenant. Every operation fixes actor and session author and approver content digest command execution account resolved target membership scheduled window and approval or change ID and aligns these with agent receipt cache or download start and result. Control-plane risk is marked when author and approver merge anomalously content changes after approval scope spikes or an unusual identity operates.
+    - zh: 然后把 agent receipt 连接到本地 management-agent process、child process、file/install、network 和 impact。代理分支识别签名 agent 启动用户可写、解释器、代理二进制、矿工或 encryptor 等非基线动作；fleet 分支在 operation 或 digest 上聚合所有设备，计算目标比例、首次/末次执行和共同结果。只有控制面风险与端点结果相交才产生高置信告警；若没有 operation ID，以同管理服务器、payload digest、命令和时间聚类并标注推断。
+      en: The analytic then joins agent receipts to local management-agent processes child processes file or installation network and impact. The brokerage branch identifies signed agents launching off-baseline user-writable interpreter proxy-binary miner or encryptor actions. The fleet branch aggregates devices by operation or digest and calculates target ratio first and last execution and common outcome. Only intersection of control-plane risk and endpoint outcome creates high-confidence alerts. Without operation IDs cluster by management server payload digest command and time and mark the inference.
+    - zh: 横向分支将控制面登录的 source_ip 经资产映射固定为起点，并与 resolved_device_id 比较；仅当目标不同且同一 operation 的 agent 回执与本地动作吻合时记录 TA0008 结果。源资产无法解析时可报告“远端恶意部署执行”，但不指认最初立足点；只落到缓存而未运行的内容归传输候选，不进入这一分支。
+      en: The lateral branch resolves the control-plane login source IP to an originating asset and compares it with resolved device IDs. It records a TA0008 outcome only when a different target has an agent receipt and matching local action for the same operation. If origin mapping is unavailable, report malicious remote deployment execution without naming an initial foothold. Content that reaches only a cache without launch remains a transfer candidate outside this branch.
+data_requirements:
+  - source_type: deployment-identity-audit
+    name: {zh: 部署控制面身份与授权审计, en: Deployment control-plane identity and authorization audit}
+    channel: null
+    required_fields: [timestamp, tenant_or_site_id, actor_id, session_id, source_ip, role, authentication_method, authorization_action, approval_id, result]
+  - source_type: deployment-content-history
+    name: {zh: Script、Package 与任务版本历史, en: Script package and job version history}
+    channel: null
+    required_fields: [timestamp, tenant_or_site_id, content_id, content_type, version, digest, command, arguments, author_id, approver_id, repository_uri, signature_state]
+  - source_type: deployment-operation-scope
+    name: {zh: Operation、目标查询与解析范围, en: Operation target query and resolved scope}
+    channel: null
+    required_fields: [timestamp, tenant_or_site_id, operation_id, content_id, actor_id, target_query, collection_id, resolved_device_id, scheduled_time, execution_account, change_id]
+  - source_type: management-agent-receipt
+    name: {zh: 受管 Agent 检入、下载与执行回执, en: Managed-agent check-in download and execution receipts}
+    channel: null
+    required_fields: [timestamp, tenant_or_site_id, operation_id, agent_id, device_id, management_server, content_digest, cache_path, receipt_state, start_time, completion_state, error_code]
+  - source_type: endpoint-execution-outcome
+    name: {zh: 端点进程、文件与安装结果, en: Endpoint process file and installation outcomes}
+    channel: null
+    required_fields: [timestamp, device_id, agent_id, operation_id, process_id, parent_process_id, image, command_line, file_path, file_hash, installer_product, user_id, result]
+  - source_type: endpoint-network-impact
+    name: {zh: 端点网络与影响信号, en: Endpoint network and impact signals}
+    channel: null
+    required_fields: [timestamp, device_id, operation_id, process_id, network_destination, bytes_out, encryption_event, wipe_event, service_change, alert_id]
+  - source_type: source-asset-resolution
+    name: {zh: 控制面登录来源资产映射, en: Control-plane login source asset resolution}
+    channel: null
+    required_fields: [timestamp, source_ip, source_device_id, tenant_or_site_id, mapping_confidence]
+observables:
+  - {zh: 非常用 operator 在无独立审批下运行新 script/package，受信 agent 随后以 SYSTEM 启动用户目录或攻击工具, en: An unusual operator runs a new script or package without independent approval and trusted agents then launch user-directory content or attack tools as SYSTEM}
+  - {zh: 一个 operation 或 payload digest 在多个 collection/设备产生相同命令、网络或加密结果，而变更工单范围不匹配, en: One operation or payload digest produces common commands network or encryption outcomes across collections or devices inconsistent with the approved change scope}
+  - {zh: package 在审批后 digest 改变、目标 query 临时扩大或管理 agent 从非批准服务器/tenant 接收内容, en: A package digest changes after approval a target query expands temporarily or management agents receive content from an unapproved server or tenant}
+  - {zh: 同一恶意 operation 从可解析的控制点触达其他受管设备，目标 agent 回执后产生非基线动作。, en: The same malicious operation reaches managed devices distinct from a resolved control point and target agents produce off-baseline actions after their receipts.}
+correlation:
+  window: {zh: 从内容创建或最近更新前二十四小时开始，覆盖 operation 调度、最长七天 Agent 检入和最后一个端点结果后二十四小时；勒索快速 fan-out 另使用十五分钟聚合。, en: Begin twenty-four hours before content creation or latest update cover operation scheduling up to seven days of agent check-ins and continue twenty-four hours after the final endpoint outcome with a separate fifteen-minute aggregation for rapid ransomware fan-out.}
+  dimensions: [tenant_or_site, operator, session, source_host, target_host, content_id, content_digest, operation, collection, device, agent, management_server, process, result, time]
+false_positives:
+  - {zh: 补丁、软件升级、事件响应、漏洞修复和合规重配置会合法使用 SYSTEM agent 并大范围执行, en: Patching software upgrades incident response vulnerability remediation and compliance reconfiguration legitimately use SYSTEM agents and broad execution}
+  - {zh: 紧急变更可能由同一管理员 author/approve/run，动态 collection 会在 operation 前扩大目标, en: Emergency changes may use one administrator to author approve and run while dynamic collections expand before operation}
+  - {zh: 离线设备晚检入、重试和带宽节流会把合法 operation 分散到数日, en: Offline-device late check-ins retries and bandwidth throttling disperse legitimate operations across days}
+blind_spots:
+  - {zh: 部署平台不保留 operator/approval 或不把 operation/content ID 传给 Agent 时，控制面与端点只能概率连接, en: Control plane and endpoints can only be joined probabilistically when platforms do not retain operator or approval or propagate operation and content IDs to agents}
+  - {zh: EDR 对管理 Agent 子进程、缓存目录或内部管理服务器流量做全局排除时，本地恶意结果不可见, en: Local malicious outcomes disappear when EDR globally excludes management-agent children cache directories or internal management-server traffic}
+  - {zh: MSP/SaaS 跨租户日志不可用、攻击者修改平台数据库或删除 job history 时，scope 和发起者可能丢失, en: Scope and initiator may be lost when MSP or SaaS cross-tenant logs are unavailable or attackers alter platform databases or delete job history}
+tuning_guidance:
+  paragraphs:
+    - zh: 按平台、site/tenant、operator 角色、content type、collection、agent、软件发布节奏和 endpoint role 建立基线，分别评分身份、内容、scope、agent provenance 和结果。合法脚本例外绑定 content digest、author/approver、collection、change ID 与有效期；不得永久放行 PDQ、ePO、BigFix、SCCM、RMM agent、SYSTEM 或内部服务器。
+      en: Baseline by platform site or tenant operator role content type collection agent software-release cadence and endpoint role and score identity content scope agent provenance and outcome separately. Legitimate script exceptions bind content digest author and approver collection change ID and expiry. Never permanently allow PDQ ePO BigFix SCCM RMM agents SYSTEM or internal servers.
+    - zh: 对快速加密或 wipe 结果把 fleet scope 与阈值设为低延迟自动处置，对普通 patch 使用更长窗口和审批比对。即使终端先告警，也应回查所有共享 operation/digest 设备而不是逐台关闭。平台缺少字段时在告警中列出缺口，并限制自动阻断范围以避免合法大规模部署中断。
+      en: Use low-latency automated response for rapid encryption or wipe outcomes at fleet scope and longer windows plus approval comparison for ordinary patching. Even when one endpoint alerts first query all devices sharing operation or digest rather than close host by host. List missing platform fields in alerts and constrain automated blocking scope to avoid disrupting legitimate broad deployments.
+evidence_refs: [REF-000273, REF-000274, REF-000275, REF-000276, REF-000277, REF-000278]
+lifecycle: {status: review, version: 1.1.0, created: '2026-09-12', modified: '2026-09-22', contributors: [Niji Matrix Research], reviewers: []}

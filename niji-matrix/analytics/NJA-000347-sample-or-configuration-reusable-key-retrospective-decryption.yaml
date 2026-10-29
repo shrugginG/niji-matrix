@@ -1,0 +1,147 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000347
+strategy_ref: DET-000259
+name:
+  zh: 样本/配置可复用密钥与历史流量解密
+  en: Sample or Configuration Reusable-Key Retrospective Decryption
+summary:
+  zh: 从样本恢复稳定密钥路径，验证跨会话命令与结果明文并回溯同一密钥期。
+  en: Recover a stable key path from a sample, validate commands and results across sessions, and revisit the same cryptoperiod.
+domains:
+- enterprise
+platforms:
+- Network
+- Windows
+- Linux
+logic:
+  paragraphs:
+  - zh: 从经授权取得的 sample/config/memory 记录 key source、derive input、algorithm/mode、IV/nonce 规则、direction 和 framing，以不可逆 key digest
+      标识材料；选择同 sample family/配置和 framing 的 PCAP messages，按方向尝试 decrypt。只有 padding/tag/MAC、已知 command header/ID、字段长度和至少一个端点
+      process/file outcome 同时通过才标记 recovered_C2_plaintext。用同一 key path 成功恢复至少两个 message/session 才确认 reusable scope；单个可读字符串、熵降低或仅
+      decrypt success 不足。
+    en: From an authorized sample, configuration, or memory image, record key source, derivation input, algorithm and mode,
+      IV or nonce rule, direction, and framing, identifying material with a nonreversible key digest. Select PCAP messages
+      with the same sample family or configuration and framing and attempt decryption by direction. Mark recovered_C2_plaintext
+      only when padding, tag, or MAC, a known command header or ID, field lengths, and at least one endpoint process or file
+      outcome agree. Confirm reusable scope only after the same key path recovers at least two messages or sessions. One readable
+      string, reduced entropy, or decryption success alone is insufficient.
+data_requirements:
+- source_type: sample-config-key
+  name:
+    zh: 样本配置与密钥派生
+    en: Sample Configuration and Key Derivation
+  channel: malware analysis or authorized endpoint acquisition
+  required_fields:
+  - sample_sha256
+  - config_digest
+  - key_source
+  - key_digest
+  - derivation_input_digest
+  - algorithm_mode
+  - iv_nonce_rule
+  - direction
+  - version
+- source_type: packet-message
+  name:
+    zh: 原始网络密文消息
+    en: Raw Network Cipher Messages
+  channel: PCAP or lossless payload capture
+  required_fields:
+  - timestamp
+  - flow_id
+  - src_ip
+  - src_port
+  - dest_ip
+  - dest_port
+  - direction
+  - message_sequence
+  - ciphertext_offset
+  - ciphertext_length
+  - ciphertext_digest
+  - raw_message_ref
+- source_type: decrypt-result
+  name:
+    zh: 经验证的解密结果
+    en: Validated Decryption Result
+  channel: controlled analysis workspace
+  required_fields:
+  - analysis_id
+  - key_digest
+  - flow_id
+  - message_sequence
+  - success
+  - validation_method
+  - plaintext_digest
+  - command_id
+  - parse_error
+- source_type: endpoint-outcome
+  name:
+    zh: 端点命令结果
+    en: Endpoint Command Outcome
+  channel: EDR process/file/network
+  required_fields:
+  - timestamp
+  - device_id
+  - process_start_key
+  - parent_start_key
+  - executable
+  - command_line
+  - file_path
+  - operation
+  - remote_endpoint
+observables:
+- zh: 同一密钥派生路径跨多个 C2 会话使用
+  en: The same key-derivation path is used across several C2 sessions
+- zh: 解密结果通过命令格式与完整性校验
+  en: Decrypted content validates against command format and integrity checks
+- zh: 任务输出沿同一密钥路径重新加密
+  en: Task output is encrypted through the same key path
+- zh: 端点动作与恢复的明文命令吻合
+  en: Endpoint actions match the recovered plaintext command
+correlation:
+  window:
+    zh: 依据样本恢复的密钥配置有效期回溯流量；密文到端点结果关联默认十分钟或一个恶意任务周期。
+    en: Revisit traffic across the key or configuration cryptoperiod recovered from a sample; join ciphertext to endpoint
+      outcome within ten minutes or one malware task cycle.
+  dimensions:
+  - sample_sha256
+  - config_digest
+  - key_digest
+  - flow_id
+  - message_sequence
+  - direction
+  - process_start_key
+  - time
+false_positives:
+- zh: 合法旧版代理或设备协议内嵌测试密钥
+  en: Approved legacy agents or device protocols with embedded test keys
+- zh: 取证测试流量或应用意外复用秘密
+  en: Forensic test traffic or accidental secret reuse in applications
+blind_spots:
+- zh: 每主机独立或轮换密钥及缺少原始密文
+  en: Per-host or rotated keys and unavailable raw ciphertext
+- zh: 缺少 IV 方向或自定义填充完整性信息
+  en: Missing IV, direction, or custom padding and integrity details
+- zh: 进程注入使样本家族与流量归属断裂
+  en: Process injection breaking sample-family to flow attribution
+tuning_guidance:
+  paragraphs:
+  - zh: key 明文只存于隔离分析域，生产检测用 key digest、sample/config identity 与 command/result features；按版本维护 decryptor。无法验证 command format/MAC/outcome
+      时标为 decryption_candidate，不输出 plaintext 结论。
+    en: Keep plaintext keys only in an isolated analysis domain and use key digest, sample or configuration identity, and
+      command or result features in production detection. Version decryptors. Without command-format, MAC, or outcome validation,
+      report decryption_candidate rather than plaintext recovery.
+evidence_refs:
+- REF-001146
+- REF-001151
+- REF-000598
+- REF-000604
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-10-05'
+  modified: '2026-10-05'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

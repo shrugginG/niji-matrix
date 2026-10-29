@@ -1,0 +1,144 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000322
+strategy_ref: DET-000246
+name:
+  zh: 带外远控设备—网络会话—宿主动作关联
+  en: Out-of-Band Remote-Control Device to Network Session and Host Action Correlation
+summary:
+  zh: 连接带外远控设备、管理会话、资产保管和主机无 agent 后果。
+  en: Join out-of-band remote-control devices, management sessions, asset custody, and host outcomes without an agent.
+domains:
+- enterprise
+platforms:
+- Windows
+- Linux
+- macOS
+logic:
+  paragraphs:
+  - zh: 将 endpoint 新 HID/video/USB/EDID/PnP attributes 与同时间首次出现的 network MAC/IP/port 聚合为 oob_device_id，并与 CMDB/custody
+      比较。若有 KVM audit，连接 controller/session/target/input+video；再在 target identity/resource/process/file events 中寻找 session
+      窗口内的可控动作。只有 unapproved hardware 或 controller、interactive input/video session 和 target outcome 同时成立才输出 oob_control_confirmed。仅新键盘、dock、capture
+      card、MAC/OUI 或 remote login 分别输出 device_candidate/session_candidate。
+    en: Combine new endpoint HID, video, USB, EDID, or PnP attributes with a newly seen network MAC, IP, and switch port
+      in the same interval to derive oob_device_id, then compare with CMDB and custody. Where KVM audit exists, join
+      controller, session, target, input, and video, then seek controllable target identity, resource, process, or file
+      actions during the session. Emit oob_control_confirmed only when unapproved hardware or controller, an interactive
+      input and video session, and target outcome coexist. A new keyboard, dock, capture card, MAC or OUI, or remote
+      login alone yields device_candidate or session_candidate.
+data_requirements:
+- source_type: endpoint-pnp-device
+  name:
+    zh: endpoint pnp device
+    en: endpoint pnp device
+  channel: Microsoft Defender XDR DeviceEvents, OS PnP/USB/HID inventory
+  required_fields:
+  - event_time
+  - host_device_id
+  - device_action
+  - peripheral_attributes
+  - local_principal_id
+  - initiator_process_key
+  - observed_remote_ip
+  - observed_remote_url
+- source_type: network-access-control
+  name:
+    zh: network access control
+    en: network access control
+  channel: DHCP/NAC/switch/Wi-Fi/EDR network inventory
+  required_fields:
+  - event_time
+  - oob_device_id
+  - oob_mac
+  - oob_ip
+  - device_name
+  - device_vendor
+  - network_device_id
+  - network_port
+  - network_segment
+  - first_seen
+  - last_seen
+  - network_identity
+- source_type: kvm-controller-audit
+  name:
+    zh: kvm controller audit
+    en: kvm controller audit
+  channel: IP-KVM or remote-hardware management log
+  required_fields:
+  - event_time
+  - oob_device_id
+  - controller_principal_id
+  - controller_source_ip
+  - remote_session_id
+  - target_device_id
+  - controller_auth_method
+  - video_channel_state
+  - input_channel_state
+  - session_start
+  - session_end
+  - result_status
+- source_type: hardware-approval-and-custody
+  name:
+    zh: hardware approval and custody
+    en: hardware approval and custody
+  channel: CMDB, asset, USB/device control, shipping and physical access records
+  required_fields:
+  - oob_device_id
+  - device_fingerprint
+  - hardware_owner
+  - target_device_id
+  - approved_segment
+  - approved_controller_id
+  - approved_purpose
+  - physical_location
+  - custody_actor
+  - valid_from
+  - valid_to
+observables:
+- zh: 新复合 HID/视频设备与网络 KVM 一同出现并由未批准主体控制
+  en: A new composite HID or video device appears with a network KVM controlled by an unapproved principal
+- zh: KVM 会话期间主机发生动作但没有远控 agent 进程
+  en: Host actions occur during a KVM session without a remote-control agent process
+correlation:
+  window:
+    zh: 设备出现至首次会话二十四小时；会话后果三十分钟；资产历史一百八十日。
+    en: Twenty-four hours from device appearance to first session, thirty minutes for session outcome, and 180 days of
+      asset history.
+  dimensions:
+  - host_device_id
+  - oob_device_id
+  - device_fingerprint
+  - oob_mac
+  - oob_ip
+  - network_port
+  - controller_principal_id
+  - remote_session_id
+  - target_device_id
+  - custody_actor
+  - outcome_id
+  - time
+false_positives:
+- zh: 批准数据中心 KVM、扩展坞、辅助设备或 break-glass 带外管理
+  en: Approved data-center KVM, docks, accessibility devices, or break-glass out-of-band management
+blind_spots:
+- zh: USB 身份伪造、KVM 网络未管理、无 KVM 审计或保管记录造假
+  en: Spoofed USB identity, unmanaged KVM network, missing KVM audit, or falsified custody
+tuning_guidance:
+  paragraphs:
+  - zh: 以 serial/fingerprint+MAC+switch port+owner 组合，而非 vendor/OUI 单点识别；批准 hardware 必须绑定 target、controller、segment、purpose
+      和 expiry。DeviceEvents AdditionalFields parser 需本地样本验证；无 input/video 或 target outcome 时不确认远控。
+    en: Identify by serial or fingerprint plus MAC, switch port, and owner rather than vendor or OUI alone. Approved
+      hardware must bind target, controller, segment, purpose, and expiry. Validate DeviceEvents AdditionalFields parsing
+      with local samples. Without input and video or target outcome, do not confirm remote control.
+evidence_refs:
+- REF-001064
+- REF-001065
+- REF-001070
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-10-05'
+  modified: '2026-10-05'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

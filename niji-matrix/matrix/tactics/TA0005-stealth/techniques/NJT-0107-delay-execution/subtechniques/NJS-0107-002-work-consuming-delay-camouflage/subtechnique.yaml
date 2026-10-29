@@ -1,0 +1,130 @@
+schema_version: 2.0.0
+type: evasion-subtechnique
+id: NJS-0107-002
+name:
+  zh: 耗工作量延迟伪装
+  en: Work-Consuming Delay Camouflage
+summary:
+  zh: 攻击者用大量低价值注册表、文件、网络或其他 API 工作消耗分析时间，将载荷推迟到观察窗口之后。
+  en: Adversaries consume analysis time with large volumes of low-value Registry, file, network, or other API work and push
+    the payload beyond the observation window.
+aliases:
+- API Hammering
+parent_ref: NJT-0107
+lineage:
+  attck_subtechnique_inherited: false
+definition_and_concept:
+  paragraphs:
+  - zh: 耗工作量延迟伪装是攻击者重复执行 ping、注册表访问、文件 I/O、系统 API 或其他对真实业务结果贡献很低的操作，以消耗沙箱或动态分析时间的匿迹子技术。直接目标是在窗口内产生与合法软件共享外观的工作痕迹，同时把解包、注入或其他后继载荷推迟到分析结束后。
+    en: Work-Consuming Delay Camouflage is an evasion sub-technique in which an adversary repeats ping, Registry access, file
+      I/O, system APIs, or other operations with little contribution to a real business outcome to consume sandbox or dynamic-analysis
+      time. Its immediate objective is to produce work traces that share appearance with legitimate software inside the window
+      while pushing unpacking, injection, or another successor payload past analysis termination.
+  - zh: 稳定变量是高密度、低信息增益且用时主导的工作。API 名称、循环结构、命令和操作系统是实现；低事件密度休眠或计时器等待归 NJS-0107-001。
+    en: The stable variable is high-density low-information-gain work that dominates elapsed time. API name, loop structure,
+      command, and operating system are implementations; low-event-density sleep or timer waiting belongs to NJS-0107-001.
+stealth_characteristics:
+  paragraphs:
+  - zh: 耗工作量延迟伪装在观察窗口内留下大量注册表、文件、网络或 API 事件，却几乎不产生持久业务输出。单个操作可与合法索引、扫描、备份或应用启动共享外观，而真实载荷在窗口之后才出现。
+    en: Work-Consuming Delay Camouflage leaves large volumes of Registry, file, network, or API events inside the observation
+      window while producing almost no durable business output. Individual operations can resemble legitimate indexing, scanning,
+      backup, or application startup, while the real payload appears only after the window.
+  - zh: 残余痕迹包括少量重复操作模板、高系统调用或 I/O 计数、CPU 与墙钟用时、很低的工作输出比，以及循环后的解包或注入。计算单位输出、模板重复性和加速时间差分会限制匿迹效果。
+    en: Residual traces include a small set of repeated operation templates, high syscall or I/O counts, CPU and wall-clock
+      time, a very low work-output ratio, and unpacking or injection after the loop. Measuring output per compute unit, template
+      repetition, and accelerated-time differential limits the stealth effect.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 纳入攻击者有意反复执行低价值操作，使它们消耗大部分分析时间，并与循环后的恶意解包、注入、通信或其他敏感动作相连。判定需要低信息增益、高重复性、用时主导和后继恶意结果。
+    en: Scope includes deliberate repetition of low-value operations that consumes most analysis time and joins to malicious
+      unpacking, injection, communication, or another sensitive successor after the loop. Classification requires low information
+      gain, high repetition, dominant elapsed time, and a malicious successor outcome.
+  - zh: 合法索引、扫描、备份、数据迁移、性能测试和故障重试是反例。几乎不产生工作事件的休眠或计时器归 NJS-0107-001；直接饱和调试消息通道而非一般消耗时间归 NJS-0106-002。
+    en: Legitimate indexing, scanning, backup, data migration, performance testing, and fault retry are counterexamples. Sleep
+      or timer waiting that generates almost no work belongs to NJS-0107-001, while direct saturation of a debug-message channel
+      rather than general time consumption belongs to NJS-0106-002.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: loader 可在载荷解包前反复读写随机注册表键，也可以用嵌套函数反复调用文件 I/O API，直到沙箱窗口将要结束才执行注入。Unit 42 对 BazarLoader 和 Zloader 的分析直接支持该场景。
+      en: A loader may repeatedly read and write random Registry keys before unpacking a payload or use nested functions to
+        call file-I/O APIs until the sandbox window is nearly exhausted and then inject. Unit 42's BazarLoader and Zloader
+        analyses directly support this scenario.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者需要选择可在目标环境成功执行、外观常见且能稳定消耗时间的操作。循环会增加 CPU、I/O、日志与崩溃风险，操作成本因系统版本而变化，时间加速或资源限制可破坏计划。
+        en: The adversary needs operations that execute successfully, appear common, and consume time reliably in the target
+          environment. Loops increase CPU, I/O, logging, and crash risk, operation cost varies by system version, and time
+          acceleration or resource limits can break the plan.
+    defender_model:
+      paragraphs:
+      - zh: 防守方可观察每进程操作模板、系统调用与 I/O 计数、CPU 和墙钟用时、读写对象、产生的持久输出与循环后敏感动作，并执行正常与加速时间差分。遥测只有抽样计数、不保留操作对象或在后继载荷前终止时形成盲区。
+        en: The defender observes operation templates per process, syscall and I/O counts, CPU and wall-clock time, accessed
+          objects, durable output, and sensitive actions after the loop and performs normal-versus-accelerated-time differential.
+          Blind spots arise when telemetry contains only sampled counts, accessed objects are not retained, or analysis ends
+          before the successor payload.
+stealth_mechanisms:
+- mechanism_ref: NM-ST
+  role: primary
+  summary:
+    zh: 低价值工作消耗时间并把真实载荷推出观察窗口
+    en: Low-value work consumes time and pushes the real payload outside the observation window
+  analysis:
+    paragraphs:
+    - zh: 攻击者在后继载荷前重复执行几乎不产生有用输出的操作，使痕迹在时间上被大量低价值事件填充，而真实载荷落在分析窗口之后；防守方不能在短周期内恢复完整因果，形成时空释痕。
+      en: The adversary repeats operations that produce almost no useful output before the successor payload, filling the temporal
+        trace with low-value events while the real payload lands after the analysis window. Defenders cannot restore complete
+        causality in a short horizon, producing Spatiotemporal Trace Dilution.
+  evidence_refs:
+  - REF-000417
+  confidence: high
+- mechanism_ref: NM-FD
+  role: secondary
+  summary:
+    zh: 注册表与文件 I/O 使低价值循环呈现常见软件工作外观
+    en: Registry and file I/O make the low-value loop resemble common software work
+  analysis:
+    paragraphs:
+    - zh: 攻击者选择注册表与文件 I/O 等合法软件常见操作承载延迟，使单个事件缺少恶意特征；只有计算低信息增益、高重复性和后继载荷才能区分，因此形成特征伪装。
+      en: The adversary carries delay in Registry and file-I/O operations common to legitimate software, leaving individual
+        events without a malicious feature. Only low information gain, high repetition, and a successor payload distinguish
+        the loop, producing Feature Disguise.
+  evidence_refs:
+  - REF-000417
+  confidence: high
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000123
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000106
+evidence:
+  claim_refs:
+  - CLM-000624
+  case_refs:
+  - CASE-000140
+  reference_refs:
+  - REF-000387
+  - REF-000417
+research:
+  limitations:
+    paragraphs:
+    - zh: Unit 42 直接支持 BazarLoader 与 Zloader 的注册表和文件 I/O API hammering，因此子项存在性与两项机理为高置信；它不自动支持所有高密度 API 活动。
+      en: Unit 42 directly supports Registry and file-I/O API hammering in BazarLoader and Zloader, giving child existence and
+        both mechanisms high confidence. It does not automatically support all high-density API activity.
+    - zh: 索引、扫描、备份、数据迁移和性能测试可以产生相似高密度工作。缺少低工作输出比、时间加速差分和后继恶意载荷时，不得归因为延迟伪装。
+      en: Indexing, scanning, backup, data migration, and performance testing can create similar high-density work. Without
+        a low work-output ratio, time-acceleration differential, and malicious successor payload, delay camouflage must not
+        be attributed.
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-09-21'
+  modified: '2026-09-21'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

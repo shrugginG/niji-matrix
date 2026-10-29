@@ -1,0 +1,178 @@
+schema_version: 2.0.0
+type: technique
+id: NJT-0105
+name:
+  zh: 宿主内镜像构建
+  en: Host-Local Image Construction
+summary:
+  zh: 攻击者让容器构建服务在目标宿主生成含恶意内容的新镜像，以正常基础镜像替代可疑成品镜像拉取，并分散构建到部署的观察链。
+  en: Adversaries cause a container build service to generate a new image containing malicious content on the target host,
+    replacing suspicious finished-image retrieval with a benign base image and distributing the observation chain from build
+    through deployment.
+aliases:
+- Build Image on Host
+- T1612
+classification:
+  tactic_refs:
+  - TA0005
+  origin:
+    kind: attack-adapted
+    source_attack_id: T1612
+    source_attack_version: '19.1'
+  decision_ref: DEC-TA0005-T1612
+definition_and_concept:
+  paragraphs:
+  - zh: 宿主内镜像构建是攻击者向目标环境的容器构建服务提交受控构建上下文、构建文件或远程上下文，使服务在宿主上生成包含攻击者代码的新镜像。直接目的不是一般软件构建，而是避免从注册表直接取得一个已知或易识别的恶意成品镜像，并为随后创建容器提供本地镜像对象。
+    en: Host-Local Image Construction is the adversary behavior of submitting controlled build context, a build file, or remote
+      context to a container build service in the target environment so the service generates a new image containing adversary
+      code on the host. Its immediate purpose is not general software building but avoidance of direct registry retrieval
+      of a known or readily identifiable malicious finished image while producing a local image object for subsequent container
+      creation.
+  - zh: 技术以“构建请求—执行构建步骤—产生镜像身份—后继部署”的因果链为概念锚。Docker、BuildKit、具体指令、基础镜像仓库和编排产品只是实现；没有攻击者控制的构建输入，或生成镜像未被用于后续恶意活动时，不构成本技术。
+    en: The conceptual anchor is the causal chain from build request through execution of build steps and creation of image
+      identity to subsequent deployment. Docker, BuildKit, individual instructions, base-image registry, and orchestration
+      product are implementations. The technique does not apply without adversary-controlled build input or when the resulting
+      image is not used for follow-on malicious activity.
+stealth_characteristics:
+  paragraphs:
+  - zh: 宿主内镜像构建把原本可在镜像拉取边界识别的恶意内容拆分为正常基础镜像、构建上下文、构建阶段的网络取得和本地内容层。只检查注册表信誉或拉取镜像摘要的防守方可能看到可信基础镜像，却无法把后来生成的本地摘要与攻击者输入连接；构建进程和网络又常由受信守护进程发起，降低来源可区分性。
+    en: Host-Local Image Construction decomposes malicious content that might be recognized at the image-pull boundary into
+      a benign base image, build context, build-stage network retrieval, and local content layers. Defenders checking only
+      registry reputation or pulled-image digests may see a trusted base image but cannot connect the subsequently generated
+      local digest to adversary input. Build processes and network access also commonly originate from a trusted daemon, reducing
+      provenance distinguishability.
+  - zh: 该技术仍留下构建 API 调用者、上下文摘要、构建文件、步骤输出、构建容器、外连、生成镜像摘要和首次部署。完整事件流、内容证明和本地镜像扫描能够恢复谱系；构建 API 权限严格、构建网络受限或部署前验证本地镜像时，匿迹效果显著下降。
+    en: The technique still leaves build API caller, context digest, build file, step output, build container, outbound connection,
+      resulting image digest, and first deployment. Complete event streams, content attestations, and local-image scanning
+      can restore lineage. The stealth effect falls sharply when build API authorization is strict, build networking is constrained,
+      or local images are verified before deployment.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 纳入攻击者控制宿主构建请求，在目标环境内生成含恶意内容的镜像，并把该镜像用于后续容器活动的行为。构建可以从正常公共或本地基础镜像开始，也可以在构建阶段取得外部载荷；判定要求构建输入、生成摘要和部署结果可连接，而不能只凭出现 docker
+      build 或新镜像。
+    en: Scope includes adversary control of an on-host build request that generates an image containing malicious content
+      in the target environment and uses that image for subsequent container activity. The build may start from a benign public
+      or local base image or retrieve an external payload during a build stage. Classification requires joining build input,
+      resulting digest, and deployment outcome rather than relying only on docker build or a new image.
+  - zh: 直接拉取恶意镜像、导入现成镜像、普通容器部署、合法持续集成构建和开发者本地构建排除。篡改公共或内部注册表中的既有镜像属于供应链或镜像内容植入；构建后容器执行属于相邻部署或执行行为。基础镜像、指令类型、缓存命中、上下文传输方式和容器产品不构成子技术边界。
+    en: Direct pulling of a malicious image, importing a finished image, ordinary container deployment, legitimate continuous-integration
+      builds, and developer-local builds are excluded. Tampering with an existing image in a public or internal registry belongs
+      to supply-chain or image-content implantation, while execution of the resulting container is adjacent deployment or
+      execution behavior. Base image, instruction type, cache hit, context transport, and container product do not define
+      child boundaries.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: 攻击者取得未充分保护的容器守护进程或远程构建 API 后，提交使用正常基础镜像的构建上下文，并在构建步骤中从外部地址下载载荷或复制上下文内的恶意文件。服务返回新的本地镜像摘要，攻击者随即或稍后用该摘要创建容器；镜像拉取监控只看到正常基础镜像，而恶意层在宿主内部形成。
+      en: After obtaining access to an insufficiently protected container daemon or remote build API, an adversary submits
+        build context using a benign base image and downloads a payload from an external address during a build step or copies
+        a malicious file from the context. The service returns a new local image digest, which the adversary uses immediately
+        or later to create a container. Image-pull monitoring sees only the benign base image while the malicious layer forms
+        on-host.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者需要调用构建接口和随后使用生成镜像的权限，并能控制构建上下文、构建文件或其远程位置。若载荷在构建期间取得，还需要构建网络可达；若防守方要求签名证明、禁止远程上下文或在部署前扫描本地摘要，攻击者必须进一步绕过这些控制。构建时间、资源消耗和可重复事件会增加暴露。
+        en: The adversary needs permission to invoke the build interface and subsequently use the resulting image and can
+          control build context, build file, or its remote location. Retrieving a payload during the build additionally requires
+          build-network reachability. If defenders require signed attestations, prohibit remote contexts, or scan local digests
+          before deployment, the adversary must bypass those controls. Build time, resource consumption, and repeatable events
+          increase exposure.
+    defender_model:
+      paragraphs:
+      - zh: 防守方能够观察守护进程认证主体、构建 API、上下文与构建文件摘要、基础镜像、构建步骤、构建网络、生成镜像摘要、镜像层和容器创建事件，并按主机、构建 ID、内容摘要和时间连接。只监控注册表拉取、缺少构建上下文日志、构建缓存混淆来源或生成镜像未进入扫描管线时形成主要盲区。合法开发和持续集成会产生大量相似构建，需要按主体、项目、来源和批准流水线建立基线。
+        en: The defender can observe daemon-authenticated principal, build API, context and build-file digests, base image,
+          build steps, build network, resulting image digest, image layers, and container-create events and join them by host,
+          build ID, content digest, and time. Major blind spots arise when monitoring covers registry pulls only, build-context
+          logs are absent, cache obscures provenance, or generated images bypass the scanning pipeline. Legitimate development
+          and continuous integration create many similar builds and require baselines by principal, project, source, and approved
+          pipeline.
+stealth_mechanisms:
+- mechanism_ref: NM-BT
+  role: primary
+  summary:
+    zh: 构建服务边界分离外部输入与本地恶意镜像结果
+    en: The build-service boundary separates external input from the local malicious image result
+  analysis:
+    paragraphs:
+    - zh: 攻击者让受信构建服务解释上下文并生成新镜像，痕迹从单一恶意镜像拉取变为调用者、构建步骤、服务进程和本地摘要之间的链条；只观察注册表边界的防守方看不到完整生成过程，恶意内容跨越构建边界后才成为可部署对象，从而降低检测与归因。
+      en: The adversary has a trusted build service interpret context and generate a new image, changing the trace from one
+        malicious image pull into a chain among caller, build steps, service process, and local digest. A defender observing
+        only the registry boundary misses the generation process, and malicious content becomes deployable only after crossing
+        the build boundary, reducing detection and attribution.
+  evidence_refs:
+  - REF-000383
+  - REF-000384
+  - REF-000412
+  confidence: high
+- mechanism_ref: NM-FD
+  role: secondary
+  summary:
+    zh: 正常基础镜像与受信构建守护进程提供良性外观
+    en: A benign base image and trusted build daemon provide benign appearance
+  analysis:
+    paragraphs:
+    - zh: 攻击者从常见基础镜像开始并让标准守护进程执行构建，使拉取摘要、进程签名和服务身份均与正常开发相似；恶意差异只存在于上下文、步骤和新层。若防守分类依赖基础镜像信誉或守护进程身份，新镜像会继承不当信任，形成特征伪装。
+      en: The adversary starts from a common base image and uses the standard daemon to perform the build, making pulled digest,
+        process identity, and service identity resemble normal development. The malicious difference exists only in context,
+        steps, and new layers. Classification based on base-image reputation or daemon identity transfers unwarranted trust
+        to the new image and creates Feature Disguise.
+  evidence_refs:
+  - REF-000383
+  - REF-000384
+  - REF-000412
+  confidence: high
+subtechnique_taxonomy:
+  narrative:
+    paragraphs:
+    - zh: 当前不建立正式子技术。开放搜索检查了本地与远程构建上下文、构建阶段外部下载、多阶段输出、缓存复用、基础镜像位置和不同构建产品。这些实现均依赖同一“调用者—构建材料—步骤与网络—输出摘要—首次部署”谱系，并共享构建证明、逐层内容检查和部署准入防御。现有证据没有显示某个实现轴稳定产生不可互换的观察或缓解边界。
+      en: No formal child is established. The open-ended search examined local and remote build contexts, build-stage external
+        retrieval, multistage output, cache reuse, base-image location, and different builder products. All implementations
+        depend on the same caller-to-materials-to-steps-and-network-to-output-digest-to-first-deployment lineage and share
+        build attestation, layer-content inspection, and deployment-admission defense. Available evidence does not show an
+        implementation axis that stably produces a non-interchangeable observation or mitigation boundary.
+  coverage: none-justified
+  subtechnique_refs: []
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000102
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000104
+evidence:
+  claim_refs:
+  - CLM-000582
+  - CLM-000583
+  case_refs:
+  - CASE-000137
+  reference_refs:
+  - REF-000383
+  - REF-000384
+  - REF-000385
+  - REF-000412
+  - REF-000413
+research:
+  limitations:
+    paragraphs:
+    - zh: Aqua 在野案例直接证明攻击者使用正常 Alpine 基础镜像、构建期外部下载和宿主新摘要绕过成品镜像情报，Docker 文档证明接口、证明与材料记录能力。实证仍主要围绕 Docker/BuildKit，不能无条件推广到所有镜像构建器。没有稳定事件流时，很难区分攻击者构建与开发者实验构建，必须依赖主体、构建材料、输出摘要和后继部署。
+      en: The Aqua in-the-wild case directly establishes use of a benign Alpine base image, build-time external retrieval,
+        and a new host-local digest to bypass finished-image intelligence, while Docker documentation establishes API, attestation,
+        and material-recording capability. Evidence remains concentrated on Docker and BuildKit and cannot be generalized
+        unconditionally to every image builder. Without stable event streams, adversary builds are difficult to distinguish
+        from developer experiments and require principal, build materials, output digest, and successor deployment.
+    - zh: 正常基础镜像只证明部分输入可信，不保证新层安全；反之，新本地镜像也不自动恶意。Aqua 案例直接证明这种不当信任传递，因此特征伪装提升为高置信；若能验证构建证明、材料、逐层内容和首次部署，观察差异会显著缩小。
+      en: A benign base image establishes trust in only part of the input and does not make new layers safe; conversely, a
+        new local image is not automatically malicious. The Aqua case directly demonstrates this unwarranted trust transfer,
+        raising Feature Disguise to high confidence. Verified build attestations, materials, layer content, and first deployment
+        materially reduce the observation gap.
+lifecycle:
+  status: review
+  version: 0.2.0
+  created: '2026-09-19'
+  modified: '2026-09-21'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

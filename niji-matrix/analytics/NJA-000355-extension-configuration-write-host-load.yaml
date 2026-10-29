@@ -1,0 +1,75 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000355
+strategy_ref: DET-000264
+name:
+  zh: 扩展配置写入到宿主加载关联
+  en: Extension Configuration Write to Host Load Correlation
+summary:
+  zh: 关联 profile、policy、preference、Registry、扩展目录或 CLI 写入与后续宿主加载，发现缺少普通安装和同意链的持久扩展状态
+  en: Correlate profile policy preference Registry extension-directory or CLI writes with later host load to find durable extension state lacking an ordinary installation and consent chain
+domains: [enterprise]
+platforms: [Linux, Windows, macOS]
+logic:
+  paragraphs:
+  - zh: 分析监控浏览器与 IDE 的 profile、policy、Preferences/Secure Preferences、Registry、extension directory、VSIX/CLI 和企业 force-install 状态，为每次写入保存 writer process、actor、target profile、package path/hash、extension identity、developer/sideload/force state、完整性字段和 change approval。多个相关写入在两小时内合并为一个 registration transaction。
+    en: The analytic monitors browser and IDE profiles policies Preferences or Secure Preferences Registry extension directories VSIX or CLI and enterprise force-install state. Each write retains writer process actor target profile package path or hash extension identity developer side-load or force state integrity fields and change approval. Related writes within two hours become one registration transaction.
+  - zh: 它查找没有对应批准市场/UI/MDM/Group Policy/开发部署事件的包与注册状态，并等待下一次或后续 host application 或 extension host 加载精确 identity/version。KREMLIN 式完整性 hash 重建、浏览器关闭后写入和以后启动加载会形成闭合链；一次 `--load-extension` 或临时开发运行没有跨会话状态时只属于执行候选。
+    en: It finds package and registration state without a corresponding approved marketplace UI MDM Group Policy or development deployment event and waits for a later host application or extension host to load the exact identity and version. KREMLIN-style integrity-hash regeneration writes after browser closure and later startup load form a closed chain. One load-extension or temporary development run without cross-session state remains an execution candidate.
+  - zh: 后继结果连接 child process、network、page/workspace/resource activity。输出分为 unapproved_configuration_write、registration_state_confirmed、host_load_confirmed、outcome_unresolved 与 out_of_band_extension_persistence_confirmed。合法管理 writer、ticket 和范围必须精确匹配；`force installed` 或 developer mode 不能整体白名单。
+    en: Successor outcomes join child processes network and page workspace or resource activity. Outputs are unapproved_configuration_write registration_state_confirmed host_load_confirmed outcome_unresolved and out_of_band_extension_persistence_confirmed. Legitimate management writer ticket and scope must match exactly and force-installed or developer mode state cannot be globally allowlisted.
+data_requirements:
+- source_type: file-registry-policy-audit
+  name: {zh: 扩展 profile、policy、preference、Registry 与目录写入审计, en: Extension profile policy preference Registry and directory write audit}
+  channel: null
+  required_fields: [timestamp, device_id, user_or_profile_id, host_application, target_path_or_key, action, old_value, new_value, writer_process_id, actor_id, package_path, integrity_field, result]
+- source_type: process-command-line
+  name: {zh: 扩展安装 CLI 与 writer 进程, en: Extension installation CLI and writer processes}
+  channel: null
+  required_fields: [timestamp, device_id, process_id, parent_process_id, image, command_line, user_id, signer, target_profile, result]
+- source_type: extension-inventory
+  name: {zh: 配置写入后的扩展清单, en: Extension inventory after configuration writes}
+  channel: null
+  required_fields: [timestamp, device_id, user_or_profile_id, host_application, registry, publisher_id, extension_id, version, package_hash, enabled_state, install_origin, install_scope]
+- source_type: host-extension-runtime
+  name: {zh: 宿主和 extension host 加载与结果, en: Host and extension-host load and outcomes}
+  channel: null
+  required_fields: [timestamp, device_id, user_or_profile_id, host_application, host_process_id, extension_host_process_id, extension_id, version, load_event, child_process_id, destination_domain, resource_id, result]
+- source_type: approved-extension-change-context
+  name: {zh: 已批准扩展部署与变更上下文, en: Approved extension deployment and change context}
+  channel: null
+  required_fields: [change_id, owner, approver, deployment_method, writer_identity, host_scope, profile_scope, registry, publisher_id, extension_id, version_or_hash, valid_from, valid_until]
+observables:
+- {zh: 浏览器关闭后非管理 writer 修改扩展目录和 Secure Preferences，并重建完整性字段, en: A nonmanagement writer modifies extension directories and Secure Preferences and rebuilds integrity fields after browser closure}
+- {zh: IDE 或浏览器配置出现新 extension identity，但没有市场、UI、MDM、Group Policy 或批准 VSIX/CLI 安装事件, en: An IDE or browser configuration gains a new extension identity without marketplace UI MDM Group Policy or approved VSIX or CLI installation}
+- {zh: 同一写入事务后，下一次宿主启动或工作区打开加载该扩展并产生新进程、外联或资源访问, en: After one write transaction the next host start or workspace open loads the extension and produces a new process egress or resource access}
+- {zh: 清除当前 profile 后，其他用户 profile、远程 extension host 或企业策略重新注入同一 package hash, en: After current-profile cleanup another user profile remote extension host or enterprise policy reinjects the same package hash}
+correlation:
+  window:
+    zh: 相关配置写入在两小时内聚合，并保持到下一次宿主启动、工作区打开或最长三十天；所有 profile 和远程 extension host 的 package hash 与 identity 历史至少保留九十天。
+    en: Aggregate related configuration writes within two hours and retain them through the next host start workspace open or thirty days. Keep package-hash and identity history across every profile and remote extension host for at least ninety days.
+  dimensions: [device, user_or_profile, host_application, target_path_or_key, writer_process, actor, registration_transaction, registry, publisher, extension, version, package_hash, integrity_field, host_process, extension_host, destination, resource, time]
+false_positives:
+- {zh: MDM、Group Policy、企业 force install 与浏览器修复会直接写配置和扩展目录, en: MDM Group Policy enterprise force install and browser repair directly write configuration and extension directories}
+- {zh: 开发者通过 VSIX、CLI、developer mode 或 proposed API 安装测试扩展, en: Developers install test extensions through VSIX CLI developer mode or proposed APIs}
+- {zh: profile 漫游、备份恢复、设备迁移和企业镜像会重建扩展状态, en: Profile roaming backup restoration device migration and enterprise images rebuild extension state}
+- {zh: 合法安全、无障碍、密码管理和 DLP 扩展可能由管理员带外部署, en: Legitimate security accessibility password-management and DLP extensions may be deployed out of band by administrators}
+blind_spots:
+- {zh: 没有文件、Registry 或配置审计时，离线和高权写入不会留下 writer, en: Offline and privileged writes lack writer attribution without file Registry or configuration audit}
+- {zh: 受管管理员平面、MDM 或企业策略本身失陷时，恶意部署可能具备合法 change context, en: Malicious deployment may have legitimate change context when the managed administrator plane MDM or enterprise policy is compromised}
+- {zh: 宿主不暴露 extension-to-action 归因或远程 extension host 不回传时，结果保持 unresolved, en: Outcomes remain unresolved when hosts expose no extension-to-action attribution or remote extension hosts return no telemetry}
+- {zh: 完整性字段算法或加密状态不可解析时，只能看到内容改变而无法验证伪造, en: Only content changes are visible without verification when integrity-field algorithms or encrypted state cannot be parsed}
+tuning_guidance:
+  paragraphs:
+  - zh: 合法带外部署必须绑定具体 management writer、change ticket、registry/publisher/extension identity、package hash、目标用户/设备组和期限。对开发者 profile 分离实验与生产，记录 CLI、VSIX 和 developer mode；不得全局忽略 force-installed 或开发模式扩展。
+    en: Legitimate out-of-band deployment binds exact management writer change ticket registry publisher and extension identity package hash target user or device group and expiry. Separate experimental and production developer profiles and record CLI VSIX and developer mode. Never globally ignore force-installed or developer-mode extensions.
+  - zh: 以 registration transaction、下一次 host load 和后继结果分级。写入无加载为配置风险，加载无结果为 outcome unresolved，跨会话加载并产生风险结果才确认 Persistence。响应保全所有 profile、policy 和远程 host 状态，再移除包与注册、修复管理 writer 并验证不会重新注入。
+    en: Tier by registration transaction next host load and successor outcome. A write without load is configuration risk load without outcome remains unresolved and cross-session load plus risky outcome confirms Persistence. During response preserve every profile policy and remote-host state before removing package and registration repairing the management writer and verifying no reinjection.
+evidence_refs: [REF-000578, REF-000580, REF-001168, REF-001169]
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-10-22'
+  modified: '2026-10-22'
+  contributors: [Niji Matrix Research]
+  reviewers: []

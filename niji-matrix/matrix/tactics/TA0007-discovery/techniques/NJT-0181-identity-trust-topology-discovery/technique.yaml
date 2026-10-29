@@ -1,0 +1,153 @@
+schema_version: 2.0.0
+type: technique
+id: NJT-0181
+name:
+  zh: 身份信任拓扑发现
+  en: Identity Trust-Topology Discovery
+summary:
+  zh: 读取域、林或租户边界之间的信任伙伴、方向、类型与属性，并借用合法身份治理查询外观降低单事件可区分性。
+  en: Read trust partners, direction, type, and attributes across domain, forest, or tenant boundaries while resembling legitimate
+    identity-governance queries.
+aliases:
+- Domain Trust Discovery
+classification:
+  tactic_refs:
+  - TA0007
+  origin:
+    kind: attack-adapted
+    source_attack_id: T1482
+    source_attack_version: '19.1'
+  decision_ref: DEC-TA0007-T1482
+definition_and_concept:
+  paragraphs:
+  - zh: 身份信任拓扑发现是攻击者取得域、林或租户身份边界之间的信任伙伴、方向、类型、传递属性、trusted claims 或同步关系，以理解身份可达范围和潜在后继路径的行为。直接结果是一组信任边及属性，而不是账户、组或主机清单。
+    en: Identity Trust-Topology Discovery acquires trust partners, direction, type, transitive attributes, trusted claims,
+      or synchronization relationships across domain, forest, or tenant identity boundaries to understand identity reachability
+      and possible later paths. The direct result is a set of trust edges and attributes rather than an account, group, or
+      host list.
+  - zh: 本技术从固定 T1482 的 Windows 域/林语义适配到身份信任边界；域/林有直接恶意案例，跨租户 partner policy 只有官方能力和日志支持，因此结论强度分别保持高与中等。nltest、LDAP、Win32/.NET
+      API 和 Graph 只是读取入口。
+    en: The technique adapts fixed T1482 Windows domain and forest semantics to identity trust boundaries. Domain and forest
+      behavior has direct adversarial cases, while cross-tenant partner policy has official capability and logging support
+      only, so confidence remains high and medium respectively. Nltest, LDAP, Win32 or .NET APIs, and Graph are read paths.
+stealth_characteristics:
+  paragraphs:
+  - zh: 信任读取与 AD 健康检查、并购迁移、身份治理、访问审查和故障排查使用同样的 nltest、LDAP、PowerShell 或获准 Graph 请求。请求可被记录，但单条成功读取很难表达操作者是在维护身份边界还是绘制跨域路径。
+    en: Trust reads use the same nltest, LDAP, PowerShell, or entitled Graph requests as AD health, merger migration, identity
+      governance, access review, and troubleshooting. Requests can be recorded, but one successful read poorly expresses whether
+      the actor is maintaining the boundary or mapping cross-domain paths.
+  - zh: 端点进程、IdentityQueryEvents、Graph activity 及批准任务基线能够恢复主体与查询范围。缓存结果、未启用目录/Graph telemetry、内存 API 参数缺失和被盗治理身份仍会造成盲区；后继票据或横向活动只提高风险，不能代替信任发现证据。
+    en: Endpoint processes, IdentityQueryEvents, Graph activity, and approved-job baselines can recover actor and query scope.
+      Cached results, absent directory or Graph telemetry, missing in-memory API arguments, and stolen governance identities
+      remain blind spots. Later ticket or lateral activity raises risk but cannot replace evidence of trust discovery.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 纳入以取得 trust partner、direction、type、attributes、transitivity 或 reachability 为目的的域、林和租户查询。账户、组、GPO、域控制器、主机、服务和网络连接按各自直接问题另记，即使出现在同一命令序列。
+    en: Include domain, forest, and tenant queries aimed at trust partner, direction, type, attributes, transitivity, or reachability.
+      Accounts, groups, GPOs, domain controllers, hosts, services, and network connections retain their own direct classifications
+      even in the same command sequence.
+  - zh: 创建、修改、删除或恢复信任，以及票据伪造、SID History、Kerberoasting、远程认证和横向移动是后继行为。合法健康、迁移、治理、审查、故障排查和事件响应会产生同形读取，不能凭工具名、权限或成功状态判恶。
+    en: Creating, modifying, deleting, or restoring trust, plus ticket forgery, SID History, Kerberoasting, remote authentication,
+      and lateral movement are later behaviors. Legitimate health, migration, governance, review, troubleshooting, and incident
+      response create identical reads, so tool name, privilege, or success alone does not establish maliciousness.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: 攻击者取得普通域身份或受控 Windows 主机后，可用 nltest 或目录接口绘制信任边，再选择需要票据、凭据或远程访问的后续路线。CISA 直接记录伊朗行为者执行 domain_trusts/all_trusts；持有获准
+        token 的租户主体也可读取跨租户 partner policy，但本轮无对应在野案例。
+      en: After obtaining an ordinary domain identity or controlled Windows host, an adversary can use nltest or directory
+        interfaces to map trust edges before selecting later routes requiring tickets, credentials, or remote access. CISA
+        directly records Iranian actors executing domain_trusts and all_trusts. An entitled tenant principal can also read
+        cross-tenant partner policy, but this review has no corresponding in-the-wild case.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 域/林分支需要在域上下文认证并能访问目录/RPC/API；Microsoft 文档说明认证域用户可调用 DsEnumerateDomainTrusts。租户分支需要可用 token 及 Policy.Read.All 或支持角色。实际利用信任通常还需独立凭据、票据或远程访问能力。
+        en: The domain or forest branch needs domain-context authentication and directory, RPC, or API reachability; Microsoft
+          documents that an authenticated domain user can call DsEnumerateDomainTrusts. The tenant branch needs a usable token
+          and Policy.Read.All or a supported role. Exploiting trust normally requires separate credential, ticket, or remote-access
+          capability.
+    defender_model:
+      paragraphs:
+      - zh: 防守方可结合进程与 PowerShell、IdentityQueryEvents、经验证目录对象审计和 Graph activity。各通道覆盖不同入口，Graph 和 IdentityQuery 需部署，普通进程事件看不到内存
+          API 参数；1644 不是完整 LDAP 审计。
+        en: Defenders can combine process and PowerShell, IdentityQueryEvents, validated directory-object audit, and Graph
+          activity. Each covers different entry points, Graph and IdentityQuery require deployment, ordinary process events
+          miss in-memory API arguments, and 1644 is not complete LDAP audit.
+stealth_mechanisms:
+- mechanism_ref: NM-FD
+  role: primary
+  summary:
+    zh: 信任查询外观接近合法身份健康与治理任务
+    en: Trust queries resemble legitimate identity health and governance work
+  analysis:
+    paragraphs:
+    - zh: 攻击者使用 nltest、PowerShell、目录 API 或获准 Graph 读取取得信任图，主体、对象和方法可能与健康检查、迁移及治理任务相同。单事件难判断目的；只有引入职责、来源、scope、批准窗口和独立后继上下文，恶意可区分性才增强。CISA
+        证明恶意原生枚举，Microsoft 证明同形合法用途，但没有漏报测量，故置信度为 medium。
+      en: The adversary obtains a trust graph with nltest, PowerShell, directory APIs, or entitled Graph reads, whose actor,
+        object, and method can match health, migration, and governance work. One event poorly establishes purpose; role, origin,
+        scope, approved window, and separate successor context improve malicious distinction. CISA establishes malicious native
+        enumeration and Microsoft identical legitimate use without miss-rate measurement, so confidence is medium.
+  evidence_refs:
+  - REF-000829
+  - REF-000830
+  - REF-000834
+  confidence: medium
+subtechnique_taxonomy:
+  narrative:
+    paragraphs:
+    - zh: 缓存视图、限域查询、多源或低速信任图拼接和属性投影已分别审查。缓存可能改变 DC 观察面，但无同案缓存命中与网络/目录痕迹对照；范围与属性选取是正常管理能力，多源拼接缺共同控制者证据。
+      en: Cached views, scoped queries, multi-origin or low-rate trust-graph assembly, and attribute projection were reviewed
+        separately. Cache can change DC observation, but no same-case cache hit and network or directory trace comparison
+        exists. Scope and attribute selection are ordinary administrative capabilities, while distributed assembly lacks common-controller
+        evidence.
+    - zh: 域/林和租户需要不同 Analytic，但平台并非 NJS。没有轴同时满足攻击者选择、稳定痕迹差和独立防御价值，故 coverage 为 deferred，正式子项为空。
+      en: Domain or forest and tenant paths need different analytics, but platform is not NJS. No axis combines adversary
+        choice, stable trace difference, and independent defensive value, so coverage is deferred and the formal child set
+        is empty.
+  coverage: deferred
+  subtechnique_refs: []
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000209
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000191
+evidence:
+  claim_refs:
+  - CLM-000896
+  - CLM-000897
+  case_refs:
+  - CASE-000261
+  reference_refs:
+  - REF-000827
+  - REF-000828
+  - REF-000829
+  - REF-000830
+  - REF-000831
+  - REF-000832
+  - REF-000833
+  - REF-000834
+  - REF-000382
+research:
+  limitations:
+    paragraphs:
+    - zh: 公开案例证明攻击者查询域/林信任，但没有把命令、目录请求、返回边、缓存命中、告警结果和后继路径完整联结。跨租户分支只有权限、接口和日志能力，没有第一方恶意 partner-policy 读取案例。
+      en: Public cases prove adversarial domain or forest trust queries without joining commands, directory requests, returned
+        edges, cache hits, alert outcomes, and later paths. The cross-tenant branch has authorization, interface, and logging
+        capability but no firsthand malicious partner-policy read case.
+    - zh: IdentityQueryEvents 与 Graph activity 的可用性取决于许可、诊断设置和保留；缓存、限域、低速与多源轴均没有同案痕迹对照或可重复测量。阈值和窗口只能作为本地工程起点。
+      en: Availability of IdentityQueryEvents and Graph activity depends on licensing, diagnostics, and retention. Cache,
+        scope, low-rate, and distributed axes lack same-case trace comparisons or repeatable measurements. Thresholds and
+        windows are local engineering starting points only.
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-09-27'
+  modified: '2026-09-27'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

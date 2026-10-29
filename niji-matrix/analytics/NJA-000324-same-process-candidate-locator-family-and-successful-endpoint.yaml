@@ -1,0 +1,147 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000324
+strategy_ref: DET-000248
+name:
+  zh: 同进程候选定位符家族与成功端点
+  en: Same-Process Candidate-Locator Family and Successful Endpoint
+summary:
+  zh: 验证共享状态生成的 locator 候选族及被实际消费的成功 C2。
+  en: Validate a shared-state-generated locator family and the successful C2 endpoint actually consumed.
+domains:
+- enterprise
+platforms:
+- Windows
+- Linux
+- macOS
+- Network Devices
+logic:
+  paragraphs:
+  - zh: 按 device/process 在解析器、代理和端点网络日志中构建候选 domain/URL 序列，保留 rcode、HTTP/DNS success、生成时间与后继 socket。用样本/内存恢复的词表、时间、种子或组合规则优先建立
+      family；没有算法时只能从相同进程、时间关系、公共词元/结构和 RDAP/CT 同期出现提出 hypothesis。至少一个候选必须成功解析/请求并由同一进程产生 C2 结果。NXDOMAIN、熵、长度、TLD 或新注册域任一单独不告警。
+    en: Build a candidate domain or URL sequence by device and process across resolver, proxy, and endpoint network logs,
+      retaining rcode, HTTP or DNS success, generation time, and successor socket. Prefer a family derived from word
+      lists, time, seed, or composition rules recovered from a sample or memory. Without an algorithm, same process,
+      time relation, shared tokens or structure, and contemporaneous RDAP or CT support only a hypothesis. At least one
+      candidate must resolve or respond successfully and produce a C2 outcome in the same process. NXDOMAIN, entropy,
+      length, TLD, or a newly registered domain alone does not alert.
+data_requirements:
+- source_type: endpoint-dns-network
+  name:
+    zh: endpoint_dns_network
+    en: endpoint_dns_network
+  channel: Sysmon 22/3 or equivalent EDR
+  required_fields:
+  - timestamp
+  - device_id
+  - process_guid
+  - image
+  - query_name
+  - query_status
+  - query_results
+  - remote_ip
+  - remote_port
+  - remote_url
+- source_type: recursive-dns
+  name:
+    zh: recursive_dns
+    en: recursive_dns
+  channel: Zeek dns.log or managed resolver
+  required_fields:
+  - ts
+  - uid
+  - client_ip
+  - query
+  - qtype_name
+  - rcode_name
+  - answers
+  - ttls
+- source_type: proxy-http
+  name:
+    zh: proxy_http
+    en: proxy_http
+  channel: null
+  required_fields:
+  - timestamp
+  - device_id
+  - process_id
+  - host
+  - uri
+  - method
+  - status_code
+  - destination_ip
+- source_type: passive-dns-registration-certificate
+  name:
+    zh: passive_dns_registration_certificate
+    en: passive_dns_registration_certificate
+  channel: Passive DNS, RDAP, CT
+  required_fields:
+  - rrname
+  - rrtype
+  - rdata
+  - time_first
+  - time_last
+  - domain
+  - registration_event_time
+  - nameserver
+  - cert_fingerprint
+  - cert_not_before
+- source_type: sample-or-memory
+  name:
+    zh: sample_or_memory
+    en: sample_or_memory
+  channel: null
+  required_fields:
+  - sample_hash
+  - generator_version
+  - seed_or_time_basis
+  - token_or_wordlist_digest
+  - candidate_output
+observables:
+- zh: 同进程候选族具有种子/时钟关系，经历失败后命中并消费成功 C2
+  en: A same-process candidate family has a seed or time relation, progresses from failure to a hit, and consumes successful
+    C2
+- zh: 候选域/URL 与注册、证书或被控基础设施历史对齐
+  en: Candidate domains or URLs align with registration, certificate, or compromised-infrastructure history
+correlation:
+  window:
+    zh: 一个生成周期及相邻时钟偏移周期；保留三十日或已恢复生成范围。
+    en: One generator period plus adjacent clock-skew periods; retain thirty days or the recovered generation horizon.
+  dimensions:
+  - device_id
+  - process_guid
+  - generator_version
+  - candidate_family
+  - query
+  - remote_url
+  - rcode_or_status
+  - domain
+  - cert_fingerprint
+  - time
+false_positives:
+- zh: 浏览器预取/拼写错误、安全沙箱查询、服务发现或追踪域
+  en: Browser prefetch or typos, security-sandbox queries, service discovery, or tracking domains
+blind_spots:
+- zh: 无样本/内存、DoH/代理不可见、只有单个成功候选或共享浏览器进程
+  en: No sample or memory, opaque DoH or proxy, only one successful candidate, or a shared browser process
+tuning_guidance:
+  paragraphs:
+  - zh: 对批准软件保存 URL template/tenant/shard 规则和 signer；算法/词表匹配与成功 C2 结果权重大于词法特征。sinkhole/阻断清单按 generator period 自动到期/更新，避免永久封禁碰撞的合法域。
+    en: Retain URL-template, tenant, and shard rules and signer for approved software. Algorithm or word-list match plus
+      successful C2 outcome outweighs lexical features. Expire or update sinkhole and block lists by generator period
+      to avoid permanently blocking legitimate domains that collide.
+evidence_refs:
+- REF-001072
+- REF-000635
+- REF-000230
+- REF-001074
+- REF-000038
+- REF-000036
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-10-05'
+  modified: '2026-10-05'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

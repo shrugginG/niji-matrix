@@ -1,0 +1,123 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000317
+strategy_ref: DET-000243
+name:
+  zh: 自动化轮询到选择式交互会话转换
+  en: Automated Polling to Selective Interactive Session Transition
+summary:
+  zh: 识别自动轮询经选择后转换为独立交互控制会话。
+  en: Identify selected transition from automated polling to an independent interactive control session.
+domains:
+- enterprise
+platforms:
+- Windows
+- Linux
+- Network Devices
+logic:
+  paragraphs:
+  - zh: 按 DeviceId/进程和第一阶段目标建立长期轮询序列，计算方向、orig/resp bytes、packet count、duration、间隔和应用事务数；在收到 selection/config 后，寻找同一主机首次连接独立目的地且会话从短周期自动轮询变为长持续、双向字节接近或与
+      shell/文件命令同步的交互形态。BACKSPACE 的 connect/dizhi 文件和 victim host ID 可作家族确认。正常第一阶段失败后改用同角色端点应送 NJT-0153 分析，不在本 analytic
+      作为阶段转换。
+    en: Build a long-lived polling sequence by DeviceId or process and first-stage destination, measuring direction,
+      orig and resp bytes, packet count, duration, interval, and application-transaction count. After a selection or
+      configuration response, seek the same host's first connection to an independent destination where short periodic
+      automated polling becomes a long-lived session, more balanced bidirectional bytes, or activity synchronized with
+      shell or file commands. BACKSPACE connect and dizhi files and victim host ID are family confirmations. A same-role
+      endpoint used after first-stage failure should be routed to NJT-0153 analysis rather than counted as a stage transition
+      here.
+data_requirements:
+- source_type: network-flow
+  name:
+    zh: ('network_flow', 'network_flow')
+    en: ('network_flow', 'network_flow')
+  channel: Zeek conn.log or equivalent unsampled flow
+  required_fields:
+  - ts
+  - uid
+  - id.orig_h
+  - id.orig_p
+  - id.resp_h
+  - id.resp_p
+  - proto
+  - service
+  - duration
+  - orig_bytes
+  - resp_bytes
+  - orig_pkts
+  - resp_pkts
+  - conn_state
+- source_type: http-transaction
+  name:
+    zh: ('http_transaction', 'http_transaction')
+    en: ('http_transaction', 'http_transaction')
+  channel: Zeek http.log or proxy
+  required_fields:
+  - ts
+  - uid
+  - host
+  - uri
+  - method
+  - status_code
+  - request_body_len
+  - response_body_len
+- source_type: endpoint-process-network
+  name:
+    zh: ('endpoint_process_network', 'endpoint_process_network')
+    en: ('endpoint_process_network', 'endpoint_process_network')
+  channel: Defender XDR or equivalent
+  required_fields:
+  - timestamp
+  - device_id
+  - initiating_process_unique_id
+  - process_unique_id
+  - remote_ip
+  - remote_port
+  - remote_url
+  - process_command_line
+observables:
+- zh: 稳定自动轮询经选择/配置事件转为独立第二目的地
+  en: Stable automated polling transitions through a selection or configuration event to an independent second destination
+- zh: 第二阶段流量形态转成交互式并连接进程/文件活动
+  en: Stage-two traffic becomes interactive and joins process or file activity
+correlation:
+  window:
+    zh: 第一阶段基线至少七日，选择至第二阶段会话零至二十四小时并按环境校准。
+    en: At least seven days for stage-one baseline and zero to twenty-four hours from selection to stage-two session,
+      calibrated locally.
+  dimensions:
+  - device_id
+  - process_lineage
+  - victim_id
+  - stage_one_destination
+  - stage_two_destination
+  - uid
+  - time
+false_positives:
+- zh: 远程支持或监控 agent 升级到合法实时处置会话
+  en: Remote-support or monitoring agents escalating to legitimate live remediation
+blind_spots:
+- zh: 第二阶段共享目的地、选择内容加密、设备无进程身份或稀疏激活
+  en: Stage two shares a destination, selection content is encrypted, the device lacks process identity, or activation
+    is sparse
+tuning_guidance:
+  paragraphs:
+  - zh: 为合法管理工具明确登记轮询端点、人工会话端点、操作员身份与工单触发；只有无批准选择事件或后继目的地不属于产品时提升。流量“更大/更长”只用于同设备同产品相对差，不设置未知本地基线的通用阈值。
+    en: Register polling endpoints, live-session endpoints, operator identities, and ticket triggers for legitimate management
+      tools and elevate only when the selection event is unapproved or the successor destination is outside the product.
+      Larger or longer traffic is a within-device and within-product differential rather than a universal threshold without
+      a local baseline.
+evidence_refs:
+- REF-001052
+- REF-000634
+- REF-000632
+- REF-000604
+- REF-000598
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-10-04'
+  modified: '2026-10-04'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

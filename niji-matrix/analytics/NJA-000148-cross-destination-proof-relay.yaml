@@ -1,0 +1,127 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000148
+strategy_ref: DET-000143
+name:
+  zh: 跨目标认证证明中继分析
+  en: Cross-Destination Authentication-Proof Relay Analytic
+summary:
+  zh: 把受害端原始资源与真正验证证明的 SMB 或 LDAP 目标连接，并区分阻断和成功。
+  en: Join the victim's intended resource to the SMB or LDAP target that truly verifies the proof, separating rejection from success.
+domains:
+- enterprise
+platforms:
+- Windows
+logic:
+  paragraphs:
+  - zh: 在终端记录原始名称请求与到首个接收者的 SMB/HTTP/LDAP 连接；在域控和目标服务保留 NTLM 8004、相关认证结果及 SMB/LDAP 签名或通道绑定状态。按账户、客户端主机、挑战事务或窄时间窗连接两侧，寻找终端声称的资源与真正接受证明的目标服务不同、目标服务记录的网络来源却是中间节点的序列。一次绑定失败只证明保护拒绝了不匹配，不证明凭据失窃；若目标成功并有后继资源操作，才提高已获认证能力的置信度。
+    en: Record the endpoint's original name request and SMB, HTTP, or LDAP connection to the first receiver; retain NTLM 8004 on domain controllers,
+      target-service authentication outcomes, and SMB or LDAP signing and channel-binding state. Join both sides by account, client host, challenge
+      transaction where available, or a narrow time window. Look for a sequence in which the resource named by the endpoint differs from the service
+      that actually accepts the proof and the target service sees the intermediary as its network source. A binding failure shows that protection
+      rejected a mismatch, not that a credential was stolen. A target success followed by resource action raises confidence that authentication
+      capability was acquired.
+data_requirements:
+- source_type: endpoint-network-auth
+  name:
+    zh: 客户端原始请求与认证连接
+    en: Client original request and authentication connection
+  channel: null
+  required_fields:
+  - event.timestamp
+  - endpoint.id
+  - user.id
+  - requested.name
+  - connection.destination
+  - authentication.protocol
+- source_type: windows-ntlm-audit
+  name:
+    zh: Windows NTLM 审计
+    en: Windows NTLM audit
+  channel: Microsoft-Windows-NTLM/Operational event 8004 on domain controllers
+  required_fields:
+  - event.timestamp
+  - user.id
+  - client.name
+  - accessed_server.name
+  - authentication.result
+- source_type: target-authentication
+  name:
+    zh: 目标服务认证结果
+    en: Target-service authentication result
+  channel: null
+  required_fields:
+  - event.timestamp
+  - target.service
+  - user.id
+  - source.ip
+  - authentication.result
+- source_type: smb-ldap-protection
+  name:
+    zh: SMB 或 LDAP 保护状态及拒绝事件
+    en: SMB or LDAP protection state and rejection events
+  channel: null
+  required_fields:
+  - event.timestamp
+  - target.service
+  - protection.type
+  - protection.enforced
+  - protection.result
+- source_type: approved-relay-inventory
+  name:
+    zh: 批准认证代理与中继关系
+    en: Approved authentication proxy and relay relationships
+  channel: null
+  required_fields:
+  - service.name
+  - proxy.id
+  - source.ip
+  - valid.from
+  - valid.to
+  - approval.id
+observables:
+- zh: 终端访问名称 A 并向中间节点提交证明，短时间内目标 B 从中间节点收到同账户认证且 A 与 B 无批准代理关系
+  en: An endpoint requests A and offers a proof to an intermediary, while B receives same-account authentication from that intermediary without
+    an approved proxy relation
+- zh: 与疑似中继序列相连的 SMB 签名拒绝或 LDAP 绑定不匹配及后续目标成功结果
+  en: SMB signing rejection or LDAP binding mismatch linked to a suspected relay sequence, or a later target success
+correlation:
+  window:
+    zh: 以一次认证挑战和目标结果为中心关联前后各五分钟；时钟偏差超过窗口时保留未决。
+    en: Correlate five minutes on either side of one authentication challenge and target result; preserve unresolved status when clock skew exceeds
+      the window.
+  dimensions:
+  - user.id
+  - endpoint.id
+  - client.name
+  - requested.name
+  - connection.destination
+  - accessed_server.name
+  - source.ip
+false_positives:
+- zh: 经批准的身份代理、跳板服务、负载均衡、服务账号和脆弱旧客户端迁移测试
+  en: Authorized identity proxies, jump services, load balancers, service accounts, and migration tests with legacy clients
+blind_spots:
+- zh: 未启用 8004 或目标审计、终端原始目的地不可得、协议加密妨碍事务级匹配、同源 NAT 或代理混淆来源
+  en: Missing 8004 or target auditing, absent endpoint intended destination, encryption that prevents transaction matching, and NAT or proxies
+    that obscure source
+tuning_guidance:
+  paragraphs:
+  - zh: 为批准中继器建立服务名、账号、网络来源和用途映射，保持签名/绑定错误与认证成功为不同信号。对高价值 LDAP/SMB 目标优先关联同账户的端点原始目的地和目标结果；没有两侧关联时只输出“异常认证来源”，不要自动定性中间人或材料已失窃。校准时按域控、服务和客户端版本核对事件字段可用性。
+    en: Map each approved relay or proxy to service names, accounts, network origins, and purpose; keep signing or binding failures separate from
+      successful authentication. Prioritize joining the endpoint's intended destination and the target outcome for high-value LDAP and SMB services.
+      Without both sides, report an anomalous authentication source rather than automatically asserting an intermediary or stolen material. Validate
+      event-field availability by domain controller, service, and client version during tuning.
+evidence_refs:
+- REF-000490
+- REF-000492
+- REF-000493
+- REF-000494
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-09-22'
+  modified: '2026-09-22'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

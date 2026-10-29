@@ -1,0 +1,65 @@
+schema_version: "2.0.0"
+type: detection-analytic
+id: NJA-000132
+strategy_ref: DET-000131
+name:
+  zh: 独立活动—遥测完整性差分
+  en: Independent Activity–Telemetry Completeness Differential
+summary:
+  zh: 从独立行为推导应有安全事件，并定位生成至持久存储路径中的选择性或突发缺口。
+  en: Derive expected security events from independent behavior and locate selective or abrupt gaps along the path from generation to durable storage.
+domains: [enterprise]
+platforms: []
+logic:
+  paragraphs:
+    - zh: 在遥测健康期按 asset_id、event_class、provider、policy_version 和活动类型学习“独立活动 → 应有事件”的覆盖率与延迟分布，例如认证结果、进程创建、控制面变更或网络连接对应的审计记录。为每条独立活动生成 expected_event_key，并在 source generation、local queue、forwarder、ingest 和 durable store 阶段查找同键或可解释派生键；同时规范 audit-policy、provider、forwarder、subscription、destination 与 pipeline 配置变化。
+      en: During telemetry-healthy periods, learn the coverage and delay distribution from independent activity to expected event by asset_id, event_class, provider, policy_version, and activity type—for example, authentication results, process creation, control-plane changes, or network connections and their audit records. Generate an expected_event_key for each independent action and search for the same key or an explainable derived key at source generation, local queue, forwarder, ingest, and durable-store stages. Normalize changes to audit policy, provider, forwarder, subscription, destination, and pipeline configuration in parallel.
+    - zh: 当一类 expected_event 超过其第九十九百分位延迟仍未进入持久存储，先输出 telemetry_gap。若缺口只影响与攻击者选择条件匹配的主体、命令、事件类别或资源，且时间上连接未经批准的 provider/进程内 patch/forwarder 变化，则输出 selective_pre_storage_suppression；若整源突然静默且伴随 service 或 pipeline 停止，则输出 source_or_pipeline_suppression。已持久化后才消失的事件转交 NJT-0112，不在本分析中作为入库前抑制确认。
+      en: When an expected-event class remains absent from durable storage beyond its ninety-ninth-percentile delay, first emit telemetry_gap. If the gap affects only principals, commands, event classes, or resources matching an adversary-selected condition and is temporally joined to an unapproved provider, in-process patch, or forwarder change, emit selective_pre_storage_suppression. If an entire source becomes silent with service or pipeline stoppage, emit source_or_pipeline_suppression. Events that disappear only after durable storage are referred to NJT-0112 and are not confirmed here as pre-storage suppression.
+data_requirements:
+  - source_type: independent-asset-activity
+    name: {zh: 独立主机、身份、网络或控制面活动, en: "Independent host, identity, network, or control-plane activity"}
+    channel: null
+    required_fields: [timestamp, asset_id, activity_id, activity_type, actor_id, object_id, outcome, source_authority]
+  - source_type: telemetry-pipeline-stage
+    name: {zh: 遥测生成、队列、转发、摄取与存储阶段指标, en: "Telemetry generation, queue, forwarding, ingestion, and storage stage metrics"}
+    channel: null
+    required_fields: [timestamp, asset_id, provider_id, event_class, pipeline_stage, event_key, event_count, queue_depth, delivery_status, destination_id]
+  - source_type: durable-security-event
+    name: {zh: 独立持久安全事件库, en: Independent durable security-event store}
+    channel: null
+    required_fields: [timestamp, asset_id, provider_id, event_class, event_key, ingest_time, store_time, policy_version]
+  - source_type: telemetry-configuration-audit
+    name: {zh: 审计策略、提供程序、转发器与订阅变更, en: "Audit-policy, provider, forwarder, and subscription changes"}
+    channel: null
+    required_fields: [timestamp, asset_id, actor_id, component_id, action, old_value, new_value, policy_version, request_id, approval_id]
+observables:
+  - {zh: 独立活动存在但超出正常延迟后仍没有对应持久事件, en: Independent activity exists but no corresponding durable event arrives beyond normal delay}
+  - {zh: 缺口只覆盖特定主体、命令、事件类别或资源而相邻事件仍连续, en: "A gap covers selected principals, commands, event classes, or resources while adjacent events remain continuous"}
+  - {zh: 缺口前出现 provider、进程内代码、forwarder、subscription 或 destination 变化, en: "Provider, in-process code, forwarder, subscription, or destination changes precede the gap"}
+  - {zh: 已知 canary 活动在一个阶段出现但未到达下一阶段, en: Known canary activity appears at one pipeline stage but fails to reach the next}
+correlation:
+  window:
+    zh: 以事件类别正常延迟分布为基础，从活动前十五分钟至后六小时关联；低频批处理或云日志可按已验证交付 SLO 延长至二十四小时。
+    en: Base correlation on the event class's normal delay distribution from fifteen minutes before activity through six hours after it; extend to twenty-four hours for low-frequency batch or cloud logs with a validated delivery SLO.
+  dimensions: [asset_id, activity_id, expected_event_key, actor_id, object_id, provider_id, event_class, pipeline_stage, destination_id, policy_version, time]
+false_positives:
+  - {zh: 已批准的日志管线维护、目的地迁移和 provider 版本升级, en: "Approved logging-pipeline maintenance, destination migration, and provider-version upgrades"}
+  - {zh: 网络分区、摄取背压、限流、批处理延迟或时钟偏差, en: "Network partitions, ingestion backpressure, throttling, batch delay, or clock skew"}
+  - {zh: 合法策略使特定事件类别不再要求生成, en: Legitimate policy makes a particular event class no longer required}
+blind_spots:
+  - {zh: 没有独立活动源可证明事件本应生成, en: No independent activity source establishes that an event should exist}
+  - {zh: 攻击者同时控制活动源、管线指标和持久存储, en: "The adversary controls the activity source, pipeline metrics, and durable store together"}
+  - {zh: 产品不暴露阶段标识或 event key，只能确认缺口而不能定位, en: "The product exposes no stage identity or event key, allowing gap confirmation but not location"}
+tuning_guidance:
+  paragraphs:
+    - zh: 对每个 provider 与 event_class 在健康期计算覆盖率、延迟分位数和日常静默周期；canary 必须是低风险、可撤销且能够跨阶段携带稳定键的动作。按维护工单调整 SLO 而不是删除缺失记录，并保留 gap、unresolved 和 confirmed 三种状态。稀有高价值事件不使用纯事件量阈值，应以独立活动逐条核对。
+      en: Compute coverage, delay percentiles, and normal quiet periods for each provider and event_class during healthy operation. Canaries must be low risk, reversible, and able to carry a stable key across stages. Adjust the SLO through maintenance records rather than dropping missing observations, and retain gap, unresolved, and confirmed states. Rare high-value events should be checked against independent activity individually rather than by volume alone.
+evidence_refs: [REF-000446, REF-000448]
+lifecycle:
+  status: review
+  version: "1.0.0"
+  created: "2026-09-22"
+  modified: "2026-09-22"
+  contributors: [Niji Matrix Research]
+  reviewers: []

@@ -1,0 +1,155 @@
+schema_version: 2.0.0
+type: technique
+id: NJT-0139
+name:
+  zh: 云基础设施发现
+  en: Cloud Infrastructure Discovery
+summary:
+  zh: 在已访问 IaaS 环境中读取实例、网络、桶和数据库等资源关系，使目标选择融入获准身份的日常资源盘点外观。
+  en: Read instances, networks, buckets, databases, and their relationships in an accessed IaaS environment, allowing target
+    selection to resemble routine inventory under an entitled identity.
+aliases: []
+classification:
+  tactic_refs:
+  - TA0007
+  origin:
+    kind: attack-retained
+    source_attack_id: T1580
+    source_attack_version: '19.1'
+  decision_ref: DEC-TA0007-T1580
+definition_and_concept:
+  paragraphs:
+  - zh: 云基础设施发现是攻击者在已进入的 IaaS 账户或项目中读取具体资源实体、配置属性及它们的连接关系，以形成可供下一步访问、修改或取数选择的资源图。实例与安全组、卷与快照、桶与访问设置以及数据库与网络边界都是这类图的组成部分。
+    en: Cloud Infrastructure Discovery is the adversary’s acquisition of concrete resource entities, configuration attributes,
+      and relationships in an accessed IaaS account or project to build a graph for later access, modification, or data targeting.
+      Instances with security groups, volumes with snapshots, buckets with access settings, and databases with network boundaries
+      are parts of that graph.
+  - zh: 本项直接回答“有哪些资源、它们如何关联”，而不是“哪些云服务能力已启用”或“桶内有哪些对象键”。攻击者可以通过服务专属 API 或已有清单取得答案；具体工具、云厂商、区域和分页方式只影响实施，不自动决定 Niji 子技术。
+    en: The direct question is which resources exist and how they relate, rather than which service capabilities are enabled
+      or which keys lie inside a bucket. Service-specific APIs or existing inventories can supply the answer; tool, provider,
+      Region, and pagination shape implementation but do not automatically define Niji children.
+stealth_characteristics:
+  paragraphs:
+  - zh: 有效访问键发起的 List/Describe 请求与合法 CSPM、IaC 刷新及运维盘点使用同类接口。资源查询仍可产生 CloudTrail 读事件，隐蔽点在于单条成功只读调用缺乏判定控制者目的的能力；攻击者逐步拼出资源关系时，防守方若只看写入告警或一个服务的局部事件，就难以看到完整测绘。
+    en: List and Describe requests under valid access keys share interfaces with legitimate CSPM, IaC refresh, and operations
+      inventory. Queries can still produce CloudTrail read events; the stealth challenge is that one successful read says
+      little about the controller’s purpose. While an adversary assembles resource relationships, write-only alerting or one
+      service’s local events poorly reconstruct the full mapping.
+  - zh: 身份、来源、账户、区域、方法和后继变更仍然可关联。Expel 的实案有八个被盗键与多类资源读取，但不证明它们被有意分工稀释；请求分页和过滤也常用于正常大规模清单。读事件是否完整保留、返回结果是否缺席以及批准作业基线，都会限制匿迹结论的强度。
+    en: Identity, origin, account, Region, method, and later changes remain joinable. Expel observed eight stolen keys and
+      several resource classes, but did not prove deliberate partitioning across keys; pagination and filters are also routine
+      for large inventories. The strength of any stealth conclusion depends on read-event retention, absent response detail,
+      and approved-job baselines.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 纳入为了取得实例、桶、快照、数据库、网络控制与资源关系而进行的读取。服务开通、GuardDuty/日志服务状态等能力问题归 T1526；已知桶内对象键与前缀归 T1619；T1538 的控制台仅是取得信息的界面。读取之后的安全组修改、实例启动或对象正文下载是独立后继行为。
+    en: Include reads aimed at instances, buckets, snapshots, databases, network controls, and resource relationships. Service
+      activation and GuardDuty or logging state belong to T1526; keys and prefixes inside a known bucket belong to T1619;
+      a T1538 dashboard is only a viewing interface. A later security-group change, instance start, or object-body download
+      is a separate successor act.
+  - zh: 同一 API 或控制台页面可能返回资源名与服务名，按攻击者直接求取的问题和后继使用判定主归属，不按响应字段自动重复分类。批准的资产治理、成本分析、灾备和事件响应也会跨服务枚举；异常需要结合凭据来源、批准范围、查询覆盖与后继结果，而非简单认为
+      Describe 调用即恶意。
+    en: One API or console page can return both resource and service names; classify by the question directly sought and how
+      the result is used, rather than duplicating labels for every response field. Approved asset governance, cost analysis,
+      disaster recovery, and incident response also enumerate across services. Suspicion requires credential origin, approved
+      scope, query coverage, and later outcomes rather than treating a Describe call as malicious by itself.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: 取得有限 IAM 键后，攻击者可能先寻找可达实例、数据库和与之相关的安全组，再决定哪条入口值得更改或访问。Expel 的调查展示了桶、实例和数据库读取转向安全组与实例动作的顺序；它证明资源测绘可支持后继选择，却不能代表所有资源读取必然产生同样结果。
+      en: With a limited IAM key, an adversary may locate reachable instances, databases, and related security groups before
+        choosing an entry point to change or access. Expel documented a transition from bucket, instance, and database reads
+        to security-group and instance actions, establishing how resource mapping can support later choice without making
+        that sequence universal.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者至少需要一个有权列目标资源的身份、会话或可读视图；可见范围受 IAM、账户、区域、分区和视图索引限制，不默认具有管理员或全组织权限。若使用旧 state 或聚合索引，必须另证副本可访问并接受资源图可能过期或不完整。
+        en: The adversary needs an identity, session, or readable view authorized to list target resources. IAM, account,
+          Region, partition, and index scope limit visibility; administrator or organization-wide access is not assumed. Old
+          state or aggregate indexes require separately proven access and may produce stale or partial graphs.
+    defender_model:
+      paragraphs:
+      - zh: 防守方可能保留 CloudTrail 管理读、身份/STS、批准盘点台账及后继写事件。AWS 读事件能给出调用者、方法与来源，却通常不能重建返回的完整资源集合；多账户、多区域、读写选择器与保留期决定能否拼回资源查询图。缺一段日志只说明观察不足，不能证明攻击者没有查询或必然规避成功。
+        en: The defender may retain CloudTrail management reads, identity and STS activity, approved-inventory jobs, and later
+          writes. AWS read events provide caller, method, and origin but generally cannot reconstruct the complete returned
+          resource set. Account and Region coverage, read/write selectors, and retention determine whether the query graph
+          can be rebuilt. A log gap establishes limited observation, not proof of absent queries or successful evasion.
+stealth_mechanisms:
+- mechanism_ref: NM-FD
+  role: primary
+  summary:
+    zh: 被盗有效身份的资源读取外观接近日常资产盘点
+    en: Resource reads under a stolen valid identity resemble routine asset inventory
+  analysis:
+    paragraphs:
+    - zh: 攻击者以有效访问键调用与获准盘点相同的 List/Describe 接口，产生真实但外观正常的身份和方法事件，而不是直接触发资源变更。若防守方把只读事件视为普通运维或仅对写入报警，分散在 EC2、RDS 与 S3 桶的目标选择难在单条日志中辨明；把新来源、跨服务覆盖和后继安全组动作接成一条身份谱系后，区别才增强。Expel
+        证明这种入侵读取发生，但没有量化检测漏失或证明特定规避意图，故机理维持中等置信。
+      en: The attacker uses a valid access key to call List and Describe interfaces also used by approved inventory, producing
+        real but ordinary-looking identity and method events rather than a direct resource change. A defender treating reads
+        as routine or alerting only on writes cannot readily classify target selection spread across EC2, RDS, and S3 buckets
+        from one event. New origin, cross-service coverage, and later security-group actions become more discriminating when
+        joined into one identity lineage. Expel establishes the adversarial reads but does not measure missed detections or
+        prove a particular evasion intent, so confidence remains medium.
+  evidence_refs:
+  - REF-000522
+  - REF-000523
+  - REF-000524
+  confidence: medium
+subtechnique_taxonomy:
+  narrative:
+    paragraphs:
+    - zh: 当前没有满足独立恶意证据与不同防守模型的原生子项。已研究“从 Config、Resource Explorer 或 state 等既存资源视图取图”这一读取位置变量，它可能把痕迹转移出服务专属 Describe 序列，但缺实际攻击者选择这条路径的同案资料，且三种视图的审计可能需要进一步拆分。
+      en: No native child currently has both independent adversarial evidence and a distinct defense model. Retrieval from
+        an existing Config, Resource Explorer, or state view was examined as a reading-location variable. It may shift traces
+        away from service-specific Describe sequences, but no same-incident source establishes attacker choice of that path,
+        and the three views may require further audit-specific separation.
+    - zh: 跨键或跨区域拼接、条件过滤、低频节奏和分页同样经过搜索；Expel 只证明多键使用，不证明互补任务分配，分页还是正常接口实践。这些轴均已独立搜索，但目前仍为假设，因此 coverage 为 deferred，正式子项为空。
+      en: Cross-key or cross-Region assembly, scoped filters, low-rate cadence, and paging were also searched. Expel proves
+        multiple keys, not complementary task allocation, and paging is ordinary interface practice. These axes were searched
+        independently but remain hypotheses; coverage is deferred and the formal child set is empty.
+  coverage: deferred
+  subtechnique_refs: []
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000150
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000139
+evidence:
+  claim_refs:
+  - CLM-000717
+  - CLM-000718
+  case_refs:
+  - CASE-000187
+  reference_refs:
+  - REF-000521
+  - REF-000522
+  - REF-000523
+  - REF-000524
+  - REF-000525
+  - REF-000513
+research:
+  limitations:
+    paragraphs:
+    - zh: Expel 的报告没有请求级过滤参数、跨访问键互补任务或攻击者规避指令，也没有逐查询检测率。它对启动停止实例所用 API 的一句描述与 AWS 接口定义存在疑点，本条技术不将那一句提升为已确证状态转换；后继行为只在报告可直接支持的粒度记录。
+      en: Expel provides neither request-level filters, complementary tasks across keys, an evasion instruction, nor per-query
+        detection rates. One statement about the API used to start a stopped instance is questionable against AWS API semantics,
+        so this technique does not elevate it into a verified state transition; successors are recorded only at the granularity
+        directly supported by the report.
+    - zh: 云文档证明日志类别和接口能力，不证明受害租户已收集所有区域、账户与历史读事件。CSPM、IaC、灾备与安全调查可产生同形资源图，且被盗的批准盘点身份可能保持正常表象；未来同案跨账户查询时间线、state 读取取证和作业台账可改变子项与机理置信度。
+      en: Cloud documentation establishes event classes and interface capability, not complete read collection across the
+        victim’s Regions, accounts, or history. CSPM, IaC, recovery, and security investigations can produce similar resource
+        graphs, and a stolen approved inventory identity may still look routine. Same-case cross-account query timelines,
+        state-read forensics, and job records could change child or mechanism confidence.
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-09-22'
+  modified: '2026-09-22'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

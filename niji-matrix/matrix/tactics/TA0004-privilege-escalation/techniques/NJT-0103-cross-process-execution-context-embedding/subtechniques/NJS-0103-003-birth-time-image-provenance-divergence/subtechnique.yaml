@@ -1,0 +1,179 @@
+schema_version: 2.0.0
+type: evasion-subtechnique
+id: NJS-0103-003
+parent_ref: NJT-0103
+name:
+  zh: 创建期映像来源分离
+  en: Birth-Time Image Provenance Divergence
+summary:
+  zh: 攻击者在进程首次正常执行前替换 main image、entry 或 transient image backing，使 process creation 的路径、签名或 file object 与真实执行内容分离。
+  en: Adversaries replace the main image, entry, or transient image backing before a process first executes normally, separating
+    process-creation path, signature, or file object from actual executed content.
+aliases: []
+lineage:
+  attck_subtechnique_inherited: false
+definition_and_concept:
+  paragraphs:
+  - zh: 创建期映像来源分离固定“process 被创建时声明/观察的 main image provenance 与 first executed image content 是否一致”。source 创建 suspended process
+      后 unmap/overwrite image 或 entry，或从 transaction/transient/deleted file 建 image section，再完成 initial thread 和 resume；security
+      callback、path、signature 或 file scan 因时序只看到合法/旧/已消失对象，而 target 首次执行已经是攻击者内容。
+    en: Birth-Time Image Provenance Divergence fixes whether main-image provenance declared or observed when a process is
+      created matches the image content first executed. A source creates a suspended process and unmaps or overwrites its
+      image or entry, or creates an image section from a transacted, transient, or deleted file before completing the initial
+      thread and resume. Because of timing, a security callback, path, signature, or file scan sees a legitimate, old, or
+      disappeared object while the target first executes adversary content.
+  - zh: 变量不是 Hollowing、Doppelgänging、Herpaderping 或 Ghosting 名称，而是 birth transaction 中 file object→image section→process parameters/path→initial
+      memory→first instruction 的不一致。必须证明 source 控制 birth/mutation 和 target 执行；普通 process file 被合法 updater 更换、self-update、in-memory
+      unpack after normal entry、PPID spoof 或单纯 masquerading 不成立。若独立运行 target 后只注入 private region，归 parent/NJS-0103-001。
+    en: The variable is not a Hollowing, Doppelganging, Herpaderping, or Ghosting name but inconsistency in the birth transaction
+      from file object to image section to process parameters or path to initial memory to first instruction. Source control
+      of birth or mutation plus target execution is required. Legitimate updater replacement, self-update, in-memory unpacking
+      after normal entry, PPID spoofing, or masquerading alone does not qualify. Injection of only a private region into an
+      independently running target belongs to the parent or NJS-0103-001.
+stealth_characteristics:
+  paragraphs:
+  - zh: 创建期映像来源分离让 process tree、image path、publisher/signature 和 creation callback 描述一个合法 program，而实际 main-image/entry bytes
+      或 section 来自恶意/瞬时内容。creation-time allow、文件扫描和事后路径 hash 因而检查错误对象或找不到对象；resource/network events 仍归合法 process identity。Microsoft
+      说明这类流程利用 file/image/callback 时序假设，Dofoil 现场链证明 explorer identity 可承载被替换内容。
+    en: Birth-Time Image Provenance Divergence makes process tree, image path, publisher or signature, and creation callback
+      describe a legitimate program while actual main-image or entry bytes or section come from malicious or transient content.
+      Creation-time allow, file scanning, and later path hashing therefore inspect the wrong object or no object, while resource
+      and network events remain attributed to the legitimate process identity. Microsoft explains exploitation of file, image,
+      and callback timing assumptions, and the field Dofoil chain proves explorer identity can carry replaced content.
+  - zh: 残余包括 process-create flags/suspended state、source handle、file create/write/delete/transaction timeline、file object
+      ID、section ID、reported/image-device paths、signature/hash at multiple times、initial VAD/main image bytes、PE entry/headers、thread
+      creation/resume 和 first behavior。单个 path mismatch 可由 rename、update、container/overlay 或 sensor race 造成；必须在同一 birth transaction
+      中验证。
+    en: Residuals include process-create flags and suspended state, source handle, file create, write, delete, or transaction
+      timeline, file-object ID, section ID, reported and image-device paths, signature and hash at multiple times, initial
+      VAD and main-image bytes, PE entry and headers, thread creation and resume, and first behavior. One path mismatch can
+      result from rename, update, container or overlay behavior, or sensor race and must be validated inside the same birth
+      transaction.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 必须发生在 process first normal execution 之前或创建回调可见性的关键窗口，并证明 creation provenance 与 actual first image 不一致。Suspended process、unmap、entry
+      patch、transacted/deleted backing 或 Sysmon ProcessTampering 只是证据；如果 target 未执行 malicious instruction，则为 birth_tampering_attempt。合法
+      application virtualization、updater、anti-cheat、packer、compatibility layer 和 security sandbox 是反例。
+    en: The event must occur before the process's first normal execution or within the critical creation-callback visibility
+      window and prove creation provenance disagrees with the actual first image. A suspended process, unmap, entry patch,
+      transacted or deleted backing, or Sysmon ProcessTampering is only evidence. Without malicious instruction in target
+      it is birth_tampering_attempt. Legitimate application virtualization, updaters, anti-cheat, packers, compatibility layers,
+      and security sandboxes are counterexamples.
+  - zh: 若 malware 在 target 正常启动以后才加载同进程 module，归 NJT-0077；通过 search-order 让 target 正常 loader 选错 DLL 归 NJT-0070；仅伪造 filename/path/PPID
+      而 main image 未替换归 Masquerading/相邻谱系对象。本子项可与 NJS-0103-002 共映射（如 TLS first callback），但必须分别保存 birth-image 与 dispatch 证据。
+    en: If malware loads a same-process module after normal target start, it belongs to NJT-0077. Search-order causing the
+      normal target loader to select the wrong DLL belongs to NJT-0070. Filename, path, or PPID spoofing without main-image
+      replacement belongs to Masquerading or adjacent lineage objects. This child can co-map NJS-0103-002, such as a TLS first
+      callback, but birth-image and dispatch evidence remain separate.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: 类似 Dofoil 的加载器以挂起状态启动熟悉进程，替换主映像内容或入口后再恢复执行；进程清单和父子树继续显示熟悉映像，后继下载或计算活动却来自已被替换的实例。该案例直接支持创建期映像来源分离，但目标与源权限相同，不能据此推断权限增加。
+      en: A Dofoil-like loader starts a familiar process in a suspended state, replaces main-image content or entry, and resumes
+        execution. Process inventory and lineage continue to show the familiar image while downstream download or computation
+        originates from the substituted instance. The case directly supports birth-time image provenance divergence, but target
+        and source have equivalent authority and therefore do not establish added privilege.
+    - zh: 更低层变体先创建可执行 file object、写入 payload、建立 image section，再 rollback/delete/alter 文件，之后从仍存在的 section 建 process；callback
+        时磁盘已没有相同恶意 bytes。防守对象是 transient file/section/process identity，而不是特定 transaction API，因此新变体仍可被一致性检测覆盖。
+      en: A lower-level variant creates an executable file object, writes payload, creates an image section, rolls back, deletes,
+        or changes the file, then creates a process from the surviving section. Disk no longer contains matching malicious
+        bytes at callback time. The defense object is transient file, section, and process identity rather than a particular
+        transaction API, allowing consistency detection to cover new variants.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者需控制 process creation、file/section or main-image memory、initial thread 和 resume order，并满足 architecture、relocation/import
+          与 process initialization。现代 kernel callbacks、ProcessTampering、code integrity、PPL/Hardened Runtime 和 section semantics
+          会限制；路径/签名外观必须在 first behavior 前保留才有收益。
+        en: The adversary must control process creation, file and section or main-image memory, initial thread, and resume
+          order and satisfy architecture, relocation or import, and process initialization. Modern kernel callbacks, ProcessTampering,
+          code integrity, PPL or Hardened Runtime, and section semantics constrain it. Path or signature appearance must persist
+          through first behavior to provide benefit.
+      - zh: 攻击者可能利用进程创建与安全回调之间的竞争窗口，在扫描或通知前后改变文件或映像状态，也可能选择较旧的创建路径。实现对操作系统版本和回调时序敏感，失败时会留下挂起进程、映像不一致或启动异常，因此可靠性本身构成约束。
+        en: The adversary can exploit a race between process creation and security callbacks, changing file or image state
+          before or after scanning or notification, or choose an older creation path. The implementation is sensitive to operating-system
+          version and callback timing. Failure can leave a suspended process, image inconsistency, or startup anomaly, so
+          reliability is itself a constraint.
+    defender_model:
+      paragraphs:
+      - zh: 防守方把 file object ID/USN or equivalent、section object、process create/notify、reported/native path、signature/hash、initial
+          image bytes、thread create 与 resume 组成不可丢失 transaction；只在进程启动后重新读取 path 会检查新文件而非原 section。对 deleted/transacted path
+          保留 object metadata 和 content digest。
+        en: Defenders join file-object ID and USN or equivalent, section object, process create and notify, reported and native
+          path, signature and hash, initial-image bytes, thread creation, and resume into a lossless transaction. Reading
+          the path only after process start can inspect a new file rather than the original section. Preserve object metadata
+          and content digest for deleted or transacted paths.
+      - zh: 调优需识别合法 updater、browser sandbox、application virtualization 与 security tooling 的 exact version/owner/create flags
+          和 expected image transition。unknown or deleted backing、suspended child from unusual parent、entry bytes mismatch
+          与 immediate network/resource action 组合提高风险；响应保全 section 和 memory 后再终止。
+        en: Tuning identifies exact version, owner, creation flags, and expected image transition for legitimate updaters,
+          browser sandboxes, application virtualization, and security tooling. Combine unknown or deleted backing, a suspended
+          child from an unusual parent, entry-byte mismatch, and immediate network or resource action to raise risk. Preserve
+          section and memory before termination.
+stealth_mechanisms:
+- mechanism_ref: NM-FD
+  role: primary
+  summary:
+    zh: 合法创建路径和映像身份替代真实 first-executed content 的来源特征
+    en: Legitimate creation path and image identity substitute provenance features of the true first-executed content
+  analysis:
+    paragraphs:
+    - zh: 攻击者控制 birth transaction，在安全产品记录/扫描 file、path、signature 或 process identity 的时点前后替换 image/entry 或保留 transient section。痕迹从恶意
+        process image 变成合法/已消失 file identity 与由其命名的 target PID，而 first instruction 已来自攻击者内容。依赖 creation path、signer 或 callback
+        scan 的防守方把进程归为良性或没有文件可扫，削弱区分和来源归因，形成 Feature Disguise。Microsoft 平台研究与 Dofoil 现场案例支持 high；file-object/section/initial-memory/first-instruction
+        differential 可揭示。
+      en: The adversary controls the birth transaction and replaces image or entry or preserves a transient section around
+        the moment a security product records or scans file, path, signature, or process identity. Traces shift from a malicious
+        process image into a legitimate or disappeared file identity and a target PID named by it while the first instruction
+        already comes from adversary content. Defenders relying on creation path, signer, or callback scanning classify the
+        process as benign or have no file to scan, weakening discrimination and provenance attribution as Feature Disguise.
+        Microsoft platform research and the field Dofoil case support high confidence; a file-object, section, initial-memory,
+        and first-instruction differential exposes it.
+  evidence_refs:
+  - REF-000364
+  - REF-000366
+  - REF-000369
+  confidence: high
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000100
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000102
+evidence:
+  claim_refs:
+  - CLM-000568
+  - CLM-000570
+  - CLM-000571
+  case_refs:
+  - CASE-000132
+  reference_refs:
+  - REF-000243
+  - REF-000364
+  - REF-000366
+  - REF-000369
+research:
+  limitations:
+    paragraphs:
+    - zh: Dofoil 证明 hollowing field use；doppelgänging/herpaderping/ghosting 主要由平台研究说明。它们共享的来源差有结论支持，但不能从一个变体推断另一个变体的 API、成功率或
+        detection coverage。非 Windows 等价过程必须重新证明 birth file/image/first-instruction 三层。
+      en: Dofoil establishes field use of hollowing, while doppelganging, herpaderping, and ghosting rely mainly on platform
+        research. Their shared provenance difference has conclusion support, but one variant cannot establish another's APIs,
+        success rate, or detection coverage. A non-Windows equivalent must re-prove birth file, image, and first-instruction
+        layers.
+    - zh: EDR 和安全回调的时序属于实现细节，并会随操作系统和产品版本变化。Sysmon Event 25 是有用信号但不能覆盖全部实现，事件缺失也不能证明没有篡改。若只有事后内存与文件不一致，却没有来源进程或创建事务，映像来源只能保持不确定。
+      en: EDR and security-callback timing is an implementation detail that changes with operating-system and product versions.
+        Sysmon Event 25 is useful but does not cover every implementation, and absence of the event does not prove that tampering
+        did not occur. When only a later memory-to-file mismatch is available without a source process or creation transaction,
+        image provenance remains uncertain.
+lifecycle:
+  status: review
+  version: 0.2.0
+  created: '2026-09-13'
+  modified: '2026-09-19'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

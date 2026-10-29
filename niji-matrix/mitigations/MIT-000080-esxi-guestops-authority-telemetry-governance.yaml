@@ -1,0 +1,36 @@
+schema_version: "2.0.0"
+type: mitigation
+id: MIT-000080
+name: {zh: ESXi Guest Operations 权限、补丁与遥测治理, en: ESXi Guest Operations Authority Patch and Telemetry Governance}
+summary: {zh: 以补丁与 Tools 生命周期、最小 GuestOps 权限、隔离管理网、lockdown mode 和跨层日志保留降低受信虚拟化通道执行。, en: Reduce trusted virtualization-channel execution through patch and Tools lifecycle least GuestOps privilege isolated management networks lockdown mode and cross-plane log retention.}
+description:
+  paragraphs:
+  - zh: 本缓解把 ESXi/vCenter 和 VMware Tools 视为同一控制边界：及时修补 host 与来宾 Tools，移除不需要的 Guest Operations 权限和长期 vpxuser/root 使用，启用 lockdown mode，将管理访问限制到隔离跳板与专用网段，并为备份、支持和自动化使用独立、限时、限 VM 的身份。对 StartProgramInGuest 和文件传输实行变更审批与目标约束。
+    en: This mitigation treats ESXi or vCenter and VMware Tools as one control boundary. Patch hosts and guest Tools, remove unnecessary Guest Operations authority and durable vpxuser or root use, enable lockdown mode, restrict management access to isolated jump hosts and networks, and give backup support and automation separate time-bound VM-scoped identities. Apply change approval and target constraints to StartProgramInGuest and file transfer.
+  - zh: 同时集中并防篡改保存 vCenter/ESXi 会话、API、hostd/vpxa、每 VM `vmware.log`、Tools 状态和来宾认证/进程，使管理动作与 vmtoolsd 结果可验证连接。异常时先隔离管理会话和 host、保存 GuestOps/VM 日志与内存/进程证据，再撤销会话、轮换服务凭据、修补并核查该 host 上所有来宾；仅终止来宾子进程不能清除 hypervisor 控制。
+    en: Centrally and tamper-resistently retain vCenter or ESXi sessions, APIs, hostd or vpxa, per-VM `vmware.log`, Tools state, and guest authentication or process data so management action and vmtoolsd outcome can be verifiably joined. On anomaly isolate the management session and host, preserve GuestOps and VM logs plus memory or process evidence, then revoke sessions, rotate service credentials, patch, and inspect every guest on the host. Killing only the guest child does not remove hypervisor control.
+domains: [enterprise]
+measures:
+- key: esxi-tools-patch-lifecycle
+  name: {zh: ESXi 与 VMware Tools 联合补丁生命周期, en: Joint ESXi and VMware Tools Patch Lifecycle}
+  description: {paragraphs: [{zh: 盘点 host build、Tools 版本和 GuestOps 暴露，按供应商公告修补并验证认证行为；对无法修补的 host 禁止非必要 Guest Operations 并隔离管理访问。, en: Inventory host builds Tools versions and GuestOps exposure patch to vendor guidance and validate authentication behavior; disable nonessential Guest Operations and isolate management access on hosts that cannot be patched.}]}
+  control_type: exposure-reduction
+- key: guestops-least-authority
+  name: {zh: Guest Operations 最小权限与短期身份, en: Guest Operations Least Authority and Short-Lived Identity}
+  description: {paragraphs: [{zh: 将进程、文件与查询权限按工具和 VM 集合拆分，备份/支持使用独立限时身份，禁止共享 root/vpxuser 和无范围批量访问，并审计权限变更。, en: Separate process file and query privileges by tool and VM set use distinct time-bound identities for backup and support prohibit shared root or vpxuser and unscoped fleet access and audit permission changes.}]}
+  control_type: preventive
+- key: isolated-management-lockdown
+  name: {zh: 隔离管理网与 Lockdown Mode, en: Isolated Management Network and Lockdown Mode}
+  description: {paragraphs: [{zh: 只允许受管跳板和自动化源访问 vCenter/ESXi 管理接口，启用 lockdown mode 与 host firewall，强制 MFA/PAM 并禁止从普通来宾直接管理 host。, en: Allow only managed jump hosts and automation sources to reach vCenter or ESXi management interfaces enable lockdown mode and host firewall enforce MFA or PAM and prohibit ordinary guests from directly administering hosts.}]}
+  control_type: preventive
+- key: guestops-cross-plane-audit-response
+  name: {zh: GuestOps 跨层审计与证据化响应, en: GuestOps Cross-Plane Audit and Evidence-Preserving Response}
+  description: {paragraphs: [{zh: 远程保存会话、API、`vmware.log` 和来宾 vmtoolsd 结果，按 VM 与请求键关联；告警时冻结会话和 host，保存证据后轮换凭据、重建信任并核查全部来宾。, en: Remotely retain sessions APIs `vmware.log` and guest vmtoolsd outcomes and join by VM and request key; on alert freeze the session and host preserve evidence then rotate credentials rebuild trust and inspect all guests.}]}
+  control_type: containment
+applications:
+- target_ref: NJT-0068
+  use: {paragraphs: [{zh: 对所有 Guest Operations 同时实施补丁、最小权限、隔离来源、任务审批和跨层审计；允许的备份/支持动作必须绑定主体、工具版本、API 方法、VM 集合、窗口与预期结果。检测到未批准执行后按 host 而非单 VM 扩大调查。, en: Apply patching least authority isolated origin task approval and cross-plane audit to all Guest Operations. Approved backup or support binds principal tool version API method VM set window and expected result. After unapproved execution expand investigation by host rather than one VM.}]}
+  expected_effect: {paragraphs: [{zh: 移除已知无认证路径，减少可调用主体和来源，使管理请求与来宾结果可归因，并阻止攻击者从一个 host 静默触达多个来宾。, en: Removes known unauthenticated paths reduces callable principals and sources attributes management requests to guest outcomes and prevents silent reach from one host into multiple guests.}]}
+  limitations: {paragraphs: [{zh: 备份、灾备和支持可能依赖 GuestOps；维护窗口与旧版本限制会延迟补丁。已控制 hypervisor 的高权限攻击者可能篡改本地日志，必须远程保留和独立验证。, en: Backup disaster recovery and support may depend on GuestOps and maintenance or legacy constraints can delay patching. A highly privileged adversary controlling the hypervisor may alter local logs requiring remote retention and independent verification.}]}
+evidence_refs: [REF-000053, REF-000208, REF-000209, REF-000210]
+lifecycle: {status: review, version: 0.1.0, created: '2026-09-12', modified: '2026-09-12', contributors: [Niji Matrix Research], reviewers: []}

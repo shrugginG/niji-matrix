@@ -1,0 +1,38 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000056
+strategy_ref: DET-000077
+name: {zh: Pre-OS 写入—度量—运行 Image 分析, en: Pre-OS Write-Measurement-Running Image Analytic}
+summary: {zh: 以独立可信清单比较启动对象、度量覆盖和外部来源，将变化连接到启动后结果。, en: Compare boot objects measurement coverage and external sources with an independent trusted inventory and join changes to post-boot outcomes.}
+domains: [enterprise]
+platforms: [Windows, Linux, macOS, Network Devices]
+logic:
+  paragraphs:
+  - zh: 建立 device/component/firmware/boot object 清单，保存 vendor、hardware ID、version/hash、signature、measurement index、expected PCR、readback method、boot order/pointer 和批准。收集 flash utility、firmware upload、raw disk/EFI/NVRAM 写入及 actor/parent/tool；标记非更新窗口、签名或 hash 差异和未在 measurement set 的对象。
+    en: Build a device component firmware and boot-object inventory preserving vendor hardware ID version or hash signature measurement index expected PCR readback method boot order or pointer and approval. Collect flash utilities firmware uploads raw-disk or EFI or NVRAM writes and actor parent or tool and mark changes outside update windows signature or hash differences and objects absent from the measurement set.
+  - zh: 对每次 reboot/boot 连接 attestation、component readback、boot pointer、DNS/server、TFTP/FTP/SCP transfer、downloaded image hash、running version 和首个 driver/process/network。未测量对象发生未批准变化并在启动后产生结果进入边界分支；pointer 指向非 allowlist server 且 running hash 匹配下载 image 进入外部来源分支。字段缺失时按覆盖矩阵降置信度。
+    en: For each reboot or boot join attestation component readback boot pointer DNS or server TFTP or FTP or SCP transfer downloaded image hash running version and first driver process or network. An unmeasured object with an unapproved change and post-boot outcome enters the boundary branch. A pointer to a non-allowlisted server with running hash matching the downloaded image enters the external-source branch. Reduce confidence by a coverage matrix when fields are missing.
+data_requirements:
+- {source_type: firmware-and-boot-inventory, name: {zh: 设备、组件、固件与启动对象可信清单, en: Trusted device component firmware and boot-object inventory}, channel: null, required_fields: [device_id, component_id, hardware_id, firmware_or_boot_object_id, version, hash, signature, measurement_index, expected_pcr, boot_order_or_pointer, approved_source]}
+- {source_type: firmware-and-raw-boot-write, name: {zh: Firmware/Raw Disk/EFI/NVRAM 写入审计, en: Firmware raw-disk EFI and NVRAM write audit}, channel: null, required_fields: [timestamp, device_id, component_or_object_id, actor_id, parent_process_or_session, tool_or_api, operation, target_region, new_hash_or_value, outcome]}
+- {source_type: boot-attestation-and-readback, name: {zh: 启动度量、Attestation 与组件 Readback, en: Boot measurement attestation and component readback}, channel: null, required_fields: [timestamp, device_id, boot_id, component_or_object_id, measured, measurement_value, pcr, readback_hash, validation_result]}
+- {source_type: network-boot-and-running-image, name: {zh: 网络启动传输与运行 Image 身份, en: Network boot transfer and running image identity}, channel: null, required_fields: [timestamp, device_id, boot_id, boot_pointer, server, protocol, transferred_image, image_hash, running_version_or_hash, first_runtime_result]}
+- {source_type: firmware-change-approval, name: {zh: 固件与启动变更批准, en: Firmware and boot change approval}, channel: null, required_fields: [change_id, device_id, component_or_object_id, vendor_package, expected_hash, server_allowlist, validity_window, status]}
+observables:
+- {zh: 未列入 attestation coverage 的组件 firmware 被非常见工具写入，重启后出现异常 driver/process/network, en: Component firmware outside attestation coverage is written by an uncommon tool before anomalous driver process or network activity after reboot}
+- {zh: EFI/boot record/NVRAM 在非更新窗口变化且 measurement/readback 与批准版本不符, en: EFI boot record or NVRAM changes outside an update window and measurement or readback differs from the approved version}
+- {zh: Boot pointer 改指非批准服务器，启动传输 image hash 与设备 running version 一致并产生后门行为, en: A boot pointer changes to an unapproved server and the transferred image hash matches the device running version that produces backdoor behavior}
+correlation:
+  window: {zh: 从写入/配置变化到下一次及以后三次 boot 或九十日；网络传输与 boot 使用三十分钟。, en: Span a write or configuration change through the next three boots or ninety days and use thirty minutes for network transfer to boot.}
+  dimensions: [device, component_or_boot_object, hardware_id, boot_id, actor, measurement, pointer, server, image_hash, running_version, approval, time]
+false_positives: [{zh: 厂商固件更新、硬件换件、OS 升级、灾备、PXE/TFTP 运维和实验室启动, en: Vendor firmware update hardware replacement OS upgrade disaster recovery PXE or TFTP administration and lab boot}]
+blind_spots: [{zh: 组件不支持 readback/measurement、TPM quote 不包含目标、网络启动交换不可见或设备不报告 running hash, en: Component lacks readback or measurement TPM quote omits the target network boot exchange is invisible or the device does not report running hash}]
+tuning_guidance:
+  paragraphs:
+  - zh: 基线按 hardware ID、vendor、firmware version、component 与 boot mode 建立，允许项绑定签名 package、批准 hash、server 和窗口，不对白名单 flash tool 或 secure-boot pass 永久放行。measurement coverage map 必须显式列出未覆盖组件。
+    en: Baseline by hardware ID vendor firmware version component and boot mode. Bind allowances to a signed package approved hash server and window rather than permanently allowing a flash tool or secure-boot pass. The measurement coverage map must explicitly list uncovered components.
+  - zh: 对外部启动要求 config、网络 image 和 running hash 三方一致；只有 pointer 变化时保持风险状态。对未测量对象优先部署 readback/独立 scanner，无法取得时降低置信度并提高恢复要求。
+    en: External boot requires agreement among configuration network image and running hash and remains a risk state with pointer change alone. Prioritize readback or an independent scanner for unmeasured objects and lower confidence plus raise recovery requirements when unavailable.
+evidence_refs: [REF-000193, REF-000194, REF-000195]
+lifecycle: {status: review, version: 0.1.0, created: '2026-09-11', modified: '2026-09-11', contributors: [Niji Matrix Research], reviewers: []}
+

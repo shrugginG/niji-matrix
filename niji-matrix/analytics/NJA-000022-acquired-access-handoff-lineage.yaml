@@ -1,0 +1,132 @@
+schema_version: "2.0.0"
+type: detection-analytic
+id: NJA-000022
+strategy_ref: DET-000048
+name:
+  zh: 已取得访问权交付谱系与首次使用分析
+  en: Acquired-Access Handoff Lineage and First-Use Analytic
+summary:
+  zh: 解析外部访问暴露并关联目标入口历史、监控覆盖、静默期、令牌设备状态与首次使用，恢复卖方到买方的访问谱系。
+  en: Resolve external access exposure and correlate victim foothold history, monitoring coverage, dormancy, token-device state, and first use to recover seller-to-buyer access lineage.
+domains:
+  - enterprise
+platforms:
+  - Identity Provider
+  - VPN
+  - Remote Service
+  - Endpoint
+  - Web Application
+logic:
+  paragraphs:
+    - zh: 将经纪市场、伙伴或执法情报中的组织、域、账户、设备、入口类型、权限和验证时间解析到内部资产与身份图。对每个可能暴露的入口恢复最早可见的攻陷或异常状态、EDR 与日志覆盖、静默期、令牌和设备连续性以及首次后续活动；当外部暴露与目标内部出现无相邻扫描或钓鱼的有效入口、卖方和买方工具或来源分段、长期静默后再激活、低监控资产优先使用或无新认证挑战的异常会话形成组合时提高风险。单一论坛广告、泄露凭据或新设备登录只能形成线索，必须由资产、会话或后续行为验证。
+      en: Resolve organization, domain, account, device, foothold type, privilege, and validation time from broker-market, partner, or law-enforcement intelligence into the internal asset and identity graph. For each possibly exposed foothold, reconstruct the earliest visible compromise or anomalous state, EDR and log coverage, dormancy, token and device continuity, and first follow-on activity; raise risk when external exposure combines with a valid internal foothold lacking adjacent scanning or phishing, segmented seller and buyer tools or origins, reactivation after prolonged silence, preferential use of a weakly monitored asset, or an anomalous session without a new authentication challenge. A single forum advertisement, exposed credential, or new-device sign-in is only a lead and requires validation by asset, session, or downstream behavior.
+data_requirements:
+  - source_type: external-access-intelligence
+    name:
+      zh: 经纪市场、伙伴、泄露与执法访问情报
+      en: Broker-market, partner, exposure, and law-enforcement access intelligence
+    channel: null
+    required_fields:
+      - observed_at
+      - organization
+      - domain
+      - account_id
+      - asset_id
+      - access_type
+      - privilege
+      - validation_time
+      - source_record_id
+  - source_type: identity-remote-service
+    name:
+      zh: 身份、VPN 与远程服务会话日志
+      en: Identity, VPN, and remote-service session logs
+    channel: null
+    required_fields:
+      - timestamp
+      - account_id
+      - session_id
+      - token_id
+      - device_id
+      - source_ip
+      - asset_id
+      - authentication_method
+      - risk_result
+  - source_type: endpoint-coverage-and-history
+    name:
+      zh: 端点覆盖、入口完整性与资产历史
+      en: Endpoint coverage, foothold integrity, and asset history
+    channel: null
+    required_fields:
+      - timestamp
+      - asset_id
+      - edr_status
+      - log_status
+      - privilege_context
+      - integrity_event
+      - process
+      - network_connection
+  - source_type: pre-access-activity
+    name:
+      zh: 扫描、钓鱼、利用与首次使用时间线
+      en: Scanning, phishing, exploitation, and first-use timeline
+    channel: null
+    required_fields:
+      - timestamp
+      - target_id
+      - activity_type
+      - source_entity
+      - tool_family
+      - outcome
+observables:
+  - zh: 外部访问清单与内部仍有效的账户、远程服务、Web shell 或其他入口对应
+    en: An external access listing maps to a still-valid internal account, remote service, Web shell, or other foothold
+  - zh: 首次后续活动优先出现在缺少 EDR、日志不足或高权限的已售入口
+    en: First follow-on activity preferentially occurs through a sold foothold with absent EDR, weak logging, or high privilege
+  - zh: 入口形成与首次买方活动之间存在长静默期，且两个阶段的来源、工具或操作者特征明显分离
+    en: A long silent period separates foothold creation from first buyer activity, with distinct origins, tools, or operator features across the stages
+  - zh: 新来源会话复用既有令牌、Cookie 或设备指纹而没有对应的新认证挑战
+    en: A session from a new origin reuses an existing token, cookie, or device fingerprint without a corresponding new authentication challenge
+correlation:
+  window:
+    zh: 使用分钟至三十日窗口分析令牌、设备与首次使用，并使用六个月至两年窗口连接入口形成、访问囤积、市场暴露、转售和再激活；保留期必须覆盖组织实际访问经纪周期。
+    en: Use a minute-to-thirty-day window for token, device, and first-use analysis and a six-month-to-two-year window to connect foothold creation, access stockpiling, market exposure, resale, and reactivation; retention must cover the organization's realistic access-broker cycle.
+  dimensions:
+    - organization
+    - domain
+    - account
+    - asset
+    - foothold
+    - privilege
+    - session
+    - token
+    - device
+    - source
+    - tool
+    - monitoring_coverage
+    - time
+false_positives:
+  - zh: 合法外包运维、托管服务交接、并购整合和灾难恢复访问
+    en: Legitimate outsourced administration, managed-service handoff, merger integration, and disaster-recovery access
+  - zh: 授权渗透测试、红队经纪模拟、设备迁移和正常令牌续用
+    en: Authorized penetration testing, broker-simulation red teams, device migration, and normal token continuation
+blind_spots:
+  - zh: 封闭市场、私下伙伴交易或错误的经纪描述没有可消费的外部记录
+    en: Closed markets, private partner exchanges, or inaccurate broker descriptions provide no usable external record
+  - zh: 入口长期囤积超过保留期、低监控资产没有历史日志或真实设备与会话一并转售
+    en: Footholds are stockpiled beyond retention, weakly monitored assets lack history, or genuine devices and sessions are resold together
+tuning_guidance:
+  paragraphs:
+    - zh: 应先用组织、域、账户和资产所有权验证外部情报，再按访问类型、权限和入口寿命设置不同阈值。高风险结论必须组合外部暴露、目标内可验证入口、监控缺口、阶段分段、静默期或令牌设备异常中的多个要素；授权供应商和红队活动应按具体时间、资产与工单放行，而不能永久排除服务账户或远程管理工具。
+      en: Validate external intelligence against organization, domain, account, and asset ownership before applying thresholds by access type, privilege, and foothold lifetime. High-risk conclusions must combine external exposure, a victim-verifiable foothold, monitoring gaps, stage segmentation, dormancy, or token-device anomaly; authorized providers and red teams should be allowlisted by specific time, asset, and ticket rather than permanently excluding service accounts or remote-administration tools.
+evidence_refs:
+  - REF-000058
+  - REF-000069
+  - REF-000070
+lifecycle:
+  status: review
+  version: "1.0.0"
+  created: "2026-09-09"
+  modified: "2026-09-09"
+  contributors:
+    - Niji Matrix Research
+  reviewers: []

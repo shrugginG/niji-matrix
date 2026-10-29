@@ -1,0 +1,169 @@
+schema_version: 2.0.0
+type: evasion-subtechnique
+id: NJS-0099-003
+parent_ref: NJT-0099
+name:
+  zh: 休眠令牌权限选择性激活
+  en: Dormant-Token Privilege Selective Activation
+summary:
+  zh: 攻击者在身份、登录会话、进程和令牌来源不变时，启用令牌中已有但禁用的权限，并把短暂能力变化紧邻到需要该权限的受保护操作。
+  en: An adversary enables an existing but disabled token privilege while identity, logon session, process, and token origin
+    remain stable and places the short capability transition next to the protected operation that consumes it.
+aliases: []
+definition_and_concept:
+  paragraphs:
+  - zh: 本子技术的稳定变量是“同一令牌内已有权限的 enabled state 变化”。攻击者选择目标 token 和一个或多个已存在但当前禁用的 privilege LUID/名称，通过具有 TOKEN_ADJUST_PRIVILEGES
+      的句柄把状态改为 enabled，并执行原状态下不能完成的受保护操作。成立必须证明 previous state 为禁用、new state 为启用、用户 SID/AuthenticationId 与承载进程没有发生替换，以及后继结果实际依赖该权限。
+    en: The stable variable is a change in enabled state of an existing privilege within the same token. The adversary selects
+      a target token and one or more present but disabled privilege LUIDs or names, uses a handle with TOKEN_ADJUST_PRIVILEGES
+      to mark them enabled, and performs a protected operation unavailable under the prior state. The child requires proof
+      that previous state was disabled, new state enabled, user SID or AuthenticationId and carrier process were not replaced,
+      and the successor outcome actually depended on the privilege.
+  - zh: Windows 只能启用、禁用或移除令牌中已经存在的权限，不能通过该操作增加原本不存在的权限。具体权限名称、调用接口和目标资源只是实现参数；稳定变量是身份与进程载体保持不变，而令牌中的权限属性由休眠转为启用，并被后继操作实际使用。
+    en: Windows can enable, disable, or remove privileges already present in a token but cannot add a privilege that the token
+      did not contain. Particular privilege names, APIs, and target resources are implementation parameters. The stable variable
+      is that identity and process carrier remain unchanged while a token privilege moves from dormant to enabled and is actually
+      consumed by a downstream operation.
+stealth_characteristics:
+  paragraphs:
+  - zh: 休眠令牌权限选择性激活使用户 SID、组、登录会话、process owner、PID、映像与父进程均可保持不变，防守方若只在登录或进程创建时记录一次 token，就会把后继能力视为该身份原本已有。痕迹变化压缩在权限调用前后的短窗口：token
+      handle 被打开或查询、privilege attribute 从 disabled 变 enabled，随后出现对高权限进程内存、驱动加载、备份语义文件访问或其他受保护对象的成功操作。静态身份规则和新进程规则都无法解释这一转折。
+    en: Dormant-Token Privilege Selective Activation allows user SID, groups, logon session, process owner, PID, image, and
+      parent to remain stable. A defender snapshotting the token only at logon or process creation treats successor capability
+      as something the identity always possessed. Trace change is compressed around the privilege call—a token handle is opened
+      or queried, a privilege attribute changes from disabled to enabled, and a successful operation follows against privileged-process
+      memory, driver loading, backup-semantic file access, or another protected object. Static identity rules and new-process
+      rules cannot explain the transition.
+  - zh: 攻击者还可在操作后恢复 previous state，使后来 token snapshot 再次正常；这会缩短异常可见区间，但当前证据只支持其作为机理结果，不足以另建“最小集合/恢复”子技术。Windows 仍可能留下 privilege
+      adjustment、特权服务调用、对象访问、进程句柄与权限使用事件，匿迹不等于无日志。检测必须把状态差异与消费结果连接，并排除备份、调试、安装、EDR 与系统维护等按设计临时启用权限的场景。
+    en: The adversary can restore previous state after the operation so a later token snapshot looks normal again. This shortens
+      the anomalous interval, but current evidence supports it only as a mechanism consequence rather than a separate minimum-set
+      or restoration child. Windows can still leave privilege adjustment, privileged-service call, object access, process
+      handle, and privilege-use events, so stealth is not absence of logging. Detection must join state difference to consumption
+      outcome and exclude backup, debugging, installation, EDR, and system-maintenance cases that temporarily enable privileges
+      by design.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 本项只纳入目标权限在变化前已经存在于同一 token、攻击者将其从 disabled 改为 enabled，并由该转变促成更高权限操作。若策略、组或 SID-History 先把一个新权限或授权边加入身份，直接对象归 NJT-0083/T1098
+      或相关策略技术；若 UAC/sudo broker 产生另一个高权限 token，归 NJT-0098 或本父项的身份/承载体分支，而不是把所有提权都称为权限位激活。
+    en: This child includes only a target privilege already present in the same token before the change, an adversary transition
+      from disabled to enabled, and a higher-authority operation enabled by that transition. If policy, group, or SID-History
+      first adds a new privilege or authorization edge to an identity, the direct object belongs to NJT-0083, T1098, or a
+      relevant policy technique. If a UAC or sudo broker creates another privileged token, it belongs to NJT-0098 or the parent
+      identity or carrier branches rather than treating every elevation as privilege-bit activation.
+  - zh: 线程改用外来身份 token 归 NJS-0099-001，新进程使用外来主令牌或选定父体归 NJS-0099-002；同一事件如果先创建新进程再在其 token 中启用权限，可以同时标注两项，但必须分别提供 creation-lineage
+      与 privilege-delta 证据。权限枚举、失败的 ERROR_NOT_ALL_ASSIGNED、仅查询 token、已启用权限的普通使用及合法管理员工具按预期启用权限都是范围外或反例。
+    en: A thread switching to a foreign identity token belongs to NJS-0099-001, and a new process using a foreign primary
+      token or selected parent belongs to NJS-0099-002. One event can satisfy both when a new process is created and then
+      enables a privilege in its token, but creation-lineage and privilege-delta evidence must remain separate. Privilege
+      enumeration, failed ERROR_NOT_ALL_ASSIGNED, token query only, ordinary use of an already-enabled privilege, and expected
+      enablement by legitimate administrative tools are outside scope or counterexamples.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: SUNSPOT 在 SolarWinds 构建服务器上修改自身进程安全令牌以启用 SeDebugPrivilege，随后读取其他进程内存、定位和监控 MsBuild。该场景的 PID、映像与身份不需变化，决定性证据是 token
+        privilege 状态改变先于受保护进程访问。防守若只看到 taskhostsvc 风格进程与后继 ReadProcessMemory/NtQueryInformationProcess，可能把失败/成功结果与令牌转折分离。
+      en: SUNSPOT modified its own process security token on a SolarWinds build server to enable SeDebugPrivilege and then
+        read other-process memory to locate and monitor MsBuild. PID, image, and identity need not change; the decisive evidence
+        is a token privilege transition preceding protected process access. A defender seeing only the taskhostsvc-like process
+        and later ReadProcessMemory or NtQueryInformationProcess can separate failure or success from the token transition.
+    - zh: PipeMon installer 的 `-x:1` 与 `-x:2` 路径尝试为当前进程启用 SeLoadDriverPrivilege，以便安装载荷；前一次失败会触发 parent spoofing 重启，但每个新 carrier
+        内仍需单独证明 privilege state 与结果。类似场景还包括在读取被保护对象前启用 SeBackupPrivilege，或在调试/接管系统进程前启用 SeDebugPrivilege；权限名称本身只说明潜在能力，必须观察实际消费。
+      en: PipeMon installer paths `-x:1` and `-x:2` attempt to enable SeLoadDriverPrivilege for the current process to install
+        the payload. The first failure can trigger a restart through parent spoofing, but privilege state and outcome still
+        require independent proof inside each new carrier. Similar scenarios include enabling SeBackupPrivilege before backup-semantic
+        access to a protected object or SeDebugPrivilege before debugging or taking control of a system process. The privilege
+        name describes potential capability only; actual consumption must be observed.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者控制目标 token 所属进程或可获得其可调整句柄，具备 TOKEN_ADJUST_PRIVILEGES，并知道哪个权限已存在、当前 disabled 且足以完成目标操作。它选择紧邻资源操作的启用时点，可能保存 previous
+          state 以便恢复，并处理函数成功但 GetLastError 为 ERROR_NOT_ALL_ASSIGNED 的情况。该模型不假定攻击者能向 token 任意加入新权限；若权限不存在，必须先通过其他提权或身份状态技术取得。
+        en: The adversary controls the process owning the target token or can obtain an adjustable handle, has TOKEN_ADJUST_PRIVILEGES,
+          and knows which privilege is present, currently disabled, and sufficient for the target operation. It chooses an
+          enablement time close to resource use, can preserve previous state for restoration, and handles the condition where
+          the function succeeds but GetLastError reports ERROR_NOT_ALL_ASSIGNED. The model does not assume arbitrary addition
+          of new token privileges; an absent privilege must first be obtained through another elevation or identity-state
+          technique.
+    defender_model:
+      paragraphs:
+      - zh: 防守方可能观察到令牌标识、所属进程、调整线程、权限名称、变化前后属性、返回结果以及随后的进程访问、驱动、文件或安全配置操作。许多日志只记录权限被使用而不记录此前是否禁用，或者只记录调整调用而不记录后继消费，这会使因果链不完整。
+        en: Defenders may observe token identity, owning process, adjusting thread, privilege name, previous and new attributes,
+          return status, and downstream process-access, driver, file, or security-configuration operations. Many logs record
+          privilege use without its prior disabled state or record adjustment without downstream consumption, leaving the
+          causal chain incomplete.
+      - zh: 调试器、备份代理、安装器、驱动管理、安全产品和系统服务会合法启用敏感权限。有效基线需要结合二进制与签名、服务账户、资产角色、目标对象、维护窗口和实际结果；管理员身份或签名工具本身不能成为永久豁免。
+        en: Debuggers, backup agents, installers, driver management, security products, and system services legitimately enable
+          sensitive privileges. An effective baseline combines binary and signer, service account, asset role, target object,
+          maintenance window, and actual outcome; administrator identity or signed tooling cannot be a standing exemption.
+stealth_mechanisms:
+- mechanism_ref: NM-ST
+  role: primary
+  summary:
+    zh: 短时权限位转折把高权限能力藏在稳定身份的两个正常快照之间
+    en: A short privilege-bit transition hides higher capability between two normal snapshots of a stable identity
+  analysis:
+    paragraphs:
+    - zh: 行为设计是保持同一 token/进程/身份，只在敏感操作前启用所需的已有权限，并可在操作后恢复。痕迹从可持续的高权限身份变为 disabled→enabled、权限消费、enabled→previous state 的短序列，窗口前后静态
+        token snapshot 均可显示原状态。只比较登录或周期快照的防守观察看不到中间能力，后继操作被误解为稳定身份原本权限，形成 Temporal Manipulation。保存 previous/new attributes
+        并按 token ID 与进程/TID 把首次匹配消费和恢复连接，才能恢复该转折。
+      en: The design preserves one token, process, and identity, enables a required existing privilege immediately before
+        a sensitive operation, and can restore it afterward. The trace changes from durable privileged identity into a short
+        disabled-to-enabled transition, privilege consumption, and enabled-to-previous-state sequence, while static token
+        snapshots before and after can show the original state. Defender observation comparing only logon or periodic snapshots
+        misses the intermediate capability and misreads the successor action as native to the stable identity, producing Temporal
+        Manipulation. Retaining previous and new attributes and joining first matching consumption and restoration by token
+        ID and process or TID reconstructs the transition.
+  evidence_refs:
+  - REF-000327
+  - REF-000331
+  - REF-000252
+  - REF-000281
+  confidence: high
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000096
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000097
+evidence:
+  claim_refs:
+  - CLM-000537
+  - CLM-000538
+  - CLM-000539
+  case_refs:
+  - CASE-000124
+  - CASE-000125
+  reference_refs:
+  - REF-000327
+  - REF-000331
+  - REF-000252
+  - REF-000281
+research:
+  limitations:
+    paragraphs:
+    - zh: Microsoft 文档直接说明权限调整的前提、变化前状态以及不能增加不存在权限的边界；现场报告分别观察到调试和驱动加载权限被启用并用于后继动作。这些来源没有证明攻击者总会在使用后恢复状态，或总会选择最小权限集合，因此本子技术只主张已存在权限的选择性激活及其观察差异。
+      en: Microsoft documentation directly establishes privilege-adjustment prerequisites, previous state, and the boundary
+        that absent privileges cannot be added. Field reports separately observe debugging and driver-loading privileges enabled
+        for downstream actions. The sources do not show that adversaries always restore state after use or always select a
+        minimum privilege set, so this child claims only selective activation of an existing privilege and its observation
+        difference.
+    - zh: 权限存在、启用和被操作实际消费是三项不同事实。部分安全日志只记录登录时授予的 special privileges，不显示 disabled/enabled 状态；成功 API 返回也可能伴随 ERROR_NOT_ALL_ASSIGNED，某些受保护进程/驱动策略仍会阻止结果。高置信检测必须观察前后态和匹配结果；缺少任一项时应降低结论，而不能从权限名称推断已提权。
+      en: Privilege presence, enablement, and actual consumption by an operation are three different facts. Some security
+        logs record special privileges assigned at logon without disabled or enabled state; a successful API return can still
+        accompany ERROR_NOT_ALL_ASSIGNED, and protected-process or driver policy can prevent the outcome. High-confidence
+        detection requires before and after state plus a matching result. Missing any element lowers the conclusion rather
+        than inferring elevation from privilege name.
+lifecycle:
+  status: review
+  version: 0.2.0
+  created: '2026-09-13'
+  modified: '2026-09-19'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []
+lineage:
+  attck_subtechnique_inherited: false

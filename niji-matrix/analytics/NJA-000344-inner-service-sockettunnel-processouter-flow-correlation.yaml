@@ -1,0 +1,180 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000344
+strategy_ref: DET-000258
+name:
+  zh: 内层服务 socket—隧道进程—外层流关联
+  en: Inner-Service Socket–Tunnel Process–Outer Flow Correlation
+summary:
+  zh: 连接隧道进程内外 socket、目标服务与后继登录结果，识别未批准端点解耦。
+  en: Join a tunnel process's inner and outer sockets, target service, and successor login outcome to identify unapproved
+    endpoint decoupling.
+domains:
+- enterprise
+platforms:
+- Windows
+- Linux
+- macOS
+- Network Devices
+logic:
+  paragraphs:
+  - zh: 以 endpoint_id 和 process_start_key 为隧道实例建立 socket 图：记录隧道进程/服务、启动参数或配置、监听端点、接受的本地/内部连接及外部连接。把 RDP、SMB、数据库、Tor 或其他已批准/禁止的内层服务会话，以
+      source/destination socket、时间、字节方向和可得协议指纹连接到同一进程或 tunnel_id 的外层流；再连接服务端登录、远程桌面、文件访问、命令或载荷结果。内层服务、隧道绑定、外层连接和后继结果四门齐全才输出
+      confirmed_inner_service_tunnel。
+    en: Build a socket graph for each tunnel instance using endpoint_id and process_start_key. Record the tunnel process or
+      service, launch arguments or configuration, listeners, accepted local or internal connections, and external connections.
+      Join RDP, SMB, database, Tor, or another approved or prohibited inner service session to an outer flow owned by the
+      same process or tunnel_id through source and destination sockets, time, byte direction, and available protocol fingerprints.
+      Then join service login, remote desktop, file access, command, or payload outcome. Emit confirmed_inner_service_tunnel
+      only when inner service, tunnel binding, outer connection, and successor outcome all pass.
+  - zh: 若只有转发配置和双侧 flow 而无法证明内层协议，降级为 overlay relay 并交给 DET-000191/NJA-000214；若只有外层 SSH/TLS/VPN 或命令行工具，保留 tunnel_exposure。合法路径必须同时匹配批准
+      owner、identity、binary/config hash、inner service、outer peer、domain pair、工单和有效期；只按 ssh/plink/ngrok 进程名或端口告警不合格。
+    en: If forwarding configuration and bilateral flows exist without proof of inner protocol, downgrade to overlay relay
+      and hand off to DET-000191 and NJA-000214. If only outer SSH, TLS, VPN, or a command-line tool exists, retain tunnel_exposure.
+      A legitimate path must match approved owner, identity, binary or configuration hash, inner service, outer peer, domain
+      pair, ticket, and validity. Alerts based only on an ssh, plink, or ngrok process name or port are insufficient.
+data_requirements:
+- source_type: endpoint-process-and-service
+  name:
+    zh: 隧道进程、服务与配置
+    en: Tunnel Process, Service, and Configuration
+  channel: EDR, Sysmon Event 1, auditd or equivalent
+  required_fields:
+  - event_time
+  - endpoint_id
+  - process_start_key
+  - process_id
+  - image
+  - binary_hash
+  - signer
+  - parent_process_key
+  - command_line
+  - service_or_unit_name
+  - tunnel_config_hash_or_arguments
+  - principal_id
+- source_type: endpoint-socket-ownership
+  name:
+    zh: 监听、接受与外联 socket 归属
+    en: Listener, Accepted, and Outbound Socket Ownership
+  channel: EDR or eBPF socket telemetry, Sysmon Event 3 where applicable, network-device process telemetry
+  required_fields:
+  - event_time
+  - endpoint_id
+  - process_start_key_or_tunnel_id
+  - direction
+  - local_ip
+  - local_port
+  - remote_ip
+  - remote_port
+  - protocol
+  - socket_or_flow_id
+  - bytes_in
+  - bytes_out
+  - interface_or_namespace
+- source_type: network-connection
+  name:
+    zh: 外层连接与协议元数据
+    en: Outer Connection and Protocol Metadata
+  channel: Zeek conn.log, TLS/HTTP log, firewall or flow telemetry
+  required_fields:
+  - ts
+  - uid
+  - id.orig_h
+  - id.orig_p
+  - id.resp_h
+  - id.resp_p
+  - proto
+  - service
+  - duration
+  - orig_bytes
+  - resp_bytes
+  - conn_state
+- source_type: inner-service-outcome
+  name:
+    zh: 内层服务会话与结果
+    en: Inner Service Session and Outcome
+  channel: RDP, SMB, authentication, application, file, and endpoint action logs
+  required_fields:
+  - event_time
+  - endpoint_or_service_id
+  - session_or_request_id
+  - principal
+  - source
+  - destination
+  - service
+  - action
+  - result
+- source_type: approved-tunnel-inventory
+  name:
+    zh: 批准隧道与服务映射
+    en: Approved Tunnel and Service Mapping
+  channel: asset, change, VPN, service-mesh, and remote-administration inventory
+  required_fields:
+  - owner
+  - identity
+  - endpoint_id
+  - binary_or_config_hash
+  - inner_service
+  - inner_destination
+  - outer_peer
+  - domain_pair
+  - ticket
+  - valid_from
+  - valid_to
+observables:
+- zh: 同一隧道实例一侧接受本地/内部服务连接，另一侧建立允许外层流，并在内层服务产生成功会话或动作
+  en: One tunnel instance accepts a local or internal service connection on one side, establishes an allowed outer flow on
+    the other, and produces a successful inner-service session or action
+- zh: 边界没有内层服务端口，但端点 socket 图显示该服务字节与外层流存在稳定方向和寿命关系
+  en: The boundary lacks the inner service port while the endpoint socket graph shows stable direction and lifetime relationships
+    between that service's bytes and the outer flow
+correlation:
+  window:
+    zh: 从隧道进程/服务创建前十五分钟覆盖外层连接全寿命及终止后四十八小时；长连接按滚动五分钟配对内外 socket，配置 ID 可跨完整生命周期。
+    en: Start fifteen minutes before tunnel process or service creation and span the outer connection lifetime plus forty-eight
+      hours after termination; pair inner and outer sockets in rolling five-minute windows while configuration IDs join the
+      full lifecycle.
+  dimensions:
+  - endpoint_id
+  - tunnel_id
+  - process_start_key
+  - listener
+  - inner_socket_or_session
+  - outer_flow_id
+  - inner_service
+  - outer_peer
+  - principal
+  - ticket
+  - time
+false_positives:
+- zh: 获批堡垒机、SSH 端口转发、企业 VPN、服务网格 sidecar、数据库代理、IDE 开发隧道和灾备管理路径
+  en: Approved bastions, SSH forwarding, enterprise VPNs, service-mesh sidecars, database proxies, IDE development tunnels,
+    and disaster-recovery paths
+blind_spots:
+- zh: 内核或设备级隧道无进程归属，边缘设备无 EDR，外层代理改写对端，第三方平台不共享 session，或内外层均加密
+  en: Kernel or device tunnels lack process ownership, edge devices lack EDR, an outer proxy rewrites the peer, third-party
+    platforms do not share sessions, or both layers are encrypted
+- zh: Sysmon Event 3 默认关闭且不记录所有监听/接受事件，单独依赖它无法构建完整 socket 图
+  en: Sysmon Event 3 is disabled by default and does not record every listen or accept event, so it cannot build the complete
+    socket graph alone
+tuning_guidance:
+  paragraphs:
+  - zh: 按工作负载登记精确 inner service、outer peer、identity、binary/config 和期限；高置信以四门闭合及未批准路径为条件。合法工具不能按进程名永久放行，异常进程也不能在缺少 inner outcome
+      时直接定性。对 NAT、代理和容器 namespace 保存映射，并对边缘设备使用独立 flow 与服务日志补偿。
+    en: Register exact inner service, outer peer, identity, binary or configuration, and validity by workload. Require all
+      four gates plus an unapproved path for high confidence. Do not permanently allow a legitimate tool by process name,
+      and do not classify an anomalous process without an inner outcome. Retain NAT, proxy, and container-namespace mappings
+      and compensate for edge appliances with independent flows and service logs.
+evidence_refs:
+- REF-001024
+- REF-000230
+- REF-000634
+- REF-001145
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-10-05'
+  modified: '2026-10-05'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

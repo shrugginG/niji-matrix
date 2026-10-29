@@ -1,0 +1,118 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000263
+strategy_ref: DET-000214
+name:
+  zh: AWS Backup 策略、恢复点与服务到期谱系
+  en: AWS Backup Policy, Recovery Point, and Service-Expiry Lineage
+summary:
+  zh: 输出未经批准的恢复点直接删除或策略驱动到期及其受保护资源 RPO 结果。
+  en: Emit unapproved direct recovery-point deletion or policy-driven expiry with protected-resource RPO outcome.
+domains:
+- enterprise
+platforms:
+- IaaS
+logic:
+  paragraphs:
+  - zh: 在 CloudTrail 识别 DeleteRecoveryPoint、UpdateRecoveryPointLifecycle、UpdateBackupPlan、DeleteBackupPlan/Selection
+      和 DeleteBackupVaultLockConfiguration。直接删除对成功请求立即告警，并按主体/vault 在十五分钟聚合恢复点。策略变化保存前后 DeleteAfterDays 与 CalculatedLifecycle
+      DeleteAt，比较最低保留与审批。
+    en: Identify DeleteRecoveryPoint, UpdateRecoveryPointLifecycle, UpdateBackupPlan, DeleteBackupPlan or Selection,
+      and DeleteBackupVaultLockConfiguration in CloudTrail. Alert immediately on successful direct deletion and aggregate
+      points by principal and vault over fifteen minutes. Preserve before and after DeleteAfterDays and CalculatedLifecycle
+      DeleteAt for policy changes and compare retention floors and approval.
+  - zh: 把策略事件保留到 DeleteAt 加服务删除上限，连接 BackupDeleted、恢复点清单和 resourceArn，计算幸存恢复点是否满足 RPO。策略变化为事前风险；实际删除或 RPO 缺口确认结果。锁拒绝保持企图。
+    en: Retain the policy join through DeleteAt plus the service deletion bound and connect BackupDeleted, recovery
+      inventory, and resourceArn to calculate whether surviving points meet RPO. Policy change is pre-impact risk;
+      actual deletion or RPO gap confirms outcome. A lock-denied request remains an attempt.
+data_requirements:
+- source_type: aws-backup-cloudtrail
+  name:
+    zh: AWS Backup CloudTrail 事件
+    en: AWS Backup CloudTrail events
+  channel: CloudTrail
+  required_fields:
+  - event.time
+  - event.name
+  - aws.region
+  - account.id
+  - user.identity.arn
+  - source.ip
+  - user.agent
+  - backup.vault.name
+  - recovery.point.arn
+  - resource.arn
+  - event.id
+  - error.code
+- source_type: backup-policy-version
+  name:
+    zh: 备份策略与恢复点状态
+    en: Backup policy and recovery-point state
+  channel: null
+  required_fields:
+  - backup.vault.name
+  - recovery.point.arn
+  - resource.arn
+  - policy.version
+  - delete.after.days
+  - calculated.delete.at
+  - vault.lock.mode
+  - approval.id
+- source_type: recovery-coverage
+  name:
+    zh: 恢复覆盖与 RPO 清单
+    en: Recovery coverage and RPO inventory
+  channel: null
+  required_fields:
+  - resource.arn
+  - criticality
+  - rpo.required
+  - recovery.point.count
+  - latest.point.time
+  - restore.test.result
+observables:
+- zh: 未经批准的恢复点删除或保留期限缩短
+  en: Unapproved recovery-point deletion or retention shortening
+- zh: 服务到期导致关键资源的幸存恢复点低于 RPO
+  en: Service expiry leaves a critical resource below RPO
+correlation:
+  window:
+    zh: 直接删除十五分钟；生命周期变化从写入持续到 Calculated DeleteAt 加八小时；按产品时限调优。
+    en: Use fifteen minutes for direct deletes; retain lifecycle joins from write to Calculated DeleteAt plus eight
+      hours, tuned to product timing.
+  dimensions:
+  - account.id
+  - aws.region
+  - backup.vault.name
+  - recovery.point.arn
+  - resource.arn
+  - user.identity.arn
+  - policy.version
+  - calculated.delete.at
+false_positives:
+- zh: 批准保留调整、资源退役、测试 vault 清理、迁移和正常到期
+  en: Approved retention changes, resource retirement, test-vault cleanup, migration, and normal expiry
+blind_spots:
+- zh: 源服务外删除、组织 trail 缺失、跨账户副本漏清单、服务事件缺少原主体或恢复依赖不可见
+  en: Deletion outside Backup, missing organization trail, omitted cross-account copies, service events without original
+    principal, or invisible restore dependencies
+tuning_guidance:
+  paragraphs:
+  - zh: 按工作负载层级维护最低保留、批准 policy hash 与锁模式，区分失败与成功调用，不对 root/备份管理员全局放行。RPO 确认需要完整恢复点清单，真正可恢复性仍需演练。
+    en: Maintain retention floors, approved policy hashes, and lock modes by workload tier; separate failed and successful
+      calls and never globally allow root or backup administrators. RPO confirmation needs complete inventory, while
+      actual recoverability still requires exercises.
+evidence_refs:
+- REF-000874
+- REF-000875
+- REF-000876
+- REF-000877
+- REF-000524
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-10-04'
+  modified: '2026-10-04'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

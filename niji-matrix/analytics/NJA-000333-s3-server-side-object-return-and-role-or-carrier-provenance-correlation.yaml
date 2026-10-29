@@ -1,0 +1,165 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000333
+strategy_ref: DET-000253
+name:
+  zh: S3 对象服务端返回与角色/载体来源关联
+  en: S3 Server-Side Object Return and Role or Carrier Provenance Correlation
+summary:
+  zh: 按对象、主体、会话与结果字段实现“S3 对象服务端返回与角色/载体来源关联”。
+  en: Implement S3 Server-Side Object Return and Role or Carrier Provenance Correlation with object, principal, session, and
+    outcome fields.
+domains:
+- enterprise
+platforms:
+- IaaS
+logic:
+  paragraphs:
+  - zh: '仅对高价值桶启用并验证 CloudTrail S3 对象 data events，同时启用一条独立 S3 server access log 路径。先把 CloudTrail eventName=GetObject、eventCategory=Data、readOnly=true、requestParameters.bucketName/key、userIdentity、sourceIPAddress、userAgent、requestID
+      和 errorCode 规范化为对象读取请求；无 errorCode 只能说明 API 未报告失败。再以 bucket、key、request ID、来源和短窗关联 server access log 的 REST.GET.OBJECT，要求
+      HTTPStatus 为 200 或 206、ErrorCode 为 ''-'' 且 BytesSent 大于零，才输出 provider_delivered_object。只有 CloudTrail 时输出 successful_api_read_candidate；只有
+      HeadObject/List 或元数据事件时保持 discovery_or_metadata。
+
+      将读取主体解析为用户、assumed role、服务或 anonymous，并解析 server log 的 Requester、RemoteIP、AuthenticationType、UserAgent、VersionId 和 ObjectSize。按
+      principal/session 或 QueryString/anonymous 载体、bucket/key、source IP、user agent 在三十分钟聚合对象数、响应字节和敏感度，与获批 ETL、备份、复制、扫描、灾备、分析和应用作业清单比较。对新来源、职责外前缀、异常版本、QueryString/anonymous、短时间高敏对象扇出及前序
+      AssumeRole/公开策略变化提高风险；后继文件落地、归档或外联只提高 confirmed_acquisition，不作为服务端返回的必要条件。'
+    en: 'Enable and validate CloudTrail S3 object data events only for high-value buckets and maintain an independent S3 server
+      access-log path. Normalize CloudTrail eventName=GetObject, eventCategory=Data, readOnly=true, requestParameters.bucketName
+      and key, userIdentity, sourceIPAddress, userAgent, requestID, and errorCode into an object-read request. Absence of
+      errorCode means only that the API did not report failure. Join by bucket, key, request ID, origin, and a short window
+      to REST.GET.OBJECT in the server access log. Require HTTPStatus 200 or 206, ErrorCode ''-'', and BytesSent greater than
+      zero before emitting provider_delivered_object. Emit successful_api_read_candidate with CloudTrail alone, and retain
+      HeadObject, List, or metadata events as discovery_or_metadata.
+
+      Resolve the reader as user, assumed role, service, or anonymous, and parse Requester, RemoteIP, AuthenticationType,
+      UserAgent, VersionId, and ObjectSize from the server log. Aggregate object count, response bytes, and sensitivity for
+      thirty minutes by principal or session, or by QueryString or anonymous carrier, bucket and key, source IP, and user
+      agent. Compare with approved ETL, backup, copy, scanning, disaster-recovery, analytics, and application jobs. Raise
+      risk for a new origin, out-of-duty prefix, unusual version, QueryString or anonymous authentication, rapid sensitive-object
+      fan-out, or preceding AssumeRole or public-policy change. Later file materialization, archiving, or egress raises the
+      grade to confirmed_acquisition but is not required for provider-returned content.'
+data_requirements:
+- source_type: aws-cloudtrail-s3-data-events
+  name:
+    zh: 经验证的Aws Cloudtrail S3 Data Events数据
+    en: Aws Cloudtrail S3 Data Events
+  channel: CloudTrail trail or event data store with S3 object read data events
+  required_fields:
+  - event_time
+  - event_category
+  - event_name
+  - read_only
+  - user_identity.type
+  - user_identity.arn
+  - user_identity.account_id
+  - user_identity.session_context
+  - source_ipaddress
+  - user_agent
+  - request_parameters.bucket_name
+  - request_parameters.key
+  - request_id
+  - error_code
+  - resources.type
+  - resources.arn
+- source_type: aws-s3-server-access-log
+  name:
+    zh: 经验证的Aws S3 Server Access Log数据
+    en: Aws S3 Server Access Log
+  channel: S3 server access logging to independently protected destination
+  required_fields:
+  - time
+  - bucket
+  - requester
+  - remote_ip
+  - request_id
+  - operation
+  - key
+  - request_uri
+  - http_status
+  - error_code
+  - bytes_sent
+  - object_size
+  - user_agent
+  - version_id
+  - authentication_type
+- source_type: aws-storage-reader-and-job-inventory
+  name:
+    zh: 经验证的Aws Storage Reader And Job Inventory数据
+    en: Aws Storage Reader And Job Inventory
+  channel: IAM/session registry, object sensitivity, CMDB, and approved jobs
+  required_fields:
+  - principal_arn
+  - role_session_name
+  - client_or_job_id
+  - owner
+  - source_network
+  - bucket_scope
+  - prefix_scope
+  - object_sensitivity
+  - schedule
+  - destination
+  - valid_from
+  - valid_to
+observables:
+- zh: 需人工核实的正常活动。
+  en: s3_get_request
+- zh: 需人工核实的正常活动。
+  en: provider_delivered_object
+- zh: 需人工核实的正常活动。
+  en: querystring_or_anonymous_read
+- zh: 需人工核实的正常活动。
+  en: unexpected_role_or_origin
+- zh: 需人工核实的正常活动。
+  en: sensitive_object_fanout
+- zh: 需人工核实的正常活动。
+  en: successor_materialization_or_egress
+correlation:
+  window:
+    zh: CloudTrail 与服务器日志默认十分钟内关联，读取片段三十分钟，角色、授权载体和作业基线保留三十天。
+    en: CloudTrail-to-server-log join within 10m; read episode 30m; role, carrier, and job baseline 30d
+  dimensions:
+  - account_id
+  - principal_arn
+  - role_session_name
+  - bucket_name
+  - object_key
+  - request_id
+  - source_ip
+  - user_agent
+  - authentication_type
+  - version_id
+  - job_id
+  - time
+false_positives:
+- zh: 批准备份/恢复、内容分发、数据湖查询、ETL、漏洞/恶意软件扫描、电子发现、对象迁移、灾备校验和客户预签名下载都会产生成功 GetObject 与高字节响应。
+  en: Approved backup or restore, content delivery, data-lake queries, ETL, vulnerability or malware scanning, e-discovery,
+    object migration, disaster-recovery validation, and customer presigned downloads all produce successful GetObject calls
+    and nonzero responses.
+blind_spots:
+- zh: CloudTrail 默认不记录对象 data events；server access log 需启用且尽力投递，可能延迟、缺失或重复。CloudTrail 的成功 GetObject 不保证包含 bytesTransferredOut，server
+    log 的 BytesSent 也不证明客户端完整保存；预签名 URL 只能指向签名身份而不能识别实际持有者。
+  en: CloudTrail does not record object data events by default. Server access logging requires enablement and is best effort,
+    so records can be late, missing, or duplicated. A successful CloudTrail GetObject does not guarantee bytesTransferredOut,
+    and server-log BytesSent does not prove complete client retention. A presigned URL can identify its signing identity without
+    identifying the actual holder.
+tuning_guidance:
+  paragraphs:
+  - zh: 先对一组测试 GetObject、Range GET、HeadObject、公开读取和预签名读取验证日志与成功分层，再按精确 role、bucket/prefix、source、user agent、作业 ID 和窗口建立例外；不得全局放行
+      backup role 或 aws-cli。
+    en: First validate logging and success tiers with controlled GetObject, Range GET, HeadObject, public-read, and presigned-read
+      tests. Define exceptions by exact role, bucket or prefix, origin, user agent, job ID, and window rather than globally
+      allowing a backup role or aws-cli.
+evidence_refs:
+- REF-000513
+- REF-000524
+- REF-000538
+- REF-000541
+- REF-001109
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-10-05'
+  modified: '2026-10-05'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

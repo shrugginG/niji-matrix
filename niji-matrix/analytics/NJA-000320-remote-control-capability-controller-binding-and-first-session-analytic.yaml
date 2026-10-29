@@ -1,0 +1,147 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000320
+strategy_ref: DET-000246
+name:
+  zh: 远控能力控制端绑定与首次会话分析
+  en: Remote-Control Capability Controller Binding and First-Session Analytic
+summary:
+  zh: 识别合法远控 provider 后未批准 tenant/account/workspace/controller 绑定及首次控制结果。
+  en: Identify an unapproved tenant, account, workspace, or controller binding behind a legitimate remote-control provider
+    and its first control outcome.
+domains:
+- enterprise
+platforms:
+- Windows
+- Linux
+- macOS
+logic:
+  paragraphs:
+  - zh: 先按 device 与 capability ID 建 agent/tunnel lifecycle，连接 create/install/service/`code tunnel`/register 到 provider
+      binding。将 provider tenant/org、controller account 与批准 inventory 比较，输出 approved_binding、unknown_binding 或 external_controller_binding；只有
+      capability 随后建立 remote session 并产生 terminal/file/process outcome 时输出 controller_rebind_confirmed。仅 code.exe/AnyDesk
+      安装、vendor egress 或登录 portal 保持 exposure。portable agent 无 install 时从 process+provider session 建临时 capability ID；provider
+      audit 不可得时标记 controller_unresolved。
+    en: Build agent or tunnel lifecycle by device and capability ID, joining create, install, service, code tunnel, or
+      register to provider binding. Compare provider tenant or organization and controller account with approved inventory
+      to emit approved_binding, unknown_binding, or external_controller_binding. Emit controller_rebind_confirmed only
+      when the capability later creates a remote session and a terminal, file, or process outcome. Code.exe or AnyDesk
+      installation, vendor egress, or portal login alone remains exposure. For a portable agent without installation,
+      derive a temporary capability ID from process and provider session. Mark controller_unresolved when provider audit
+      is unavailable.
+data_requirements:
+- source_type: endpoint-capability-lifecycle
+  name:
+    zh: endpoint capability lifecycle
+    en: endpoint capability lifecycle
+  channel: EDR process/service/registry/extension events
+  required_fields:
+  - event_time
+  - target_device_id
+  - lifecycle_action
+  - agent_process_key
+  - agent_path
+  - agent_hash
+  - publisher
+  - launch_arguments
+  - agent_service_id
+  - persistence_id
+  - local_principal_id
+- source_type: provider-or-ide-control-plane
+  name:
+    zh: provider or ide control plane
+    en: provider or ide control plane
+  channel: vendor admin/audit API, Dev Tunnels, GitHub/Microsoft identity
+  required_fields:
+  - event_time
+  - provider
+  - controller_namespace_id
+  - controller_principal_id
+  - capability_id
+  - target_device_id
+  - binding_action
+  - access_mode
+  - remote_session_id
+  - controller_source_ip
+  - controller_auth_method
+  - result_status
+- source_type: approved-remote-control-inventory
+  name:
+    zh: approved remote control inventory
+    en: approved remote control inventory
+  channel: software asset, vendor tenant, IDE and support-tool registry
+  required_fields:
+  - provider
+  - approved_namespace_id
+  - approved_controller_id
+  - approved_capability_id
+  - target_device_id
+  - approved_mode
+  - capability_owner
+  - valid_from
+  - valid_to
+  - policy_version
+- source_type: endpoint-outcome
+  name:
+    zh: endpoint outcome
+    en: endpoint outcome
+  channel: EDR process/file/network/terminal events
+  required_fields:
+  - event_time
+  - target_device_id
+  - remote_agent_process_key
+  - outcome_process_key
+  - outcome_type
+  - outcome_image
+  - command_line
+  - object_path
+  - remote_target
+  - effective_principal
+observables:
+- zh: 新 tunnel/agent 绑定外部 tenant/account 后出现首次终端或文件操作
+  en: A new tunnel or agent binds to an outside tenant or account and produces first terminal or file action
+- zh: 持久远控服务重新连接到未批准 controller namespace
+  en: A persistent remote-control service reconnects to an unapproved controller namespace
+correlation:
+  window:
+    zh: 绑定至首次会话二十四小时；能力/账号历史九十日。
+    en: Twenty-four hours from binding to first session and ninety days of capability or account history.
+  dimensions:
+  - target_device_id
+  - agent_process_key
+  - provider
+  - controller_namespace_id
+  - controller_principal_id
+  - capability_id
+  - remote_session_id
+  - policy_version
+  - outcome_process_key
+  - time
+false_positives:
+- zh: 批准开发 tunnel、MSP onboarding、替换 agent 或临时厂商支持
+  en: Approved developer tunnels, MSP onboarding, replacement agents, or temporary vendor support
+blind_spots:
+- zh: 外部提供方审计不可得、便携 agent 无稳定 ID 或批准账号被盗
+  en: Provider audit is unavailable, a portable agent lacks stable identity, or an approved account is stolen
+tuning_guidance:
+  paragraphs:
+  - zh: inventory 必须到 tenant/org/controller/capability 而非产品名；按 developer、helpdesk、MSP、server 与 workstation 角色分基线。签名 binary
+      和 vendor domain 不可整体豁免；unknown binding 需 target outcome 或独立 incident context 才升级。
+    en: Inventory must reach tenant, organization, controller, and capability rather than product name. Baseline developer,
+      help desk, MSP, server, and workstation roles separately. Signed binaries and vendor domains cannot receive blanket
+      exemption. Unknown binding requires target outcome or independent incident context before escalation.
+evidence_refs:
+- REF-001062
+- REF-000031
+- REF-001068
+- REF-001067
+- REF-000986
+- REF-000230
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-10-05'
+  modified: '2026-10-05'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

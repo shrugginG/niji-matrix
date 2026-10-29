@@ -1,0 +1,279 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000027
+strategy_ref: DET-000053
+name:
+  zh: 远程服务、有效身份与受信路径入口关联分析
+  en: Remote-Service Valid-Identity and Trusted-Path Entry Correlation Analytic
+summary:
+  zh: 按身份+会话+设备+来源+资源建立序列，成功认证和受信来源都不能单独证明合法。
+  en: Build sequences by identity, session, device, origin, and resource; neither successful authentication nor trusted origin alone proves legitimacy.
+domains:
+- enterprise
+platforms:
+- Identity Provider
+- VPN
+- Remote Desktop
+- Cloud
+- SaaS
+- Windows
+- Linux
+- Kubernetes
+logic:
+  paragraphs:
+  - zh: 按身份+会话+设备+来源+资源规范化事件并建立入口条件、控制变化、实际进入与首个结果的序列；成功认证和受信来源都不能单独证明合法。对持续远程服务访问，按 identity 与 service 建立至少九十日会话生命周期，识别原会话终止、端点驻留处置或凭据轮换之后仍使用旧 token/session 或高度贴合风险情境的重新进入。活动会话重放要求缺少新的主认证/MFA 且 session lineage 连续，情境拟态比较地理、ISP、设备、时间和用户正常范围；两者都需以后继资源访问证明成功，并保留正常相似行为作为替代解释。
+    en: Normalize events by identity session device origin and resource and build a sequence from entry condition through control change actual entry and first outcome; neither successful authentication nor trusted origin alone proves legitimacy. For continuing remote-service access build at least a ninety-day lifecycle by identity and service and identify re-entry after original-session termination endpoint-persistence remediation or credential rotation through old token or session state or closely aligned risk context. Live-session replay requires missing fresh primary authentication or MFA with continuous session lineage while context mimicry compares geography ISP device time and the user's normal range. Both require downstream resource access proving success and retain legitimate lookalikes as alternative explanations.
+  - zh: 对 NJT-0061 建立 context、session 和 feedback 三个独立评分分支，分别比较 identity 历史、回溯 token/session 与认证、连接 owner/活动/依赖，并要求攻击者控制或后继资源异常。TA0003 再为每个 identity 保存 prior_accepted_use，识别新 access episode、原 session 结束、credential/authenticator epoch、风险或处置事件，最后要求 later accepted authentication/session 与 resource allow。输出区分 identity_exposure、accepted_identity_use、persistence_unresolved 与 persistent_identity_access_confirmed；单字段或不能建立 controller/中断边界时保持未决。
+    en: For NJT-0061 build independently scored context session and feedback branches that compare identity history trace token or session to authentication and join owner activity and dependency while requiring adversary control or a downstream resource anomaly. TA0003 additionally retains prior_accepted_use per identity identifies a new access episode original-session termination credential or authenticator epoch risk or response event and finally requires later accepted authentication or session plus resource allow. Outputs distinguish identity_exposure accepted_identity_use persistence_unresolved and persistent_identity_access_confirmed and remain unresolved from one field or without controller and interruption boundaries.
+  - zh: TA0004 分支以同一 controller 为键，先固定攻击者较低权限 prestate_identity 与 event-time authorization snapshot，再连接 exact accepted identity/session、result_identity、实际 token/privilege/role 和首个 protected_resource decision。Windows 可按 host+Logon ID 连接 4624→4672→4663 或其他资源事件；云/SaaS 连接 sign-in identity/client/resource、session/token、event-time role/scope 与管理 API/resource audit。只有 prestate 对该 operation expected-deny、result observed-allow 且 authority set 为正差时才形成 elevation_confirmed。
+    en: The TA0004 branch keys on the same controller first fixing the adversary's lower-authority prestate_identity and event-time authorization snapshot then joining the exact accepted identity or session result_identity actual token privilege or role and first protected_resource decision. Windows can join 4624 to 4672 to 4663 or another resource event by host and Logon ID. Cloud and SaaS join sign-in identity client and resource session or token event-time role or scope and management API or resource audit. Elevation_confirmed requires expected-deny for the operation under the pre-state observed-allow under the result and a positive authority-set difference.
+  - zh: 输出按证据层级而非单一恶意分数升级：identity_anomaly 只表示情境、会话或反馈异常；accepted_identity_use 要求身份/会话和资源均被接受；privileged_session 要求实际结果主体具有敏感权限；authority_unresolved 表示 controller 或任一授权快照缺失；same_authority_use 明确无正差；elevation_confirmed 才代表完整权限链。Initial Access 只需首个立足点，不得因其登录账户高权而自动升级 TA0004。
+    en: Output promotes by evidence tier rather than one maliciousness score. Identity_anomaly records only context session or feedback anomaly. Accepted_identity_use requires both identity or session and resource acceptance. Privileged_session requires sensitive authority on the actual result principal. Authority_unresolved marks a missing controller or authorization snapshot and same_authority_use records no positive difference. Only elevation_confirmed represents the complete authority chain. Initial Access needs a first foothold and is not automatically promoted to TA0004 because its account is privileged.
+data_requirements:
+- source_type: identity-session-authentication
+  name:
+    zh: 身份、令牌与会话认证事件
+    en: Identity, token, and session authentication events
+  channel: null
+  required_fields:
+  - timestamp
+  - identity_id
+  - session_id
+  - token_id
+  - authentication_method
+  - mfa_result
+  - device_id
+  - network_origin
+- source_type: remote-service-access
+  name:
+    zh: 远程服务访问与资源事件
+    en: Remote-service access and resource events
+  channel: null
+  required_fields:
+  - timestamp
+  - service_id
+  - identity_id
+  - session_id
+  - device_id
+  - source
+  - target_resource
+  - action
+- source_type: cross-organization-trust
+  name:
+    zh: 跨组织委托与服务主体审计
+    en: Cross-organization delegation and service-principal audit
+  channel: null
+  required_fields:
+  - timestamp
+  - source_tenant
+  - target_tenant
+  - principal_id
+  - delegation_id
+  - role
+  - resource
+  - action
+- source_type: account-lifecycle-ownership
+  name:
+    zh: 账户生命周期、所有者与服务依赖
+    en: Account lifecycle ownership and service dependency
+  channel: null
+  required_fields:
+  - timestamp
+  - identity_id
+  - identity_kind
+  - enabled_state
+  - owner_id
+  - employment_or_supplier_state
+  - last_interactive_activity
+  - last_noninteractive_activity
+  - service_dependency_id
+  - permitted_host_or_logon_type
+- source_type: event-time-authorization-snapshot
+  name:
+    zh: 事件时身份、会话与资源授权快照
+    en: Event-time identity session and resource authorization snapshots
+  channel: null
+  required_fields:
+  - timestamp
+  - controller_id
+  - principal_id
+  - session_id
+  - token_id
+  - group_or_role
+  - privilege_or_scope
+  - resource_id
+  - valid_from
+  - valid_until
+- source_type: endpoint-logon-security-context
+  name:
+    zh: 端点登录与实际安全上下文
+    en: Endpoint logon and actual security context
+  channel: Windows Security or equivalent
+  required_fields:
+  - timestamp
+  - host_id
+  - event_id
+  - subject_identity
+  - target_identity
+  - logon_id
+  - logon_type
+  - privilege_set
+  - process_id
+- source_type: protected-resource-authorization
+  name:
+    zh: 受保护资源请求与授权结果
+    en: Protected-resource request and authorization outcome
+  channel: null
+  required_fields:
+  - timestamp
+  - request_id
+  - principal_id
+  - session_id
+  - token_id
+  - resource_id
+  - action
+  - authorization_decision
+  - result_status
+- source_type: identity-access-response-continuity
+  name:
+    zh: 身份访问时段、处置与撤销连续性
+    en: Identity access-episode response and revocation continuity
+  channel: null
+  required_fields:
+  - timestamp
+  - identity_id
+  - session_or_token_id
+  - event_type
+  - access_episode_id
+  - credential_or_authenticator_epoch
+  - response_or_revocation_action
+  - expected_effective_time
+  - target_resource
+  - authorization_decision
+  - result_status
+observables:
+- zh: 会话跨 IP/设备跳变
+  en: Session hopping across IP/device
+- zh: 无新 MFA 的资源访问
+  en: Resource access without new MFA
+- zh: 新设备后立即远程接入
+  en: Remote access immediately after device registration
+- zh: 服务商对多客户扇出
+  en: Provider fan-out across customers
+- zh: 原会话或端点驻留处置后仍以旧 token/session 恢复同一远程服务访问
+  en: The same remote-service access resumes with old token or session state after original-session or endpoint-persistence remediation
+- zh: 新认证的 source/ISP/device/client/time 与身份历史高度贴合，但同一设备或进程此前由另一低权身份控制
+  en: Fresh authentication closely matches identity source ISP device client and time history while the same device or process was previously controlled under another lower-authority identity
+- zh: 敏感资源请求沿用既有 session/token，附近没有新的主认证或 MFA
+  en: Sensitive-resource requests continue an existing session or token without nearby fresh primary authentication or MFA
+- zh: 风险、账户禁用、密码重置或撤销事件后，会话仍被不支持或延迟执行的资源接受
+  en: A session remains accepted by a resource with unsupported or delayed enforcement after a risk account-disable password-reset or revocation event
+- zh: 长期无 interactive/noninteractive 合法活动且 owner 或供应关系失效的身份首次复用
+  en: First reuse of an identity with long-absent legitimate interactive and noninteractive activity and an expired owner or supplier relationship
+- zh: 高权服务身份从非许可主机或交互式 logon type 认证并访问新 resource/verb
+  en: A privileged service identity authenticates from a nonpermitted host or interactive logon type and reaches a novel resource or verb
+- zh: 同一 controller 从 prestate identity 切换到更高 result identity，后者完成前者 expected-deny 的资源操作
+  en: The same controller switches from a pre-state identity to a higher result identity that completes a resource operation expected denied for the former
+- zh: Windows 同一 Logon ID 出现 4624、非预期 4672 与受保护对象 4663，且权限快照相对前态为正差
+  en: Windows 4624 unexpected 4672 and protected-object 4663 share a Logon ID and the authorization snapshot has a positive difference from the pre-state
+- zh: 先前攻击者访问或端点驻留被处置后，同一身份在新的 access episode 再次通过认证并恢复资源 allow
+  en: After prior adversary access or endpoint foothold remediation the same identity authenticates in a new access episode and restores a resource allow
+- zh: 资源在风险、密码重置或撤销预期生效后仍接受旧 session/token 并产生操作结果
+  en: A resource continues accepting an old session or token and produces an operation after risk password reset or revocation should have taken effect
+- zh: 同一低反馈身份在沉默期和明确中断后首次复用，并从非许可主机恢复高价值资源访问
+  en: The same low-feedback identity is first reused after silence and a defined interruption and restores high-value resource access from a nonpermitted host
+correlation:
+  window:
+    zh: 热关联覆盖实时至至少九十天；身份生命周期快照和处置记录按本地 credential、休眠与 access-review 周期保留更久，以覆盖低频服务、休眠身份和延迟重入。
+    en: Hot correlation spans real time through at least ninety days while identity-lifecycle snapshots and response records are retained through the longer local credential dormancy and access-review cycle to cover low-frequency services dormant identities and delayed re-entry.
+  dimensions:
+  - identity
+  - session
+  - token
+  - device
+  - network_origin
+  - resource
+  - tenant
+  - delegation
+  - controller
+  - authentication_chain
+  - logon_id
+  - account_owner
+  - service_dependency
+  - authorization_snapshot
+  - authorization_decision
+  - access_episode
+  - credential_or_authenticator_epoch
+  - response_or_revocation_action
+  - time
+false_positives:
+- zh: 旅行、企业 VPN/VDI、合法 MSP、设备更换
+  en: travel, corporate VPN/VDI, legitimate MSPs, and device replacement
+- zh: 经批准的管理员身份切换、helpdesk 代管和共享跳板机
+  en: approved administrator identity switching helpdesk administration and shared jump hosts
+- zh: 计划内 break-glass、灾备演练和长期休假后复工
+  en: scheduled break-glass disaster-recovery exercises and return after extended leave
+- zh: 季节性 batch job、低频证书轮换与按需服务账户
+  en: seasonal batch jobs infrequent certificate rotation and on-demand service identities
+- zh: 正常移动客户端 token refresh、离线同步与协作应用长会话
+  en: normal mobile-client token refresh offline synchronization and long collaboration-app sessions
+- zh: 同一高权管理员在多个资源使用等价权限且无实际权限差
+  en: one privileged administrator using equivalent authority across resources without an actual authority difference
+- zh: 普通断线或设备更换后的合法重认证、计划内服务重启和 token refresh
+  en: legitimate reauthentication after ordinary disconnect or device replacement scheduled service restart and token refresh
+- zh: 获批账户恢复、灾备、break-glass、休假后复工和季节性 workload 恢复
+  en: approved account recovery disaster recovery break-glass return after leave and seasonal workload resumption
+blind_spots:
+- zh: 日志不共享、设备绑定缺失、真实设备被控
+  en: unshared logs, missing device binding, and controlled real devices
+- zh: 身份提供方与资源方不共享稳定 session/token/request ID
+  en: identity and resource providers do not share stable session token or request identifiers
+- zh: 目录只保留当前角色，无法恢复事件时 group/role/scope
+  en: the directory retains only current roles and cannot reconstruct event-time group role or scope
+- zh: Windows 审计未启用、SACL 缺失或资源访问不产生 4663
+  en: Windows auditing is disabled SACLs are absent or resource access does not produce event 4663
+- zh: noninteractive activity、service dependency、owner 或 HR/供应关系数据缺失导致休眠度误判
+  en: missing noninteractive activity service dependency owner or HR and supplier data misclassifies dormancy
+- zh: token 被真实设备继续使用、资源不支持连续重评或撤销传播延迟
+  en: token use continues on a real device the resource lacks continuous reevaluation or revocation propagation is delayed
+- zh: 跨租户、SaaS 或本地系统的 allow/deny 结果和 controller lineage 不可见
+  en: allow or deny outcomes and controller lineage are unavailable across tenants SaaS or on-premises systems
+- zh: 先前 access episode 或处置事件超出保留期，本地/离线认证缺少集中 session ID
+  en: the prior access episode or response event falls outside retention and local or offline authentication lacks centralized session IDs
+- zh: relying party 不暴露 token/撤销状态，或跨设备/租户无法证明 controller 连续性
+  en: the relying party exposes no token or revocation state or controller continuity cannot be established across devices or tenants
+tuning_guidance:
+  paragraphs:
+  - zh: 应按资产所有者、业务角色、入口类型、设备群、地理、发布周期与合法个性化条件建立基线，并分别评分来源、行为差异、完整性变化和入口后结果。白名单必须限定到具体主体、用途和有效期，不能永久排除可信平台、长期身份、已签名制品或维护活动；单一信号不足以触发处置。
+    en: Maintain baselines by asset owner, business role, entry type, device population, geography, release cycle, and legitimate personalization condition, and score provenance, behavioral
+      difference, integrity change, and post-entry outcome separately. Allowlists must be scoped to a concrete subject, purpose, and validity period rather than permanently excluding
+      trusted platforms, long-lived identities, signed artifacts, or maintenance activity; one signal is insufficient for enforcement.
+  - zh: T1078 context 分支按 identity 而不是全组织阈值建模 source、ISP/ASN、device、client 和 time，并同时比较身份提供方与资源方所见来源；住宅/移动 ASN、企业 VPN 或受管设备不能永久放行。session 分支按 relying party 保存 token/session issuance、refresh、resource、device/IP、risk/revocation 与 claim challenge，支持矩阵和传播延迟必须进入评分。
+    en: Model source ISP or ASN device client and time for the T1078 context branch per identity rather than with organization-wide thresholds and compare origin seen by identity and resource providers. Residential or mobile ASNs enterprise VPN and managed devices cannot receive permanent allow. The session branch retains token or session issuance refresh resource device or IP risk or revocation and claim challenge per relying party and includes support matrix and propagation delay in scoring.
+  - zh: feedback 分支的 dormancy threshold 应按用户、服务、季节作业、灾备和供应身份分别设定，同时检查 interactive 与 noninteractive activity、owner、dependency 和 review expiry。权限输出不得用 role rank 简单比较，应对具体 resource/action 计算前态 expected decision 与结果态 observed decision；缺少 controller 或快照时强制保留 authority_unresolved，不以高分代替证据。
+    en: Set dormancy thresholds for the feedback branch separately for users services seasonal jobs disaster recovery and supplier identities while checking interactive and noninteractive activity owner dependency and review expiry. Authority output does not compare a simple role rank and instead computes the expected decision for the specific resource and action under the pre-state and the observed decision under the result. A missing controller or snapshot forces authority_unresolved and cannot be replaced by a high score.
+  - zh: TA0003 基线按 human、service、guest、workload、灾备和季节身份分别定义 access episode、session 寿命、credential epoch 和资源集合。重复登录只进入候选层；只有先前攻击者控制、中断边界、后续被接受状态与 resource allow 闭合时确认 Persistence。处置后持续监控同一 identity，并逐 relying party 验证旧状态实际被拒绝。
+    en: TA0003 baselines access episodes session lifetimes credential epochs and resource sets separately for human service guest workload disaster-recovery and seasonal identities. Repeated sign-in remains candidate-level and Persistence confirms only when prior adversary control interruption boundary later accepted state and resource allow close. Continue monitoring the identity after response and verify actual rejection of old state at every relying party.
+evidence_refs:
+- REF-000088
+- REF-000093
+- REF-000094
+- REF-000102
+- REF-000103
+- REF-000110
+- REF-000111
+- REF-000327
+- REF-000376
+- REF-000377
+- REF-000378
+- REF-000379
+- REF-000380
+- REF-000381
+lifecycle:
+  status: review
+  version: 1.3.0
+  created: '2026-09-10'
+  modified: '2026-10-22'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

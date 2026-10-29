@@ -1,0 +1,128 @@
+schema_version: 2.0.0
+type: mitigation
+id: MIT-000193
+name:
+  zh: 可重用认证证明的绑定、验证与横向范围治理
+  en: Reusable Authentication-Proof Binding, Validation, and Lateral-Scope Governance
+summary: &id001
+  zh: 本缓解把可重用材料从取得到使用作为一个受控 proof lineage：减少可导出材料，限制哪个设备/client 可提交，约束 audience/SPN/scope 与寿命，在 verifier 和资源保存安全关联键，并在暴露后同时撤销材料
+    family、派生证明和关联会话。MIT-000052 可扩展父级 resource-local session 分支，MIT-000187 继续负责 hash/ticket/token 的取得面保护；本对象专门处理 presentation、fresh-proof
+    issuance 与跨资源使用。
+  en: 'This mitigation treats reusable material from acquisition through use as a governed proof lineage: reduce exportable
+    material, constrain which device or client can present it, limit audience or SPN, scope, and lifetime, retain safe join
+    keys at verifier and resource, and revoke the material family, derived proof, and linked sessions together after exposure.
+    MIT-000052 can be extended for the parent''s resource-local session branch, while MIT-000187 continues to protect acquisition
+    surfaces for hashes, tickets, and tokens. This object specifically governs presentation, fresh-proof issuance, and cross-resource
+    use.'
+description:
+  paragraphs:
+  - *id001
+domains:
+- enterprise
+measures:
+- key: reduce-reusable-proof-and-ntlm
+  name:
+    zh: 减少可重用证明与 NTLM 面
+    en: Reduce reusable proof and NTLM exposure
+  description:
+    paragraphs:
+    - zh: 先审计 NTLM 和旧认证依赖，再按应用/服务器逐步限制或阻断；高权账户使用 Protected Users、认证策略/silo、短且不可续期 TGT 及许可设备/服务条件。端点启用适用的 Credential Guard/LSA
+        保护并避免高权身份登录低信任主机。例外绑定服务、owner、迁移期限和替代控制。
+      en: Audit NTLM and legacy-authentication dependencies before restricting or blocking them by application and server.
+        Use Protected Users, authentication policies or silos, short nonrenewable TGTs, and allowed device and service conditions
+        for privileged identities. Enable applicable Credential Guard and LSA protection on endpoints and keep privileged
+        identities from low-trust hosts. Bind exceptions to a service, owner, migration deadline, and compensating control.
+  control_type: exposure-reduction
+- key: sender-device-audience-binding
+  name:
+    zh: Sender、设备与受众绑定
+    en: Sender, device, and audience binding
+  description:
+    paragraphs:
+    - zh: 对支持的 token/refresh/session material 启用 device/workload binding、mTLS/DPoP 或等价 proof-of-possession，并严格限制 issuer、client、audience、scope、redirect
+        和 resource；绑定私钥使用硬件或不可导出存储。覆盖缺口必须清单化，不能把产品支持范围推广为所有应用。
+      en: Enable device or workload binding, mTLS, DPoP, or equivalent proof of possession for supported token, refresh, and
+        session material, and strictly constrain issuer, client, audience, scope, redirect, and resource. Keep binding private
+        keys in hardware-backed or nonexportable storage. Inventory coverage gaps and do not generalize one product's support
+        to every application.
+  control_type: preventive
+- key: proof-lineage-and-verifier-audit
+  name:
+    zh: Proof 谱系与验证器审计
+    en: Proof lineage and verifier audit
+  description:
+    paragraphs:
+    - zh: 在 KDC、credential validator、token endpoint 和资源侧保留 request/correlation、主体、源 device/client、audience/SPN、scope、绑定结果、safe
+        material family/proof ID、新 context/session 和 first operation；禁止集中保存 raw hash/ticket/token/cookie。对无法原生传递 ID 的路径建立已测试的降级关联并标记置信度。
+      en: Retain request or correlation ID, principal, source device and client, audience or SPN, scope, binding outcome,
+        safe material-family or proof ID, fresh context or session, and first operation across KDC, credential validator,
+        token endpoint, and resource. Never centralize raw hashes, tickets, tokens, or cookies. Build tested degraded joins
+        with confidence labels where paths cannot propagate identifiers natively.
+  control_type: detective-support
+- key: family-derived-proof-session-revocation
+  name:
+    zh: 材料 Family、派生证明与会话联合撤销
+    en: Joint revocation of material family, derived proof, and sessions
+  description:
+    paragraphs:
+    - zh: 发现未授权使用后保全 proof lineage，隔离源设备，轮换受影响秘密或 binding key，撤销 refresh/access family、tickets、cookies、grant/client credential
+        与关联应用/远程会话，并按每个 audience/SPN/resource 验证旧材料和派生 proof 实际被拒绝。一次 revoke API、密码重置或源进程终止不等于传播完成。
+      en: After unauthorized use, preserve proof lineage, isolate the source device, rotate affected secrets or binding keys,
+        revoke refresh and access families, tickets, cookies, grants or client credentials, and linked application or remote
+        sessions, and verify actual denial of old material and derived proof at every audience, SPN, and resource. One revoke
+        API call, password reset, or source-process termination is not proof of completed propagation.
+  control_type: containment
+applications:
+- target_ref: NJT-0184
+  use:
+    paragraphs:
+    - zh: 将材料取得、呈现、验证、上下文建立和跨资源结果分别留证；resource-local session reuse 采用 MIT-000052 的绑定/连续评估，本对象补充协议验证点、受众范围和 family 派生关系。
+      en: Preserve acquisition, presentation, validation, context creation, and cross-resource result separately. Use MIT-000052
+        binding and continuous evaluation for resource-local session reuse, while this control adds protocol-verifier, audience-scope,
+        and family-derivation governance.
+  expected_effect:
+    paragraphs:
+    - zh: 降低单独复制材料即可横向使用的范围，并使真实材料的成功验证仍能回连源设备、原认证和目标结果。
+      en: Reduce the lateral scope available from copying material alone and keep successful validation of authentic material
+        joinable to source device, original authentication, and destination result.
+  limitations:
+    paragraphs:
+    - zh: 旧协议、第三方 SaaS、本地账户和离线客户端可能不支持绑定、稳定 ID 或即时撤销；过严限制会中断 SSO、自动化和灾备。
+      en: Legacy protocols, third-party SaaS, local accounts, and offline clients may lack binding, stable identifiers, or
+        immediate revocation, while strict controls can disrupt SSO, automation, and disaster recovery.
+- target_ref: NJS-0184-001
+  use:
+    paragraphs:
+    - zh: 对高权 Windows 身份实施 NTLM 减量、Credential Guard、Protected Users/auth silo 与许可来源，对 OAuth/Kerberos 派生路径限制 client/device、audience/SPN、scope
+        和寿命；强制记录 verifier request 到新 proof/context 及首个资源结果。
+      en: Apply NTLM reduction, Credential Guard, Protected Users or authentication silos, and allowed origins to privileged
+        Windows identities; restrict client or device, audience or SPN, scope, and lifetime for OAuth and Kerberos derivation;
+        and retain verifier request through fresh proof or context to first resource outcome.
+  expected_effect:
+    paragraphs:
+    - zh: hash、TGT 或 refresh material 即使被复制，也更可能因来源、绑定、受众或策略被拒绝；成功事务仍留下可关联验证链。
+      en: Even copied hashes, TGTs, or refresh material are more likely to fail origin, binding, audience, or policy controls,
+        while successful transactions retain a correlatable validation chain.
+  limitations:
+    paragraphs:
+    - zh: Credential Guard 保护取得面而不能撤销已外传材料；Protected Users/auth silo 只覆盖适用 AD 账户，Token Protection/DPoP 仅覆盖支持的 client/resource。攻击者控制原设备和
+        binding key 时仍可能满足检查。
+      en: Credential Guard protects acquisition surfaces but does not revoke already exported material. Protected Users and
+        authentication silos cover applicable AD identities, while Token Protection and DPoP cover only supported clients
+        and resources. An adversary controlling the original device and binding key may still satisfy checks.
+evidence_refs:
+- REF-000860
+- REF-000861
+- REF-000862
+- REF-000816
+- REF-000859
+- REF-000380
+- REF-000790
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-09-27'
+  modified: '2026-09-27'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

@@ -1,0 +1,76 @@
+schema_version: "2.0.0"
+type: technique
+id: NJT-0171
+name: {zh: 目录复制来源错位, en: Directory Replication-Origin Displacement}
+summary: {zh: 攻击者伪造或复用目录复制权威，使恶意目录更改以受信 DC 来源被合法控制器接受，并绕开正常写入来源的审计链。, en: "Adversaries forge or reuse directory-replication authority so legitimate controllers accept malicious directory changes as coming from a trusted DC, bypassing the normal write-origin audit chain."}
+aliases: [Rogue Domain Controller, DCShadow, T1207]
+classification:
+  tactic_refs: [TA0112]
+  origin: {kind: attack-adapted, source_attack_id: T1207, source_attack_version: "19.1"}
+  decision_ref: DEC-TA0112-T1207
+definition_and_concept:
+  paragraphs:
+    - zh: 目录复制来源错位是攻击者让未批准主机或身份取得/呈现为 Active Directory 控制器的复制资格，使用 DRS 事务把恶意对象版本交给合法 DC，并让合法 DC 将其作为来自某个 originating DSA 的复制状态接受。直接对象是 controller identity—registration—replication cycle—receiving DC—directory version 的来源谱系，不是 Mimikatz 命令、Domain Controller 设备类别或任意 LDAP 修改。
+      en: Directory Replication-Origin Displacement is adversary enablement or presentation of an unapproved host or identity as an Active Directory controller with replication standing, use of a DRS transaction to deliver a malicious object version to a legitimate DC, and acceptance of that version as replicated state from an originating DSA. Its direct object is controller identity to registration to replication cycle to receiving DC to directory-version origin lineage, not a Mimikatz command, the Domain Controller device class, or any LDAP modification.
+    - zh: 技术完成要求四段闭环：未批准的 controller/DSA 身份实际生效，DRSUAPI/RPC 复制请求成功，至少一个合法 DC 接受更新，目标目录对象/属性形成指向该异常 DSA 的新版本。单独新增 SPN/server/nTDSDSA、失败复制请求或只有对象变化只是 exposure/anomaly；账户、ACL、SIDHistory、schema、凭据和策略是载荷结果，由各自对象继续解释。
+      en: "Completion requires four linked stages: an unapproved controller or DSA identity becomes effective, a DRSUAPI or RPC replication request succeeds, at least one legitimate DC accepts the update, and a target directory object or attribute obtains a new version pointing to that anomalous DSA. A new SPN, server, or nTDSDSA object alone, a failed replication request, or only an object change remains exposure or anomaly. Accounts, ACLs, SIDHistory, schema, credentials, and policy are payload outcomes interpreted by their respective objects."
+stealth_characteristics:
+  paragraphs:
+    - zh: 目录复制来源错位把恶意写入放入合法目录复制消费路径。LDAP/RPC、GC/DRS SPN、server/nTDSDSA、Kerberos 和 DRSUAPI 都是正常 DC 功能，接收 DC 看到的是可接受的复制更新；预期由真实来源 DC 对本地写入产生的安全事件并不存在，依赖这些事件的 SIEM 因而失去直接作者证据。恶意来源可在推送后快速撤销注册，进一步缩短配置可见窗口。
+      en: Directory Replication-Origin Displacement places a malicious write in the legitimate directory-replication consumption path. LDAP or RPC, GC or DRS SPNs, server or nTDSDSA objects, Kerberos, and DRSUAPI are ordinary DC functions, and the receiving DC sees an acceptable replicated update. The security event expected from a local write on a genuine source DC never exists, so a SIEM relying on that event loses direct authorship evidence. The malicious origin can remove its registration after the push, further shortening the configuration-visibility window.
+    - zh: 异常不会完全消失，而是被拆分到 Configuration/Domain partition 对象生命周期、LDAP writer、认证会话、非 DC 主机的 DRS/RPC、事件 4928/4929、source DRA、originating DSA GUID、USN/version 与目标对象 old-new。独立网络传感器、历史 controller inventory 和远程目录版本能重建来源；若攻击者控制多个合法 DC、中央传感器与目录证据存储，跨观察面独立性下降。
+      en: The anomaly does not disappear and instead splits across Configuration and Domain partition object lifecycle, LDAP writer, authentication session, DRS or RPC from a non-DC host, events 4928 or 4929, source DRA, originating DSA GUID, USN or version, and target-object old and new state. Independent network sensors, historical controller inventory, and remote directory versions can reconstruct origin. If the adversary controls multiple legitimate DCs, central sensors, and directory-evidence storage, cross-plane independence falls.
+scope_boundary_definition:
+  paragraphs:
+    - zh: 纳入要求未批准 controller identity/registration、实际 DRS push 或复制事务、合法 DC 接受和目录对象结果四者相连，并有证据表明该来源在事件时不属于批准 DC/同步产品清单。只观察到短生命周期 server/nTDSDSA/SPN、非 DC RPC、产品告警或异常 originating DSA 时不得直接确认；分别输出 registration exposure、replication-origin anomaly 或 sensor signal。
+      en: Include only when an unapproved controller identity or registration, an actual DRS push or replication transaction, legitimate-DC acceptance, and a directory-object outcome are linked and evidence shows the origin was outside the approved DC or synchronization-product inventory at that time. A short-lived server, nTDSDSA, or SPN, non-DC RPC, product alert, or anomalous originating DSA alone cannot confirm the technique and instead produces registration exposure, replication-origin anomaly, or a sensor signal.
+    - zh: 经批准的 promotion/demotion、克隆 DC、灾备恢复、站点迁移和复制拓扑维护用准确 host/GUID/site、工单、owner 与有效期排除。DCSync 是从合法 DC 拉取目录秘密，归 Credential Access；本技术负责向合法 DC 推送伪造来源。域策略变化归 NJT-0125，账户/ACL/信任/凭据结果由其 owner 负责，事后删除复制元数据或注册痕迹归 NJT-0112。
+      en: Exact host, GUID, site, ticket, owner, and validity window exclude approved promotion or demotion, cloned DCs, disaster recovery, site migration, and replication-topology maintenance. DCSync pulls directory secrets from a legitimate DC and belongs to Credential Access, while this technique owns a forged origin pushing state to a legitimate DC. Domain-policy change belongs to NJT-0125, account, ACL, trust, or credential outcomes have their owners, and post-hoc deletion of replication metadata or registration traces belongs to NJT-0112.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+      - zh: 已取得 Domain Admin、等价委派、复制扩展权限或 KRBTGT 能力的攻击者，可在成员工作站上创建/复用 controller identity，设置复制 SPN 和 server/nTDSDSA，启动模拟 DRS 服务，再从另一高权会话触发合法 DC 接受恶意账户、ACL、SIDHistory、schema 或凭据属性。推送完成后可删除注册以缩短暴露，并把最终变化用于持久化、权限提升或防御策略损伤。
+        en: An adversary with Domain Admin, equivalent delegation, replication extended rights, or KRBTGT capability can create or reuse a controller identity on a member workstation, set replication SPNs and server or nTDSDSA state, start a simulated DRS service, and use another privileged session to make a legitimate DC accept malicious account, ACL, SIDHistory, schema, or credential attributes. After the push it can delete registration to shorten exposure and use the resulting change for persistence, privilege escalation, or defensive-policy impairment.
+  threat_model:
+    attacker_model:
+      paragraphs:
+        - zh: 攻击者需要同时控制足够的目录写入/复制授权和运行模拟 DC/RPC 服务的主机能力，了解 forest/domain/site、Configuration partition、对象 GUID、SPN、naming context 与复制时序，并能到达至少一个合法 DC。短生命周期操作减少快照暴露，但要求协调 SYSTEM 服务会话与高权 push 会话；错误 DSA/USN/对象状态可能导致复制失败或目录异常。
+          en: The adversary needs both sufficient directory-write or replication authority and host capability to run a simulated DC or RPC service, knowledge of forest, domain, site, Configuration partition, object GUIDs, SPNs, naming contexts, and replication timing, and reachability to at least one legitimate DC. A short lifecycle reduces snapshot exposure but requires coordination of a SYSTEM service session and a privileged push session. Incorrect DSA, USN, or object state can fail replication or damage the directory.
+    defender_model:
+      paragraphs:
+        - zh: 防守方维护带生效区间的 DC/DSA/SPN/同步产品清单和正常 promotion/demotion 状态机，集中保留 Configuration/Domain partition old-new、LDAP writer、认证/SPN、DC 或网络侧 DRSUAPI、详细复制事件及对象复制元数据。只有目标对象日志或当前 OU 位置的防守模型不足；需历史 inventory、跨 site 复制延迟校准和域管理员不可独自删除的外部保留。
+          en: Defenders maintain effective-dated DC, DSA, SPN, and synchronization-product inventory plus a normal promotion or demotion state machine and centrally retain Configuration and Domain partition old and new state, LDAP writer, authentication and SPN, DC-side or network DRSUAPI, detailed replication events, and object replication metadata. A model with only target-object logs or current OU position is insufficient and needs historical inventory, inter-site replication-delay calibration, and external retention that a domain administrator cannot delete alone.
+stealth_mechanisms:
+  - mechanism_ref: NM-BT
+    role: primary
+    summary: {zh: 恶意目录写入以受信复制来源进入合法 DC, en: Malicious directory writes enter legitimate DCs as trusted replication}
+    analysis:
+      paragraphs:
+        - zh: 攻击者不直接在最终合法 DC 上执行普通对象写入，而是先取得伪造 DSA 身份并让恶意版本沿正常复制协议被消费。对象变化是真实且有效的，但作者行为位于临时来源主机，正常来源 DC 的写入事件从未产生，目标 DC 的局部日志只表现为复制。行为因此对以单 DC 写入事件为边界的分析透明；将注册、DRS 来源、接受结果和 originating DSA 元数据连接后可恢复来源。
+          en: The adversary does not perform an ordinary object write on the final legitimate DC and instead first acquires a forged DSA identity and has a malicious version consumed through the normal replication protocol. The object change is real and effective, but authorship occurs on a temporary origin host, the normal source-DC write event never exists, and the target DC's local log shows replication. The behavior is therefore transparent to analytics bounded by one DC's write events. Joining registration, DRS origin, acceptance outcome, and originating-DSA metadata recovers the origin.
+    evidence_refs: [REF-000748, REF-000750, REF-000751]
+    confidence: high
+subtechnique_taxonomy:
+  narrative:
+    paragraphs:
+      - zh: 目录复制来源错位已经是一个狭窄的来源谱系闭环。新建 server/nTDSDSA/SPN、模拟 DRS、推送变化和撤销注册是同一操作的顺序状态，分别拆分只会得到准备、执行与清理阶段；非 DC 来源也是该闭环的检测信号，而不是一种可独立选择的匿迹路径。因此当前不按阶段、对象类型或工具形成子技术。
+        en: Directory Replication-Origin Displacement is already a narrow origin-lineage closure. Creating server, nTDSDSA, and SPN state, simulating DRS, pushing changes, and removing registration are sequential states of one operation, and splitting them would create preparation, execution, and cleanup stages. A non-DC origin is likewise a detection signal in that closure rather than an independently selectable stealth path. The taxonomy therefore does not form children by stage, object type, or tool.
+      - zh: 复用陈旧/失活 controller identity 可能减少新的注册痕迹，但公开资料尚未证明其前态、残余和防御处置足以构成稳定兄弟项；它保留为未来研究方向而不强制二分“新建/复用”。注册或复制元数据的事后清理由证据擦除负责。若未来直接案例证明陈旧身份复用持续绕过注册监测且需要不同响应，可重新审查子技术边界。
+        en: Reuse of a stale or inactive controller identity may reduce new-registration residue, but public evidence does not yet establish prior state, residue, and defensive response sufficient for a stable sibling. It remains a future research direction rather than forcing a create-versus-reuse split. Post-hoc cleanup of registration or replication metadata belongs to evidence erasure. A future direct case showing stale-identity reuse repeatedly bypassing registration monitoring and requiring different response can reopen the child boundary.
+  coverage: none-justified
+  subtechnique_refs: []
+defense:
+  detections: {coverage: available, strategy_refs: [DET-000198]}
+  mitigations: {coverage: available, mitigation_refs: [MIT-000181]}
+evidence:
+  claim_refs: [CLM-000845, CLM-000846, CLM-000847, CLM-000848]
+  case_refs: []
+  reference_refs: [REF-000748, REF-000749, REF-000750, REF-000751, REF-000752, REF-000753]
+research:
+  limitations:
+    paragraphs:
+      - zh: 公开来源直接支持 DCShadow 技术、协议语义、产品检测和研究复现，但没有披露可验证完整注册—复制—结果链的在野事件，因此本文不声称特定威胁组织已使用该闭环，也不把 UncoverDCShadow POC 当作生产覆盖证明。失活 registration 复用只有父页层级支持，保持延迟。
+        en: Public sources directly support DCShadow technique semantics, protocol behavior, product detection, and research reproduction, but disclose no in-the-wild event with a verifiable complete registration-to-replication-to-outcome chain. This technique therefore does not claim a named threat actor completed the chain and does not treat the UncoverDCShadow proof of concept as production coverage. Inactive-registration reuse remains deferred with only parent-page-level support.
+      - zh: 不同 Windows 版本、审计策略、RPC 加密、site link 延迟和传感器产品会改变可见字段；事件 4928/4929、产品告警和快速创建/删除均不是必要且充分条件。攻击者若使用仍在批准 inventory 中的陈旧身份或同时控制合法 DC、网络传感器和目录元数据，置信度下降，必须依靠外部历史版本与人工拓扑复核。
+        en: Windows version, audit policy, RPC encryption, site-link delay, and sensor product change visible fields. Events 4928 or 4929, product alerts, and rapid creation or deletion are neither individually necessary nor sufficient. Confidence falls when an adversary uses a stale identity still present in approved inventory or controls a legitimate DC, network sensor, and directory metadata together, requiring external historical versions and manual topology review.
+lifecycle: {status: review, version: "0.1.0", created: "2026-09-23", modified: "2026-09-23", contributors: [Niji Matrix Research], reviewers: []}

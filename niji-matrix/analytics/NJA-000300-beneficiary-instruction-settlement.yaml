@@ -1,0 +1,123 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000300
+strategy_ref: DET-000236
+name:
+  zh: 受益人指令—独立确认—结算结果分析
+  en: Beneficiary Instruction–Independent Confirmation–Settlement Outcome Analytic
+summary:
+  zh: 输出业务受益信息被替换且 victim debit 与 attacker-beneficiary credit 均完成的交易。
+  en: Emit transactions where business beneficiary details are substituted and both victim debit and attacker-beneficiary
+    credit complete.
+domains:
+- enterprise
+platforms: []
+logic:
+  paragraphs:
+  - zh: 保存 invoice/payment instruction 和 beneficiary master 的版本/digest、vendor/owner、creditor account/agent old-new、change
+      actor/approval、独立 callback/pre-validation 结果。连接 payment rail 的 UETR/EndToEndId/IMAD/OMAD、amount/currency、status
+      PDNG/ACSC/RJCT、debtor debit、creditor credit、return/recall。
+    en: Preserve versions and digests of invoice or payment instruction and beneficiary master, vendor or owner, creditor
+      account or agent old and new, change actor or approval, and independent callback or prevalidation. Join payment-rail
+      UETR, EndToEndId, IMAD or OMAD, amount or currency, PDNG, ACSC or RJCT, debtor debit, creditor credit, and return
+      or recall.
+  - zh: 在 15 分钟连接 instruction/master/change，24 小时连接 settlement 与 recall；只有未经批准 destination difference、ACSC/等价 finality、victim
+      debit 和 beneficiary credit 才确认。
+    en: Join instruction, master, and change over 15 minutes and settlement and recall over 24 hours. Confirm only
+      with unapproved destination difference, ACSC or equivalent finality, victim debit, and beneficiary credit.
+data_requirements:
+- source_type: business-payment-instruction
+  name:
+    zh: 业务付款指令与受益人主数据
+    en: Business payment instruction and beneficiary master
+  channel: null
+  required_fields:
+  - instruction.id
+  - instruction.version
+  - instruction.digest
+  - vendor.id
+  - owner.id
+  - amount
+  - currency
+  - creditor.account
+  - creditor.agent
+  - change.actor
+  - approval.id
+  - confirmation.result
+- source_type: payment-rail-status
+  name:
+    zh: 支付 rail 状态与标识
+    en: Payment-rail status and identifiers
+  channel: ISO 20022 or rail equivalent
+  required_fields:
+  - event.time
+  - uetr
+  - end.to.end.id
+  - imad
+  - omad
+  - transaction.status
+  - amount
+  - currency
+  - debtor.account
+  - creditor.account
+  - creditor.agent
+- source_type: settlement-outcome
+  name:
+    zh: 扣账、入账与追回结果
+    en: Debit, credit, and recovery outcomes
+  channel: null
+  required_fields:
+  - transaction.id
+  - victim.debit.status
+  - beneficiary.credit.status
+  - beneficiary.owner
+  - settled.time
+  - return.status
+  - recall.status
+  - law.enforcement.case.id
+observables:
+- zh: 受益账户与已验证 master/业务指令不一致但其他字段合形
+  en: Beneficiary account differs from verified master or instruction while other fields conform
+- zh: 交易完成 victim debit 与 attacker-beneficiary credit
+  en: The transaction completes victim debit and attacker-beneficiary credit
+correlation:
+  window:
+    zh: 指令变更 15 分钟，settlement/recall 24 小时；rail finality 决定上限。
+    en: Use 15 minutes for instruction change and 24 hours for settlement or recall, bounded by rail finality.
+  dimensions:
+  - instruction.id
+  - vendor.id
+  - uetr
+  - end.to.end.id
+  - debtor.account
+  - creditor.account
+  - transaction.id
+  - event.time
+false_positives:
+- zh: 合法供应商银行变更、treasury operations、退款、并购账户迁移和紧急付款
+  en: Legitimate vendor-bank change, treasury operations, refunds, M&A account migration, and emergency payment
+blind_spots:
+- zh: instruction 在邮件/ERP 外、无 beneficiary master 版本、跨 rail ID 丢失、账户 owner 不透明或 settlement 状态延迟
+  en: Instruction outside mail or ERP, absent beneficiary-master version, lost cross-rail IDs, opaque account owner,
+    or delayed settlement status
+tuning_guidance:
+  paragraphs:
+  - zh: 新/变更 beneficiary 要带外确认、双人 approval 和 hold；禁止仅因熟悉线程/发件人通过。正式告警必须区分 pending、rejected、settled 与 returned。
+    en: New or changed beneficiaries need out-of-band confirmation, dual approval, and a hold; familiar threads or
+      senders never suffice. Formal alerts distinguish pending, rejected, settled, and returned.
+evidence_refs:
+- REF-001004
+- REF-001005
+- REF-001006
+- REF-001009
+- REF-001010
+- REF-001011
+- REF-001012
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-10-04'
+  modified: '2026-10-04'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

@@ -1,0 +1,129 @@
+schema_version: 2.0.0
+type: evasion-subtechnique
+id: NJS-0216-001
+parent_ref: NJT-0216
+name:
+  zh: 既有映射共享语境复用
+  en: Preexisting Mapped-Share Context Reuse
+summary:
+  zh: 攻击者在受害者已有登录会话中使用预先存在的共享映射和有效身份读取远端内容，使恶意访问缺少新的映射或显式凭据动作并继承正常用户语境。
+  en: An adversary reads remote content through a share mapping and valid identity already present in the victim logon session,
+    avoiding a new mapping or explicit credential action and inheriting ordinary user context.
+aliases: []
+lineage:
+  attck_subtechnique_inherited: false
+definition_and_concept:
+  paragraphs:
+  - zh: 既有映射共享语境复用以“恶意读取是否使用进入进程之前已属于当前登录会话的网络驱动器或共享连接”为控制变量。完成仍要求服务器返回文件内容；映射存在、恶意进程能看到盘符或一次 ReadData 权限检查不足以完成子项。若恶意代码调用
+      net use、WNetAddConnection 或等价接口新建连接，仍可属于父技术，但不属于本子项。
+    en: Preexisting Mapped-Share Context Reuse controls whether the malicious reader uses a network drive or share connection
+      that already belonged to the current logon session before the process entered the path. Completion still requires the
+      server to return file content. Mapping existence, visibility of a drive letter to the malicious process, or one ReadData
+      authorization check is insufficient. A malicious net use, WNetAddConnection, or equivalent creation of a new connection
+      may still instantiate the parent but falls outside this child.
+  - zh: “既有”由登录会话和映射生命周期判定，不由盘符名称判定。Microsoft 说明映射使用认证 ID/LUID 与登录会话关联，不同提升会话可能无法看到原映射；因此同一台主机、相同用户名或相同 UNC 不能自动证明复用。防守方应保存映射策略或状态、进程令牌/会话和服务器成功读取之间的连续关系。
+    en: Existing is determined by logon session and mapping lifetime, not by the drive-letter name. Microsoft documents mapped
+      drives as associated with an authentication ID or LUID and unavailable to a different elevated session in common configurations.
+      The same host, user name, or UNC path therefore does not automatically establish reuse. Defenders need continuity among
+      mapping policy or state, process token or session, and a successful server read.
+stealth_characteristics:
+  paragraphs:
+  - zh: 既有映射共享语境复用：本子项使恶意读取继承受害者已经使用的共享名、源设备和用户身份，并可能省去新的映射命令、凭据提示或新增盘符。只监控 net use、新网络登录或陌生源主机的检测可能把它当成正常用户文件访问。痕迹没有消失：恶意进程会接触映射命名空间，文件服务器仍可能记录
+      5145、4663 或 NAS READ，映射策略、登录 LUID、对象路径与读取时序可以恢复因果链。
+    en: 'Preexisting Mapped-Share Context Reuse：The child inherits a share name, source device, and user identity already
+      used by the victim and may avoid a new mapping command, credential prompt, or added drive letter. A detector centered
+      on net use, a new network logon, or an unfamiliar source host can therefore treat the event as ordinary user file access.
+      Traces remain: the malicious process touches the mapped namespace, the file server may record 5145, 4663, or a NAS READ,
+      and mapping policy, logon LUID, object path, and read timing can restore causality.'
+scope_boundary_definition:
+  paragraphs:
+  - zh: 纳入同一受害者登录会话中的恶意进程经已存在映射实际取得远端共享正文。排除新建或重连映射、显式提交攻击者凭据、只枚举映射盘符、只列目录及只读取本地离线缓存。映射由 GPO、登录脚本、用户手工或业务客户端创建不构成兄弟分类；关键是它在恶意读取前已存在且属于同一可见登录上下文。
+    en: Include a malicious process in the same victim logon session actually obtaining remote-share content through a preexisting
+      mapping. Exclude newly created or reconnected mappings, explicit submission of adversary credentials, mapped-drive enumeration
+      alone, directory listing alone, and reads from a local offline cache. Whether Group Policy, a logon script, a user,
+      or a business client created the mapping does not form sibling categories; it must predate the malicious read and belong
+      to the same visible logon context.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: Forcepoint 报告 TINYTYPHON 搜索操作系统盘后继续遍历 C 到 Z 的驱动器，对匹配配置扩展名的文档执行上传；报告概述明确称其抓取 mapped drives。该实现适合已进入用户会话且组织用登录脚本或用户映射暴露业务共享的环境。报告没有给出每个盘符的
+        UNC、LUID、服务器审计或新建映射调用，因此子项结论限于已有映射被恶意收集器复用的实现事实，不外推到无映射的直接 UNC 访问。
+      en: Forcepoint reports TINYTYPHON searching the operating-system drive and then drive letters C through Z, uploading
+        documents whose extensions match its configuration; the report overview explicitly describes mapped-drive crawling.
+        This implementation fits a collector inside a user session where logon scripts or users expose business shares through
+        mappings. The report does not publish each drive's UNC, LUID, server audit, or mapping-creation call, so the child
+        conclusion is limited to reuse of mapped drives by a malicious collector and does not extend to unmapped direct UNC
+        access.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者需要在有映射的登录会话内执行，继承或使用能访问远端文件的令牌，并知道或枚举可见盘符。它受映射在线状态、用户权限、UAC/LUID 分离和会话结束约束。若恶意进程在 SYSTEM、另一个用户或不同提升登录中运行，原映射可能不可见，攻击者必须创建新连接并失去本子项边界。
+        en: The adversary needs execution inside the logon session that owns the mapping, a token able to access remote files,
+          and knowledge or enumeration of visible drive letters. Mapping availability, user permissions, UAC or LUID separation,
+          and session termination constrain the path. Malware running as SYSTEM, another user, or a different elevated logon
+          may not see the original mapping and must create a new connection, losing this child boundary.
+    defender_model:
+      paragraphs:
+      - zh: 防守方须能把映射的用户/LUID 与客户端进程身份连接，再通过服务器端 LogonId、源 IP、共享/路径和成功读取结果闭合。映射清单若只有当前状态而无首次出现时间，只能说明可达性；5145 若没有 4663、NAS
+          成功 READ 或 SMB 响应也只说明权限检查。检测应把未经批准的进程/任务与正常用户、备份代理、迁移服务、索引器及安全扫描器比较。
+        en: Defenders need to join mapping user or LUID to the client process and then close the path through server LogonId,
+          source IP, share and path, and a successful read outcome. A current-state mapping inventory without first-seen time
+          establishes reachability only. Event 5145 without 4663, a NAS successful READ, or an SMB response remains an authorization
+          check. Detection must compare unapproved processes and tasks with normal users, backup agents, migration services,
+          indexers, and security scanners.
+stealth_mechanisms:
+- mechanism_ref: NM-FD
+  role: primary
+  summary:
+    zh: 复用受害者登录会话的共享映射与身份外观
+    en: Reuse the victim logon session's share mapping and identity appearance
+  analysis:
+    paragraphs:
+    - zh: 既有映射让恶意进程沿受害者本来可见的盘符和有效身份读取文件，减少新增映射、显式凭据提交及陌生来源这些容易单独筛选的特征。服务器侧仍会把访问归给真实用户/源主机并留下对象读取，客户端也可见异常进程；难点从识别“谁能访问”转为识别“同一授权语境中哪个进程为何访问”。Forcepoint
+        支持恶意映射盘收集，Microsoft 支持映射与登录会话绑定；两者未提供实测漏报率，故置信度为 medium。
+      en: An existing mapping lets a malicious process read through a drive letter and valid identity already visible to the
+        victim, reducing separately searchable features such as a new mapping, explicit credential submission, or unfamiliar
+        source. The server still attributes access to the real user and source host and retains object reads, while the client
+        can expose an abnormal process. The problem shifts from who can access to which process in the authorized context
+        accessed the content and why. Forcepoint supports malicious mapped-drive collection and Microsoft supports session-bound
+        mapping; neither measures missed detections, so confidence is medium.
+  confidence: medium
+  evidence_refs:
+  - REF-001086
+  - REF-001088
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000250
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000221
+evidence:
+  claim_refs:
+  - CLM-001070
+  case_refs:
+  - CASE-000325
+  reference_refs:
+  - REF-001086
+  - REF-001088
+  - REF-000474
+  - REF-000379
+research:
+  limitations:
+    paragraphs:
+    - zh: Forcepoint 没有公开 TINYTYPHON 的逐盘 UNC、用户 SID/LUID、SMB/NFS 服务器事件或映射创建历史，控制端文档也未逐件标注本地或网络来源。因此该案例证明从 mapped drives 收集和真实文档外流，但“省去新建映射使告警下降”仍是平台语义支持的有界推断。若后续证据显示样本实际为每个目标新建连接，子项应撤回而父技术仍成立。
+      en: Forcepoint does not publish per-drive UNC paths, user SID or LUID, SMB or NFS server events, or mapping-creation
+        history for TINYTYPHON, and the controller documents are not individually labeled as local or network sourced. The
+        case establishes mapped-drive collection and real document loss, while reduced alerting from avoiding a new mapping
+        remains a bounded inference supported by platform semantics. If later evidence shows the sample created a fresh connection
+        for each target, withdraw the child while retaining the parent.
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-10-05'
+  modified: '2026-10-05'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

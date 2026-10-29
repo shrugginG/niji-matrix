@@ -1,0 +1,96 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000113
+strategy_ref: DET-000127
+name:
+  zh: 对象时间属性与真实事件顺序差分
+  en: Object Timestamp and Real Event-Order Differential
+summary:
+  zh: 输出与创建、写入、加载或独立副本顺序矛盾的对象时间元数据。
+  en: Produce object timestamp metadata that contradicts creation, write, load, or independent-replica order.
+domains:
+- enterprise
+platforms:
+- Windows
+- Linux
+- macOS
+- ESXi
+logic:
+  paragraphs:
+  - zh: 按对象与内容摘要采集全部可用创建、访问、修改、变更、文件名和标准信息时间，记录 SetFileTime、touch 或等价操作及调用者，并与不可变创建/加载事件、日志序号、父目录和同内容副本比较。若未批准时间写入使显示时间早于真实创建或统一覆盖活动阶段，则输出 temporal_metadata_falsification。
+    en: By object and content digest, collect every available creation, access, modification, change, file-name, and standard-information
+      time, record SetFileTime, touch, or equivalent operations and caller, and compare with immutable create or load events,
+      log sequence, parent directory, and same-content replicas. Emit temporal_metadata_falsification when an unapproved time
+      write makes visible time precede real creation or uniformly overwrites the activity stage.
+data_requirements:
+- source_type: object-temporal-metadata
+  name:
+    zh: 对象时间元数据与修改
+    en: Object temporal metadata and modification
+  channel: null
+  required_fields:
+  - event.timestamp
+  - asset.id
+  - object.id
+  - content.hash
+  - time.created
+  - time.accessed
+  - time.modified
+  - time.changed
+  - time.namespace_secondary
+  - modifier.id
+  - modifier.operation
+- source_type: immutable-event-sequence
+  name:
+    zh: 不可变事件序列
+    en: Immutable event sequence
+  channel: null
+  required_fields:
+  - event.timestamp
+  - asset.id
+  - object.id
+  - event.sequence
+  - event.type
+  - consumer.start_key
+  - replica.object_id
+observables:
+- zh: 对象显示时间早于不可变创建事件或父目录存在时间
+  en: Object-visible time precedes its immutable creation event or parent-directory existence
+- zh: 大批新加密文件与说明被统一设置为历史时间
+  en: A large set of newly encrypted files and notes is uniformly assigned a historical time
+correlation:
+  window:
+    zh: 覆盖对象创建、时间修改和首次后继加载或调查；时间与事件序列按文件系统审计及事件响应保留策略保存，并记录环境具体上限。
+    en: Cover object creation, time modification, and first successor load or investigation. Retain time and event sequence
+      according to file-system audit and incident-response policy and record the concrete environment limit.
+  dimensions:
+  - asset.id
+  - object.id
+  - content.hash
+  - modifier.id
+  - event.sequence
+  - replica.object_id
+false_positives:
+- zh: 文件恢复、归档提取、备份还原、软件构建、复制语义和管理员批量校时
+  en: File recovery, archive extraction, backup restore, software build, copy semantics, and administrator bulk time correction
+blind_spots:
+- zh: 文件系统只暴露一套时间、创建事件未保留、攻击者可改写全部独立时间源或时钟严重漂移
+  en: File system exposes only one time set, creation events are not retained, adversary can rewrite every independent time
+    source, or clocks drift severely
+tuning_guidance:
+  paragraphs:
+  - zh: 按文件系统、复制/还原工具和应用角色基线合法时间变化，识别维护窗口与工单。严重度依赖未批准时间写入、事件顺序矛盾、可疑内容和后继执行，不以单个古老或未来时间告警。
+    en: Baseline legitimate time changes by file system, copy or restore tool, and application role and recognize maintenance
+      windows and work records. Base severity on unapproved time writing, event-order contradiction, suspicious content, and
+      successor execution rather than one old or future timestamp.
+evidence_refs:
+- REF-000397
+- REF-000152
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-09-21'
+  modified: '2026-09-21'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

@@ -1,0 +1,63 @@
+schema_version: "2.0.0"
+type: evasion-subtechnique
+id: NJS-0168-001
+name: {zh: 边界设备转发路径改写, en: Boundary-Device Forwarding-Path Rewrite}
+summary: {zh: 攻击者改写边界设备 route、NAT、ACL 或 proxy 状态，使原本禁止的域对通过同一设备互通。, en: "Adversaries rewrite route, NAT, ACL, or proxy state on a boundary device so a previously prohibited domain pair communicates through it."}
+aliases: []
+parent_ref: NJT-0168
+lineage: {attck_subtechnique_inherited: false}
+definition_and_concept:
+  paragraphs:
+    - zh: 边界设备转发路径改写是攻击者控制承担分段职责的路由器、防火墙、路由 VM 或透明设备，修改其 route、NAT、ACL、policy route、proxy/listener 或接口转发状态，使同一边界设备允许原批准图禁止或要求其他检查点的跨域流量。直接对象是设备状态导致的端到端 path change。
+      en: Boundary-Device Forwarding-Path Rewrite is adversary control of a router, firewall, router VM, or transparent device responsible for segmentation and modification of its route, NAT, ACL, policy route, proxy or listener, or interface forwarding state so the same boundary device permits cross-domain traffic denied by the approved graph or requiring another inspection point. Its direct object is the end-to-end path change caused by device state.
+    - zh: NAT traversal、RDP 映射、Apache proxy 与静态/动态 route 是实现。只有配置状态被设备实际使用并产生双侧流时完成；staged rule 或未命中配置只是 mutation exposure。与 overlay relay 的区别是 bridge state 位于原边界设备，而非独立进程/隧道的两个会话。
+      en: NAT traversal, RDP mapping, Apache proxy, and static or dynamic route are implementations. Completion requires the device to use the configuration state and produce bilateral flow; a staged or unmatched rule is mutation exposure. Unlike an overlay relay, bridge state resides on the original boundary device rather than two sessions of an independent process or tunnel.
+stealth_characteristics:
+  paragraphs:
+    - zh: 边界设备转发路径改写保留设备作为合法 router/firewall 的身份，新增 flow 也由正常转发/代理功能产生；每一侧只看到受信网关通信，策略绕过只有把 config old-new、policy decision、NAT/session 和两侧 flow 放入同一路径图才显现。ThreatNeedle 的 Apache proxy 与路由尝试展示这种受信设备借用。
+      en: Boundary-Device Forwarding-Path Rewrite preserves the device's legitimate router or firewall identity, with new flows produced by normal forwarding or proxy function. Each side sees a trusted gateway connection. Policy bypass appears only when configuration old and new, policy decision, NAT or session, and bilateral flows enter one path graph. ThreatNeedle's Apache proxy and routing attempts demonstrate this trusted-device borrowing.
+    - zh: 残余包括 AAA/Webmin/SSH writer、commit/config version、route/NAT/ACL/proxy/listener、session translation、接口和 inspection point。外部配置备份、不同权另一侧 enforcement 与双侧 telemetry 可发现；若 HA failover 保持等效 path，则不成立。
+      en: Residue includes AAA, Webmin, or SSH writer, commit and configuration version, route, NAT, ACL, proxy or listener, session translation, interface, and inspection point. External configuration backup, differently authorized enforcement on the other side, and bilateral telemetry expose it. An HA failover preserving an equivalent path does not qualify.
+scope_boundary_definition:
+  paragraphs:
+    - zh: 纳入要求未批准 writer 改写原边界设备状态、批准图中的 domain pair/inspection 要求改变，并出现实际双侧跨域流及后继行为。只有规则、NAT 或代理存在但无命中，或只有网络可达扫描时不确认。单纯防火墙开口可并记 NJT-0124，但本项还要求端到端桥接。
+      en: Include only when an unapproved writer changes state on the original boundary device, the approved graph's domain pair or inspection requirement changes, and actual bilateral cross-domain flow plus follow-on behavior appears. An existing rule, NAT, or proxy without a match or only a reachability scan is insufficient. A firewall opening may also map to NJT-0124, while this child additionally requires end-to-end bridging.
+    - zh: 独立 FRP/VPN/proxy 进程且底层 boundary state 不变归 NJS-0168-002；普通路由维护、灾备、临时支持和动态收敛以工单、等效检查、owner 和到期排除。设备/厂商/协议不形成子项。
+      en: An independent FRP, VPN, or proxy process with unchanged underlying boundary state belongs to NJS-0168-002. Ordinary routing maintenance, recovery, temporary support, and dynamic convergence are excluded through ticket, equivalent inspection, owner, and expiry. Device, vendor, and protocol do not define children.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+      - zh: 攻击者获得连接 corporate/restricted 区的边界 VM root 后，可配置 Apache proxy、route/NAT 或 RDP 映射，托管恶意样本并让受限区 malware 出网。ThreatNeedle 案例给出 Webmin/SSH 访问、proxy 状态、两个域和外送结果；APT41 NATBypass 补充受限 RDP 路径。
+        en: After obtaining root on a boundary VM connecting corporate and restricted zones, an adversary can configure Apache proxy, route or NAT, or an RDP mapping, host malicious samples, and let restricted-zone malware reach outward. The ThreatNeedle case provides Webmin or SSH access, proxy state, two domains, and exfiltration outcome, while APT41 NATBypass adds a restricted RDP path.
+  threat_model:
+    attacker_model:
+      paragraphs:
+        - zh: 需要边界设备 root/enable、配置语义、域拓扑和测试反馈，并在不造成显著中断下提交或动态运行路径。外部 AAA、配置签名、双人审批、独立对侧 deny 和只读备份提高成本。
+          en: The adversary needs boundary-device root or enable authority, configuration semantics, domain topology, and test feedback and must commit or dynamically run the path without conspicuous outage. External AAA, configuration signing, two-person approval, independent denial on the other side, and read-only backup raise cost.
+    defender_model:
+      paragraphs:
+        - zh: 防守方有批准域/路径模型、设备配置版本与 writer、session/NAT translation、两侧 flow 和 inspection decision。设备本身受侵时自报不可信，需要外部配置和对侧传感器。时钟和动态路由需归一化。
+          en: Defenders have approved domain and path models, device configuration versions and writer, session or NAT translation, bilateral flows, and inspection decisions. Device self-report is untrusted after compromise and needs external configuration plus other-side sensors. Clocks and dynamic routing require normalization.
+stealth_mechanisms:
+  - mechanism_ref: NM-BT
+    role: primary
+    summary: {zh: 受信边界设备的正常转发功能承载禁止跨域流, en: Normal forwarding on a trusted boundary device carries prohibited cross-domain traffic}
+    analysis:
+      paragraphs:
+        - zh: 攻击者不创建陌生网络设备，而让既有 router/firewall 用正常 route/NAT/proxy 功能转发；单侧流量仍归因于受信网关。配置—策略—双侧流未关联时桥接落在默认监控之外，形成行为透明。
+          en: The adversary does not introduce an unfamiliar network device and instead makes the existing router or firewall forward through ordinary route, NAT, or proxy function. One-sided traffic remains attributed to a trusted gateway. Without configuration-to-policy-to-bilateral-flow correlation, the bridge falls outside default monitoring and produces behavioral transparency.
+    evidence_refs: [REF-000721, REF-000722, REF-000723]
+    confidence: high
+defense:
+  detections: {coverage: available, strategy_refs: [DET-000191]}
+  mitigations: {coverage: available, mitigation_refs: [MIT-000172]}
+evidence:
+  claim_refs: [CLM-000827, CLM-000829, CLM-000830]
+  case_refs: [CASE-000233]
+  reference_refs: [REF-000721, REF-000722, REF-000723]
+research:
+  limitations:
+    paragraphs:
+      - zh: ThreatNeedle 提供完整直接链，APT41 报告公开的 config/flow 细节较少。设备配置可能动态生成或未外送，NAT 会隐藏原始 tuple；没有双侧传感器时只能证明策略变化或异常可达，不能完整确认桥接。
+        en: ThreatNeedle provides a complete direct chain, while public configuration and flow detail for APT41 is more limited. Device configuration can be dynamic or not exported, and NAT hides original tuples. Without bilateral sensors defenders can prove policy change or anomalous reachability but not fully confirm bridging.
+lifecycle: {status: review, version: "0.1.0", created: "2026-09-23", modified: "2026-09-23", contributors: [Niji Matrix Research], reviewers: []}

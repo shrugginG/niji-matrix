@@ -1,0 +1,119 @@
+schema_version: 2.0.0
+type: evasion-subtechnique
+id: NJS-0176-003
+parent_ref: NJT-0176
+name:
+  zh: 复制观察面抓取
+  en: Replicated-Observation-Plane Capture
+summary:
+  zh: 攻击者建立不影响原通信交付的镜像分支，把认证流复制到独立收集器，并在业务路径保持正常时取得材料。
+  en: An adversary creates a mirror branch that does not affect original delivery, copies authentication flows to an independent
+    collector, and acquires material while the business path remains normal.
+aliases: []
+lineage:
+  attck_subtechnique_inherited: false
+definition_and_concept:
+  paragraphs:
+  - zh: 复制观察面抓取指攻击者通过交换镜像、远程镜像、封装镜像或虚拟网络 Packet Mirroring 创建第二份流量视图，并把它交付给与原认证双方和原转发节点分离的收集器。直接变量是“增加复制边而不替换原路径”；云与本地、SPAN
+      与 API、物理与虚拟接口只是实现。
+    en: Replicated-Observation-Plane Capture creates a second traffic view through switch mirroring, remote or encapsulated
+      mirroring, or virtual-network Packet Mirroring and delivers it to a collector separate from the authenticating parties
+      and original forwarding node. The direct variable is adding a copy edge without replacing the original path. Cloud versus
+      on-premises, SPAN versus API, and physical versus virtual interfaces are implementations.
+stealth_characteristics:
+  paragraphs:
+  - zh: 复制观察面抓取通过复制分支不改变原会话目的地、响应和认证结果，源端点通常不会知道另有收集器。残余痕迹集中在镜像 create/patch/delete、源接口或实例选择、过滤器、收集目标、封装流量和收集器接收量；短时创建后删除会逃离现态清单，但仍可由不可变
+      Admin Activity 和网络流历史恢复。控制面日志被删除、物理 TAP 或提供方内部复制会形成盲区。
+    en: Replicated-Observation-Plane Capture The copy branch does not change the original session destination, response, or
+      authentication result, and source endpoints normally do not know another collector exists. Residue concentrates in mirror
+      create, patch, and delete events, selected source interfaces or instances, filters, collector targets, encapsulated
+      traffic, and collector receipt volume. Short-lived mirrors deleted after use escape current-state inventory but remain
+      recoverable from immutable Admin Activity and flow history. Deleted control-plane logs, physical taps, and provider-internal
+      copying create blind spots.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 纳入要求存在到独立收集目标的复制边，并证明其源范围覆盖认证流且收集器收到可用材料。设备在本机缓冲原路径报文归既有转发路径抓取；把原流改路到攻击者再转发归 NJT-0136。合法 NDR、合规留存、性能分析和故障诊断使用相同镜像资源，须以
+      owner、批准窗口、固定目标和数据处理规则排除。
+    en: Inclusion requires a copy edge to an independent collector, proof that its source scope covers authentication traffic,
+      and receipt of usable material at the collector. Local buffering of original-path packets belongs to Existing-Transit-Path
+      Capture, while rerouting the original flow through the adversary belongs to NJT-0136. Authorized NDR, compliance retention,
+      performance analysis, and troubleshooting use the same mirror resources and require exclusion through owner, approval
+      window, pinned target, and data-handling rules.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: 行为者可在交换机上建立 SPAN/RSPAN/ERSPAN，把多个接口或 VLAN 的流量送往受控收集端；也可在 IaaS 中创建 Packet Mirroring 资源，选择关键实例、子网和过滤器并将副本送到收集虚拟机。负载均衡或代理终止后的镜像位置可能看到比互联网路径更丰富的正文，但具体终止边界必须实测。
+      en: An actor may create SPAN, RSPAN, or ERSPAN on a switch to send traffic from multiple interfaces or VLANs to a controlled
+        collector, or create an IaaS Packet Mirroring resource selecting critical instances, subnets, and filters and delivering
+        copies to a collector VM. A mirror positioned after load-balancer or proxy termination may see richer content than
+        the Internet path, but the actual termination boundary must be validated.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者需要修改镜像会话或云网络资源的权限、一个能够接收并处理副本的目标，以及对源范围和认证时段的了解。若只镜像密文，仍需解密条件；若收集目标跨项目、网络或租户，还需相应连接与路由。严格 IAM、固定 collector、双人批准和短期凭据可降低可行性。
+        en: The adversary needs authority to modify mirror sessions or cloud network resources, a target able to receive and
+          process copies, and knowledge of source scope and authentication timing. Mirroring ciphertext still requires recovery
+          conditions. A collector across projects, networks, or tenants also needs connectivity and routing. Strict IAM, pinned
+          collectors, dual approval, and short-lived credentials reduce feasibility.
+    defender_model:
+      paragraphs:
+      - zh: 防守方应保留镜像资源全生命周期而不只查询现态。Google Cloud 明确把 packetMirrorings.insert、patch 和 delete 记为 Admin Activity，并记录相关写权限；等价平台应至少保留
+          actor、request ID、project/tenant、source resources、filter、collector target、operation 和结果。再把镜像有效区间与收集器收到的封装流、认证流目录和材料评估关联。
+        en: Defenders should retain full mirror-resource lifecycle rather than querying current state only. Google Cloud explicitly
+          records packetMirrorings.insert, patch, and delete as Admin Activity with associated write permissions. Equivalent
+          platforms should retain actor, request ID, project or tenant, source resources, filter, collector target, operation,
+          and result, then join the mirror-valid interval to encapsulated flows received by the collector, the authentication-flow
+          inventory, and the material assessment.
+stealth_mechanisms:
+- mechanism_ref: NM-BT
+  role: primary
+  summary:
+    zh: 将认证流读取移入独立复制分支使原路径和端点观察保持正常
+    en: Move authentication-flow reading into an independent copy branch so original-path and endpoint observations remain
+      normal
+  analysis:
+    paragraphs:
+    - zh: 镜像资源复制报文并保持原交付，端点与服务端均无需产生异常连接或失败。行为痕迹落在另一个控制平面和收集器，若身份、网络和认证团队不关联这些视角，读取动作处于常规认证监测范围之外。CISA 对 SPAN/RSPAN/ERSPAN
+        的行为者使用记录和 Google 的可审计镜像生命周期支持该观察差；缺少 collector receipt 时只能确认复制风险，不能确认凭据材料结果。
+      en: A mirror resource copies packets while preserving original delivery, so neither endpoint nor service needs to create
+        an anomalous connection or failure. Traces land in another control plane and collector. Without correlation across
+        identity, network, and authentication teams, the read stays outside routine authentication monitoring. CISA's record
+        of actor use of SPAN, RSPAN, and ERSPAN and Google's auditable mirror lifecycle support the observation difference.
+        Without collector receipt, evidence confirms copy risk rather than a credential-material outcome.
+  confidence: medium
+  evidence_refs:
+  - REF-000792
+  - REF-000795
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000203
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000186
+evidence:
+  claim_refs:
+  - CLM-000876
+  case_refs:
+  - CASE-000256
+  reference_refs:
+  - REF-000792
+  - REF-000795
+research:
+  limitations:
+    paragraphs:
+    - zh: 联合通告汇总多个国家支持行为者和环境，公开文本没有把每个 SPAN/RSPAN/ERSPAN 会话逐一连接到某个被成功恢复的凭据；Google 文档只证明镜像与审计字段可实施，不证明攻击事件。正式案例应区分观察到镜像、收集器接收和材料确认三个阶段。
+      en: The joint advisory aggregates multiple state-sponsored actors and environments and does not connect every SPAN,
+        RSPAN, or ERSPAN session to a specifically recovered credential. Google documentation establishes mirror and audit
+        capabilities, not an attack incident. Formal cases must distinguish observed mirroring, collector receipt, and material
+        confirmation as separate stages.
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-09-27'
+  modified: '2026-09-27'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

@@ -1,0 +1,322 @@
+schema_version: 2.0.0
+type: technique
+id: NJT-0101
+name:
+  zh: 隔离工作负载至宿主权限逃逸
+  en: Isolated-Workload-to-Host Authority Escape
+summary:
+  zh: 攻击者从容器或虚拟化工作负载越过隔离边界，取得原上下文无权访问的宿主资源或执行上下文，并利用跨 namespace 资源别名或宿主 Broker 来源转换削弱识别和归因。
+  en: An adversary crosses an isolation boundary from a container or virtualized workload, obtains a host resource or execution
+    context unavailable to the original context, and weakens identification and attribution through cross-namespace resource
+    aliases or host-broker provenance translation.
+aliases:
+- Escape to Host
+classification:
+  tactic_refs:
+  - TA0004
+  origin:
+    kind: attack-adapted
+    source_attack_id: T1611
+    source_attack_version: '19.1'
+  decision_ref: DEC-TA0004-T1611
+definition_and_concept:
+  paragraphs:
+  - zh: 隔离工作负载至宿主权限逃逸是攻击者从 container、guest、sandbox 或等价受限运行域出发，利用共享 kernel、namespace/capability 配置、host resource projection、runtime/control
+      socket、host-consumed callback、container/hypervisor component 或其他边界 primitive，使后续进程、请求或资源访问落入底层 host authority domain
+      的技术。直接对象是一次可验证的 authority-boundary transition：原始 workload context、边界动作或 Broker 请求、有效 host context 或 canonical host resource，以及首个只有宿主侧权限才能完成的结果。
+    en: 'Isolated-Workload-to-Host Authority Escape begins in a container, guest, sandbox, or equivalent constrained execution
+      domain and uses a shared kernel, namespace or capability configuration, host-resource projection, runtime or control
+      socket, host-consumed callback, container or hypervisor component, or another boundary primitive so a later process,
+      request, or resource access lands in the underlying host authority domain. The direct object is one verifiable authority-boundary
+      transition: original workload context, boundary action or broker request, effective host context or canonical host resource,
+      and the first outcome requiring host-side authority.'
+  - zh: “宿主权限”不等于进程名称出现 root、SYSTEM、Administrator 或 hypervisor service，而是相对原 pre-state 的有效授权集合增加。分析必须证明同一攻击者控制链在越界前不能完成目标
+      host operation，越界后由明确 context/capability 或规范宿主对象产生 allow 与结果。容器内 UID 0、privileged label、hostPID/hostNetwork、可写 mount、socket、CVE
+      命中、宿主凭据被读取或 shell 文件位于宿主盘都是重要中间迹象，却不能单独代替 positive authority difference 和 first host-only outcome。
+    en: Host authority is not a process label such as root, SYSTEM, Administrator, or hypervisor service. It is an increase
+      in the effective authorization set relative to original pre-state. Analysis must show that the same adversary-controlled
+      chain could not perform the target host operation before crossing and that a defined context, capability, or canonical
+      host object produced an allow decision and result afterward. Container UID 0, a privileged label, hostPID or hostNetwork,
+      a writable mount, socket, CVE hit, read host credential, or shell file located on a host disk is important intermediate
+      evidence but cannot independently replace a positive authority difference and first host-only outcome.
+  - zh: Niji 的适配把 ATT&CK 的实现清单收敛为一个平台无关的控制问题：哪个隔离边界被跨越，越界前后主体可以做什么，以及宿主结果怎样与原工作负载建立因果。Linux container 到 node、Windows server
+      silo 到 node、VM 到 ESXi hypervisor 可使用相同结果门，但具体 syscall、CVE、runtime、orchestrator、设备或路径仅是参数。父技术承载直接 kernel/namespace/hypervisor
+      crossing；两个子项只在可见资源身份或可见执行主体出现稳定、攻击者可控的痕迹拓扑时细分。
+    en: 'The Niji adaptation converges ATT&CK implementations on a platform-independent control problem: which isolation boundary
+      was crossed, what the actor could do before and after, and how the host result causally joins to the originating workload.
+      Linux container to node, Windows server silo to node, and VM to ESXi hypervisor use the same outcome gate, while syscall,
+      CVE, runtime, orchestrator, device, and path are parameters. The parent carries direct kernel, namespace, or hypervisor
+      crossing. Its two children specialize only stable adversary-controlled trace topologies that change visible resource
+      identity or visible executing actor.'
+stealth_characteristics:
+  paragraphs:
+  - zh: 隔离工作负载至宿主权限逃逸的基本匿迹矛盾是：攻击者必须让信息、控制或执行实际越过边界，但希望工作负载侧只留下普通 syscall、path/socket access 或 capability use，宿主侧只留下 daemon/helper、新容器或资源变化。container
+      ID、cgroup、PID/mount/user namespace、inode/handle、runtime request、host PID、VM identity 与授权事件通常由不同采集器命名和保留；若没有 boundary
+      identity 和时间统一，任何单侧视图都看不到完整的 pre-state→crossing→host result。
+    en: The fundamental stealth tension is that information, control, or execution must actually cross the boundary while
+      the adversary wants the workload side to leave only an ordinary syscall, path or socket access, or capability use and
+      the host side to leave only a daemon or helper, new container, or resource mutation. Container ID, cgroup, PID, mount
+      or user namespace, inode or handle, runtime request, host PID, VM identity, and authorization events are often named
+      and retained by different collectors. Without boundary identity and unified time, no single-sided view contains the
+      complete pre-state-to-crossing-to-host-result chain.
+  - zh: 资源别名路径保留 container-visible process，却让它使用的 path/handle 解析到宿主 canonical object。相同字符串可以同时表示容器与宿主的 /etc/passwd、盘符、registry/name
+      object 或设备；Linux Audit 甚至不会在普通 PATH 记录中直接说明事件来自哪个 container。结果不是数据消失，而是 captured target 的 resource ownership 不可解释。Siloscape
+      把容器 X 映射到宿主 C，TeamTNT 把宿主根挂入容器，都证明攻击者能把宿主访问包装成容器内路径操作。
+    en: A resource-alias path preserves a container-visible process while making its path or handle resolve to a canonical
+      host object. The same string can denote container and host versions of /etc/passwd, a drive letter, a registry or named
+      object, or a device, and Linux Audit does not directly identify the originating container in an ordinary PATH record.
+      Data has not disappeared; resource ownership of the captured target is uninterpretable. Siloscape mapping container
+      X to host C and TeamTNT mapping host root into a container establish that adversaries can package host access as an
+      in-container path operation.
+  - zh: Broker 路径则改变可见发起者。原容器通过 runtime socket/API 或写入 host-consumed state 表达动作，dockerd、containerd、kubelet、runc、kernel helper、hypervisor
+      service 或新 workload 在宿主权限下执行。结果进程树和账户呈现正常基础设施，最初 container principal 留在 control-channel 或更早 callback write。trusted broker
+      的签名、账户或父进程不能说明请求被批准；只有 request/body、caller、transaction、effective context 与 outcome 的连接才能区分正常运维、攻击尝试与成功逃逸。
+    en: A broker path instead changes the visible initiator. The originating container expresses an action through a runtime
+      socket or API or by writing host-consumed state, and dockerd, containerd, kubelet, runc, a kernel helper, a hypervisor
+      service, or a new workload executes with host authority. The resulting process tree and account show normal infrastructure
+      while the original container principal remains in the control-channel event or earlier callback write. A trusted broker's
+      signature, account, or parent process does not show that a request was approved. Only joins among request body, caller,
+      transaction, effective context, and outcome distinguish normal operations, an attempted attack, and successful escape.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 纳入要求可识别原始工作负载或来宾、一次成功的边界跨越或被宿主消费的请求，以及由此产生的宿主资源访问。结果可以是读写受保护宿主文件、以宿主权限执行命令、加载宿主模块、修改节点对象、访问运行时或虚拟化控制面，或者影响原隔离上下文无权触达的其他实例。失败尝试、崩溃、被阻止的准入和未被消费的配置只说明边界风险，不构成成功逃逸。
+    en: Inclusion requires an identifiable original workload or guest, a successful boundary crossing or request consumed
+      by the host, and resulting access to host resources. Outcomes can include reading or writing protected host files, executing
+      commands with host authority, loading host modules, modifying node objects, accessing runtime or virtualization control,
+      or affecting other instances unreachable from the original isolated context. Failed attempts, crashes, blocked admission,
+      and unconsumed configuration show boundary risk but do not constitute a successful escape.
+  - zh: 漏洞利用本身由 T1068 拥有，若漏洞成功同时造成 isolation crossing，两者可并列但不得用 exploit success 自动推导 host authority。创建新容器并产生代码执行由 NJT-0067
+      拥有；只有该 deployment 是原容器经宿主 Broker 获得新 host authority 的一段时，本技术再并列。持久 service/reconciliation definition 归 NJT-0089，镜像状态跨未来实例复现归
+      NJT-0092，凭据读取与使用归 Credential Access/Valid Accounts，宿主后续任务、服务、注入和持久化分别归其直接对象。
+    en: T1068 owns vulnerability exploitation itself. It can co-occur when exploitation also causes isolation crossing, but
+      exploit success must not automatically imply host authority. NJT-0067 owns creation and execution of a new container,
+      while this technique co-occurs only when that deployment is a step through which the original container obtains new
+      host authority via a host broker. NJT-0089 owns durable service or reconciliation definitions, NJT-0092 image state
+      recurring through future instances, Credential Access or Valid Accounts owns credential acquisition and use, and later
+      host tasks, services, injection, and persistence belong to their direct objects.
+  - zh: 合法运维反例包括经批准的 node log collector、CSI/device plugin、备份代理、debug Pod、Docker-in-Docker builder、虚拟化管理与 incident-response
+      container。它们也可能具备 hostPath、privileged、runtime socket 或 host namespace。区分依据不是字段是否危险，而是 creator/caller、批准 workload digest/spec、最小
+      host resource、预期 capability、有效窗口、Broker method、host outcome 和业务所有者是否一致。若攻击者在 pre-state 已经有合法 API 权限完成同一 host operation，则不能声称权限提升，即使路径经过容器。
+    en: Legitimate counterexamples include approved node log collectors, CSI or device plugins, backup agents, debug Pods,
+      Docker-in-Docker builders, virtualization administration, and incident-response containers. They can also hold hostPath,
+      privileged mode, runtime sockets, or host namespaces. The distinction is not whether a field is dangerous, but whether
+      creator or caller, approved workload digest or specification, minimum host resource, intended capability, validity window,
+      broker method, host outcome, and business owner align. If the adversary already had legitimate API authority in pre-state
+      to perform the same host operation, the path through a container is not privilege escalation.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: 在 Linux/Kubernetes 环境中，攻击者先在应用 container 内执行，随后利用过宽 hostPath、暴露 block device、privileged/CAP_SYS_ADMIN、可写 cgroup、runtime
+        component flaw 或共享 namespace 触达节点。它可以让原容器进程经 /host、/hostOS 或设备映射修改宿主 cron、SSH key、账户与安全配置，也可以通过 runtime socket 请求创建带宿主根映射的新
+        privileged workload。前者保持原 container actor，后者把结果交给 runtime Broker；二者都必须证明具体 host effect。
+      en: In Linux or Kubernetes, an adversary first executes inside an application container and then uses an overbroad hostPath,
+        exposed block device, privileged mode or CAP_SYS_ADMIN, writable cgroup, runtime-component flaw, or shared namespace
+        to reach the node. The original container process can modify host cron, SSH keys, accounts, or security configuration
+        through a /host or /hostOS or device mapping, or it can ask a runtime socket to create a new privileged workload mapping
+        host root. The former preserves the original container actor, while the latter hands the result to a runtime broker;
+        both require proof of a concrete host effect.
+    - zh: 在 Windows container 场景中，Siloscape 一类操作者可先获得容器内执行与所需 privilege，再构造 global object-manager symbolic link，把容器盘符解析到节点盘符并取得
+        kubeconfig、写入工具和执行宿主命令。这里“container Administrator”与 node authority 必须分开；可见 API、thread impersonation 和 symbolic-link
+        creation 是 crossing chain，host file/credential use 与 node command 才是结果。
+      en: In a Windows container scenario, an operator such as Siloscape can first obtain in-container execution and required
+        privilege, construct a global object-manager symbolic link that resolves a container drive to a node drive, acquire
+        kubeconfig, write tools, and execute host commands. Container Administrator and node authority remain distinct. APIs,
+        thread impersonation, and symbolic-link creation form the crossing chain, while host file or credential use and node
+        commands are outcomes.
+    - zh: 在 VM/hypervisor 或其他 sandbox 场景中，攻击者可利用共享设备、管理 service 或组件漏洞从 guest 到 host/hypervisor。公开 T1611 证据对 ESXi 主要锚定父行为，尚不足以把
+        VM shared folder、management API 或 helper 分别提升为子项；只有能够解析 guest-visible alias 的 canonical host object 时进入 NJS-0101-001，或能够连接
+        guest request 到 host broker transaction 时进入 NJS-0101-002，否则保持父级 direct crossing。
+      en: In a VM or hypervisor or another sandbox, the adversary can use a shared device, administration service, or component
+        vulnerability to move from guest to host or hypervisor. Public T1611 evidence mainly anchors parent behavior for ESXi
+        and does not justify promoting VM shared folders, administration APIs, or helpers into separate children. NJS-0101-001
+        applies only when a guest-visible alias resolves to a canonical host object, NJS-0101-002 only when a guest request
+        joins to a host-broker transaction, and otherwise the event remains parent direct crossing.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者至少控制一个受限 workload/guest 的进程或请求身份，并能枚举边界：capability、namespace、mount table、device、runtime socket/API、callback
+          state、host component version 或 hypervisor channel。它需要选择一条在当前 kernel/runtime/OS 与安全配置下可行的路径，并让 payload 在越界后的文件系统、ABI、architecture、token、working
+          directory 与网络条件中运行。错误假设会造成 admission deny、EPERM、container crash、daemon audit、node instability 或明显失败痕迹。
+        en: 'The adversary controls at least one process or request identity in a constrained workload or guest and can enumerate
+          the boundary: capabilities, namespaces, mount table, devices, runtime socket or API, callback state, host component
+          version, or hypervisor channel. It must select a path viable under the current kernel, runtime, OS, and security
+          configuration and make payload behavior work with the post-crossing filesystem, ABI, architecture, token, working
+          directory, and network conditions. Incorrect assumptions cause admission denial, EPERM, container crash, daemon
+          audit, node instability, or conspicuous failure traces.'
+      - zh: 要利用两个正式匿迹轴，攻击者还需主动控制痕迹拓扑。alias 轴要求知道 container-visible 与 host canonical resource 的实际映射并避免产生不必要 host process；Broker
+          轴要求能向 host service 提交足以产生结果的 method/body/state，并接受 request 与 outcome 分处不同日志。攻击者假设 container/runtime/host telemetry
+          未统一、短命 workload 在采集前销毁、audit 不含 namespace/canonical identity 或 daemon reputation 被信任。runtime isolation、user namespace/rootless、默认拒绝高能力与
+          append-only 跨层日志会提高成本。
+        en: To use either formal evasion axis, the adversary also deliberately controls trace topology. The alias axis requires
+          knowledge of the actual container-visible to host-canonical mapping and avoidance of unnecessary host processes.
+          The broker axis requires a method, body, or state accepted by a host service to produce the result while tolerating
+          request and outcome residing in different logs. The adversary assumes container, runtime, and host telemetry are
+          not unified, short-lived workloads disappear before collection, audit lacks namespace or canonical identity, or
+          daemon reputation is trusted. Runtime isolation, user namespaces or rootless operation, default denial of high-risk
+          capability, and append-only cross-layer logs increase cost.
+    defender_model:
+      paragraphs:
+      - zh: 防守方需要一个跨层资产与 identity model：cluster/node/runtime/VM、workload UID/container ID/image digest、cgroup 与 PID/mount/user
+          namespace、security context/capabilities、host canonical file/device/object、control socket/API principal、Broker transaction、host
+          process/token 和 resource authorization result。create/admission/spec、runtime lifecycle、syscall/audit/eBPF、filesystem/inode/handle、daemon/API、hypervisor
+          和 host EDR 时间必须统一；workload 销毁前保留 mapping、namespace 与 mount state。
+        en: Defenders need a cross-layer asset and identity model covering cluster, node, runtime, or VM; workload UID, container
+          ID, and image digest; cgroup and PID, mount, or user namespace; security context and capabilities; canonical host
+          file, device, or object; control socket or API principal; broker transaction; host process or token; and resource
+          authorization outcome. Creation, admission, and specification; runtime lifecycle; syscall, audit, or eBPF; filesystem,
+          inode, or handle; daemon or API; hypervisor; and host EDR time require normalization, with mapping, namespace, and
+          mount state preserved before workload destruction.
+      - zh: 危险配置、运行时套接字、挂载和设备暴露会产生潜在越界条件，但只有实际跨越和宿主结果才能说明技术已发生。合法的高权限基础设施、构建系统、存储插件、节点代理和运维工具会产生相似事件；需要结合工作负载来源、配置、所有者、节点范围、规范宿主资源和时间窗口解释。
+        en: Dangerous configuration, runtime sockets, mounts, and device exposure create potential crossing conditions, but
+          actual crossing and a host result are needed to establish that the technique occurred. Legitimate privileged infrastructure,
+          build systems, storage plugins, node agents, and operations tools create similar events and require workload provenance,
+          configuration, owner, node scope, canonical host resource, and time-window context.
+stealth_mechanisms:
+- mechanism_ref: NM-BT
+  role: primary
+  summary:
+    zh: 越界动作与宿主结果落在不同 namespace、采集域和标识体系
+    en: Boundary action and host result occupy different namespaces collection domains and identifier systems
+  analysis:
+    paragraphs:
+    - zh: 攻击者从 workload/guest 执行 boundary primitive 或提交控制请求，宿主侧才出现资源访问、daemon/helper action 或新执行上下文。该行为设计把一个本应连续的提权动作拆成 container
+        telemetry、runtime/hypervisor transition 和 host outcome；痕迹从同一进程/账户内的权限变化改为 container ID、namespace、inode/handle、transaction
+        与 host PID 等异构片段。防守方若只监控工作负载或只看宿主 EDR，无法把原 pre-state 与 host-only allow 连接，也无法区分成功越界和普通宿主服务活动；关键因果因此落在局部观察之外，形成 Behavioral
+        Transparency。REF-000351/352 的 dependency/provenance 实验直接证明跨 namespace 图可恢复该链，confidence 为 high。
+      en: The adversary executes a boundary primitive or submits a control request from a workload or guest, and only then
+        does host resource access, daemon or helper action, or a new execution context appear. This behavior design splits
+        one otherwise continuous elevation into container telemetry, a runtime or hypervisor transition, and host outcome.
+        The trace changes from authority change within one process or account into heterogeneous fragments such as container
+        ID, namespace, inode or handle, transaction, and host PID. Workload-only monitoring or host-only EDR cannot join original
+        pre-state to a host-only allow or distinguish successful crossing from ordinary host-service activity. Critical causality
+        therefore falls outside local observation, creating Behavioral Transparency. REF-000351 and REF-000352 directly establish
+        recovery through cross-namespace dependency or provenance graphs, supporting high confidence.
+  evidence_refs:
+  - REF-000345
+  - REF-000351
+  - REF-000352
+  confidence: high
+- mechanism_ref: NM-DO
+  role: secondary
+  summary:
+    zh: 容器路径或句柄存在，但其真实宿主资源归属不可直接解释
+    en: A container path or handle exists while its true host-resource ownership is not directly interpretable
+  analysis:
+    paragraphs:
+    - zh: 攻击者建立或利用 alias mapping，让仍标记为 container 的进程经熟悉 path/drive/handle 读写 canonical host object。行为设计不删除 file audit，而是使同一可见名称跨
+        mount/object namespace 指向不同资源；痕迹因此保留 path 与 process，却丢失目标究竟属于 container root 还是 host root 的直接语义。缺少 mount namespace、mapping
+        version、inode/file ID/handle 与 host canonical path 时，防守方获取了数据仍不能判定 host crossing，容易把敏感写入解释为容器内部变化，形成 Data Obscuration。Siloscape
+        实战与 dependency-graph 研究分别证明映射行为和 inode 解析需要，confidence 为 high。
+      en: The adversary establishes or uses an alias mapping so a process still labeled as container-scoped reads or writes
+        a canonical host object through a familiar path, drive, or handle. The design does not delete file audit; it makes
+        the same visible name point to different resources across mount or object namespaces. The trace retains path and process
+        but loses direct semantics of whether the target belongs to container root or host root. Without mount namespace,
+        mapping version, inode or file ID or handle, and host canonical path, defenders have acquired data but cannot determine
+        host crossing and can interpret a sensitive write as container-local change, producing Data Obscuration. The Siloscape
+        incident and dependency-graph research respectively establish mapping behavior and the need for inode resolution,
+        supporting high confidence.
+  evidence_refs:
+  - REF-000347
+  - REF-000349
+  - REF-000351
+  confidence: high
+- mechanism_ref: NM-FD
+  role: secondary
+  summary:
+    zh: 宿主 Broker 把攻击者请求转换为正常基础设施身份下的结果
+    en: A host broker translates the adversary request into an outcome under normal infrastructure identity
+  analysis:
+    paragraphs:
+    - zh: 攻击者不直接创建宿主进程，而让 runtime socket/API 或 host-consumed callback 触发 dockerd、containerd、kubelet、runc、kernel helper 或等价服务执行。行为设计将
+        original caller 替换为正常 Broker 或新 workload 作为 visible initiator；痕迹从可疑 container→host process 边变为基础设施常见的 daemon transaction、child
+        process 和 resource action。只以签名父进程、root service account 或 runtime reputation 分类时，防守方难以把恶意结果与合法容器管理区分，形成 Feature Disguise；保留
+        control-channel caller/body 与 broker transaction 可反证。Docker 官方语义和 TeamTNT/PACED 路径支持该转换，但跨所有 Broker 的攻击者匿迹意图为推广，confidence
+        校准为 medium。
+      en: Rather than create a host process directly, the adversary has a runtime socket or API or host-consumed callback
+        trigger dockerd, containerd, kubelet, runc, a kernel helper, or an equivalent service. The behavior design replaces
+        the original caller with a normal broker or new workload as visible initiator. The trace changes from a suspicious
+        container-to-host process edge into ordinary infrastructure daemon transactions, child processes, and resource actions.
+        A defender classifying only a signed parent, root service account, or runtime reputation struggles to distinguish
+        malicious results from legitimate container administration, creating Feature Disguise. Preserving control-channel
+        caller and body plus broker transaction disconfirms it. Docker semantics and TeamTNT or PACED paths support the translation,
+        but adversary concealment intent generalized across every broker is an inference, so confidence is medium.
+  evidence_refs:
+  - REF-000346
+  - REF-000350
+  - REF-000352
+  confidence: medium
+subtechnique_taxonomy:
+  narrative:
+    paragraphs:
+    - zh: NJS-0101-001 固定 container-visible alias→canonical host resource 的映射：结果仍由原 container process 直接读写，关键问题是资源归属和名称解析。NJS-0101-002
+        固定 original container request/state→host broker transaction/executor→host-only outcome：结果侧主体变成 daemon/helper 或新 workload，关键问题是来源转换。一个
+        hostPath 可以只形成 alias；一个 docker.sock 请求可以由 Broker 再创建含 alias 的新容器，因此两者可并列，但任一都不包含另一方。
+      en: NJS-0101-001 fixes the mapping from container-visible alias to canonical host resource. The original container process
+        directly reads or writes the result, and resource ownership and name resolution are the key problems. NJS-0101-002
+        fixes original-container request or state to host-broker transaction or executor to host-only outcome. The result-side
+        actor becomes a daemon, helper, or new workload, and provenance translation is the key problem. A hostPath can create
+        only an alias, while a docker-socket request can have a broker create a new container containing an alias, so the
+        children can co-occur without either containing the other.
+    - zh: 宿主资源命名空间别名投射改变工作负载可见名称与实际宿主资源之间的关系；宿主 Broker 逃逸来源转换改变请求者与产生宿主结果的受信执行者之间的关系。内核漏洞、能力配置、运行时产品、挂载或套接字类型以及目标资源只是父级实现或前提，不形成额外子技术。
+      en: Host-Resource Namespace-Alias Projection changes the relationship between a workload-visible name and the actual
+        host resource. Host-Broker Escape Provenance Translation changes the relationship between the requester and the trusted
+        executor producing the host result. Kernel vulnerabilities, capability configuration, runtime products, mount or socket
+        types, and target resources are parent implementations or prerequisites rather than additional children.
+  coverage: established
+  subtechnique_refs:
+  - NJS-0101-001
+  - NJS-0101-002
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000098
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000099
+evidence:
+  claim_refs:
+  - CLM-000552
+  - CLM-000553
+  - CLM-000554
+  - CLM-000555
+  - CLM-000556
+  case_refs:
+  - CASE-000127
+  - CASE-000128
+  reference_refs:
+  - REF-000213
+  - REF-000345
+  - REF-000346
+  - REF-000347
+  - REF-000348
+  - REF-000349
+  - REF-000350
+  - REF-000351
+  - REF-000352
+research:
+  limitations:
+    paragraphs:
+    - zh: 公开资料能够支持隔离边界跨越、两种痕迹拓扑和相应防御键，但很少同时公开工作负载原始权限、越界后的宿主权限以及逐资源授权结果。案例中的权限增加通常依据隔离保证和实际宿主文件或命令结果推断，因此具体事件仍需本地证据确认跨越和宿主效果。
+      en: Public material supports isolation-boundary crossing, the two trace topologies, and their defensive keys, but rarely
+        publishes original workload authority, post-crossing host authority, and per-resource authorization outcomes together.
+        Authority gain in cases is usually inferred from isolation guarantees and actual host-file or command results, so
+        event-specific crossing and host effect still require local evidence.
+    - zh: 证据最强地覆盖 Linux containers/Docker/Kubernetes 与 Windows server containers。ATT&CK 把 ESXi 纳入 T1611，但当前材料不足以断言每种 hypervisor
+        escape 都具有 alias 或 Broker 匿迹轴；未满足相应 stable key 时只使用父级。Linux Audit、eBPF、runtime 和 EDR 对 container ID、namespace、inode
+        与 request 的字段可得性因版本和产品而异；短命 workload、加密 API、rootless runtime 和远程 control plane 还会改变采集点。检测必须显式记录 coverage gap，不能把遥测缺失解释为未逃逸。
+      en: Evidence is strongest for Linux containers with Docker or Kubernetes and Windows server containers. ATT&CK includes
+        ESXi in T1611, but current material does not justify claiming every hypervisor escape has alias or broker evasion.
+        Parent scope applies when the corresponding stable key is absent. Availability of container ID, namespace, inode,
+        and request fields in Linux Audit, eBPF, runtime, and EDR varies by version and product, while short-lived workloads,
+        encrypted APIs, rootless runtimes, and remote control planes change collection points. Detection must expose coverage
+        gaps and must not interpret missing telemetry as no escape.
+lifecycle:
+  status: review
+  version: 0.2.0
+  created: '2026-09-13'
+  modified: '2026-09-19'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

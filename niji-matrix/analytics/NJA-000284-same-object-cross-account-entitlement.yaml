@@ -1,0 +1,143 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000284
+strategy_ref: DET-000228
+name:
+  zh: 原对象外部 grant—访问—撤销关联
+  en: Same-Object External Grant–Access–Revocation Correlation
+summary:
+  zh: 验证同一对象的外部授权、目标账户访问与撤销结果。
+  en: Validate external entitlement on one object, target-account access, and revocation outcome.
+domains:
+- enterprise
+platforms:
+- Office Suite
+- SaaS
+logic:
+  paragraphs:
+  - zh: 规范 share/invite/link/permission/ownership 事件的 source tenant、acting principal、object ID、owner、target user/account/domain、old/new
+      role/visibility、link/permission ID 和 result。将 grant 连接到 accept/redeem、FileAccessed/preview/download/export/sync，并在
+      grant 生命周期结束时连接 revoke/expire。目标不在批准 partner/account 清单且对象为敏感、批量分享、首次 target、service principal 异常使用或 grant
+      后立即访问之一成立时提高风险。输出 grant-created、effective-entitlement、external-access、content-delivery-supported 和 revoked；grant-only
+      不报告完成外传。
+    en: Normalize source tenant, acting principal, object ID, owner, target user, account or domain, old and new
+      role or visibility, link or permission ID, and result for share, invite, link, permission, and ownership events.
+      Join grant to accept or redeem, FileAccessed, preview, download, export, or sync and join revoke or expire
+      when the grant lifecycle ends. Raise risk when the target is absent from the approved partner or account registry
+      and at least one of sensitive object, bulk sharing, first-seen target, anomalous service-principal use, or
+      immediate post-grant access exists. Output grant-created, effective-entitlement, external-access, content-delivery-supported,
+      and revoked; grant-only does not report completed exfiltration.
+data_requirements:
+- source_type: cloud-sharing-control-audit
+  name:
+    zh: SaaS 分享与权限控制审计
+    en: SaaS sharing and entitlement control audit
+  channel: Microsoft Purview Audit, Google Drive audit, or equivalent
+  required_fields:
+  - timestamp
+  - provider
+  - source-tenant-or-domain
+  - event-id
+  - operation
+  - acting-principal
+  - acting-session-or-app
+  - object-id
+  - object-owner
+  - target-principal
+  - target-domain-or-account
+  - old-role-or-visibility
+  - new-role-or-visibility
+  - link-or-permission-id
+  - result
+- source_type: cloud-object-access-audit
+  name:
+    zh: 云对象外部访问与内容交付审计
+    en: Cloud-object external access and content-delivery audit
+  channel: FileAccessed/download/export/sync data-plane events
+  required_fields:
+  - timestamp
+  - provider
+  - tenant-or-domain
+  - object-id
+  - actor-or-target-principal
+  - operation
+  - session-or-link-id
+  - source-ip-or-device
+  - originating-app
+  - bytes-or-object-count-if-available
+  - result
+- source_type: cloud-object-inventory
+  name:
+    zh: 云对象 owner、敏感度与有效权限快照
+    en: Cloud-object owner, sensitivity, and effective-entitlement snapshot
+  channel: SaaS inventory and data classification
+  required_fields:
+  - object-id
+  - owner
+  - container-or-site
+  - sensitivity
+  - current-permissions
+  - link-ids
+  - retention-class
+  - last-modified
+- source_type: approved-collaboration-inventory
+  name:
+    zh: 批准外部协作关系
+    en: Approved external collaboration inventory
+  channel: vendor, legal, B2B, and access governance
+  required_fields:
+  - partner-id
+  - target-account-or-domain
+  - sponsor
+  - purpose
+  - allowed-object-scope
+  - allowed-role
+  - valid-from
+  - valid-to
+  - ticket-id
+observables:
+- zh: 对象 ID 不变而 ACL、share、link 或 ownership 增加外部主体
+  en: The object ID stays constant while ACL, share, link, or ownership adds an external principal
+- zh: 目标账户接受或访问后发生下载、同步或读取，随后授权被撤销或保留
+  en: The target account accepts or accesses the object, then downloads, syncs, or reads before or after revocation
+correlation:
+  window:
+    zh: 从授权创建覆盖至撤销后七日，并保留对象 ID 与目标主体。
+    en: Cover grant creation through seven days after revocation while retaining object ID and target principal.
+  dimensions:
+  - provider
+  - source-tenant
+  - object-id
+  - link-or-permission-id
+  - acting-principal
+  - target-principal-or-account
+  - session
+  - partner-id
+false_positives:
+- zh: 批准供应商协作、客户共享、跨租户项目和临时支持
+  en: Approved vendor collaboration, customer sharing, cross-tenant projects, and temporary support
+blind_spots:
+- zh: 匿名链接无法解析真实目标账户
+  en: An anonymous link cannot resolve the real target account
+- zh: 服务日志不记录接受、下载或撤销前访问
+  en: Service logs omit acceptance, download, or access before revocation
+tuning_guidance:
+  paragraphs:
+  - zh: 以批准关系和对象敏感度而非 External/Guest 标签建立基线；分别设置 invitation、effective access、download 与 ownership 级别。对 service principal、批量分享、无到期、高权限和首次
+      domain 提高严重度，定期重建 current permission snapshot 以发现日志缺口。
+    en: Baseline approved relationships and object sensitivity rather than External or Guest labels. Set separate
+      tiers for invitation, effective access, download, and ownership. Raise severity for service principals, bulk
+      sharing, no expiry, high privilege, and first-seen domains, and rebuild current permission snapshots periodically
+      to find logging gaps.
+evidence_refs:
+- REF-000950
+- REF-000951
+- REF-000952
+lifecycle:
+  status: review
+  version: 1.0.0
+  created: '2026-10-04'
+  modified: '2026-10-04'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

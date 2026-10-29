@@ -1,0 +1,45 @@
+schema_version: "2.0.0"
+type: detection-analytic
+id: NJA-000141
+strategy_ref: DET-000136
+name: {zh: 启动组件版本—信任保护结果差分, en: Boot-Component Version to Trust-Protection Differential}
+summary: {zh: 关联更新或启动链变更、实际加载旧组件与 Secure Boot 或 VBS 有效状态下降。, en: "Join update or boot-chain change, an older component actually loaded, and effective Secure Boot or VBS decline."}
+domains: [enterprise]
+platforms: [Windows]
+logic:
+  paragraphs:
+    - zh: 取得批准的 Boot Manager、Secure Kernel 和相关安全组件 hash/version 与撤销列表，保存更新事务、EFI 分区文件快照、启动测量和 TPM PCR/事件日志。每次重启将实际加载组件与批准基线及更新服务报告版本比较；若控制台说已更新但测量显示旧组件，先输出 version_mismatch，再用 Secure Boot、VBS、Credential Guard 或 HVCI 的独立有效状态判断是否真的失去防护。
+      en: Obtain approved Boot Manager, Secure Kernel, and related security-component hashes and versions plus revocation lists; retain update transactions, EFI partition snapshots, boot measurements, and TPM PCR or event logs. On each reboot compare actually loaded components with the approved baseline and update-service reported version. A console claiming current state while measurements show an older component first produces version_mismatch; independently measured Secure Boot, VBS, Credential Guard, or HVCI state then determines whether protection truly declined.
+    - zh: 将旧组件加载、有效保护下降和同一重启周期内的可疑更新/引导修改连接才输出 effective_regression。合法固件恢复、撤销列表尚未分阶段部署或硬件不支持 VBS 时不能直接判恶；若无可信测量，只报告 attestation_gap，不能把更新界面不一致当作已成功绕过。
+      en: Emit effective_regression only when older-component loading, effective protection decline, and suspicious update or boot modification are joined within the same reboot cycle. Legitimate firmware recovery, a revocation list not yet deployed in stages, or hardware without VBS support is not automatically malicious. Without trustworthy measurements report attestation_gap rather than calling an inconsistent update console a successful bypass.
+data_requirements:
+  - source_type: trusted-boot-attestation
+    name: {zh: 启动测量与加载组件证明, en: Boot Measurements and Loaded-Component Attestation}
+    channel: TPM event log and EFI inventory
+    required_fields: [device_id, boot_id, timestamp, component_id, component_hash, loaded_version, pcr_value, verification_result]
+  - source_type: update-and-revocation-state
+    name: {zh: 更新事务与 Secure Boot 撤销状态, en: Update Transaction and Secure Boot Revocation State}
+    channel: Windows Update and Secure Boot inventory
+    required_fields: [device_id, boot_id, update_id, reported_version, approved_version, dbx_version, transaction_time, approval_id]
+  - source_type: effective-virtualization-security
+    name: {zh: 虚拟化与启动保护有效状态, en: Effective Virtualization and Boot-Protection State}
+    channel: null
+    required_fields: [device_id, boot_id, secure_boot_effective, vbs_effective, credential_guard_effective, hvci_effective, measurement_time]
+observables:
+  - {zh: 实际启动测量显示旧组件而更新管理面报告当前版本, en: Measured boot loads an older component while the update plane reports a current version}
+  - {zh: 同一启动周期内 Secure Boot 或 VBS 有效保护下降, en: Effective Secure Boot or VBS protection declines in the same boot cycle}
+correlation:
+  window: {zh: 覆盖更新事务前二十四小时、每次相关重启及重启后四十八小时的功能验证。, en: "Cover twenty-four hours before the update transaction, each related reboot, and forty-eight hours of post-boot functional verification."}
+  dimensions: [device_id, boot_id, component_id, component_hash, loaded_version, dbx_version, update_id, time]
+false_positives:
+  - {zh: 厂商批准的固件恢复或分阶段 Secure Boot 撤销部署, en: Vendor-approved firmware recovery or staged Secure Boot revocation rollout}
+  - {zh: 设备从未支持 VBS 或组织尚未要求该功能, en: Device has never supported VBS or the organization does not require that feature}
+blind_spots:
+  - {zh: 缺少可信 TPM/EFI 测量或测量链同权受控, en: Trusted TPM or EFI measurements are absent or co-authorized with the compromised chain}
+  - {zh: 重启前的临时内存回退不会反映在下一次持久启动测量, en: Transient in-memory rollback before reboot may not appear in the next persistent boot measurement}
+tuning_guidance:
+  paragraphs:
+    - zh: 按设备型号和更新部署环维护批准组件 hash、撤销列表版本及功能要求，例外只绑定变更单、硬件组、时间和回滚计划。优先比较同设备连续启动，而不是统一版本阈值；更新服务的成功状态只能作对照面，不能作为可信测量的替代。
+      en: Maintain approved component hashes, revocation-list versions, and required functions by hardware model and update ring. Exceptions bind change ticket, hardware cohort, time, and rollback plan. Compare consecutive boots of the same device before applying a universal version threshold. Update-service success is a comparison plane, not a substitute for trusted measurement.
+evidence_refs: [REF-000462, REF-000464, REF-000465]
+lifecycle: {status: review, version: "1.0.0", created: "2026-09-22", modified: "2026-09-22", contributors: [Niji Matrix Research], reviewers: []}
