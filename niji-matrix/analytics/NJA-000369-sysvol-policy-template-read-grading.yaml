@@ -1,0 +1,143 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000369
+strategy_ref: DET-000273
+name:
+  zh: SYSVOL 策略模板访问检查与实际文件读取分层
+  en: SYSVOL Policy Template Access Check and Exercised File Read Grading
+summary:
+  zh: 按 GPO 和策略文件解析共享访问，将授权检查与实际使用 ReadData 分开，再结合客户端及批准任务判断调查风险。
+  en: Resolve share access to GPOs and policy files, separate authorization checks from exercised ReadData, and assess survey
+    risk through client and approved-work context.
+domains:
+- enterprise
+platforms:
+- Windows
+logic:
+  paragraphs:
+  - zh: 在提供 SYSVOL 的域控制器上收集 5145，并用 ShareLocalPath、RelativeTargetName 和独立 GPO 路径清单规范化到 Policies 下的策略 GUID、文件路径与对象种类。保留请求权限和审计结果；0x1
+      对目录是 ListDirectory，对文件才是 ReadData，目录列举不能提升为策略文件内容读取。允许的 5145 输出 share_access_check，它只表明共享层检查；即使允许，也可能随后被 NTFS 拒绝，不能由它单独宣称文件已返回。
+    en: Collect event 5145 on domain controllers serving SYSVOL and normalize ShareLocalPath and RelativeTargetName through
+      independent GPO path inventory to policy GUID, file path, and object kind beneath Policies. Retain requested rights
+      and audit outcome. Bit 0x1 means ListDirectory for a directory and ReadData for a file, so listing must not be promoted
+      to policy-file content retrieval. An allowed 5145 emits share_access_check and establishes a share-level check only.
+      NTFS can still deny access afterward, so this event alone cannot establish returned file content.
+  - zh: 如已部署文件系统成功审计和匹配的 ReadData SACL，将同服务器、主体 SID、登录标识及规范文件路径的 4663 实际访问与共享检查连接；只对确认是文件的 ReadData 输出 file_read_exercised。服务器侧
+      ProcessId 和 ProcessName 可属于服务进程，不得标为发起查询的客户端进程。跨面的客户端资产需用共享源地址及有效期内的资产映射恢复；没有 4663 时保留检查等级，只有独立、可验证的返回内容才能进一步说明取得了哪些设置。
+    en: Where successful file-system auditing and a matching ReadData SACL are deployed, join event 4663 exercised access
+      to the share check on the same server, principal SID, logon identifier, and normalized file path. Emit file_read_exercised
+      only for ReadData against a confirmed file. Server ProcessId and ProcessName can belong to a service and must not be
+      labeled as the querying client process. Recover the client asset through share source address and a mapping valid at
+      the event time. Without 4663 retain check-level evidence; only independently verified returned content establishes which
+      settings were obtained.
+  - zh: 按 GPO、主体与源资产归组并比较正常策略处理、GPMC、备份和批准诊断任务。超出预期策略范围、来自异常源且没有有效工作记录的访问提高优先级，但没有对应 LDAP 事件不构成异常条件。读取 gpt.ini 可只取得版本信息，读取一个模板也不证明所有设置已被保存或对目标生效；读取或恢复认证秘密时转入相应凭据取得分类。
+    en: Group by GPO, principal, and source asset and compare normal policy processing, GPMC, backups, and approved diagnostic
+      work. Prioritize access outside expected policy scope from abnormal origins without valid work records, but do not treat
+      absence of a corresponding LDAP event as an anomaly. Reading gpt.ini may yield version information alone, and reading
+      one template establishes neither retention of all settings nor their application to a target. Acquiring or recovering
+      authentication secrets crosses into the corresponding credential-acquisition classification.
+data_requirements:
+- source_type: windows-detailed-share-access
+  name:
+    zh: SYSVOL 共享访问检查
+    en: SYSVOL share access checks
+  channel: SYSVOL server Security event 5145 with Audit Detailed File Share enabled
+  required_fields:
+  - timestamp
+  - dc_id
+  - event_record_id
+  - audit_outcome
+  - subject_user_sid
+  - subject_logon_id
+  - ip_address
+  - share_name
+  - share_local_path
+  - relative_target_name
+  - access_mask
+  - access_reason
+- source_type: windows-file-exercised-read
+  name:
+    zh: 启用实际读取确认时的文件对象访问
+    en: File object access when exercised-read confirmation is enabled
+  channel: SYSVOL server Security event 4663 with Audit File System and matching ReadData SACL
+  required_fields:
+  - timestamp
+  - dc_id
+  - subject_user_sid
+  - subject_logon_id
+  - object_name
+  - object_type
+  - access_mask
+  - process_id
+  - process_name
+- source_type: gpo-path-and-client-work-inventory
+  name:
+    zh: GPO 文件种类、客户端与任务清单
+    en: GPO file kind, client, and work inventory
+  channel: Independent GPMC or configuration inventory, asset history, and approved-job registry
+  required_fields:
+  - gpo_guid
+  - canonical_sysvol_path
+  - object_kind
+  - source_ip
+  - client_asset
+  - mapping_valid_interval
+  - principal_role
+  - expected_policy_scope
+  - job_id
+  - valid_from
+  - valid_to
+observables:
+- zh: 映射到策略 GUID 与具体文件种类的 SYSVOL 访问检查
+  en: SYSVOL access checks mapped to policy GUID and concrete object kind
+- zh: 配置审计后实际使用的文件 ReadData 权限
+  en: Exercised file ReadData rights under configured auditing
+- zh: 文件读取范围与客户端角色或批准工作不符
+  en: File-read scope inconsistent with client role or approved work
+correlation:
+  window:
+    zh: 共享检查与文件访问优先按同服务器会话和路径连接；初始十五分钟归组同 GPO 读取，跨域控制器只按稳定资产、主体和策略标识关联，不共享登录标识。
+    en: Prefer same-server session and path for joining share checks to file access. Initially group reads of one GPO over
+      fifteen minutes; correlate across domain controllers only through stable asset, principal, and policy identity, never
+      shared logon identifiers.
+  dimensions:
+  - dc_id
+  - subject_user_sid
+  - subject_logon_id
+  - client_asset
+  - gpo_guid
+  - canonical_sysvol_path
+  - job_id
+  - time
+false_positives:
+- zh: 登录和后台刷新、GPMC 报表、合规检查、备份与事件响应会读取相同文件；不同扩展或缓存状态可使合法活动只出现在文件面。
+  en: Sign-in and background refresh, GPMC reports, compliance checks, backups, and incident response read the same files;
+    extensions or cache state can leave legitimate activity on the file plane alone.
+blind_spots:
+- zh: 5145 不保证报告 NTFS 拒绝，未配置 SACL 时没有 4663 实际读取确认，二者均不提供完整返回内容或原始客户端进程。
+  en: Event 5145 does not guarantee reporting of NTFS denials, missing SACLs remove 4663 exercised-read confirmation, and
+    neither event supplies complete returned content or the original client process.
+- zh: 本地报表、已有副本、文件种类映射错误、共享别名、源地址复用与审计丢失会降低观察和归属，不能由缺失事件否定调查。
+  en: Local reports, existing copies, incorrect object-kind mappings, share aliases, reused source addresses, and audit loss
+    weaken observation and attribution; missing events cannot rule out surveying.
+tuning_guidance:
+  paragraphs:
+  - zh: 分别验证目录列举、文件 ReadData、共享层拒绝和 NTFS 层拒绝，确认规范路径、权限位及结果分级。实际读取确认分支仅在 4663 前提满足时启用；否则公开标注只能观察共享检查。先覆盖少量重要策略文件再按负载扩展，例外绑定具体源、GPO、任务和时段，保留低量读取以免只依赖批量枚举阈值。
+    en: Separately validate directory listing, file ReadData, share-level denial, and NTFS-level denial to confirm canonical
+      paths, rights, and evidence grading. Enable exercised-read confirmation only when 4663 prerequisites hold; otherwise
+      explicitly report check-only coverage. Start with a small set of important policy files and expand according to load.
+      Bind exceptions to origin, GPO, job, and time, retaining small reads so coverage does not depend solely on bulk-enumeration
+      thresholds.
+evidence_refs:
+- REF-001213
+- REF-000341
+- REF-000474
+- REF-000379
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-11-05'
+  modified: '2026-11-05'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

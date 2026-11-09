@@ -1,0 +1,138 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000381
+strategy_ref: DET-000279
+name:
+  zh: Windows 抓包组件与环境事实返回溯源
+  en: Windows Capture-Component and Environmental-Fact Return Provenance
+summary:
+  zh: 关联 Pktmon 进程、过滤器与实际包记录，并区分分析员解码和攻击者输出的事实。
+  en: Join Pktmon execution, filters, and packet records while distinguishing analyst decoding from facts in adversary output.
+domains:
+- enterprise
+platforms:
+- Windows
+logic:
+  paragraphs:
+  - zh: 以 host_id 与 ProcessGuid 关联 pktmon start、filter、stop、format 或 etl2pcap 操作和 ETL/PCAPNG 产物，核对同一主体、组件或接口、过滤范围、输出目录及批准窗口。start
+      命令只生成 capture-requested；计数器或经验证包记录生成 packet-received。Pktmon 可在多个组件记录同一包，使用 PktGroupId 与 PktNumber 去重，不能把 Appearance
+      增长误判为更多主机或更多连接。
+    en: Join Pktmon start, filter, stop, format, or etl2pcap operations to ETL or PCAPNG artifacts by host_id and ProcessGuid
+      and compare principal, component or interface, filter scope, output location, and approval window. A start command yields
+      capture-requested only; counters or validated packet records support packet-received. Pktmon can record one packet at
+      multiple components, so deduplicate by PktGroupId and PktNumber rather than treating increasing Appearance values as
+      more hosts or connections.
+  - zh: 在受限证据库生成事实评估，记录源产物 hash、帧号或包键、观察到的地址或协议字段、推断等级和结果来源。分析员解码报告 facts-exposed；只有保全的攻击者解析文件、控制台返回或内存结果中确有相同事实时才报告 fact-return-confirmed。端口名称映射不得升级为协议、版本或漏洞结论，无匹配工单的观察面即使没有确认结果也保留告警。
+    en: Produce a restricted fact assessment containing source-artifact hash, frame number or packet key, observed address
+      or protocol field, inference level, and result origin. Analyst decoding yields facts-exposed. Emit fact-return-confirmed
+      only when preserved adversary parsing files, console returns, or memory results actually contain those facts. Port-name
+      mappings do not establish protocol, version, or vulnerability conclusions. Preserve an unapproved-observation alert
+      even without a confirmed result.
+data_requirements:
+- source_type: windows-capture-process
+  name:
+    zh: Windows 抓包进程与产物事件
+    en: Windows capture process and artifact events
+  channel: Microsoft-Windows-Sysmon/Operational Event IDs 1 and 11
+  required_fields:
+  - timestamp
+  - host_id
+  - process_guid
+  - process_image
+  - command_line
+  - principal_id
+  - target_filename
+- source_type: pktmon-preserved-output
+  name:
+    zh: 保全的 Pktmon 配置与包输出
+    en: Preserved Pktmon configuration and packet output
+  channel: Pktmon ETL, text conversion, component list and filter list
+  required_fields:
+  - host_id
+  - boot_or_session_id
+  - artifact_hash
+  - capture_interval
+  - component_id
+  - filter
+  - pkt_group_id
+  - pkt_number
+  - appearance
+  - packet_timestamp
+  - decoded_packet_fields
+- source_type: restricted-environment-fact-assessment
+  name:
+    zh: 受限环境事实与返回证据评估
+    en: Restricted environmental-fact and return-evidence assessment
+  channel: forensic evidence store and reviewed parser output
+  required_fields:
+  - case_id
+  - artifact_hash
+  - record_locator
+  - fact_class
+  - observed_value_or_digest
+  - inference_level
+  - result_origin
+  - return_evidence_locator
+  - reviewer_id
+- source_type: diagnostic-approval
+  name:
+    zh: 诊断批准范围
+    en: Diagnostic approval scope
+  channel: change or incident management
+  required_fields:
+  - ticket_id
+  - owner
+  - principal_id
+  - asset_scope
+  - component_or_interface_scope
+  - filter_scope
+  - output_destination
+  - valid_from
+  - valid_to
+observables:
+- zh: 未批准主体启动覆盖多个通信对端的抓包，随后出现与源包可核对的地址或协议结果文件
+  en: An unapproved principal starts capture covering multiple peers and later produces address or protocol results traceable
+    to source packets
+- zh: 合法诊断进程的过滤器、组件、输出目录或持续时间超出工单约束
+  en: A diagnostic process uses filters, components, output paths, or duration outside its approved scope
+correlation:
+  window:
+    zh: 从首条过滤或 start 命令覆盖至 stop、产物生成及其后二十四小时；事实确认按产物 hash 在调查保留期内关联，不把该窗口作为行为成立阈值。
+    en: Span the first filter or start command through stop, artifact creation, and twenty-four hours afterward; join fact
+      confirmation by artifact hash throughout investigative retention rather than treating the window as a behavioral threshold.
+  dimensions:
+  - host_id
+  - process_guid
+  - principal_id
+  - boot_or_session_id
+  - component_id
+  - artifact_hash
+  - ticket_id
+  - time
+false_positives:
+- zh: 网络故障排查、容器连通性诊断、协议测试、NDR 校验和事件响应
+  en: Network troubleshooting, container-connectivity diagnostics, protocol tests, NDR validation, and incident response
+blind_spots:
+- zh: 本分析只覆盖保留了进程与输出的 Windows 原生抓包；自定义驱动、Linux 或 macOS、内存实时显示、被劫持的已批准收集器和审计缺失需要额外传感器。Sysmon 不提供包正文或文件内容 hash。
+  en: This analytic covers Windows native capture with retained process and output evidence only. Custom drivers, Linux or
+    macOS, memory-only display, hijacked approved collectors, and missing audit require additional sensors. Sysmon supplies
+    neither packet payload nor file-content hashes.
+tuning_guidance:
+  paragraphs:
+  - zh: 在试点机器验证 Sysmon Event 1 和 11 的采集及字段映射，以工单约束主体、组件、过滤器、目的地和期限，不永久白名单 pktmon.exe。组件 ID 可随重启变化，必须保全同次会话组件表。内容 hash 与结果来源由受限取证流程补充；原始内容不进入普通告警。
+    en: Validate Sysmon Event 1 and 11 collection and field mappings on pilot systems. Scope approval by principal, component,
+      filter, destination, and expiry rather than permanently allowing pktmon.exe. Preserve the component table from the same
+      session because IDs can change after reboot. Restricted forensics must supply content hashes and result origin, with
+      raw contents excluded from general alerts.
+evidence_refs:
+- REF-000366
+- REF-000797
+- REF-000801
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-11-05'
+  modified: '2026-11-05'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

@@ -1,0 +1,98 @@
+schema_version: 2.0.0
+type: mitigation
+id: MIT-000245
+name:
+  zh: 密码规则暴露范围与读取问责治理
+  en: Password-Rule Exposure Scope and Read Accountability Governance
+summary:
+  zh: 收紧非必要的规则读取入口并验证读取观察，保留密码更新和正常账号支持所需的信息。
+  en: Restrict unnecessary rule-reading paths and validate read visibility while preserving information required for password
+    changes and account support.
+description:
+  paragraphs:
+  - zh: 密码规则通常需要被用户和客户端了解，不能把规则保密当成认证强度的替代。控制应减少多余的远程 SAM 与云读取授权，为实际规则来源建立验证过的观察，并为账号支持设置可核查的任务范围。它主要降低无业务必要的暴露并提高问责，不撤回已获得的规则，也不承诺阻断具有正常读取权的失陷用户。
+    en: Users and clients often need password rules, so secrecy cannot substitute for authentication strength. Reduce unnecessary
+      remote SAM and cloud read entitlements, establish validated observation of actual rule sources, and bind account support
+      to verifiable work scope. The control primarily reduces exposure without a business need and improves accountability;
+      it neither retracts acquired rules nor promises to block compromised users with legitimate read rights.
+domains:
+- enterprise
+measures:
+- key: remote-sam-read-boundary
+  name:
+    zh: 验证远程 SAM 调用边界
+    en: Validate remote SAM call boundaries
+  description:
+    paragraphs:
+    - zh: 清查真正需要 SAMRPC 的管理与密码客户端，对远程 SAM 的服务器级访问描述符先用 audit-only 模式评估，再只保留必要主体和网络来源。区分域控制器与成员机默认行为，验证拒绝和允许的实际结果；不要仅启用匿名账号枚举限制便宣称所有密码策略方法都已受控。
+      en: Inventory management and password clients actually requiring SAMRPC, evaluate the server-wide remote-SAM descriptor
+        in audit-only mode, and retain only required principals and network origins. Distinguish domain-controller and member-host
+        defaults and validate actual permitted and denied outcomes. Enabling an anonymous account-enumeration restriction
+        alone must not be reported as control of every password-policy method.
+  control_type: exposure-reduction
+- key: iam-rule-read-entitlement
+  name:
+    zh: 审查 IAM 规则读取和自助需求
+    en: Review IAM rule-read and self-service needs
+  description:
+    paragraphs:
+    - zh: 审查 iam:GetAccountPasswordPolicy 的实际使用身份，收回无 owner 或过期自动化的额外访问，并保留经确认的用户密码更新流程。账号级允许用户自行改密可以同时赋予此读取能力，不应只审查附加身份策略；变更前后用真实自助页面验证，避免为隐藏规则破坏恢复和更新功能。
+      en: Review identities actually using iam:GetAccountPasswordPolicy, withdraw extra access for ownerless or expired automation,
+        and preserve validated user password-change workflows. Account-level permission for users to change their passwords
+        can also provide this read capability, so attached identity policies alone are insufficient. Test real self-service
+        pages before and after changes rather than breaking recovery and updates to hide rules.
+  control_type: exposure-reduction
+- key: policy-read-observation-validation
+  name:
+    zh: 验证规则读取遥测与任务范围
+    en: Validate rule-read telemetry and work scope
+  description:
+    paragraphs:
+    - zh: 在选定 Windows 端点启用所需进程命令行与脚本记录，在 Linux 实际规则路径部署有容量预算的读取审计，并集中保留 IAM 读取事件。登记账号支持来源、身份、目标和有效期，分别验证请求、拒绝及有效输出能证明什么；网络
+        SAMR 观察按方法识别，不要求所有策略读取都先打开域对象。监测事件丢失与解析版本，保护可能含敏感参数的日志。
+      en: Enable required process-command and script records on selected Windows endpoints, deploy capacity-budgeted Linux
+        read auditing on actual rule paths, and centrally retain IAM read events. Register account-support origins, identities,
+        targets, and expiry and test what requests, denials, and validated output establish separately. Identify network SAMR
+        by method instead of requiring every rule read to open a domain object first. Monitor loss and parser versions and
+        protect logs potentially containing sensitive arguments.
+  control_type: detective-support
+applications:
+- target_ref: NJT-0237
+  use:
+    paragraphs:
+    - zh: 对密码策略发现，优先收紧不承担账号支持职责的远程 SAM 与额外 IAM 规则读取入口，并把保留的读取同自助更新、合规或帮助台任务绑定。Linux 规则路径要跟随实际服务栈和覆盖参数核查，Windows 与云则分别记录本地、默认域、用户有效及
+        IAM 用户视图，避免把不同结果混在一个告警中。
+      en: For Password Policy Discovery, prioritize unnecessary remote SAM and extra IAM rule-read paths outside account-support
+        responsibilities, binding retained reads to self-service changes, compliance, or help-desk work. Verify Linux rule
+        paths against actual service stacks and overrides. Separately retain local, domain-default, user-resultant, and IAM-user
+        views on Windows and in the cloud instead of combining different results into one alert.
+  expected_effect:
+    paragraphs:
+    - zh: 缺少业务依据的查询来源减少，可见规则读取更容易与目标范围及任务归属关联。经过验证的观察能保留查询尝试和取得结果之间的差异，使借用普通账号工具的攻击者更难仅靠接口外观获得放行；具体阻断范围取决于实际访问描述符和自助流程。
+      en: Fewer query origins lack a business basis, and visible reads become easier to associate with targets and work ownership.
+        Validated observation preserves the difference between attempts and acquired results, making ordinary account-tool
+        appearance less sufficient for allowance. Actual prevention depends on access descriptors and self-service workflows.
+  limitations:
+    paragraphs:
+    - zh: 正常客户端和已失陷用户仍可能依法读取所需规则，错误收紧 SAM 访问会影响管理软件，自助需求也限制云端可收紧的范围。定向审计必须提前部署且具有容量代价，加密 RPC 与缺失返回内容仍造成盲区。该控制不能替代强认证、撤回既有信息或仅凭缺事件证明没有调查。
+      en: Legitimate clients and compromised users can still read required rules. Incorrect SAM restrictions affect management
+        software, and self-service needs limit cloud tightening. Targeted auditing must be deployed in advance and consumes
+        capacity, while encrypted RPC and missing results leave gaps. The control cannot replace strong authentication, retract
+        information already learned, or prove absence of surveying from missing events.
+evidence_refs:
+- REF-001270
+- REF-001269
+- REF-001265
+- REF-001268
+- REF-000623
+- REF-000463
+- REF-000840
+- REF-001266
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-11-06'
+  modified: '2026-11-06'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

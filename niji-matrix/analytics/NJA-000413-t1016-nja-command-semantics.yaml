@@ -1,0 +1,165 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000413
+strategy_ref: DET-000297
+name:
+  zh: 网络诊断命令语义与批准任务关联
+  en: Network-Diagnostic Command Semantics and Approved-Work Correlation
+summary:
+  zh: 按参数识别接口和路由调查并与真实执行上下文核对，输出请求级调查线索。
+  en: Identify interface and routing surveys through arguments and verify actual execution context, yielding request-level
+    investigation leads.
+domains:
+- enterprise
+platforms:
+- Windows
+logic:
+  paragraphs:
+  - zh: 在预先启用且验证的 Sysmon Event 1 中解析 Image 与 CommandLine，将 ipconfig 无参数和 /all、netstat -r、route print 标记为配置或路由调查。不得仅匹配二进制名称：ipconfig
+      /displaydns 转交远端主机知识复用语境，/renew、/release、/flushdns、/registerdns 及 route add/change/delete 分别作为不同操作；netstat -ano 的连接事实归连接发现。对启用的
+      Windows PowerShell 4104，按 ScriptBlockId 与 MessageNumber/MessageTotal 还原内容，识别实际 Get-NetIPConfiguration 表达式并保留 InterfaceIndex、All、CompartmentId、AllCompartments
+      和 CimSession 参数；残片或仅字符串常量不确认调用。
+    en: Parse Image and CommandLine from pre-enabled and validated Sysmon Event 1, tagging bare ipconfig and /all, netstat
+      -r, and route print as configuration or routing surveys. Do not match only the binary name. Transfer ipconfig /displaydns
+      to the remote-host-knowledge context; keep /renew, /release, /flushdns, /registerdns, and route add/change/delete as
+      different operations. Connection facts from netstat -ano belong to connection discovery. Reassemble enabled Windows
+      PowerShell 4104 content by ScriptBlockId and MessageNumber/MessageTotal, identify actual Get-NetIPConfiguration expressions,
+      and preserve InterfaceIndex, All, CompartmentId, AllCompartments, and CimSession arguments. Fragments or string constants
+      alone do not establish invocation.
+  - zh: 以 asset_id 和 process_guid 连接进程实例与父级，将进程 User 或事件用户映射为事件时间有效的 principal_sid；PowerShell 的执行 PID 必须通过进程生存期映射到 GUID。再与批准台账中的主体、主机、查询种类、范围、模块或命令身份、入口及有效期核对。窗口内出现不符合职责的配置调查组合，或单次调查的实际入口和批准范围不符时，生成含偏差理由的待调查事件；身份或审批状态缺失时记录未知而非自动恶意。Event
+      1 与 4104 不含返回配置，此路径始终输出请求级结论，不消费未声明的网络或输出证据。
+    en: Join process instances and ancestry through asset_id and process_guid, map process User or event user to a principal_sid
+      valid at event time, and map PowerShell execution PIDs to GUIDs through process lifetimes. Compare the approved register's
+      principal, asset, query kind, scope, module or command identity, entry, and validity. Produce an investigable event
+      with deviation reasons for a survey combination inconsistent with duties or a single query whose entry and scope differ
+      from approval. Missing identity or approval remains unknown rather than automatically malicious. Event 1 and 4104 do
+      not include returned configuration; this path stays at request level and consumes no undeclared network or output evidence.
+data_requirements:
+- source_type: windows-process-creation
+  name:
+    zh: 经配置的 Sysmon 进程创建
+    en: Configured Sysmon process creation
+  channel: Microsoft-Windows-Sysmon/Operational Event 1
+  required_fields:
+  - timestamp
+  - asset_id
+  - process_guid
+  - process_id
+  - image
+  - command_line
+  - parent_process_guid
+  - parent_image
+  - account_name
+  - logon_guid
+  - image_hashes
+- source_type: windows-powershell-scriptblock
+  name:
+    zh: 启用后的 Windows PowerShell 脚本块内容
+    en: Enabled Windows PowerShell script-block content
+  channel: Microsoft-Windows-PowerShell/Operational Event 4104
+  required_fields:
+  - timestamp
+  - asset_id
+  - process_id
+  - scriptblock_id
+  - message_number
+  - message_total
+  - scriptblock_text
+- source_type: process-instance-lifetime-map
+  name:
+    zh: 事件时间进程实例与生存期映射
+    en: Event-time process-instance and lifetime map
+  channel: Organization-maintained Sysmon Event 1 and 5 lifetime join
+  required_fields:
+  - asset_id
+  - process_id
+  - process_guid
+  - process_start_time
+  - process_end_time
+  - mapping_status
+- source_type: event-time-identity-map
+  name:
+    zh: 事件时间账户到主体映射
+    en: Event-time account-to-principal map
+  channel: Organization-maintained identity history
+  required_fields:
+  - asset_id
+  - account_name
+  - principal_sid
+  - valid_from
+  - valid_to
+  - mapping_status
+- source_type: approved-network-diagnostic-register
+  name:
+    zh: 网络诊断批准任务与资产职责台账
+    en: Approved network-diagnostic work and asset-role register
+  channel: Organization-maintained support and inventory register
+  required_fields:
+  - approval_id
+  - asset_id
+  - asset_role
+  - principal_sid
+  - approved_query_kind
+  - approved_query_scope
+  - approved_command_or_module_identity
+  - approved_entry
+  - valid_from
+  - valid_to
+  - approval_status
+observables:
+- zh: 由明确参数识别的接口、地址或路由调查请求。
+  en: Interface, address, or route-survey requests identified through explicit arguments.
+- zh: 事件时间主体、入口或查询范围与批准诊断任务的具体偏差。
+  en: Specific differences between event-time principal, entry, or query scope and approved diagnostics.
+- zh: 多类配置调查在同一进程谱系或管理会话内的请求组合。
+  en: Combinations of configuration-survey requests in one process lineage or management session.
+correlation:
+  window:
+    zh: 起始采用 15 分钟请求组合窗口，并保留完整进程生存期和批准任务有效区间；该窗口是部署起点，未经检测率实测。
+    en: Begin with a 15-minute request-combination window while retaining complete process lifetimes and approval-validity
+      intervals. This is a deployment starting point without measured detection performance.
+  dimensions:
+  - asset_id
+  - process_guid
+  - parent_process_guid
+  - principal_sid
+  - logon_guid
+  - approved_query_kind
+  - approved_query_scope
+  - timestamp
+false_positives:
+- zh: 帮助台网络故障排查、VPN 初始化、安装器诊断和经批准的资产盘点。
+  en: Help-desk troubleshooting, VPN initialization, installer diagnostics, and approved inventory.
+- zh: 台账更新晚于紧急支持或进程入口变更时的授权任务。
+  en: Authorized emergency support or changed process entries preceding register updates.
+blind_spots:
+- zh: 程序内 API、未启用的脚本日志、残缺参数和未覆盖的远程管理面无法由此路径恢复。
+  en: In-process APIs, disabled script logs, truncated arguments, and uncovered remote-management planes are not reconstructed
+    by this path.
+- zh: 4104 内容不证明每个表达式执行，进程创建不提供输出；失去进程生存期或账户历史时不能可靠归属。
+  en: Script-block content does not establish execution of every expression, and creation events provide no output. Missing
+    process lifetimes or identity history prevents reliable attribution.
+tuning_guidance:
+  paragraphs:
+  - zh: 首先核验参数解析器对组合开关、引号、语言环境和相似命令的分类，并用正常支持任务建立查询组合基线。例外绑定主机、主体、入口、命令或模块内容和期限，不能整体放行 ipconfig 或签名解释器。对紧急支持保留有期限的事后审核状态，避免把审批缺失硬编码为恶意；单次敏感范围调查也不应因低频而被永久忽略。
+    en: First validate parsing of combined options, quoting, localization, and similar commands, then establish survey-combination
+      baselines from ordinary support. Bind exceptions to assets, principals, entries, command or module content, and expiry
+      rather than allowing all ipconfig or signed interpreters. Preserve time-bounded retrospective review for emergency support
+      instead of hardcoding missing approval as malicious, and do not permanently ignore a single sensitive-scope inquiry
+      because it is infrequent.
+evidence_refs:
+- REF-000025
+- REF-001331
+- REF-000230
+- REF-000463
+- REF-001371
+- REF-001372
+- REF-001376
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-11-07'
+  modified: '2026-11-07'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

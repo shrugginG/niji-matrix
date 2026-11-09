@@ -1,0 +1,168 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000405
+strategy_ref: DET-000292
+name:
+  zh: 软件清单命令语义与授权范围关联
+  en: Software-Inventory Command Semantics and Authorization-Scope Correlation
+summary:
+  zh: 保留软件登记、版本或安全产品查询条件，输出可核验的未登记或越界软件调查线索。
+  en: Preserve registration, version, or security-product inquiry conditions and produce verifiable leads for unregistered
+    or out-of-scope software surveying.
+domains:
+- enterprise
+platforms:
+- Windows
+logic:
+  paragraphs:
+  - zh: 从 Sysmon Event 1 的完整参数中恢复 reg query 对卸载登记路径的读取、wmic 对 Win32_Product 或已验证软件库存类的 get 查询、以及 root\SecurityCenter2 的 AntiVirusProduct
+      请求；只有软件信息对象明确时才生成 software_inventory_request。恢复参数中的远端目标、用户和 Registry 位数选择。帮助、元数据说明、任意 Registry 键、进程与服务清单不自动命中；call Uninstall、删除键和终止动作分流为后继修改。对
+      Windows PowerShell 5.1 的可选脚本分支，先重组脚本块并确认实际 Get-CimInstance/Get-WmiObject 类或卸载登记读取语义；仅见 powershell.exe 或脚本文件名时保留未知。
+    en: Recover reg query reads of uninstall-registration paths, wmic get requests for Win32_Product or validated software-inventory
+      classes, and root\SecurityCenter2 AntiVirusProduct requests from full Sysmon Event 1 arguments. Emit software_inventory_request
+      only for an explicit software information object. Preserve remote targets, users, and registry-view selections in arguments.
+      Exclude help, metadata descriptions, arbitrary keys, and process or service inventories; route call Uninstall, key deletion,
+      and termination to later modification behaviors. The optional Windows PowerShell 5.1 branch first reassembles script
+      blocks and resolves actual Get-CimInstance/Get-WmiObject classes or uninstall-registration read semantics; a powershell.exe
+      launch or script filename alone remains unknown.
+  - zh: 将 Event 1 的 System/Computer、UtcTime、ProcessGuid、ProcessId、Image、CommandLine、User、ParentProcessGuid 分别映射 host_key、timestamp、process_guid、process_id、image_path、command_line、user_name、parent_process_guid；process_start
+      取该创建事件的 UtcTime。用于脚本生命周期关联的 Event 5 把 UtcTime 记作 process_end。4104 的 System/Computer、TimeCreated/SystemTime、Execution/ProcessID、ScriptBlockId、MessageNumber、MessageTotal、ScriptBlockText
+      分别映射 host_key、timestamp、process_id、script_block_id、message_number、message_total、script_block_text。按主机、进程生命周期和 ScriptBlockId
+      重组，丢段不补造内容。命令中解析的 query_scope 与 target_scope 是派生字段，保留原文供复核。
+    en: Map Event 1 System/Computer, UtcTime, ProcessGuid, ProcessId, Image, CommandLine, User, and ParentProcessGuid to host_key,
+      timestamp, process_guid, process_id, image_path, command_line, user_name, and parent_process_guid; process_start is
+      that creation event's UtcTime. For script-lifetime joins, Event 5 UtcTime becomes process_end. Map 4104 System/Computer,
+      TimeCreated/SystemTime, Execution/ProcessID, ScriptBlockId, MessageNumber, MessageTotal, and ScriptBlockText to host_key,
+      timestamp, process_id, script_block_id, message_number, message_total, and script_block_text. Reassemble by host, process
+      lifetime, and ScriptBlockId without inventing missing fragments. Parsed query_scope and target_scope are derived fields
+      with retained raw text.
+  - zh: 将调用者、执行主机、映像与实际软件信息范围同独立批准台账比较。台账必须由工作负责人明确登记 work_id、owner、host_key、user_name、image_path、query_scope、target_scope、valid_from
+      和 valid_until，不能从观察到的命令反向自动批准。仅接受相同规范主机名与账户表示；需要别名转换时须另有经核验身份映射，缺少它就保留未解析，不把两个同名本地账户合并。执行主机或查询范围越过登记任务时输出待核验线索，缺台账标为授权未知，均不直接认定恶意。
+    en: Compare caller, execution host, image, and actual software scope with an independently maintained authorization register.
+      A work owner must explicitly register work_id, owner, host_key, user_name, image_path, query_scope, target_scope, valid_from,
+      and valid_until; observed commands cannot authorize themselves. Accept matching canonical hostname and account representations
+      only. Alias conversion requires a separately verified identity map; without it retain unresolved identities rather than
+      merging same-name local accounts. Emit a review lead when the host or query scope exceeds registered work, and label
+      absent register information as authorization unknown rather than malicious.
+  - zh: 以十分钟初始关联窗口合并同一进程或完整脚本中的盘点请求；该窗口用于去重和任务联系，不是恶意阈值。安全或备份产品定向请求的优先级取决于任务职责与入侵上下文，不由产品字符串单独决定。输出限定为 software_inventory_request，保留解析置信度；本分析没有部署结果采集合同，不能因重定向文件创建、工具正常退出或清单基线存在而升级为软件已安装、运行、启用或关闭。
+    en: Use an initial ten-minute window to group inventory requests from one process or complete script, for deduplication
+      and task association rather than a maliciousness threshold. Prioritize security- or backup-targeted inquiries according
+      to work duties and intrusion context, not product strings alone. Limit output to software_inventory_request with parsing
+      confidence. This analytic deploys no result-capture contract, so redirected file creation, successful exit, or baseline
+      inventory cannot establish installed, running, enabled, or disabled software.
+data_requirements:
+- source_type: sysmon-process-lifecycle
+  name:
+    zh: 已配置的 Sysmon 进程创建与终止
+    en: Configured Sysmon process creation and termination
+  channel: Microsoft-Windows-Sysmon/Operational
+  required_fields:
+  - host_key
+  - timestamp
+  - event_id
+  - process_guid
+  - process_id
+  - process_start
+  - process_end
+  - image_path
+  - command_line
+  - user_name
+  - parent_process_guid
+- source_type: optional-powershell-script-block
+  name:
+    zh: 可选且已启用的 Windows PowerShell 5.1 脚本块
+    en: Optional enabled Windows PowerShell 5.1 script blocks
+  channel: Microsoft-Windows-PowerShell/Operational
+  required_fields:
+  - host_key
+  - timestamp
+  - process_id
+  - script_block_id
+  - message_number
+  - message_total
+  - script_block_text
+- source_type: approved-software-inventory-work
+  name:
+    zh: 由负责人独立维护的软件盘点与支持批准台账
+    en: Independently owner-maintained software-inventory and support register
+  channel: null
+  required_fields:
+  - work_id
+  - owner
+  - host_key
+  - user_name
+  - image_path
+  - query_scope
+  - target_scope
+  - valid_from
+  - valid_until
+- source_type: conditional-verified-identity-map
+  name:
+    zh: 仅在别名转换时使用的经核验身份映射合同
+    en: Verified identity-map contract used only for alias conversion
+  channel: null
+  required_fields:
+  - observed_host
+  - canonical_host_key
+  - observed_user
+  - canonical_user_name
+  - valid_from
+  - valid_until
+  - owner
+observables:
+- zh: 明确请求软件登记、版本或安全产品信息的命令或完整脚本
+  en: Commands or complete scripts explicitly requesting registration, versions, or security-product information
+- zh: 实际查询对象与有效批准任务的主机、主体或范围差异
+  en: Differences between actual inquiry objects and valid authorized host, principal, or scope
+correlation:
+  window:
+    zh: 十分钟初始任务关联并保留覆盖客户端全生命周期的进程创建与终止；依据本地任务时长调整
+    en: Initial ten-minute task association with process creation and termination retained over the client's full lifetime;
+      tune to local task duration
+  dimensions:
+  - host_key
+  - process_guid
+  - user_name
+  - query_scope
+  - target_scope
+false_positives:
+- zh: 补丁与许可盘点、部署核对及经授权远程支持
+  en: Patch and licensing inventory, deployment checks, and authorized remote support
+- zh: 安全代理健康检查、应急取证和备份兼容性核验
+  en: Security-agent health checks, incident forensics, and backup-compatibility validation
+blind_spots:
+- zh: 仅在内存运行的查询、非 WMI API、丢失的参数和未启用脚本块不一定留下本分支可解析命令
+  en: In-memory inquiries, non-WMI APIs, missing arguments, and disabled script logging may leave no parseable command for
+    this branch
+- zh: 4104 内容不保证所有分支已经执行；命令与脚本均不提供完整产品结果
+  en: 4104 content does not establish execution of every branch; neither commands nor scripts provide complete product results
+- zh: 缺失创建或终止、同名账户、时间漂移及被盗批准身份降低归属与任务解释力
+  en: Missing creation or termination, same-name accounts, clock drift, and stolen approved identities weaken attribution
+    and task interpretation
+tuning_guidance:
+  paragraphs:
+  - zh: 验证正常卸载清单、仅软件版本查询、帮助请求、失败远端查询和 Win32_Product 调用的解析差异；副作用测试应在受控系统进行，不能在生产重复执行来“确认”请求。Event 5 未到达时 process_end 保持 null
+      并记录生命周期不完整；event_id 来自 System/EventID。身份映射是目录或资产系统维护的有效期记录，并非默认日志字段；没有该记录就禁用别名合并。批准台账绑定具体范围与期限，不永久放行 reg、wmic、PowerShell
+      或整个运维账户。没有 4104 时运行命令分支并标注脚本盲区，PowerShell 7 需单独验证通道和结构。
+    en: Validate parsing differences for a normal uninstall inventory, a version-only inquiry, help, failed remote inquiries,
+      and Win32_Product calls. Side-effect tests belong on controlled systems; do not repeat production queries to confirm
+      a request. Keep process_end null with an incomplete-lifetime flag when Event 5 is absent; event_id comes from System/EventID.
+      Identity maps are validity-bounded directory or asset records, not default log fields, and absent maps disable alias
+      merging. Bind authorization to exact scope and expiry instead of permanently allowing reg, wmic, PowerShell, or administrative
+      accounts. Without 4104, run the command branch with an explicit script gap; PowerShell 7 needs independently validated
+      channels and structure.
+evidence_refs:
+- REF-000639
+- REF-001340
+- REF-001336
+- REF-001337
+- REF-000230
+- REF-000463
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-11-07'
+  modified: '2026-11-07'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

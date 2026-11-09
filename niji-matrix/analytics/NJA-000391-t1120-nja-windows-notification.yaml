@@ -1,0 +1,119 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000391
+strategy_ref: DET-000283
+name:
+  zh: Windows 设备反馈接收与设备事实链
+  en: Windows Device-Feedback Reception and Device-Fact Chain
+summary:
+  zh: 在专用追踪可用时，将订阅或默认消息接收连接到同一进程的设备事实取得。
+  en: Where dedicated tracing exists, connect subscriptions or default-message reception to device-fact acquisition by the
+    same process.
+domains:
+- enterprise
+platforms:
+- Windows
+logic:
+  paragraphs:
+  - zh: 仅在专用调用与消息追踪已验证时启用。采集 CM_Register_Notification、SHChangeNotifyRegister 或 RegisterDeviceNotification 的调用者、请求类型和返回状态，维护到注销、进程结束或追踪中断的接收生命周期；也单独记录顶层窗口实际收到的
+      WM_DEVICECHANGE，因为默认卷广播可能无显式注册。API 导入、注册失败和静态反汇编只作调查线索。消息 0x219 是 WM_DEVICECHANGE，不是安全日志事件号。
+    en: Enable only after validating dedicated call and message tracing. Record callers, request types, and return status
+      for CM_Register_Notification, SHChangeNotifyRegister, or RegisterDeviceNotification and maintain receiving lifetimes
+      through deregistration, process exit, or trace interruption. Separately record actual WM_DEVICECHANGE reception by top-level
+      windows because default volume broadcasts can lack explicit registration. API imports, failed registration, and static
+      disassembly are investigation leads only. Message 0x219 identifies WM_DEVICECHANGE rather than a Security event number.
+  - zh: 以 host_id、process_id、process_start 和接收上下文标识连接注册或接收、反馈类别及其后的设备属性结果。按官方结构区分接口实例路径、卷位图和无设备载荷的变更通知，不在各结构间强行转换。开始时以反馈后一百二十秒关联同进程设备查询，允许异步工作线程；只有捕获的有效返回能升级为事实取得。将长驻接收、稀疏变更处理和未批准调用来源作为组合线索，不以缺少轮询作证。
+    en: Join registration or reception, feedback type, and subsequent device-property results by host_id, process_id, process_start,
+      and receiving-context identity. Respect official distinctions among interface-instance paths, volume masks, and change
+      notices lacking device payload rather than forcing conversion. Initially correlate same-process queries within 120 seconds
+      of feedback, allowing asynchronous workers; only captured valid returns establish fact acquisition. Combine resident
+      reception, sparse change handling, and unapproved provenance rather than using absent polling as proof.
+  - zh: 已启用的 6416 可用 Computer、TimeCreated 和 DeviceId 旁证外部设备识别时间；其 DeviceId 是外设实例路径，SubjectUserSid 和系统 Execution ProcessID
+      不代表订阅者。没有该事件也不能否定已有接口或默认消息接收。若专用追踪不可用，分析必须报告覆盖不足，不能静默降为“插拔后出现进程”并宣称证实本子项。
+    en: Enabled 6416 can corroborate external-device recognition through Computer, TimeCreated, and DeviceId. Here DeviceId
+      is a peripheral-instance path, while SubjectUserSid and the system Execution ProcessID do not identify the subscriber.
+      Absence does not exclude existing interfaces or default-message reception. Without dedicated tracing, report insufficient
+      coverage rather than silently substituting 'process after hotplug' and claiming this child is confirmed.
+data_requirements:
+- source_type: validated-device-notification-trace
+  name:
+    zh: 需部署验证的设备 API、消息及结果追踪合同
+    en: Device API, message, and result trace contract requiring deployment validation
+  channel: null
+  required_fields:
+  - host_id
+  - timestamp
+  - process_id
+  - process_start
+  - receiving_context_id
+  - record_kind
+  - api_name
+  - return_status
+  - notification_type
+  - payload_type
+  - device_identity
+  - result_level
+- source_type: approved-peripheral-work
+  name:
+    zh: 设备支持任务与主机身份映射
+    en: Device-support work and host identity mapping
+  channel: Managed asset inventory and approved support jobs
+  required_fields:
+  - host_id
+  - host_aliases
+  - principal
+  - executable
+  - mode
+  - device_scope
+  - job_id
+  - valid_from
+  - valid_to
+observables:
+- zh: 成功接收关系或正面消息接收，随后同进程取得可解释的设备事实
+  en: Successful receiving relationship or positive message reception followed by interpretable device facts from the same
+    process
+- zh: 接收生命周期跨越安静阶段，并在设备变更后出现稀疏处理
+  en: A receiving lifetime spans quiet periods with sparse handling after device changes
+correlation:
+  window:
+    zh: 状态保留到注销或进程结束，追踪中断则标为未知；初始使用反馈后一百二十秒处理窗口，并按真实异步延迟调优。
+    en: Retain state through deregistration or process exit and mark trace interruption unknown; begin with 120 seconds after
+      feedback and tune to actual asynchronous delays.
+  dimensions:
+  - host_id
+  - process_id
+  - process_start
+  - receiving_context_id
+  - device_identity
+false_positives:
+- zh: 正常 Shell、设备管理服务、会议软件、同步客户端和硬件调试程序
+  en: Ordinary shells, device-management services, conferencing tools, synchronization clients, and hardware debuggers
+blind_spots:
+- zh: 默认 EDR 与 6416 不提供该追踪合同；跨进程交接、消息合并、容器或驱动路径及追踪丢失会使关联不完整。
+  en: Default EDR and 6416 do not provide this trace contract; cross-process handoff, message coalescing, container or driver
+    paths, and trace loss can leave incomplete correlation.
+tuning_guidance:
+  paragraphs:
+  - zh: 该数据源是待实现和验收的采集合同，不是某产品已提供的字段承诺。用批准测试程序分别验证成功注册、失败注册、无注册卷广播、移除、重复反馈及无返回内容，并核对 API 原生返回类型。对无设备标识的记录显式存 null 而不是伪造实例路径；批准项绑定签名、调用栈来源、设备职责和版本，保留受信进程被注入时的上下文异常。
+    en: This is a collection contract to implement and accept rather than a promise that a product supplies these fields.
+      Use approved test programs to validate successful and failed registration, unregistered volume broadcasts, removal,
+      duplicate feedback, and absent returned content, checking native API return types. Store null explicitly where records
+      have no device identity rather than fabricating a path. Bind approvals to signature, call-stack provenance, device role,
+      and version while retaining anomalies from injection into trusted processes.
+evidence_refs:
+- REF-001274
+- REF-001276
+- REF-001275
+- REF-001280
+- REF-001281
+- REF-000583
+- REF-001282
+- REF-001277
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-11-06'
+  modified: '2026-11-06'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

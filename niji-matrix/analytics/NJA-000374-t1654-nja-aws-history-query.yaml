@@ -1,0 +1,107 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000374
+strategy_ref: DET-000275
+name:
+  zh: AWS 历史查询范围与驱逐上下文关联
+  en: AWS History Query Scope and Eviction Context Correlation
+summary:
+  zh: 识别非职责主体的 LookupEvents 调查，并将历史筛选条件与独立的驱逐行动分开关联。
+  en: Identify LookupEvents investigation outside principal duties and correlate historical selectors separately with independent
+    eviction actions.
+domains:
+- enterprise
+platforms:
+- IaaS
+logic:
+  paragraphs:
+  - zh: 在已验证保留 LookupEvents 管理读事件的账户和区域，筛选 eventSource=cloudtrail.amazonaws.com、eventName=LookupEvents，提取 eventTime、eventID、awsRegion、recipientAccountId、userIdentity、sourceIPAddress、userAgent、requestParameters
+      与 errorCode。按账户、区域、principalId、accessKeyId 或会话连接请求及分页；保留 startTime/endTime、lookupAttributes 和 nextToken，缺少时间条件表示该接口允许的历史范围，不能写成无限历史。requestParameters
+      中 ReadOnly=false 表示筛选修改类历史记录，不是 LookupEvents 请求本身变成写操作。
+    en: In accounts and Regions where retention of LookupEvents management reads has been verified, select eventSource=cloudtrail.amazonaws.com
+      and eventName=LookupEvents, extracting eventTime, eventID, awsRegion, recipientAccountId, userIdentity, sourceIPAddress,
+      userAgent, requestParameters, and errorCode. Join requests and pages by account, Region, principalId, accessKeyId, or
+      session. Retain startTime, endTime, lookupAttributes, and nextToken. An omitted time predicate means the interface's
+      permitted history, not unlimited history. ReadOnly=false within requestParameters selects mutation history; it does
+      not turn the LookupEvents request into a write.
+  - zh: 与批准的 SOC 和运维查询角色比较主体及来源，在独立驱逐时间线前后各三十分钟检查非响应者是否查询变更记录；继续按同一身份或可证明的控制关联观察后续访问和权限变更。仅把有错误的请求记为 denied_or_failed_lookup，无错误时记
+      successful_lookup_candidate，CloudTrail 没有完整 Events 响应时不声称返回条数或所有记录；没有独立证据证明操作者已取得反馈并据此选择行为时，后续变更只输出关联候选。账户、区域和事件类别超出
+      LookupEvents 覆盖时不推断没有调查。
+    en: Compare identities and origins with approved SOC and operations query roles. Around an independently recorded eviction
+      timeline, examine a thirty-minute interval on each side for mutation-history lookups by nonresponders, then inspect
+      later access and privilege changes under the same identity or demonstrably linked control. Grade errored requests denied_or_failed_lookup
+      and error-free requests successful_lookup_candidate. Without a full Events response, do not claim returned counts or
+      all records. Later changes remain correlation candidates unless independent evidence establishes acquired feedback and
+      action selection. Do not infer absent investigation outside the API's account, Region, or event-class coverage.
+data_requirements:
+- source_type: aws-cloudtrail-management-read
+  name:
+    zh: 已验证的 CloudTrail LookupEvents 审计
+    en: Validated CloudTrail LookupEvents Audit
+  channel: CloudTrail management read events
+  required_fields:
+  - event_time
+  - event_id
+  - event_source
+  - event_name
+  - aws_region
+  - recipient_account_id
+  - user_identity
+  - source_ip_address
+  - user_agent
+  - request_parameters
+- source_type: authorized-cloud-query-and-response-timeline
+  name:
+    zh: 云查询授权与驱逐时间线
+    en: Cloud Query Authorization and Eviction Timeline
+  channel: null
+  required_fields:
+  - account_id
+  - principal_id
+  - role
+  - approved_start
+  - approved_end
+  - action_time
+  - affected_identity
+observables:
+- zh: LookupEvents 调用及所选历史属性与区域
+  en: LookupEvents invocation with selected historical attributes and Region
+- zh: 非响应者在驱逐前后查询修改类历史并出现后续访问变化
+  en: A nonresponder querying mutation history around eviction with subsequent access changes
+correlation:
+  window:
+    zh: 查询序列三十分钟；驱逐前后各三十分钟；身份职责基线三十天。
+    en: Query episode 30m; 30m before and after eviction; identity-duty baseline 30d.
+  dimensions:
+  - account_id
+  - aws_region
+  - principal_id
+  - access_key_id
+  - source_ip
+  - query_filter
+false_positives:
+- zh: 正常响应、IAM 审计、变更回溯、账单与资源排障。
+  en: Legitimate response, IAM audits, change review, billing, and resource troubleshooting.
+blind_spots:
+- zh: 未保留管理读事件、区域遗漏、被盗响应者身份、延迟投递以及通过 S3 等其他路径读取日志；成功 API 不保证日志里保存完整返回事件。
+  en: Missing management-read retention, omitted Regions, stolen responder identities, delayed delivery, and alternative paths
+    such as S3 log reads; API success does not ensure complete returned events are retained.
+tuning_guidance:
+  paragraphs:
+  - zh: 用已知调用验证本地事件类型和读选择器，保留拒绝与空结果对照；响应者放行需绑定设备、时段和任务。ReadOnly=false 仅作为历史调查主题，不单独提高为恶意。根据投递延迟扩大关联窗口，并按账户与区域去重 eventID 后保留分页请求数量。
+    en: Validate local event type and read selectors with known calls, retaining denial and empty-result controls. Responder
+      exceptions must be scoped to device, interval, and work item. ReadOnly=false identifies the history topic and does not
+      independently imply maliciousness. Widen joins for delivery delay and deduplicate eventID within account and Region
+      while preserving page-request counts.
+evidence_refs:
+- REF-001231
+- REF-001232
+- REF-000523
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-11-05'
+  modified: '2026-11-05'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

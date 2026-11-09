@@ -1,0 +1,143 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000411
+strategy_ref: DET-000295
+name:
+  zh: 端点地址定位请求与语义结果分级
+  en: Staging of Endpoint Address-Location Requests and Semantic Results
+summary:
+  zh: 区分定位域解析、连接、HTTP 请求和成功解析结果，避免把外联等同于取得位置。
+  en: Separate location-domain resolution, connection, HTTP request, and parsed result rather than equating egress with acquired
+    location.
+domains:
+- enterprise
+platforms:
+- Windows
+logic:
+  paragraphs:
+  - zh: 在已启用 Sysmon Event 1、3、5、22 的 Windows 主机上，以 ProcessGuid 规范化 process_instance_id 并连接相应进程寿命。定位域 DNS 事件只输出解析阶段，Event 3
+      只输出连接阶段；不能以域名或端口断定调用了定位接口。需要部署验证的应用代理或函数结果采集，用 request_id 关联 URL、请求地址输入、HTTP 状态、服务状态和有限的解析结果。没有 URL、正文或进程归属时维持较低阶段和未知身份。
+    en: On Windows hosts with Sysmon Events 1, 3, 5, and 22 enabled, normalize ProcessGuid as process_instance_id and join
+      the process lifetime. A location-domain DNS event yields only the resolution stage and Event 3 only the connection stage;
+      domain or port does not establish a location-API request. A deployment-validated application proxy or function-result
+      collector must correlate URL, address input, HTTP status, service status, and minimal parsed result using request_id.
+      Missing URL, content, or process attribution retains a lower stage and unknown identity.
+  - zh: 对已识别地址定位端点解析显式 query 参数；省略地址时记录 queried_ip 未知，只有服务响应的 query 才能补充。仅当实际服务状态为 success 且返回所需地区字段时输出地址定位结果取得；HTTP 200、DNS
+      成功、TCP 连接、服务 fail 和限速分开保存。地区结果仅关联 queried_ip，并以用途登记检查调用进程是否超出角色，不能把 country、lat 或 lon 改写成终端实际位置。
+    en: For an identified address-location endpoint, parse an explicit query input. When omitted, keep queried_ip unknown
+      unless the response query value supplies it. Report address-location result acquisition only when actual service status
+      is success and the required regional fields return. Preserve HTTP 200, DNS success, TCP connection, service failure,
+      and throttling separately. Associate results only with queried_ip and check the caller against its purpose register;
+      do not rewrite country, lat, or lon as actual endpoint position.
+data_requirements:
+- source_type: sysmon-process-lifetime
+  name:
+    zh: 已启用的 Sysmon 进程创建与终止事件
+    en: Enabled Sysmon Process Creation and Termination Events
+  channel: Microsoft-Windows-Sysmon/Operational
+  required_fields:
+  - host_id
+  - event_id
+  - timestamp
+  - process_instance_id
+  - image
+  - user_id
+  - start_time
+  - end_time
+- source_type: sysmon-network-connection
+  name:
+    zh: 已启用的 Sysmon 网络连接事件
+    en: Enabled Sysmon Network Connection Events
+  channel: Microsoft-Windows-Sysmon/Operational
+  required_fields:
+  - host_id
+  - timestamp
+  - process_instance_id
+  - destination_ip
+  - destination_port
+- source_type: sysmon-dns-query
+  name:
+    zh: 已启用的 Sysmon DNS 查询事件
+    en: Enabled Sysmon DNS Query Events
+  channel: Microsoft-Windows-Sysmon/Operational
+  required_fields:
+  - host_id
+  - timestamp
+  - process_instance_id
+  - query_name
+  - query_status
+- source_type: custom-geolocation-http-results
+  name:
+    zh: 自定义定位 HTTP 请求与结果采集
+    en: Custom Location HTTP Request and Result Collection
+  channel: null
+  required_fields:
+  - host_id
+  - process_instance_id
+  - timestamp
+  - request_id
+  - url
+  - queried_ip
+  - http_status
+  - service_status
+  - result_state
+  - returned_query_ip
+  - returned_region
+  - collector_version
+  - collector_health
+- source_type: regional-read-purpose-register
+  name:
+    zh: 地区输入读取用途与有效期登记
+    en: Regional-Input Read Purpose and Validity Register
+  channel: null
+  required_fields:
+  - host_id
+  - image
+  - user_id
+  - allowed_input_kind
+  - business_purpose
+  - valid_from
+  - valid_to
+observables:
+- zh: 新进程访问已识别定位接口及显式地址输入
+  en: A new process accessing an identified location interface with explicit address input
+- zh: 服务成功或失败与实际返回地区字段
+  en: Service success or failure and actually returned regional fields
+correlation:
+  window:
+    zh: 请求结果按 request_id 配对，进程上下文默认前后两分钟并延伸至其寿命边界。
+    en: Pair request and result by request_id, using two minutes around process context by default and extending to its lifetime
+      boundaries.
+  dimensions:
+  - host_id
+  - process_instance_id
+  - request_id
+  - queried_ip
+  - timestamp
+false_positives:
+- zh: 合法网络诊断、欺诈防护、地区内容与服务监控使用地址定位服务。
+  en: Legitimate diagnostics, fraud prevention, regional content, and service monitoring use address-location services.
+blind_spots:
+- zh: 证书固定、未受管流量和不可见响应使分析只能停留在连接或请求阶段；控制端定位不在此覆盖。
+  en: Certificate pinning, unmanaged traffic, and unavailable responses restrict output to connection or request stages; controller
+    lookup is outside this coverage.
+tuning_guidance:
+  paragraphs:
+  - zh: 分别验证无 query、私网输入、空字段、HTTP 429、服务 fail 与代理出口。定位服务是共享正常基础设施，不能仅凭服务域阻断或认定恶意。用途登记采用有时限的精确调用角色，缺失数据必须输出覆盖不足；不要把未观察到响应替换为失败或成功。
+    en: Validate omitted queries, private inputs, empty fields, HTTP 429, service failure, and proxy egress separately. Location
+      services are shared legitimate infrastructure, so their domain alone establishes neither maliciousness nor a universal
+      blocking rule. Use time-bounded caller roles in the purpose register and emit insufficient coverage when data is absent;
+      an unobserved response is neither failure nor success.
+evidence_refs:
+- REF-000230
+- REF-001364
+- REF-001365
+- REF-001368
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-11-07'
+  modified: '2026-11-07'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

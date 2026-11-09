@@ -1,0 +1,121 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000415
+strategy_ref: DET-000298
+name:
+  zh: Windows 连接显示参数与批准会话差异
+  en: Windows Connection-Display Arguments and Approved-Session Differences
+summary:
+  zh: 从 netstat 的实际参数和执行会话输出待调查连接查询尝试。
+  en: Report netstat connection-query attempts requiring investigation from actual arguments and execution sessions.
+domains:
+- enterprise
+platforms:
+- Windows
+logic:
+  paragraphs:
+  - zh: 在已启用且保留完整命令行的 Sysmon Event 1 中，用 device_id 映射 System/Computer，timestamp 映射 UtcTime，process_guid、parent_process_guid、image、command_line、user、logon_guid
+      分别映射同名原生 ProcessGuid、ParentProcessGuid、Image、CommandLine、User、LogonGuid。解析参数而非仅按映像匹配，将默认连接显示以及 -a、-n、-o、-b、-q 和协议选择参数中的连接显示组合识别为查询请求；只显示
+      -r 路由、-e 接口计数、-s 协议统计或帮助的请求排除。混合参数同时包含连接显示与统计时保留两种语义，未知或截断命令行标记未决，不猜测完整参数。
+    en: On Sysmon Event 1 deployments retaining complete command lines, map device_id to System/Computer and timestamp to
+      UtcTime, and map process_guid, parent_process_guid, image, command_line, user, and logon_guid to native ProcessGuid,
+      ParentProcessGuid, Image, CommandLine, User, and LogonGuid. Parse arguments rather than matching the image alone. Identify
+      default connection display and combinations of -a, -n, -o, -b, -q, and protocol-selection arguments that request connection
+      display. Exclude requests displaying only -r routes, -e interface counters, -s protocol statistics, or help. Mixed arguments
+      retain both display and statistical semantics; unknown or truncated command lines remain unresolved rather than reconstructed
+      by guesswork.
+  - zh: 以同一 device_id 与 logon_guid 的十分钟窗口组织请求，以 process_guid 和 parent_process_guid恢复实际父链。把 user、image、父链和时间与诊断批准台账的 principal、image、ancestor_constraint、device_scope、valid_from、valid_until、job_id
+      对照，无法解析台账或主体时输出未知批准状态。未匹配作业、异常父链或同会话重复连接调查提高调查优先级，已批准的单次排障可降级。结果只标记命令级查询尝试，不从 Event 1 推断返回值、TCP 状态、对端可达性或进程内子项，也不以 Event
+      3 缺席推断无网络。
+    en: Group requests in a ten-minute window by device_id and logon_guid, using process_guid and parent_process_guid for
+      actual ancestry. Compare user, image, ancestry, and event time with the diagnostic register's principal, image, ancestor_constraint,
+      device_scope, valid_from, valid_until, and job_id; unresolved registers or principals produce unknown approval. Unmatched
+      jobs, abnormal ancestry, or repeated connection inquiries in one session raise investigation priority, while approved
+      isolated troubleshooting can be downgraded. Output is a command-level inquiry attempt. Event 1 does not establish return
+      values, TCP states, peer reachability, or the in-process child, and absent Event 3 is not evidence of no network.
+data_requirements:
+- source_type: sysmon-process-create
+  name:
+    zh: 已配置完整命令行的 Sysmon Event 1
+    en: Sysmon Event 1 configured for complete command lines
+  channel: Microsoft-Windows-Sysmon/Operational
+  required_fields:
+  - device_id
+  - timestamp
+  - process_guid
+  - parent_process_guid
+  - image
+  - command_line
+  - user
+  - logon_guid
+- source_type: approved-diagnostic-job-register
+  name:
+    zh: 由运维维护的事件时诊断批准台账
+    en: Event-time diagnostic approval register maintained by operations
+  channel: null
+  required_fields:
+  - job_id
+  - principal
+  - image
+  - ancestor_constraint
+  - device_scope
+  - valid_from
+  - valid_until
+- source_type: collection-health-register
+  name:
+    zh: 采集器提供的 Sysmon 配置与完整性记录
+    en: Collector-provided Sysmon configuration and integrity record
+  channel: null
+  required_fields:
+  - device_id
+  - timestamp
+  - source_name
+  - configuration_version
+  - collection_status
+  - command_line_complete
+observables:
+- zh: 经参数解析确认的连接显示请求及其进程 GUID 和会话
+  en: Argument-confirmed connection-display requests with process GUID and session
+- zh: 请求主体、父链、资产和时间与批准诊断作业不一致
+  en: Principal, ancestry, asset, or time inconsistent with an approved diagnostic job
+correlation:
+  window:
+    zh: 同一设备与登录会话内十分钟；批准有效期按事件时刻精确核对。
+    en: Ten minutes within one device and logon session, with approval validity checked at event time.
+  dimensions:
+  - device_id
+  - logon_guid
+  - process_guid
+  - parent_process_guid
+  - user
+  - job_id
+false_positives:
+- zh: 网络排障、安全响应和支持人员的交互连接检查。
+  en: Interactive connection checks by troubleshooters, responders, and support personnel.
+- zh: 监控代理或诊断作业改版，尚未同步到批准台账。
+  en: Monitoring or diagnostic-job revisions not yet synchronized with the approval register.
+blind_spots:
+- zh: 进程内 API、脚本内调用、缺失或截断命令行以及收集前已发生的任务没有同等覆盖。
+  en: In-process APIs, internal script calls, missing or truncated command lines, and tasks predating collection lack equivalent
+    coverage.
+- zh: 批准身份或载体被攻陷时可能匹配台账；事件不含查询结果。
+  en: Compromised approved identities or carriers may match the register; events omit query results.
+tuning_guidance:
+  paragraphs:
+  - zh: 先按设备角色和批准作业维护常见父链与使用频度，用异常上下文调整优先级而非硬设次数阈值。不要全局放行 netstat 或管理员；未知批准保持调查信号，日志配置和完整性异常单独报覆盖缺口。十分钟是初始关联参数，需用环境中的合法诊断与受控查询验证，不代表已实测最佳阈值。
+    en: Baseline common ancestry and frequency by device role and approved job, using anomalous context for priority rather
+      than a universal count threshold. Do not globally allow netstat or administrators. Unknown approval remains a signal,
+      and collection failures separately report coverage gaps. Ten minutes is an initial correlation parameter to validate
+      against legitimate diagnostics and controlled inquiries, not a measured optimum.
+evidence_refs:
+- REF-000025
+- REF-001371
+- REF-000230
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-11-07'
+  modified: '2026-11-07'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

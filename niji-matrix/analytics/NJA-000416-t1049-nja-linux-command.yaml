@@ -1,0 +1,130 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000416
+strategy_ref: DET-000298
+name:
+  zh: Linux socket 调查命令与审计主体关联
+  en: Linux Socket-Inquiry Commands and Audited Principal Correlation
+summary:
+  zh: 从已配置执行审计识别 ss 的 socket 查询请求并保存查询者上下文。
+  en: Identify ss socket-query requests from configured execution auditing while preserving reader context.
+domains:
+- enterprise
+platforms:
+- Linux
+logic:
+  paragraphs:
+  - zh: 按 audit_event_id 合并 SYSCALL 与 EXECVE 记录。timestamp 来自 msg=audit 的事件时间；pid、ppid、auid、uid、euid、exe 与 success 来自 SYSCALL，uid
+      是真实 UID，euid 才是有效 UID。syscall 与 arch 确定实际 ABI 的 execve 或 execveat，argv 由 EXECVE 的 argc 与 a0 至 aN 恢复。经认证的采集器元数据提供 device_id，不采信进程自行报告的主机名。识别
+      ss 默认 socket 显示、TCP/UDP 选择、监听显示和状态过滤，排除纯帮助、版本与仅汇总请求。保留原始 argv 与过滤表达式，不把全部状态标为 established。
+    en: Merge SYSCALL and EXECVE records by audit_event_id. timestamp comes from the msg=audit event time; pid, ppid, auid,
+      uid, euid, exe, and success come from SYSCALL. uid is the real UID and euid is the effective UID. syscall and arch identify
+      the actual ABI's execve or execveat operation, while argv is recovered from EXECVE argc and a0 through aN. Authenticated
+      collector metadata supplies device_id rather than accepting process-reported hostnames. Identify ss default socket displays,
+      TCP/UDP selection, listener displays, and state filters, excluding pure help, version, and summary-only requests. Preserve
+      original argv and filters without labeling every state established.
+  - zh: 将成功启动的调查按 device_id 与 auid 在十分钟内分组，分别把 exe、argv 和 euid 与诊断台账的 executable、argument_constraint、effective_uid、device_scope
+      和有效期核对，auid 对照 audit_principal，uid 保留为真实身份上下文。auid 未设置、共享账户或主体映射不确定时保留未知操作者，不能以有效 UID 填写登录身份。PID 只标识本次审计事件，不跨生存期复用。输出查询尝试与批准差异，不读取
+      /proc 结果，也不隐式补充 socket inode、命名空间、表项或后继流。success 仅说明执行系统调用结果，不代表 ss 查询成功。
+    en: Group successfully started inquiries within ten minutes by device_id and auid. Compare exe, argv, and euid separately
+      with the diagnostic register's executable, argument_constraint, effective_uid, device_scope, and validity, compare auid
+      with audit_principal, and retain uid as real-identity context. Unset auid, shared accounts, and unresolved principal
+      mappings preserve unknown operators rather than filling login identity from effective UID. PID identifies this audited
+      event and is not reused across lifetimes. Output inquiry attempts and approval differences without reading /proc results
+      or silently adding socket inodes, namespaces, rows, or later flows. success denotes the execution syscall outcome rather
+      than successful ss querying.
+data_requirements:
+- source_type: linux-audit-execution
+  name:
+    zh: 按序列号合并的 Linux Audit SYSCALL 与 EXECVE
+    en: Linux Audit SYSCALL and EXECVE joined by event serial
+  channel: auditd
+  required_fields:
+  - device_id
+  - timestamp
+  - audit_event_id
+  - pid
+  - ppid
+  - auid
+  - uid
+  - euid
+  - exe
+  - argv
+  - success
+  - syscall
+  - arch
+- source_type: approved-diagnostic-job-register
+  name:
+    zh: 由运维维护的 Linux 诊断批准记录
+    en: Operations-maintained Linux diagnostic approval records
+  channel: null
+  required_fields:
+  - job_id
+  - audit_principal
+  - effective_uid
+  - executable
+  - argument_constraint
+  - device_scope
+  - valid_from
+  - valid_until
+- source_type: collection-health-register
+  name:
+    zh: 采集器与 auditctl 状态及规则证据
+    en: Collector and auditctl status and rule evidence
+  channel: null
+  required_fields:
+  - device_id
+  - timestamp
+  - source_name
+  - collector_identity
+  - configuration_version
+  - collection_status
+  - audit_enabled
+  - audit_lost
+  - audit_backlog
+  - rule_scope
+  - argv_complete
+observables:
+- zh: ss 的 socket 调查参数、状态选择与被审计执行主体。
+  en: ss socket-inquiry arguments, state selection, and audited executor.
+- zh: 与具体批准作业不匹配的 socket 调查请求。
+  en: Socket-inquiry requests not matching a concrete approved job.
+correlation:
+  window:
+    zh: 先按同一审计事件序列合并记录，再在同设备与 auid 内关联十分钟。
+    en: First join one audit-event serial, then correlate ten minutes within the same device and auid.
+  dimensions:
+  - device_id
+  - audit_event_id
+  - auid
+  - uid
+  - job_id
+false_positives:
+- zh: 管理员临时诊断、服务健康检查和事件响应。
+  en: Ad hoc administrator diagnostics, service-health checks, and incident response.
+blind_spots:
+- zh: 未预配置执行规则、审计丢失、参数截断和没有新执行边界的程序内查询。
+  en: Missing execution rules, audit loss, truncated arguments, and in-process queries without a new execution boundary.
+- zh: 命令事件没有结果或事件时网络命名空间；不能判断返回哪些端点。
+  en: Command events omit results and event-time network namespace, preventing determination of returned endpoints.
+tuning_guidance:
+  paragraphs:
+  - zh: 在受控环境确认对应架构的 execve 和 execveat 审计规则、argv 合并与丢失状态，按服务角色建立 ss 用法基线。对 unset auid 保留未知值并依赖独立调查，不把 root 永久放行；不将摘要查询混入 socket
+      关系结果。此分析只覆盖 ss 请求，netstat、lsof、设备和 macOS 路径应各自验证后再扩展，不能套用相同参数语义。
+    en: Validate architecture-specific execve and execveat rules, argv joining, and loss status in a controlled environment,
+      then baseline ss use by service role. Preserve unknown unset auid for independent investigation and do not permanently
+      allow root. Keep summary queries separate from socket-relationship output. This analytic covers ss requests only. Validate
+      netstat, lsof, appliance, and macOS paths before extending coverage rather than copying parameter semantics.
+evidence_refs:
+- REF-001381
+- REF-000201
+- REF-001042
+- REF-000840
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-11-07'
+  modified: '2026-11-07'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

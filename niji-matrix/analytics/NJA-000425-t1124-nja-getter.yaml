@@ -1,0 +1,222 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000425
+strategy_ref: DET-000302
+name:
+  zh: 定制时间读取的类型与结果归属分析
+  en: Typed-Result and Attribution Analytic for Instrumented Time Reads
+summary:
+  zh: 在明确部署的函数观察范围内保留原始时间类型、状态与采集边界，核验结果确被读取而不将正常计时直接判为规避。
+  en: Within explicitly deployed function coverage preserve raw temporal types status and capture boundaries to verify acquisition
+    without directly classifying ordinary timing as evasion.
+domains:
+- enterprise
+platforms:
+- Windows
+- Linux
+logic:
+  paragraphs:
+  - zh: 此分析要求单独部署的自定义函数进入/退出采集，可通过验证过的 Frida Interceptor 或等价观察器实现，不假设 EDR 默认提供。只分析部署清单明确验证的 GetSystemTime、GetSystemTimeAsFileTime、GetTickCount、libc
+      time 和 clock_gettime；清单记录 OS/用户 ABI、实际解析模块和符号、函数签名、结构布局、进程范围、挂接方式与时间段。进入时保存调用 ID、线程、参数和输出指针，退出时有界读取本次输出；地址不可读、只有进入、异常终止或采集丢失均保持
+      unknown，不以空值代表零时刻。采集器在事件发生时登记主机、启动实例和进程创建身份，PID 不能跨寿命单独关联。 raw_errno 对没有此合同的 void/计数函数为空，result_state、位宽、单位和纪元由已验证解码器产生，并非
+      API 原生字段。
+    en: This analytic requires separately deployed custom function-entry and exit collection through a validated Frida Interceptor
+      or equivalent observer, not a default EDR feed. Analyze only deployment-validated GetSystemTime, GetSystemTimeAsFileTime,
+      GetTickCount, libc time, and clock_gettime. The manifest records OS/user ABI, actually resolved module and symbol, signature,
+      layouts, process scope, hook method, and coverage interval. Retain call ID, thread, arguments, and output pointer on
+      entry and bounded output on return. Unreadable pointers, entry-only calls, exceptional termination, and collection loss
+      remain unknown rather than zero time. The collector records host boot and process-creation identity at the event, and
+      PID alone never joins across lifetimes. raw_errno is null for void or counter functions without that contract; result_state
+      width units and epoch are validated decoder metadata rather than native API fields.
+  - zh: GetSystemTime 与 GetSystemTimeAsFileTime 返回 void，不构造 BOOL 成功值，也不将随手读取的 LastError 当作状态。前者按目标 ABI 读取完整 SYSTEMTIME 的wYear、wMonth、wDayOfWeek、wDay、wHour、wMinute、wSecond、wMilliseconds
+      八个 16 位字段并验证日历范围，UTC 由接口合同给出；后者从输出 FILETIME 的 dwHighDateTime 和 dwLowDateTime 组成无符号 64 位数，单位为自 1601-01-01 UTC 起的 100
+      纳秒，不能当作 Unix 秒。返回后的有效缓冲区采集才支持 result-observed，未读到完整结构只保留调用。GetTickCount 的 DWORD 本身是 32 位毫秒读数，零值可以有效，约 49.7 天回绕；不从小值断言新启动设备，也不把一个计数直接转换成
+      UTC 日期。
+    en: 'GetSystemTime and GetSystemTimeAsFileTime return void: invent no BOOL success value and do not treat an incidental
+      LastError read as status. Decode all eight 16-bit SYSTEMTIME fields wYear wMonth wDayOfWeek wDay wHour wMinute wSecond
+      and wMilliseconds for the target ABI and validate calendar ranges, deriving UTC from the interface contract. Combine
+      output FILETIME dwHighDateTime and dwLowDateTime into an unsigned 64-bit value of 100-nanosecond intervals since 1601-01-01
+      UTC rather than Unix seconds. Valid post-return buffer capture supports result-observed; incomplete structures establish
+      only a call. GetTickCount directly returns a 32-bit DWORD millisecond reading, with valid zero and approximately 49.7-day
+      wrap. A small value proves neither a fresh boot nor a UTC date.'
+  - zh: Linux time 读取按用户 ABI 的 time_t 位宽和符号解释，保持 1970-01-01 UTC 纪元秒及原始值；-1 的错误/纪元前表示存在歧义，未确认接口和错误合同不强判有效读数。clock_gettime 只在返回
+      0 且完整 timespec 可读时解码 tv_sec 与 tv_nsec，纳秒字段须在 0 到 999999999；返回 -1 时保存当次原始 errno，而非消费残留缓冲区。clock_id 必须保留：CLOCK_REALTIME
+      是可调整日历，Linux CLOCK_MONOTONIC 不计系统挂起时长，CLOCK_BOOTTIME 计入挂起，CPU-time clocks 则不是开机时长。libc/vDSO 路径按实际模块和架构验证；只挂 syscall、单一
+      libc 符号或一条指令不能声称捕获所有读取，重复挂接亦须用调用链去重。 32 位进程若采用 64 位 time_t，必须验证完整 ABI 返回寄存器或采用等价完整返回采集，不能把指针宽度的单个 Frida retval 当作完整
+      64 位值。
+    en: 'Decode Linux time using the user ABI''s time_t width and signedness, retaining raw seconds since 1970-01-01 UTC.
+      A -1 value can be ambiguous between error and a pre-epoch reading; establish no valid result without the interface and
+      error contract. Decode clock_gettime tv_sec and tv_nsec only after return 0 and complete readable timespec, requiring
+      nanoseconds from 0 through 999999999. On return -1 retain that call''s raw errno rather than stale buffer contents.
+      Preserve clock_id: CLOCK_REALTIME is adjustable calendar time, Linux CLOCK_MONOTONIC excludes suspend, CLOCK_BOOTTIME
+      includes it, and CPU-time clocks are not uptime. Validate actual libc/vDSO modules and architecture; syscall-only observation,
+      one libc symbol, or one instruction cannot establish complete read coverage. Deduplicate multiple hooks by call chain.
+      A 32-bit process using 64-bit time_t requires validated full ABI return-register capture or an equivalent complete result
+      path; a single pointer-width Frida retval does not establish the full 64-bit value.'
+  - zh: 把类型明确的调用及所取得结果同该进程有效期内的授权登记比较，核对允许接口、clock_id与用途，保留批准、范围不符或登记未知状态。授权登记是策略语境，不证明登记任务实际执行；本合同不输出实际任务归属或任务完成，默认只声明temporal_read_observed及独立的结果状态。频率、低uptime和后继沉默都不证明恶意或门控。用接收时间、线程内顺序与采集序号重建调用，不只依赖返回墙钟，也不相减来源边界不同的计数。QPC与CPU
+      cycles不在此分析的解码覆盖内，不自动具有UTC含义；性能计数转换需要同源有效频率。结果不证明已上报或被用于条件分支，控制流或通信消费须另有证据。
+    en: Compare typed calls and acquired results with authorization valid for that process, checking allowed interfaces, clock_id,
+      and purpose while retaining approval, scope mismatch, or unknown-registration state. Authorization supplies policy context
+      rather than proof that a registered task executed; this contract emits neither actual task attribution nor task completion,
+      defaulting to temporal_read_observed and an independent result state. Frequency, low uptime, and later silence establish
+      neither malice nor gating. Reconstruct calls from receive time, within-thread order, and collection sequence rather
+      than returned wall clock alone, without subtracting counters across different source boundaries. QPC and CPU cycles
+      are outside this decoder and have no automatic UTC meaning; performance-count conversion needs a valid same-source frequency.
+      Results establish neither reporting nor conditional consumption, which requires separate control-flow or communication
+      evidence.
+data_requirements:
+- source_type: custom-time-function-entry-exit
+  name:
+    zh: 自定义时间函数进入退出与有界输出
+    en: Custom time-function entry exit and bounded output
+  channel: null
+  required_fields:
+  - host_id
+  - boot_id
+  - process_identity
+  - pid
+  - tid
+  - call_id
+  - parent_call_id
+  - sequence
+  - capture_time
+  - receive_time
+  - module_identity
+  - symbol
+  - abi
+  - phase
+  - clock_id
+  - input_arguments
+  - output_pointer
+  - raw_return
+  - raw_errno
+  - raw_output_bytes
+  - captured_length
+  - expected_length
+  - pointer_read_state
+  - value_width
+  - value_signedness
+  - time_unit
+  - epoch
+  - decoded_fields
+  - result_state
+- source_type: custom-time-process-identity
+  name:
+    zh: 采集器验证的主机启动和进程寿命身份
+    en: Collector-validated host boot and process-lifetime identity
+  channel: null
+  required_fields:
+  - host_id
+  - boot_id
+  - process_identity
+  - pid
+  - process_start_identity
+  - lifetime_start
+  - lifetime_end
+  - image
+  - user_context
+  - identity_method
+  - identity_confidence
+- source_type: time-hook-deployment-and-health
+  name:
+    zh: 时间函数挂接部署与采集健康清单
+    en: Time-hook deployment and collection-health manifest
+  channel: null
+  required_fields:
+  - host_id
+  - boot_id
+  - collector_version
+  - operating_system
+  - user_abi
+  - covered_processes
+  - resolved_modules
+  - resolved_symbols
+  - signatures
+  - structure_layouts
+  - hook_method
+  - coverage_start
+  - coverage_end
+  - hook_state
+  - lost_event_count
+  - max_capture_bytes
+  - parser_version
+  - validation_state
+- source_type: temporal-task-authorization-register
+  name:
+    zh: 时间读取任务的来源与授权台账
+    en: Provenance and authorization register for temporal-read tasks
+  channel: null
+  required_fields:
+  - authorization_id
+  - principal
+  - entry_fingerprint
+  - process_identity
+  - allowed_interfaces
+  - allowed_clock_ids
+  - purpose
+  - valid_from
+  - valid_until
+observables:
+- zh: 有进入退出关联且按实际 ABI 验证的完整时间缓冲区或原始计数返回。
+  en: Complete temporal buffers or raw counter returns joined across entry and exit and validated for the actual ABI.
+- zh: 读数类型、clock_id、单位、纪元或采集完整性与解释结论不一致。
+  en: A conclusion inconsistent with reading type clock_id units epoch or capture completeness.
+- zh: 可归属到具体进程的时间读取与其记录任务或批准接口范围存在偏离。
+  en: Attributable process time reads departing from a recorded task or approved interface scope.
+correlation:
+  window:
+    zh: 在同一主机启动和进程寿命内按线程、调用 ID 及进入退出边界关联；只在部署覆盖段内作结果结论。无可信时钟时用采集序号保留局部顺序，不推定跨主机先后。
+    en: Join thread call ID and entry-exit boundaries within one host boot and process lifetime and assert results only inside
+      deployment coverage. Preserve local order by collection sequence without a trusted clock and do not infer cross-host
+      ordering.
+  dimensions:
+  - host_id
+  - boot_id
+  - process_identity
+  - tid
+  - call_id
+  - parent_call_id
+  - sequence
+  - module_identity
+  - symbol
+  - clock_id
+  - task_id
+false_positives:
+- zh: 日志、超时管理、性能测试、动画与安全软件的正常高频计时。
+  en: Ordinary frequent timekeeping by logging, timeout management, benchmarking, animation, and security software.
+- zh: 系统刚启动、挂起恢复、ABI 差异和计数回绕形成的小读数或不连续输出。
+  en: Small or discontinuous readings caused by fresh startup, suspend/resume, ABI differences, or counter wrap.
+blind_spots:
+- zh: 未覆盖的 vDSO、直接共享内存或指令读取、被修改模块和未挂接进程使观察不完整；单个库函数挂接不能补全。
+  en: Uncovered vDSO direct shared-memory or instruction reads modified modules and unhooked processes leave incomplete coverage
+    that a single library hook cannot fill.
+- zh: 挂接会改变时序，恶意或正常程序都可能感知；无控制流和结果消费证据时不能认定环境判断或后继改变。
+  en: Instrumentation changes timing and can be sensed by malicious or benign programs; without control-flow and consumption
+    evidence no environmental decision or successor change is established.
+tuning_guidance:
+  paragraphs:
+  - zh: 在隔离的已知正常程序上验证 void、零返回、错误、不可读指针、32/64 位 ABI、回绕及 vDSO 路径，形成按版本的覆盖表，不运行恶意样本作为前提。采集白名单只限定研究或调查范围，不把白名单以外的缺失解释为无读取。保留原始类型与结果状态，再按真实任务核验；缩减采样会降低顺序与完整性，必须显式记录，不能用固定低
+      uptime 阈值替代语境。
+    en: Validate void and zero returns errors unreadable pointers 32/64-bit ABIs wrap and vDSO paths with known benign programs
+      in isolation and maintain version-specific coverage without requiring malware execution. Collection allowlists define
+      investigation scope rather than absence of reads outside it. Preserve raw types and result state before task-based validation.
+      Sampling reduces sequence and completeness and must be explicit; a fixed low-uptime threshold cannot replace context.
+evidence_refs:
+- REF-001368
+- REF-001412
+- REF-001414
+- REF-001413
+- REF-001415
+- REF-001416
+- REF-001417
+- REF-001436
+- REF-001437
+- REF-001423
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-11-08'
+  modified: '2026-11-08'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

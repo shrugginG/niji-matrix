@@ -1,0 +1,203 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000399
+strategy_ref: DET-000287
+name:
+  zh: WMI进程请求、客户端实例与返回对象分级关联
+  en: Graded Correlation of WMI Process Requests, Client Instances, and Returned Objects
+summary:
+  zh: 把Win32_Process请求归还给准确客户端生命周期，并区分查询入口、枚举器和实际对象。
+  en: Attribute Win32_Process requests to the exact client lifetime and distinguish query entry, enumerators, and actual objects.
+domains:
+- enterprise
+platforms:
+- Windows
+logic:
+  paragraphs:
+  - zh: 在目标版本预先启用并验证Microsoft-Windows-WMI-Activity/Trace。解析包含IWbemServices::ExecQuery或CreateInstanceEnum且对象为Win32_Process的事件，保留WQL、命名空间、本地或远端客户端与操作标识；查询投影只限Name、ProcessId等属性也仍属于进程信息请求。把ExecMethod的Create/Terminate、Win32_Product与仅元数据查询分流。Trace
+      Event 11示例的Operation保存查询语义，ClientProcessId是客户端，不是事件System Execution中的服务PID；Event 12的HostID只标识provider承载。
+    en: Enable and validate Microsoft-Windows-WMI-Activity/Trace on the target version in advance. Parse events containing
+      IWbemServices::ExecQuery or CreateInstanceEnum on Win32_Process, retaining WQL, namespace, local or remote client, and
+      operation identifiers. Projections limited to Name or ProcessId remain process inquiries. Route ExecMethod Create/Terminate,
+      Win32_Product, and metadata-only inquiries separately. In the documented Trace Event 11 example, Operation carries query
+      semantics and ClientProcessId identifies the client rather than the service PID in System Execution. Event 12 HostID
+      identifies provider carriage only.
+  - zh: 将Computer、TimeCreated、ClientMachine、User、ClientProcessId、Operation、CorrelationId、GroupOperationId及OperationId规范为host_id、timestamp、client_host、principal_id、client_process_id、query_text、correlation_id、group_operation_id与operation_id；namespace从经校验的请求字段或Operation解析为namespace。按client_host及查询时刻，把client_process_id连接该机MDE的ProcessId+ProcessCreationTime，或经验证Sysmon
+      ProcessGuid的存活区间。只连接在时刻上仍存活的唯一实例，跨机无法证明或进程创建已丢失时标attribution_unknown；不把provider的本地PID嫁接为客户端。
+    en: Normalize Computer, TimeCreated, ClientMachine, User, ClientProcessId, Operation, CorrelationId, GroupOperationId,
+      and OperationId to host_id, timestamp, client_host, principal_id, client_process_id, query_text, correlation_id, group_operation_id,
+      and operation_id. Parse namespace from validated request fields or Operation. Join client_process_id at query time on
+      client_host to that host’s MDE ProcessId plus ProcessCreationTime or a validated Sysmon ProcessGuid lifetime. Join only
+      a unique instance alive at the time. Mark attribution_unknown when cross-host identity is unproven or birth records
+      are missing; never attach a provider-local PID as the client.
+  - zh: 基础输出是process_query_observed，并与批准代理、资产盘点和诊断任务比较；宿主职责外的进程调查以及异常任务来源提高优先级。只有另有正面内联任务调度、可验证代码或查询调用链证据，才标记resident_carriage_supported；没有新工具进程不增加该等级。若可选受控采集直接记录ExecQuery的flags/HRESULT及关联枚举器，成功只升级enumerator_returned，PROTOTYPE不升级。Next的apObjects与puReturned经实际解析后才记录process_rows_observed，保留部分对象、错误与空集；WBEM_S_FALSE可伴随有效对象，TIMEDOUT不证明完整空返回。
+    en: The base output is process_query_observed and is compared with approved agents, inventories, and diagnostics. Process
+      surveying outside host duties and anomalous task origin raise priority. Mark resident_carriage_supported only with positive
+      inline-task dispatch, verified code, or query call-chain evidence; no new utility process does not raise that level.
+      If optional controlled capture records ExecQuery flags/HRESULT and its enumerator, success raises only enumerator_returned
+      and PROTOTYPE does not upgrade it. Record process_rows_observed only after actually parsing Next apObjects and puReturned,
+      preserving partial objects, errors, and empty sets. WBEM_S_FALSE can accompany valid objects and TIMEDOUT does not establish
+      a complete empty return.
+  - zh: 返回ProcessId、ParentProcessId和CreationDate时将它们保留为目标实例属性，不与客户端PID混用；同名进程及旧快照需按目标主机、创建时间和返回时刻解释。十分钟只用于一次任务关联，宿主生命周期和历史保留须覆盖较早创建的驻留体；查询慢于窗口时继续以operation标识追踪而不拆成新查询。
+    en: Retain returned ProcessId, ParentProcessId, and CreationDate as target-instance attributes rather than client PIDs.
+      Interpret repeated names and older snapshots by target host, creation time, and return time. Ten minutes scopes a task
+      join, while host-lifetime history must cover resident processes created earlier. Continue slow inquiries using operation
+      identifiers rather than splitting them at the window boundary.
+data_requirements:
+- source_type: wmi-query-trace
+  name:
+    zh: 预先开启且通过样例验证的WMI Trace
+    en: Pre-enabled WMI Trace validated against sample operations
+  channel: Microsoft-Windows-WMI-Activity/Trace
+  required_fields:
+  - host_id
+  - timestamp
+  - client_host
+  - principal_id
+  - client_process_id
+  - namespace
+  - query_text
+  - correlation_id
+  - group_operation_id
+  - operation_id
+- source_type: endpoint-process-lifecycle
+  name:
+    zh: 客户端主机经验证的进程生命周期
+    en: Validated process lifetimes on the client host
+  channel: Microsoft-Windows-Sysmon/Operational Events 1 and 5
+  required_fields:
+  - host_id
+  - timestamp
+  - process_id
+  - process_start
+  - process_instance_id
+  - image_path
+  - principal_id
+  - parent_process_id
+  - lifetime_end
+- source_type: approved-work-record
+  name:
+    zh: 批准代理与调查任务
+    en: Approved agents and inquiry tasks
+  channel: null
+  required_fields:
+  - owner
+  - client_host
+  - principal_id
+  - target_scope
+  - valid_from
+  - valid_until
+- source_type: instrumented-wmi-result
+  name:
+    zh: 可选受控WMI调用及对象采集合同
+    en: Optional controlled WMI-call and object-capture contract
+  channel: null
+  required_fields:
+  - client_host
+  - timestamp
+  - process_instance_id
+  - request_id
+  - namespace
+  - query_text
+  - query_flags
+  - hresult
+  - enumerator_id
+  - returned_count
+  - returned_objects
+  - capture_stage
+- source_type: conditional-query-carriage-proof
+  name:
+    zh: 仅启用承载确认时的查询任务与实现证明
+    en: Query-task and implementation proof only when carrier confirmation is enabled
+  channel: Independently verified task records, executing-code provenance, or authorized call-chain capture
+  required_fields:
+  - client_host
+  - process_instance_id
+  - task_id
+  - query_scope
+  - task_start
+  - task_end
+  - carriage_mode
+  - evidence_locator
+  - verification_state
+observables:
+- zh: 真实客户端针对Win32_Process的ExecQuery文本或实例枚举请求。
+  en: Actual-client ExecQuery text or instance enumeration directed at Win32_Process.
+- zh: 原始客户端与provider承载进程的不同身份。
+  en: Separate identities for original clients and provider-host processes.
+- zh: 可选的枚举器创建、Next返回数与具体进程属性。
+  en: Optional enumerator creation, Next counts, and concrete process properties.
+- zh: 可核验的内联任务入口与查询在同一驻留实例中的执行关系。
+  en: Verifiable inline-task entry and inquiry execution in the same resident instance.
+correlation:
+  window:
+    zh: 一次请求初始采用十分钟，并保留operation标识直至结束；客户端进程历史覆盖从创建到查询与终止，不能只查十分钟前的新进程。
+    en: Initially use ten minutes per request and retain operation identifiers until completion. Client history spans creation,
+      inquiry, and termination rather than only processes born in the last ten minutes.
+  dimensions:
+  - client_host
+  - client_process_id
+  - process_start
+  - process_instance_id
+  - principal_id
+  - namespace
+  - correlation_id
+  - group_operation_id
+  - operation_id
+  - request_id
+  - target_host
+false_positives:
+- zh: EDR、任务管理器、资产管理与运维代理在既有进程中执行WMI盘点。
+  en: EDR, task managers, inventory managers, and operations agents making WMI inquiries in existing processes.
+- zh: 插件或管理控制台的临时进程调查与远程故障排查。
+  en: Ad hoc process inquiries by plugins or consoles and remote troubleshooting.
+blind_spots:
+- zh: Trace默认覆盖、事件版本和丢失不能假定；Operational错误日志、命名空间4662或Sysmon进程访问事件不等价于完整查询与输出。
+  en: Default Trace coverage, versions, and loss cannot be assumed. Operational error logs, namespace event 4662, and Sysmon
+    process-access events are not complete query/output telemetry.
+- zh: 非WMI内联API和直接系统调用需要另行验证的传感器；本分析不冒充全部进程发现覆盖。
+  en: Non-WMI inline APIs and direct syscalls require separately validated sensors; this analytic does not claim coverage
+    of all process discovery.
+- zh: 仅存请求或成功枚举器时无法确认具体对象；PID重用、跨机时钟和被丢弃的创建事件会破坏精确归属。
+  en: Requests or successful enumerators alone cannot establish concrete objects. PID reuse, cross-host clocks, and missing
+    birth events can break exact attribution.
+tuning_guidance:
+  paragraphs:
+  - zh: 上线前分别验证普通查询、零结果、拒绝、PROTOTYPE、部分Next返回、WBEM_S_FALSE带对象、超时和远端客户端，记录目标版本实际字段。基础Trace+生命周期分支可独立运行，可选结果源仅在其原生调用参数与缓冲区被验证采集后启用；request_id、enumerator_id与capture_stage是传感器规范化字段，不宣称Windows标准日志自动提供。Sysmon
+      Event 1的Computer、UtcTime、ProcessId、ProcessGuid、Image、User和ParentProcessId映射客户端生命周期，process_start来自创建记录、lifetime_end来自相同ProcessGuid的Event
+      5；存活或已丢失终止记录时结束时间保留unknown。MDE创建记录可以补强身份，但不能假设其表必然给出终止事件。
+    en: Before deployment, validate normal queries, zero results, denial, PROTOTYPE, partial Next returns, WBEM_S_FALSE with
+      objects, timeouts, and remote clients, documenting actual fields for the target version. The Trace-plus-lifetime branch
+      can run independently. Enable optional result capture only after validating native parameters and buffers. request_id,
+      enumerator_id, and capture_stage are sensor normalization fields rather than automatic Windows-log fields. Map Sysmon
+      Event 1 Computer, UtcTime, ProcessId, ProcessGuid, Image, User, and ParentProcessId to the client lifetime, deriving
+      process_start from birth and lifetime_end from Event 5 with the same ProcessGuid. Keep the end unknown for a living
+      process or lost termination. MDE births can enrich identity without assuming its table necessarily provides terminations.
+  - zh: 按代理职责、客户端来源、命名空间和批准目标建立基线；不得放行所有WmiPrvSE请求或只按宿主签名放行。采集调用栈或代码来源只能增强已有查询事实的解释，不替代查询本身。控制对象内容和命令行的访问与保留，记录Trace事件量、缓冲区丢失以及不可解释的进程身份。
+    en: Baseline agent duties, client origin, namespace, and approved targets. Do not allow every WmiPrvSE request or allow
+      solely by host signature. Call stacks and code origin can enrich an established inquiry but cannot replace it. Control
+      access and retention for object content and command lines, and record Trace volume, buffer loss, and unresolved process
+      identities.
+  - zh: 承载确认分支要求证明材料关联到被观察的同一客户端实例、任务范围与时点，并验证实际执行的入口或调用链；仅有通用产品文档、API 导入或可能存在的代码不能提升等级。没有该来源时仍可运行查询检测，但承载方式和有意替代保持未知。
+    en: Carrier confirmation requires evidence tied to the same observed client instance, task scope, and time, verifying
+      the executing entry or call chain. Generic product documentation, imports, or possibly present code do not raise the
+      level. Query detection can run without this source, but carrier selection and deliberate substitution remain unknown.
+evidence_refs:
+- REF-001303
+- REF-001305
+- REF-001309
+- REF-001306
+- REF-001307
+- REF-001308
+- REF-001310
+- REF-001302
+- REF-000598
+- REF-000366
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-11-06'
+  modified: '2026-11-06'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

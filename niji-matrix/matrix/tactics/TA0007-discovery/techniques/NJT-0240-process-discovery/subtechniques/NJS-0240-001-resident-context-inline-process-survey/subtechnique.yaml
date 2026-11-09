@@ -1,0 +1,149 @@
+schema_version: 2.0.0
+type: evasion-subtechnique
+id: NJS-0240-001
+name:
+  zh: 驻留上下文内联进程调查
+  en: Resident-Context Inline Process Survey
+summary:
+  zh: 把具体进程查询及结果处理交给既有受控执行体，减少每任务新建工具或牺牲进程提供的独立调查入口。
+  en: Carry a concrete process inquiry and its result handling in an existing controlled context, reducing the separate inquiry
+    entry provided by a newly created per-task utility or sacrificial process.
+aliases: []
+parent_ref: NJT-0240
+lineage:
+  attck_subtechnique_inherited: false
+definition_and_concept:
+  paragraphs:
+  - zh: 驻留上下文内联进程调查是攻击者有意把本次运行进程查询放入已驻留且可调度任务的执行上下文，而不为它创建独立查询工具或每任务牺牲进程的实现。直接目的仍是取得进程事实；匿迹变量是查询任务与执行器生命周期的关系，而不是WMI、BOF、系统API或某个产品的名称。
+    en: Resident-Context Inline Process Survey deliberately places a particular running-process inquiry inside an already
+      resident task-capable execution context rather than creating a separate query utility or per-task sacrificial process.
+      Its immediate purpose remains obtaining process facts. The evasion variable is the relationship between query-task and
+      executor lifetimes, rather than WMI, BOFs, system APIs, or a product name.
+  - zh: 能力证据提供明确对照：官方BOF文档讨论内联执行相对于fork&run的任务足迹，固定源码把进程查询接入既有Beacon并返回进程字段。独立运行相同COFF对象的加载器、仅载入一个模块或长期存在的程序，没有同时证明本次内联查询时均不足以纳入。
+    en: 'Capability evidence supplies an explicit comparison: official BOF documentation contrasts inline execution with fork-and-run
+      task footprints, and pinned source connects a process inquiry to an existing Beacon and returns process fields. A standalone
+      loader running the same COFF object, a module load, or a long-lived program is insufficient without positive evidence
+      of this particular inline inquiry.'
+stealth_characteristics:
+  paragraphs:
+  - zh: 驻留上下文内联进程调查减少的是本次调查作为新工具进程出现的边界，使依赖tasklist、wmic或PowerShell新启动的检测不能仅靠创建事件定位它。宿主本身仍存在且可以有异常代码、任务请求或网络关系；降低独立工具特征不使宿主获得正常身份，也不证明其全部行为已经融合进业务。
+    en: Resident-Context Inline Process Survey reduces the boundary where an inquiry appears as a new utility process, so
+      detectors depending on fresh tasklist, wmic, or PowerShell launches cannot locate it from creation events alone. The
+      host still exists and may expose anomalous code, task requests, or network relationships. Reduced utility features do
+      not make its identity legitimate or establish that all its activity blends into business work.
+  - zh: 该变化保留管理查询的正面痕迹。以已核验WMI实现为例，客户端的ExecQuery、目标命名空间、枚举器消费和返回对象可以被观察；provider可能在既有或新建服务进程中工作。应恢复原始查询客户端和任务，而不是把WmiPrvSE的父进程或没有新工具事件当作攻击者归属。
+    en: The change retains positive management-query traces. In the verified WMI implementation, client ExecQuery, target
+      namespace, enumerator consumption, and returned objects can be observed; the provider may operate in an existing or
+      newly created service process. Attribution must recover the original client and task rather than treating WmiPrvSE’s
+      parent or absent utility events as the adversary’s identity.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 纳入需要已驻留执行上下文、可归属的本次进程查询以及相对每任务执行器的明确承载选择。查询提出与结果消费分级记录，返回对象仅证明实际可见部分；远端WMI查询保留客户端和目标两端身份，不把目标provider进程当成原始发起者。
+    en: Inclusion requires an existing resident execution context, an attributable process inquiry, and an explicit carrier
+      choice relative to a per-task executor. Record requests and result consumption at separate evidence levels, with returned
+      objects establishing only the observed portion. Remote WMI inquiries retain client and target identities without treating
+      the target provider process as the originator.
+  - zh: 反射加载代码执行由NJT-0077负责，跨进程写入与实际调度由NJT-0103负责，非标准原生过渡或动态解析由NJT-0073负责；这些前序动作可共映射，但不能替代进程查询事实。合法插件、监控与安全代理也会内联查询；缺日志、无需新进程的API或单纯不启动tasklist都不是充分条件。
+    en: NJT-0077 owns reflective module execution, NJT-0103 owns cross-process writing and actual dispatch, and NJT-0073 owns
+      nonstandard native transitions or dynamic resolution. Those predecessor actions may co-map but cannot replace process-query
+      evidence. Legitimate plugins, monitoring, and security agents also make inline inquiries. Missing logs, APIs needing
+      no new process, or merely avoiding tasklist are insufficient conditions.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: 当攻击者已有支持短任务的驻留代理、需要在下一步操作前掌握进程视图，并希望减少单独后渗透工具的启动链时，可选择内联调查。当前具体能力由TrustedSec任务入口及其WMI实现支持；它适用于一次有限查询，不应把阻塞式BOF扩写成长期异步监视。
+      en: An adversary with a resident agent supporting short tasks can choose inline surveying when process awareness is
+        needed before an action and a separate post-exploitation utility launch is undesirable. The specific capability is
+        supported by TrustedSec’s task entry and WMI implementation. It supports a bounded inquiry, not an inferred long-running
+        asynchronous monitor.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者须已掌握能够在既有进程中接收和执行查询任务的上下文，能够构造有效请求并接收对象或输出。现有token与目标接口决定可读范围；远程选项另需相应登录token与网络访问。单线程阻塞或任务崩溃可能影响驻留代理，因此内联承载带来稳定性代价，不能无条件替代所有外部任务。
+        en: The adversary must already control a context able to receive and execute inquiries within an existing process,
+          construct valid requests, and receive objects or output. Existing tokens and target interfaces determine readable
+          scope. Remote options additionally require an appropriate logon token and network access. Single-thread blocking
+          or crashes can affect the resident agent, making inline carriage a stability tradeoff rather than a universal replacement
+          for external tasks.
+    defender_model:
+      paragraphs:
+      - zh: 目标观察模型是能够看到进程创建、却主要按每次新启动工具识别发现任务的端点。已配置WMI Trace及进程生命周期保留时，可以把Win32_Process请求与真实客户端实例对应；独立结果采集才能说明哪些对象被消费。过程内存、扩展来源与宿主职责也提供残留语境，但一次查询不能自动证明注入或恶意代码来源。
+        en: The target observation model sees process creation but identifies discovery chiefly through a newly launched utility
+          for each task. Configured WMI Trace and retained process lifetimes can associate Win32_Process requests with the
+          actual client instance. Independent result capture is required to establish consumed objects. Memory, extension
+          origin, and host duties provide residual context, but one query does not automatically establish injection or malicious
+          code provenance.
+      - zh: 如果仅留provider本地PID、只收错误事件、Trace开始晚于任务、客户端生命周期已丢失或跨机身份无法连接，归属会退化为未知。API或结果内容观测增强后，此项相对创建事件检测的优势可明显收缩；本批没有性能或误报率测量。
+        en: Attribution degrades to unknown if only a provider-local PID is retained, only errors are collected, tracing starts
+          after the task, the client lifetime is lost, or cross-host identities cannot be joined. Better API or result-content
+          observation can substantially reduce its advantage over creation-event detection. This delivery contains no performance
+          or false-positive-rate measurement.
+stealth_mechanisms:
+- mechanism_ref: NM-BT
+  role: primary
+  summary:
+    zh: 省去每次查询单独启动执行器的边界，迫使检测转向驻留客户端的实际进程请求
+    en: Remove the per-query executor launch boundary and require observation of the resident client’s actual process request
+  analysis:
+    paragraphs:
+    - zh: 选择既有执行上下文会把一次查询与新工具进程的对应关系拆开。官方设计的对照和具体内联查询入口共同支持这一可控变化；只盯每任务创建与注入序列的检测缺少预期入口，而WMI请求与宿主生命周期关联仍能恢复它。这里没有断言系统不生成任何服务进程、对象访问或结果痕迹，匿迹强度只相对于所述观察假设保持中等置信度。
+      en: Choosing an existing context separates a particular inquiry from a new utility-process identity. The official design
+        comparison and concrete inline-query entry jointly support this controlled change. Detection focused on per-task creation
+        and injection sequences loses its expected entry, while WMI requests joined to host lifetimes can recover the activity.
+        No claim is made that the system generates no service processes, object accesses, or result traces. Stealth strength
+        remains medium-confidence relative to that observation assumption.
+  evidence_refs:
+  - REF-001303
+  - REF-001305
+  - REF-001309
+  - REF-000366
+  confidence: medium
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000287
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000248
+evidence:
+  claim_refs:
+  - CLM-001230
+  - CLM-001231
+  - CLM-001232
+  - CLM-001229
+  case_refs: []
+  reference_refs:
+  - REF-001303
+  - REF-001304
+  - REF-001305
+  - REF-001306
+  - REF-001307
+  - REF-001308
+  - REF-001309
+  - REF-001310
+  - REF-001302
+  - REF-000366
+  - REF-000598
+research:
+  limitations:
+    paragraphs:
+    - zh: 本项的成立性是可复核的能力与设计意图结论，尚无本次所选现场案例直接确认其恶意采用，也没有对创建事件检测与客户端查询检测的定量比较。工具作者将演示放入独立COFFLoader，只有已核验的Aggressor入口支持驻留集成；不能把演示截图当成内联恶意活动。
+      en: Existence is a reproducible capability and design-intent conclusion. The selected incidents do not directly confirm
+        malicious adoption, and no quantitative comparison between creation-event and client-query detection is available.
+        The author’s demonstrations use standalone COFFLoader; resident integration is supported by the verified Aggressor
+        entry. Demonstration screenshots are not inline malicious activity.
+    - zh: 当前专用分析验证对象是WMI实现，不能自动覆盖所有进程内API、直接系统调用或其他操作系统。内联工作与合法代理任务相似，仍需原始客户端、职责、批准任务及实际结果语义；确认完整进程集尤其受快照时点、权限与生命周期竞态限制。
+      en: The dedicated analytic addresses the WMI implementation rather than every in-process API, direct syscall, or operating
+        system. Inline work resembles legitimate agent tasks and still requires original-client identity, duties, approved
+        work, and actual result semantics. Establishing a complete process set is particularly limited by snapshot time, permissions,
+        and lifecycle races.
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-11-06'
+  modified: '2026-11-06'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

@@ -1,0 +1,185 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000406
+strategy_ref: DET-000292
+name:
+  zh: 软件库存 WMI 请求的提供方与客户端分离关联
+  en: Provider and Client Separation for Software-Inventory WMI Requests
+summary:
+  zh: 从已验证 WMI Trace 恢复软件查询语义与发起者，避免把提供方或授权成功当成软件结果。
+  en: Recover software-query semantics and the initiator from validated WMI Trace without treating the provider or successful
+    authorization as software results.
+domains:
+- enterprise
+platforms:
+- Windows
+logic:
+  paragraphs:
+  - zh: 在目标 Windows build 预先启用并验证 Microsoft-Windows-WMI-Activity/Trace。从客户端 ExecQuery 或 CreateInstanceEnum 中解析 Win32_Product、已验证的软件库存类，或
+      root\SecurityCenter2 下 AntiVirusProduct 的实例请求，保留属性投影与筛选条件。不要把 provider 启动、类元数据浏览、WMI 持久订阅事件或单独命名空间访问当成软件调查；Uninstall
+      等 ExecMethod 修改另行处理。Win32_Product 的 where 条件可能仍触发全量 MSI 枚举与修复，少量匹配结果不能证明提供方只读取少量产品。
+    en: Pre-enable and validate Microsoft-Windows-WMI-Activity/Trace on the target Windows build. Parse client ExecQuery or
+      CreateInstanceEnum instance requests for Win32_Product, validated software-inventory classes, or root\SecurityCenter2
+      AntiVirusProduct, preserving projection and predicates. Provider startup, class metadata browsing, persistent-WMI-subscription
+      events, and namespace access alone do not establish software surveying; route modifying ExecMethod operations such as
+      Uninstall separately. A Win32_Product where predicate can still cause full MSI enumeration and repair, so few matches
+      do not establish a narrow provider read.
+  - zh: 以原始 XML 的 System/Computer 和 TimeCreated/SystemTime 映射 observer_host_key 与 timestamp；ClientMachineFQDN 或 ClientMachine、ClientProcessId、ClientProcessCreationTime、User、NamespaceName、Operation、OperationId、GroupOperationId、IsLocal
+      映射 client_machine、client_process_id、client_process_start、user_name、namespace_name、operation_text、operation_id、group_operation_id、is_local。creation
+      time 按文件时间语义转换，字段缺失为 null；不从格式错误的渲染文本补造命名空间。字段是否存在取决于本地事件版本。provider HostId 即便可见也不是客户端标识，结果状态或产品返回行没有在本数据源中声明。
+    en: Map raw XML System/Computer and TimeCreated/SystemTime to observer_host_key and timestamp. Map ClientMachineFQDN or
+      ClientMachine, ClientProcessId, ClientProcessCreationTime, User, NamespaceName, Operation, OperationId, GroupOperationId,
+      and IsLocal to client_machine, client_process_id, client_process_start, user_name, namespace_name, operation_text, operation_id,
+      group_operation_id, and is_local. Convert creation time according to FILETIME semantics and retain missing values as
+      null; do not reconstruct namespaces from malformed rendered text. Field availability depends on the locally validated
+      event version. A visible provider HostId is not the client identity, and this source declares neither outcome state
+      nor returned product rows.
+  - zh: 只在客户端主机得到相同规范名称确认后，按客户端 PID 与覆盖查询时刻的生命周期连接 Sysmon 创建/终止记录；同时具备 ClientProcessCreationTime 时核对创建时间。远端客户端只可连接远端主机实际采集的生命周期，不能使用观察主机的同号
+      PID。无法解析的主机或用户名保持未知；如需别名转换，使用明确登记 observed_host、canonical_host_key、observed_user、canonical_user_name、valid_from、valid_until、owner
+      的受控映射，保留来源与有效期，缺失则不跨别名连接。
+    en: Join the client PID to Sysmon creation and termination only after confirming the client host's canonical name and
+      a lifetime containing the inquiry time, also checking ClientProcessCreationTime when available. A remote client can
+      join only to lifecycle data actually collected on that remote host, never a same-number PID on the observer. Preserve
+      unresolved hosts and users. Alias conversion requires a controlled map explicitly registering observed_host, canonical_host_key,
+      observed_user, canonical_user_name, valid_from, valid_until, and owner, with provenance and validity retained; absent
+      maps forbid alias-crossing joins.
+  - zh: 将软件查询对象、客户端映像、主体和目标范围与独立批准台账比较，按十分钟窗口聚合重复请求并输出 software_inventory_request、client_resolved 或 client_unknown 的证据等级。台账字段合同仍是有效负责人、明确范围与期限。实际客户端的软件请求可直接揭示进程内实施，不要求出现新库存工具；但仅归属到一个进程或未见新工具，不能自动证明任务没有另起执行器，子项归类仍需具体承载证据。没有独立结果采集时，安装、版本值、启用和关闭均保持未证实；研究画像不能升级本分析的生产结果能力。
+    en: Compare software objects, client image, principal, and target scope with the independent authorization register, grouping
+      repeated requests over ten minutes and emitting software_inventory_request with client_resolved or client_unknown evidence
+      levels. The register still requires valid owners, explicit scope, and expiry. An actual client's software request can
+      directly expose an in-process implementation without a new utility, but attribution to a process or absent utility events
+      alone does not prove that no separate executor carried the task; child classification still needs specific carriage
+      evidence. Without independent result capture, installation, version values, enablement, and disablement remain unestablished.
+      A research profile does not expand this analytic's production result capability.
+data_requirements:
+- source_type: validated-wmi-client-trace
+  name:
+    zh: 已启用且逐版本验证的 WMI 客户端 Trace
+    en: Enabled WMI client Trace validated per version
+  channel: Microsoft-Windows-WMI-Activity/Trace
+  required_fields:
+  - observer_host_key
+  - timestamp
+  - client_machine
+  - client_process_id
+  - client_process_start
+  - user_name
+  - namespace_name
+  - operation_text
+  - operation_id
+  - group_operation_id
+  - is_local
+- source_type: sysmon-client-process-lifecycle
+  name:
+    zh: 客户端所在主机的 Sysmon 进程生命周期
+    en: Sysmon process lifetimes on the actual client host
+  channel: Microsoft-Windows-Sysmon/Operational
+  required_fields:
+  - host_key
+  - timestamp
+  - event_id
+  - process_guid
+  - process_id
+  - process_start
+  - process_end
+  - image_path
+  - user_name
+- source_type: approved-software-inventory-work
+  name:
+    zh: 由负责人独立维护的软件盘点与支持批准台账
+    en: Independently owner-maintained software-inventory and support register
+  channel: null
+  required_fields:
+  - work_id
+  - owner
+  - host_key
+  - user_name
+  - image_path
+  - query_scope
+  - target_scope
+  - valid_from
+  - valid_until
+- source_type: conditional-verified-identity-map
+  name:
+    zh: 仅在别名转换时使用的经核验身份映射合同
+    en: Verified identity-map contract used only for alias conversion
+  channel: null
+  required_fields:
+  - observed_host
+  - canonical_host_key
+  - observed_user
+  - canonical_user_name
+  - valid_from
+  - valid_until
+  - owner
+observables:
+- zh: 具有真实类、命名空间和筛选语义的软件实例查询
+  en: Software-instance inquiries with actual class, namespace, and predicate semantics
+- zh: 与进程生命周期匹配的本地或远端客户端请求及其批准工作偏差
+  en: Local or remote client requests matched to process lifetimes and departures from approved work
+correlation:
+  window:
+    zh: 十分钟初始请求聚合；客户端生命周期留存必须覆盖长驻进程及实际远端查询时点
+    en: Initial ten-minute request aggregation; lifecycle retention must cover resident clients and actual remote inquiry
+      times
+  dimensions:
+  - observer_host_key
+  - client_machine
+  - client_process_id
+  - client_process_start
+  - operation_id
+  - group_operation_id
+  - namespace_name
+  - user_name
+false_positives:
+- zh: SCCM 与其他部署、许可、补丁或安全健康代理进行软件库存查询
+  en: SCCM and other deployment, licensing, patch, or security-health agents querying software inventory
+- zh: 经授权的资产清查、远程支持及 WMI 性能诊断
+  en: Authorized asset inventory, remote support, and WMI performance diagnosis
+blind_spots:
+- zh: Trace 未启用、字段版本不同、事件丢失或采集从客户端启动后才开始，可能失去请求或归属
+  en: Disabled Trace, version-dependent fields, event loss, or collection starting after client launch may lose the request
+    or attribution
+- zh: 直接 Registry/API、非 WMI 管理接口与云端软件视图不在本分析的数据覆盖内
+  en: Direct Registry or API reads, non-WMI management interfaces, and cloud software views lie outside this analytic's data
+    coverage
+- zh: 本源没有产品结果；健康或安装结论不能从 WMI 授权、查询启动或 provider 状态推导
+  en: These sources contain no product results; WMI authorization, query start, or provider state cannot establish health
+    or installation
+tuning_guidance:
+  paragraphs:
+  - zh: 在受控主机验证普通 MSI 请求、带谓词请求、SecurityCenter2 可用与不可用、远端客户端、PID 重用、缺客户端创建事件及错误命名空间；不要求每种系统都实现安全产品提供方。Sysmon 字段按命令分支映射，终止事件缺失保留
+      null 与身份不确定性。部署时从原始 XML 校验 Operation 与 NamespaceName，不直接采用示例渲染字段错误；保留事件版本和采集损失记录。台账与别名表为独立部署合同而非 Windows 默认提供，缺失时只输出请求与未知授权，不能静默白名单。窗口和范围以当地管理作业校准，不能以
+      Win32_Product 的 where 谓词保证查询低噪或无副作用。
+    en: On controlled hosts validate ordinary and predicated MSI requests, available and unavailable SecurityCenter2, remote
+      clients, PID reuse, missing client creation, and erroneous namespaces without requiring every system to implement security-product
+      providers. Map Sysmon fields as in the command branch, retaining null termination and identity uncertainty. Validate
+      Operation and NamespaceName from raw XML rather than copying rendered example errors, and retain event versions and
+      loss records. Registers and alias maps are separate deployment contracts rather than Windows defaults; when absent,
+      emit request and unknown authorization instead of silently allowlisting. Calibrate windows and scope to local work,
+      without treating a Win32_Product where predicate as a guarantee of quiet or side-effect-free querying.
+  - zh: 为本子项补做两个受控样例：测试客户端内部发起一条软件查询，以及由它另起库存工具发起等价查询；核对原始客户端与查询归属的差异。该建议是上线前验证合同，未声称本研究已经实施。即使客户端刚开始执行也不得漏掉其直接查询；不要按运行时长、签名或仅看
+      WmiPrvse 来代理任务承载判断。不增加结果采集、C2 解析或样本代码来源作为未声明输入。
+    en: For this child, issue a software query inside a test client, then have that client launch an inventory utility for
+      an equivalent inquiry, comparing original clients and query attribution as two controlled deployment samples. This is
+      a predeployment validation contract rather than an experiment already performed here. Retain direct inquiries even from
+      newly executing clients. Client age, signatures, and WmiPrvse visibility do not substitute for task-carriage evidence.
+      Add no undeclared result capture, C2 parsing, or sample-code-origin inputs.
+evidence_refs:
+- REF-001309
+- REF-001310
+- REF-000230
+- REF-001337
+- REF-001336
+- REF-000639
+- REF-001356
+- REF-001306
+- REF-001307
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-11-07'
+  modified: '2026-11-07'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

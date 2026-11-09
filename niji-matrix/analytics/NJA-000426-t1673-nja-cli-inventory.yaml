@@ -1,0 +1,188 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000426
+strategy_ref: DET-000303
+name:
+  zh: ESXi交互清单命令与认证会话关联
+  en: ESXi Interactive Inventory Commands and Authentication Sessions
+summary:
+  zh: 将ESXi清单命令归属至宿主shell会话和批准工作，输出请求级与可选返回级事实。
+  en: Attribute ESXi inventory commands to host shell sessions and approved work, producing request-level and optional return-level
+    facts.
+domains:
+- enterprise
+platforms:
+- ESXi
+logic:
+  paragraphs:
+  - zh: 在已验证转发auth.log和shell.log的宿主保留原始消息。以host_id、boot_generation、shell[world]及message_id派生命令command_key，CLI的authority_id取同一宿主稳定host_id。解析完整命令内esxcli
+      vm process list或vim-cmd vmsvc/getallvms，保留formatter、管线和重定向；kill、power.off、版本读取和文件搜索单独处理。Accepted认证消息给出用户及客户端，Session
+      opened给出终端和shell World ID；沿明确父子会话链连接，不能直接令监听sshd PID等于shell World ID。无法建立链保留unresolved_session，不猜操作者。
+    en: Retain raw messages on hosts with validated auth.log and shell.log forwarding. Derive command_key from host_id, boot_generation,
+      shell[world], and message_id; CLI authority_id is the same stable host_id. Parse esxcli vm process list or vim-cmd vmsvc/getallvms
+      in complete text, retaining formatters, pipelines, and redirection. Handle kill, power.off, version reads, and file
+      searches separately. Accepted auth messages supply user and client; Session opened supplies terminal and shell World
+      ID. Join through the explicit parent/child session chain rather than equating a listening sshd PID with a shell World
+      ID. Retain unresolved_session when the chain is unavailable instead of guessing the operator.
+  - zh: 将请求同批准登记的权域、账号、来源、清单视图、作业和有效时间比较，越界输出inventory_request_outside_approved_scope，登记缺失输出approval_unknown，符合登记仍保留请求。单条命令即可核验，不要求高频。仅当独立输出采集同command_key连接并提供stdout、stderr、退出状态、完整与截断状态时解释结果，否则result_not_captured。shell.log不提供可假定的stdout或退出码，非交互程序及内部子进程也不保证逐命令出现。
+    en: Compare requests with registered authority, account, origin, inventory view, job, and valid time. Emit inventory_request_outside_approved_scope
+      for mismatches and approval_unknown for absent registration, retaining approved request facts too. One command can trigger
+      review without high frequency. Interpret results only when separate output capture links to command_key and supplies
+      stdout, stderr, exit status, completeness, and truncation; otherwise use result_not_captured. shell.log has no assumed
+      stdout or exit feed, and noninteractive programs or internal children are not guaranteed to appear command by command.
+  - zh: 按部署版本真实样例验收解析器。运行文本把实际存在的World ID、Display Name、UUID和Config File映射为world_id、display_name、reported_uuid和config_path；CSV按返回表头及选列解析，不固定列号，未选字段为null。注册文本按实际Vmid、Name、File等表头映射vmid、display_name、config_locator，保留方括号datastore定位而不臆造绝对路径，名称含空格时不用通用空白切分。非零退出、stderr错误、Skipping
+      invalid VM、残缺或截断标为失败或部分。成功完整零项只表示此次视图为空，不证明全部停止；VMID、运行World ID和shell会话World ID分开，未有独立映射不得跨表连接。
+    en: Accept parsers against real examples from the deployed version. Map actually present World ID, Display Name, UUID,
+      and Config File in running text to world_id, display_name, reported_uuid, and config_path. Parse CSV by returned headers
+      and selected fields rather than fixed column positions, leaving unselected fields null. Parse actual Vmid, Name, and
+      File headers into vmid, display_name, and config_locator, retaining bracketed datastore locators without inventing absolute
+      paths and avoiding generic whitespace splitting of spaced names. Nonzero exits, stderr errors, Skipping invalid VM,
+      incomplete records, and truncation indicate failure or partial capture. Complete successful zero entries mean only an
+      empty view at that time, not all VMs stopped. Keep VMIDs, running World IDs, and shell-session World IDs distinct without
+      independent mappings.
+  - zh: 每条结论携带请求、归属、批准、视图和质量状态。健康输入包括宿主启动代际、stream、采集范围、解析版本、最后到达、轮转丢失、截断及秒级校时误差；超过批准心跳间隔两倍未到或解析失败另发coverage_unknown，不用缺失事件证明无发现。未部署输出采集只支持请求级分析。先用获批无害查询验收归属器和结果解析器，本研究未执行该验收。
+    en: Attach request, attribution, approval, view, and quality state to each conclusion. Health inputs include host boot
+      generation, stream, capture scope, parser version, last arrival, rotation or loss, truncation, and clock uncertainty
+      in seconds. Delivery exceeding twice the approved heartbeat interval or parse failures separately produce coverage_unknown;
+      missing events do not prove no discovery. Without output capture, support request-level analysis only. Accept attribution
+      and result parsers with approved harmless queries; this research did not perform that acceptance.
+data_requirements:
+- source_type: esxi-auth-shell-messages
+  name:
+    zh: ESXi原始认证与交互shell消息
+    en: ESXi Raw Authentication and Interactive Shell Messages
+  channel: /var/log/auth.log and /var/log/shell.log remotely retained
+  required_fields:
+  - timestamp
+  - host_id
+  - native_logger
+  - native_process_or_world_id
+  - raw_message
+  - message_id
+- source_type: validated-esxi-session-map
+  name:
+    zh: 经验证的ESXi认证到shell会话映射
+    en: Validated ESXi Authentication-to-Shell Session Mapping
+  channel: custom parser derived from explicit auth and shell session records
+  required_fields:
+  - host_id
+  - boot_generation
+  - session_key
+  - auth_process_id
+  - shell_world_id
+  - principal
+  - client_address
+  - terminal
+  - valid_from
+  - valid_to
+  - attribution_status
+  - mapping_evidence_ids
+- source_type: vm-inventory-approved-work
+  name:
+    zh: VM清单批准工作登记
+    en: VM-Inventory Approved Work Register
+  channel: administrator-maintained inventory job register
+  required_fields:
+  - authority_id
+  - approved_principal
+  - source_scope
+  - inventory_view
+  - job_id
+  - owner
+  - valid_from
+  - valid_to
+  - register_version
+- source_type: optional-esxi-command-output
+  name:
+    zh: 可选的经验证ESXi命令输出采集
+    en: Optional Validated ESXi Command-Output Capture
+  channel: separately deployed approved administration wrapper or session recorder; absent means request-only coverage
+  required_fields:
+  - capture_available
+  - command_key
+  - host_id
+  - session_key
+  - request_text
+  - capture_time
+  - stdout
+  - stderr
+  - exit_status
+  - truncated
+  - capture_complete
+  - collector_id
+  - parser_version
+- source_type: esxi-collection-health
+  name:
+    zh: ESXi采集覆盖与完整性登记
+    en: ESXi Collection Coverage and Integrity Register
+  channel: external collector and asset lifecycle metadata
+  required_fields:
+  - host_id
+  - boot_generation
+  - stream
+  - collector_id
+  - capture_scope
+  - parser_version
+  - heartbeat_interval_seconds
+  - last_arrival
+  - loss_or_rotation_state
+  - truncation_state
+  - parse_status
+  - clock_offset_seconds
+  - clock_uncertainty_seconds
+observables:
+- zh: shell消息明确包含运行或注册清单命令、管线及选列。
+  en: Shell messages explicitly contain running or registered inventory commands, pipelines, and field selection.
+- zh: 可验证认证链使请求可同批准账号、来源、视图和作业比较。
+  en: Verifiable authentication chains make requests comparable with approved accounts, origins, views, and jobs.
+- zh: 专用采集实际取得World ID或VMID；没有采集时只保留请求。
+  en: Dedicated capture actually acquires World IDs or VMIDs; absent capture retains only requests.
+correlation:
+  window:
+    zh: 以会话明确开始到结束和宿主启动代际为边界；同command_key输出默认六十秒内连接，长查询按明确键延伸。批准窗口使用登记时间，时间规范为UTC并保留原时区及秒级误差。二十分钟序列只辅助调查，不能用邻近代替会话证据。
+    en: Bound correlation by explicit session start/end and host boot generation. Join output on the same command_key within
+      sixty seconds by default, extending long queries by explicit keys. Use registered approval windows, normalize to UTC,
+      and preserve original zones and uncertainty in seconds. A twenty-minute sequence aids investigation but proximity does
+      not replace session evidence.
+  dimensions:
+  - host_id
+  - boot_generation
+  - session_key
+  - shell_world_id
+  - command_key
+  - authority_id
+  - inventory_view
+  - job_id
+  - collector_id
+false_positives:
+- zh: 故障排查、备份、迁移与资产盘点使用相同命令，须核验具体作业。
+  en: Troubleshooting, backup, migration, and asset inventory use the same commands and require job-specific review.
+blind_spots:
+- zh: 非交互、内部子进程、其他管理入口、root删改和未转发stream可逃离本路径。
+  en: Noninteractive execution, internal children, other management paths, root modification, and unforwarded streams can
+    escape this path.
+- zh: 缺失Session opened、输出采集或版本解析支持限制归属及返回；API与GUI需要独立覆盖。
+  en: Missing Session opened records, output capture, or parser-version support limit attribution and returns; APIs and GUIs
+    need separate coverage.
+tuning_guidance:
+  paragraphs:
+  - zh: 用本环境日志核对auth父子进程与shell World ID，按启动代际处理标识复用。验收文本、CSV、空、权限错、invalid和截断样例，字段只在真实存在时映射。例外绑定账号、来源、权域、作业、视图和到期，不能永久放行root或所有维护流量。返回缺失仍保持请求检测，不要求高数量或后继破坏。
+    en: Validate auth parent/child and shell World ID relationships locally, handling identifier reuse by boot generation.
+      Accept text, CSV, empty, denied, invalid, and truncated examples, mapping only present fields. Bind exceptions to account,
+      origin, authority, job, view, and expiry rather than permanently allowing root or all maintenance. Retain request detection
+      without returns and without requiring high counts or later destruction.
+evidence_refs:
+- REF-001223
+- REF-001429
+- REF-001427
+- REF-001428
+- REF-001425
+- REF-001426
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-11-08'
+  modified: '2026-11-08'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

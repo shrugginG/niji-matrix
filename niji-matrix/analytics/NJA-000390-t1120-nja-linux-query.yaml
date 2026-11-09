@@ -1,0 +1,119 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000390
+strategy_ref: DET-000282
+name:
+  zh: Linux udev 数据库查询的会话归属
+  en: Linux udev Database-Query Session Attribution
+summary:
+  zh: 重建 udevadm info 的查询范围并与登录身份及运维任务核验。
+  en: Reconstruct udevadm info scope and verify it against login identity and operational work.
+domains:
+- enterprise
+platforms:
+- Linux
+logic:
+  paragraphs:
+  - zh: 在事先配置且已验证的 execve/execveat 审计范围内，以同一 audit serial 合并 SYSCALL、EXECVE 和 PROCTITLE，重建 udevadm info 的实际 argv。解析 --query、--export-db、--attribute-walk、--path
+      或 --name，识别读取设备数据库或属性链的请求；trigger、test、control 的修改、测试或重放语义不按等价只读发现计数。数据库记录与当前物理连接不是同一结论。
+    en: Within preconfigured, validated execve/execveat auditing, join SYSCALL, EXECVE, and PROCTITLE by audit serial and
+      reconstruct actual argv for udevadm info. Parse --query, --export-db, --attribute-walk, --path, and --name to identify
+      database or attribute-chain requests. Mutation, testing, or replay semantics in trigger, test, and control are not counted
+      as equivalent read discovery. Database records do not establish current physical connection.
+  - zh: 用可信采集来源的 host_id、auid、ses、pid 与事件时间连接执行者、登录会话及批准作业，区分宿主机设备视图和受限容器视图。对非设备管理角色发起全库导出、跨多类属性遍历或来自已知入侵会话的查询生成线索。SYSCALL
+      success 仅说明执行系统调用状态，不提供查询返回内容；没有实际 stdout 或结果文件验证时，保留查询已发起且结果未知。
+    en: Use trusted collector-origin host_id, auid, ses, pid, and event time to join execution, login session, and approved
+      work, distinguishing host from restricted-container views. Generate leads for whole-database exports by non-device-management
+      roles, walks across classes, or queries from a known compromised session. SYSCALL success establishes execution-syscall
+      status rather than query content. Without actual stdout or validated files, retain query-issued and result-unknown status.
+data_requirements:
+- source_type: linux-execution-audit
+  name:
+    zh: 经配置的 Linux 执行审计关联记录
+    en: Configured Linux execution-audit records
+  channel: Linux audit SYSCALL/EXECVE/PROCTITLE
+  required_fields:
+  - host_id
+  - audit_serial
+  - timestamp
+  - auid
+  - ses
+  - pid
+  - ppid
+  - exe
+  - argv
+  - success
+- source_type: approved-peripheral-work
+  name:
+    zh: 设备支持任务与主机身份映射
+    en: Device-support work and host identity mapping
+  channel: Managed asset inventory and approved support jobs
+  required_fields:
+  - host_id
+  - host_aliases
+  - principal
+  - executable
+  - mode
+  - device_scope
+  - job_id
+  - valid_from
+  - valid_to
+- source_type: conditional-device-query-result
+  name:
+    zh: 仅启用结果分支时的可信设备查询输出
+    en: Trusted device-query output only when the result branch is enabled
+  channel: Separately deployed authorized stdout or result-artifact collection
+  required_fields:
+  - host_id
+  - timestamp
+  - process_id
+  - process_start
+  - query_scope
+  - result_content
+  - result_validated
+  - collector_id
+observables:
+- zh: udevadm info 请求的数据库导出、属性链或指定设备范围
+  en: Database exports, attribute walks, or selected-device scope requested with udevadm info
+correlation:
+  window:
+    zh: 同一 audit serial 先合并执行事件，再按同一会话回看三十分钟以核验作业上下文；保留完整事件时间避免 PID 复用。
+    en: Merge execution by audit serial, then initially review thirty minutes within the same session for work context; retain
+      full timestamps to avoid PID reuse.
+  dimensions:
+  - host_id
+  - audit_serial
+  - auid
+  - ses
+  - pid
+  - timestamp
+false_positives:
+- zh: 安装器、udev 规则调试、硬件维修、取证和容器初始化
+  en: Installers, udev-rule debugging, hardware repair, forensics, and container initialization
+blind_spots:
+- zh: 未配置 exec 规则、直接读取 sysfs 或进程内 libudev 不保证落入该命令路径；执行审计不记录 stdout。
+  en: Missing execution rules, direct sysfs reads, and in-process libudev may bypass this command path; execution audit does
+    not record stdout.
+tuning_guidance:
+  paragraphs:
+  - zh: 以本机 udevadm 版本和批准服务账户建立参数基线，用独立字段保留 audit 原始键和解码 argv。先验证规则是否覆盖本机架构及 execveat，再记录丢失与积压；不要以事件缺失宣告没有发现。合法规则调试允许项应限时，避免按
+      root 或 /usr/bin/udevadm 整体排除。
+    en: Baseline arguments by installed udevadm version and approved service account, preserving raw audit keys and decoded
+      argv separately. Validate architecture and execveat coverage and track loss and backlog rather than declaring no discovery
+      from missing events. Time-limit legitimate rule-debugging exceptions instead of excluding root or /usr/bin/udevadm wholesale.
+  - zh: host_id 来自可信采集来源并与资产清单核对，原始 audit node 存在时另行保留，不能假定默认日志一定含 node。按 host_id 与 audit_serial 拼接，缺少主机身份时禁止跨机合并；执行事件时间可作为该次进程起点，但后续
+      PID 关联仍须排除重用。
+    en: Derive host_id from a trusted collection origin and verify it against inventory, retaining native audit node separately
+      when present rather than assuming it exists by default. Join by host_id and audit_serial and prohibit cross-host merging
+      without identity. Execution time can establish this process start, but later PID joins must still exclude reuse.
+evidence_refs:
+- REF-001278
+- REF-000840
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-11-06'
+  modified: '2026-11-06'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

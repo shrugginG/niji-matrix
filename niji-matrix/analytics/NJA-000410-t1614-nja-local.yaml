@@ -1,0 +1,141 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000410
+strategy_ref: DET-000295
+name:
+  zh: 进程内地区输入返回与用途核对
+  en: In-Process Regional-Input Returns and Purpose Checking
+summary:
+  zh: 对部署验证过的地区函数采集核对返回内容及运行身份，输出地区输入取得线索。
+  en: Check returns and execution identity from validated regional-function collection to produce regional-input acquisition
+    leads.
+domains:
+- enterprise
+platforms:
+- Windows
+- Linux
+- macOS
+logic:
+  paragraphs:
+  - zh: 先在受控进程验证函数入口与退出采集合同。Windows 采集 GetLocaleInfoW 的 Locale、LCType、cchData、返回计数和有效输出，以及 GetUserDefaultUILanguage、GetKeyboardLayoutList
+      和 GetDynamicTimeZoneInformation 的真实返回；macOS/Linux 对 getenv 只采集参数为 LANG、LC_ALL、LC_MESSAGES 或 TZ 的调用及可读取返回值。Frida Interceptor
+      的参数和返回钩子是可行实现依据，不是默认 EDR 事件；采集器必须自行产生调用键、单调时序、版本和健康信息，禁止记录无关环境秘密。
+    en: First validate entry and exit collection in controlled processes. On Windows collect the actual Locale, LCType, cchData,
+      return count, and valid output of GetLocaleInfoW, together with actual returns from GetUserDefaultUILanguage, GetKeyboardLayoutList,
+      and GetDynamicTimeZoneInformation. On macOS and Linux, collect getenv only for LANG, LC_ALL, LC_MESSAGES, or TZ and
+      readable returned values. Frida Interceptor argument and return hooks establish an implementation option, not default
+      EDR events. The collector must generate invocation keys, monotonic ordering, version, and health records while excluding
+      unrelated environment secrets.
+  - zh: 以 host_id 与 process_instance_id 连接运行身份和有有效期的业务用途登记。相同进程五分钟内取得多个地区输入或职责外读取时输出调查候选，但只把 result_state 为 value-returned
+      的记录标为已取得该输入；GetLocaleInfoW 的 cchData=0、键盘列表 nBuff=0、失败和不可读指针分别标为大小查询、失败或未知。业务用途匹配只降低优先级，不删除原始事件；不存在匹配或身份过期时保留未知。位置推断与实际物理位置不得由此自动填入。
+    en: Join execution identity and a time-bounded business-purpose register using host_id and process_instance_id. Return
+      an investigation candidate when one process obtains several regional inputs within five minutes or reads outside its
+      recorded role. Mark an input acquired only for result_state value-returned. Treat GetLocaleInfoW cchData=0, keyboard-list
+      nBuff=0, failures, and unreadable pointers as size-only, failed, or unknown stages. A business-purpose match lowers
+      priority without deleting original events; missing or expired identity remains unknown. Infer neither geographical determination
+      nor physical location automatically.
+  - zh: 返回解码必须按函数和参数执行。GetLocaleInfoW 的 LCType 含 LOCALE_RETURN_NUMBER 时，缓冲区承载数值而不是可直接解释的语言字符串；只有成功调用且缓冲区有效时读取对应类型。GetDynamicTimeZoneInformation
+      的零返回可表示 TIME_ZONE_ID_UNKNOWN，不能按通用零值失败处理；TIME_ZONE_ID_INVALID 才是该接口的失败值。保留这些原始参数和返回码，不能把采集器生成的 result_state 当作未经验证的系统事件。
+    en: Decode returns by function and parameters. GetLocaleInfoW with LOCALE_RETURN_NUMBER in LCType returns a numeric value
+      rather than a directly interpretable language string; copy the appropriate type only after a successful call with a
+      valid buffer. A zero GetDynamicTimeZoneInformation return can mean TIME_ZONE_ID_UNKNOWN and must not be treated as generic
+      zero-value failure; TIME_ZONE_ID_INVALID is that interface's failure value. Preserve raw parameters and codes rather
+      than treating collector-generated result_state as an unvalidated native event.
+data_requirements:
+- source_type: custom-regional-api-result
+  name:
+    zh: 经部署验证的地区函数调用结果采集
+    en: Deployment-Validated Regional Function Result Collection
+  channel: null
+  required_fields:
+  - host_id
+  - process_instance_id
+  - timestamp
+  - invocation_id
+  - api_name
+  - input_kind
+  - input_parameters
+  - return_code
+  - result_state
+  - result_value
+  - collector_version
+  - collector_health
+- source_type: process-lifetime-map
+  name:
+    zh: 进程寿命与身份映射
+    en: Process Lifetime and Identity Mapping
+  channel: null
+  required_fields:
+  - host_id
+  - process_instance_id
+  - process_id
+  - image
+  - user_id
+  - start_time
+  - end_time
+  - identity_valid_from
+  - identity_valid_to
+- source_type: regional-read-purpose-register
+  name:
+    zh: 地区输入读取用途与有效期登记
+    en: Regional-Input Read Purpose and Validity Register
+  channel: null
+  required_fields:
+  - host_id
+  - image
+  - user_id
+  - allowed_input_kind
+  - business_purpose
+  - valid_from
+  - valid_to
+observables:
+- zh: 带有效输出的地区属性调用及其读取进程
+  en: Regional-property calls with valid output and the reading process
+- zh: 大小探测、失败、空返回与未部署采集的区别
+  en: Distinction among size probes, failures, empty returns, and absent collection
+- zh: 同一进程取得的多类地区输入与职责外读取
+  en: Several regional-input classes acquired by one process and reads outside its role
+correlation:
+  window:
+    zh: 默认五分钟聚合输入并保留完整进程寿命；该窗口是待验证的部署起点。
+    en: Aggregate inputs over five minutes by default and preserve full process lifetime; the window is a deployment starting
+      point requiring validation.
+  dimensions:
+  - host_id
+  - process_instance_id
+  - invocation_id
+  - input_kind
+  - timestamp
+false_positives:
+- zh: 国际化界面、安装程序、时区诊断和企业管理代理正常读取。
+  en: Legitimate reads by internationalized interfaces, installers, time-zone diagnostics, and management agents.
+blind_spots:
+- zh: 直接内存访问、未挂钩函数、继承值复制或采集失效不会产生该合同记录。
+  en: Direct memory access, unhooked functions, copied inherited values, and collector failure produce no records under this
+    contract.
+- zh: 本地读取不能单独表明地理意图，分支语境不完整时保持候选。
+  en: Local reads alone do not establish geographical intent; incomplete branch context remains a candidate.
+tuning_guidance:
+  paragraphs:
+  - zh: 用合法多语言软件与受控样本分别验证用户默认值、多个键盘、时区返回零但成功、空环境、大小调用及采集故障。用途登记按映像、身份、输入类型和有效期约束，不按签名或解释器名称全局放行。输入值最小化保存；五分钟并非恶意阈值，也不能屏蔽单次高价值可疑读取。
+    en: Validate user defaults, multiple keyboards, successful zero-valued time-zone returns, empty environments, size-only
+      calls, and collection failures using legitimate multilingual software and controlled samples. Bound purpose records
+      by image, identity, input kind, and validity rather than globally allowing a signer or interpreter. Minimize stored
+      input values. Five minutes is not a maliciousness threshold and must not suppress a single high-value suspicious read.
+evidence_refs:
+- REF-001357
+- REF-001360
+- REF-001361
+- REF-001362
+- REF-001363
+- REF-001368
+- REF-000230
+- REF-001369
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-11-07'
+  modified: '2026-11-07'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

@@ -1,0 +1,104 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000373
+strategy_ref: DET-000275
+name:
+  zh: Windows 日志命令操作分级与任务关联
+  en: Windows Log Command Operation Grading and Task Correlation
+summary:
+  zh: 识别日志来源枚举、记录查询与导出尝试，并按调用来源和批准调查范围确定优先级。
+  en: Identify source enumeration, record queries, and export attempts, then prioritize by caller provenance and authorized
+    investigation scope.
+domains:
+- enterprise
+platforms:
+- Windows
+logic:
+  paragraphs:
+  - zh: 先验证 Audit Process Creation 与命令行策略，采集 Security 4688 的 Computer、TimeCreated、SubjectUserSid、SubjectLogonId、NewProcessId、NewProcessName、ProcessId
+      和 CommandLine。规范化映像与参数，识别 wevtutil 的 el、enum-logs、ep、gl、gli 为 source_inventory_attempt，qe、query-events 为 record_query_attempt，epl、export-log
+      为 log_export_attempt；cl 和 sl 输出相邻清除或配置行为，不能算作本项读取成功。对 Get-WinEvent 的可见参数分别识别 ListLog/ListProvider 和 LogName/Path/FilterHashtable/FilterXPath/FilterXml，进程记录不足以还原交互脚本时标记
+      visibility_gap。
+    en: Validate Audit Process Creation and command-line policy, then collect Security 4688 Computer, TimeCreated, SubjectUserSid,
+      SubjectLogonId, NewProcessId, NewProcessName, ProcessId, and CommandLine. Normalize the image and arguments. Grade wevtutil
+      el, enum-logs, ep, gl, and gli as source_inventory_attempt; qe and query-events as record_query_attempt; and epl and
+      export-log as log_export_attempt. Route cl and sl to adjacent clearing or configuration behavior rather than read success.
+      For visible Get-WinEvent arguments, distinguish ListLog or ListProvider from LogName, Path, FilterHashtable, FilterXPath,
+      and FilterXml. Mark visibility_gap when process records cannot recover interactive script content.
+  - zh: 以同机主体、登录上下文、进程及十分钟窗口连接批准诊断记录，比较通道、事件条件和目标主机是否在授权范围；罕见进程祖先、非职责主体、跨多个高价值通道及已知入侵会话提高优先级。导出路径仅作为工件定位线索；若另有可信内容采集，只有成功解析出匹配事件才升级
+      records_recovered，并保留事件计数和查询范围，不能从文件存在、零退出状态或进程创建直接升级。编译程序的 API 调查在本分析覆盖之外。
+    en: Join approved diagnostics by same-host principal, logon context, process, and a ten-minute window, comparing channels,
+      event predicates, and target hosts with authorized scope. Raise priority for rare ancestry, principals outside duties,
+      multiple high-value channels, and known compromised sessions. Treat an export path only as an artifact locator. If trusted
+      content capture exists separately, upgrade to records_recovered only after parsing matching events, retaining record
+      counts and query scope; file existence, zero exit status, and process creation do not independently qualify. Compiled
+      in-process API investigation is outside this analytic's coverage.
+data_requirements:
+- source_type: windows-security-process-creation
+  name:
+    zh: 已启用命令行的进程创建审计
+    en: Process Creation Audit with Command Line Enabled
+  channel: Security / 4688
+  required_fields:
+  - computer
+  - time_created
+  - subject_user_sid
+  - subject_logon_id
+  - new_process_id
+  - new_process_name
+  - process_id
+  - command_line
+- source_type: approved-log-diagnostic-work
+  name:
+    zh: 已批准日志调查任务
+    en: Approved Log Investigation Work
+  channel: null
+  required_fields:
+  - principal_id
+  - host_id
+  - approved_start
+  - approved_end
+  - allowed_channels
+  - allowed_targets
+observables:
+- zh: 日志来源枚举或查询导出参数及其目标通道与过滤条件
+  en: Source-listing or query and export arguments with target channels and predicates
+- zh: 相同主机主体和进程上下文中的职责与任务范围差异
+  en: Duty and task-scope differences within the same host principal and process context
+correlation:
+  window:
+    zh: 命令与任务默认十分钟；罕见主体和通道基线三十天。
+    en: Default command-to-task join 10m; principal and channel rarity baseline 30d.
+  dimensions:
+  - host_id
+  - principal_id
+  - logon_id
+  - process_id
+  - channel_name
+  - target_host
+false_positives:
+- zh: 获批事件导出、远程支持、取证收集、审计及日志容量诊断。
+  en: Approved event export, remote support, forensic collection, auditing, and log-capacity diagnostics.
+blind_spots:
+- zh: 未开启命令行、交互脚本、编译程序 API、进程注入和不受管主机可能没有可解析请求；4688 不提供返回事件。
+  en: Disabled command-line capture, interactive scripts, compiled APIs, injection, and unmanaged hosts may lack parseable
+    requests; 4688 does not supply returned events.
+tuning_guidance:
+  paragraphs:
+  - zh: 以批准收集器的签名、身份、目标和有效时间共同设置例外，不能永久放行 wevtutil 或管理员。对来源列表、内容查询和导出分别建基线，并用空日志、无权限、合法收集和非职责查询对照验证分级；十分钟不是恶意阈值。
+    en: Scope exceptions jointly by approved collector signature, identity, target, and validity rather than permanently trusting
+      wevtutil or administrators. Baseline source listing, content queries, and export separately, and test grading against
+      empty logs, access denial, legitimate collection, and out-of-duty queries. Ten minutes is not a maliciousness threshold.
+evidence_refs:
+- REF-000623
+- REF-001226
+- REF-001227
+- REF-001230
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-11-05'
+  modified: '2026-11-05'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

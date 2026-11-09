@@ -1,0 +1,241 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000423
+strategy_ref: DET-000301
+name:
+  zh: 内联服务任务与SCM请求返回关联
+  en: Inline Service-Task and SCM Request/Return Correlation
+summary:
+  zh: 在明确部署的宿主插桩中关联内联入口、SCM句柄和服务状态返回，区分请求、成功、空集、错误与部分结果。
+  en: Correlate inline entries, SCM handles, and service-status returns in explicitly deployed carrier instrumentation, separating
+    requests, success, emptiness, errors, and partial results.
+domains:
+- enterprise
+platforms:
+- windows
+logic:
+  paragraphs:
+  - zh: 此分析只在已选宿主部署经ABI和模块版本验证的自定义采集，例如用Frida的Interceptor入口/返回与安全指针读取。记录宿主process_id、thread_id、UTC时间和单调序号，按其主机与时间连接Sysmon唯一生存期。对已知任务分派或实际内联入口记录entry_address、task_id、code_hash及begin/end；task_id与call_id是采集器生成键，不能由邻近时间假造。用同线程嵌套或明确跨线程因果传播把具体服务调用连接任务，存在具体入口和调用才能给出inline_task_observed；缺任务链时只记SCM请求，不因缺sc事件分类为内联。
+      每条调用记录保留单调序号以及来自已验证任务作用域的task_id和连接证据；没有此作用域时task_id保持未知，不用UTC邻近猜测任务归属。
+    en: Run this analytic only in selected carriers with custom capture validated against ABI and module versions, for example
+      using Frida Interceptor entry/return callbacks and safe pointer reading. Record carrier process_id, thread_id, UTC time,
+      and monotonic sequence, joining host and time to a unique Sysmon lifetime. Capture entry_address, task_id, code_hash,
+      and begin/end at known dispatch or actual inline entry. Task_id and call_id are collector-generated keys, never invented
+      from nearby timestamps. Associate particular service calls with tasks through same-thread nesting or explicit cross-thread
+      causal propagation. Require an actual entry and call for inline_task_observed; without the task chain retain an SCM
+      request instead of classifying missing sc events as inline. Each call retains a monotonic sequence, task_id from a validated
+      task scope, and linkage evidence. Without that scope, task_id remains unknown rather than being guessed from UTC proximity.
+  - zh: 采集OpenSCManagerA/W的lpMachineName、lpDatabaseName、dwDesiredAccess和非空返回句柄，OpenServiceA/W的manager句柄、lpServiceName、权限和返回句柄，并在CloseServiceHandle结束映射。句柄键按宿主实例、数值与分配代次区分，空machine表示本机，已打开或继承句柄无来源则目标未知。EnumServicesStatusExA/W记录InfoLevel、dwServiceType、dwServiceState、group、cbBufSize和resume输入及输出，QueryServiceStatusEx记录服务句柄、InfoLevel和缓冲尺寸。原始入参只支持请求，返回BOOL和失败时即时last-error单独采集；成功时残留last-error不解释为失败，字符串按A/W编码与边界解码，返回服务PID不当读取者。
+      显式记录lpResumeHandle是否提供，将可选空指针、未捕获值和真实零值分开。
+    en: Capture OpenSCManagerA/W lpMachineName, lpDatabaseName, dwDesiredAccess, and nonnull returned handles; capture OpenServiceA/W
+      manager handle, lpServiceName, rights, and returned handle, ending maps on CloseServiceHandle. Scope handle keys by
+      carrier instance, value, and allocation generation. A null machine means local, while preopened or inherited handles
+      without provenance retain unknown targets. For EnumServicesStatusExA/W retain InfoLevel, dwServiceType, dwServiceState,
+      group, cbBufSize, and input/output resume values; for QueryServiceStatusEx retain the service handle, InfoLevel, and
+      buffer size. Inputs establish requests only. Capture BOOL returns and immediate failure last-error separately; stale
+      last-error after success is not failure. Decode A/W strings within encoding and bounds, and never treat returned service
+      PIDs as readers. Explicitly record whether lpResumeHandle was supplied, separating an optional null pointer, an uncaptured
+      value, and actual zero.
+  - zh: 只有输出指针、数组边界与InfoLevel经验证才解析返回结构。枚举中lpServicesReturned给出本页条目数；仅在文档规定的缓冲不足反馈下解释pcbBytesNeeded的剩余所需字节，不将其当作条数或无条件有效的成功字段。ERROR_MORE_DATA是需要续页或仅尺寸探测，不自动成功或空集；保留已验证的本页条目，按已观测的同一enumeration_chain_id与resume续页，链键仅由任务与实际循环因果生成而非相邻时间，任何缺页、截断、错误或无法连接的续页使完整性为partial/unknown。非零成功且实际提供的resume输出已终止，或API已成功且此可选参数确实未提供，才支持所选过滤下完成，零条目也仅是所选权限视图空，逐服务QUERY_STATUS缺权可能静默省略。QueryServiceStatusEx非零才读SERVICE_STATUS_PROCESS；ERROR_INSUFFICIENT_BUFFER不写有效结构。枚举returned_entries内将lpServiceName/lpDisplayName、dwServiceType、dwCurrentState、dwProcessId、dwWin32ExitCode和dwServiceSpecificExitCode映射为service_name/display_name、service_type、current_state、service_pid、win32_exit_code和service_specific_exit_code，保持原始数字；单服务结构没有名称指针，service_name只从已证实句柄映射取得，display_name未知。dwWaitHint为毫秒且不是实际耗时，检查点不是时间，服务自报码不作API错误。STOPPED的PID无效，START/STOP_PENDING时也可能无效，其他有效状态才允许解释服务归属，仍不证明实时健康。
+      类型过滤或返回确认纯driver时分流NJT-0180；Win32服务任务才支持本子项，混合或类型未知只保留相应范围请求与条目，不重计普通服务。 API成功且所有实际提供的续页状态已终止时，仅确认所见请求范围遍历；可选resume指针确实未提供与未采集不同，服务状态在分页间变化也不形成原子全机快照。
+    en: 'Parse return structures only after validating output pointers, array bounds, and InfoLevel. For enumeration lpServicesReturned
+      counts this page. Interpret pcbBytesNeeded as remaining required bytes only for documented insufficient-buffer feedback,
+      never as an entry count or an unconditionally valid successful-return field. ERROR_MORE_DATA means continuation or sizing,
+      not automatic success or emptiness. Preserve validated current-page entries and join continuation by observed enumeration_chain_id
+      and resume values, deriving the chain only from task/loop causality rather than nearby timestamps. Missing pages, truncation,
+      errors, or unlinked continuation make completeness partial/unknown. A nonzero successful call with terminal output for
+      any supplied resume parameter, or an established successful call where that optional pointer was genuinely omitted,
+      supports completion under the selected filters only; zero entries are empty only within the selected authority view,
+      which can silently omit services lacking QUERY_STATUS. Parse SERVICE_STATUS_PROCESS after nonzero QueryServiceStatusEx
+      only; ERROR_INSUFFICIENT_BUFFER provides no valid structure. For enumeration returned_entries map lpServiceName/lpDisplayName,
+      dwServiceType, dwCurrentState, dwProcessId, dwWin32ExitCode, and dwServiceSpecificExitCode to service_name/display_name,
+      service_type, current_state, service_pid, win32_exit_code, and service_specific_exit_code, preserving raw numbers. A
+      single-service structure has no name pointers: obtain service_name only from proven handle mappings and leave display_name
+      unknown. DwWaitHint is milliseconds rather than elapsed duration; checkpoints are not time, and service-reported errors
+      are not API errors. STOPPED PIDs are invalid, START/STOP_PENDING PIDs may be invalid, and only documented valid states
+      permit service ownership interpretation without attesting real-time health. Route confirmed pure-driver filters or returns
+      to NJT-0180. Only Win32-service tasks support this child; retain mixed or unknown-type requests/entries at their actual
+      scope without recounting ordinary services. Successful API completion with terminal states for any supplied continuation
+      confirms traversal of the observed request scope only. A genuinely absent optional resume pointer differs from uncaptured
+      state, and changing services between pages do not form an atomic whole-host snapshot.'
+  - zh: 与独立台账比较宿主代码、实际task/code_hash、查询动作、目标和有效区间；process_account只作创建来源，不替代未观测的调用有效token，依赖主体的批准判定因而保留unknown。输出任务证据、request_observed、result_state和完整性，返回证明客户端取得结构，不证明已外传或操作员消费。健康合同必须记录覆盖API、架构/模块哈希、入口配置、插桩启停、指针读取失败、事件丢失、截断、时钟与心跳。只有具体链存在才提高内联置信，固定工具代码不健壮时保留实际错误而不从最后成功提示补造全量结果；不自动阻断正常支持代理。
+    en: Compare carrier code, actual task/code_hash, action, target, and validity with an independent register. Process_account
+      is creation provenance rather than an unobserved effective call token, so principal-dependent approval remains unknown.
+      Emit task evidence, request_observed, result_state, and completeness. Returns establish structures acquired by the client
+      rather than exfiltration or operator consumption. Health must record covered APIs, architecture/module hashes, entry
+      configuration, instrumentation intervals, failed pointer reads, loss, truncation, clocks, and heartbeat. Increase inline
+      confidence only for actual chains; preserve errors from nonrobust tool code rather than inventing full results from
+      a final success message, and do not automatically block normal support agents.
+data_requirements:
+- source_type: custom-inline-task-entry
+  name:
+    zh: 显式部署的宿主任务入口插桩
+    en: Explicitly deployed carrier task-entry instrumentation
+  channel: null
+  required_fields:
+  - host_id
+  - event_time
+  - monotonic_sequence
+  - process_id
+  - thread_id
+  - task_id
+  - phase
+  - entry_address
+  - code_hash
+  - carrier_module_hash
+  - task_link_method
+  - capture_session
+- source_type: custom-scm-call-and-return
+  name:
+    zh: 显式部署的SCM句柄与调用返回采集
+    en: Explicitly deployed SCM handle and call-return capture
+  channel: null
+  required_fields:
+  - host_id
+  - event_time
+  - process_id
+  - thread_id
+  - capture_session
+  - call_id
+  - enumeration_chain_id
+  - phase
+  - api_name
+  - abi
+  - handle_value
+  - handle_generation
+  - manager_handle
+  - service_handle
+  - machine_name
+  - database_name
+  - service_name
+  - desired_access
+  - info_level
+  - service_type_filter
+  - service_state_filter
+  - group_filter
+  - buffer_size
+  - resume_in
+  - resume_out
+  - entries_returned
+  - bytes_needed
+  - bool_return
+  - last_error
+  - returned_entries
+  - pointer_validity
+  - decode_status
+  - capture_completeness
+  - monotonic_sequence
+  - task_id
+  - task_link_evidence
+  - resume_pointer_present
+- source_type: sysmon-carrier-lifecycle
+  name:
+    zh: 宿主实例的Sysmon创建与终止
+    en: Sysmon creation and termination of carrier instances
+  channel: Microsoft-Windows-Sysmon/Operational
+  required_fields:
+  - host_id
+  - event_time
+  - event_id
+  - process_guid
+  - process_id
+  - image
+  - process_account
+- source_type: approved-inline-service-task-register
+  name:
+    zh: 外部维护的内联服务任务批准台账
+    en: Externally maintained inline-service-task approval register
+  channel: null
+  required_fields:
+  - register_version
+  - register_status
+  - owner
+  - host_id
+  - carrier_identity
+  - task_code_hash
+  - target_scope
+  - inquiry_scope
+  - valid_from
+  - valid_until
+- source_type: instrumentation-health-register
+  name:
+    zh: 插桩版本、覆盖与丢失健康台账
+    en: Instrumentation version, coverage, and loss-health register
+  channel: null
+  required_fields:
+  - host_id
+  - capture_session
+  - collector_version
+  - architecture
+  - module_hashes
+  - covered_apis
+  - task_entry_configuration
+  - enabled_from
+  - enabled_until
+  - pointer_read_failure_count
+  - dropped_count
+  - truncated_count
+  - clock_skew_bound_ms
+  - last_heartbeat
+observables:
+- zh: 实际内联入口与服务枚举或状态请求在同一宿主任务链中正面关联。
+  en: An actual inline entry positively links to service enumeration or status requests in one carrier task chain.
+- zh: 句柄来源、API状态和已验证返回支持具体服务条目或所选视图的空集，缺页和错误保留部分或未知。
+  en: Handle provenance, API status, and validated returns support particular entries or emptiness of the selected view, while
+    missing pages and errors remain partial or unknown.
+- zh: 宿主名称正常但task代码或查询范围与批准工作不符时保留独立线索。
+  en: Task code or inquiry scope outside approved work remains an independent lead despite an ordinary carrier name.
+correlation:
+  window:
+    zh: 用宿主实际生存期、明确任务begin/end与调用/返回嵌套关联；一秒仅可在本地验证后辅助排序，不能替代task或handle因果键。
+    en: Join actual carrier lifetimes, explicit task begin/end, and call/return nesting. One second can aid locally validated
+      ordering but cannot replace task or handle causal keys.
+  dimensions:
+  - host_id
+  - capture_session
+  - process_guid
+  - process_id
+  - thread_id
+  - task_id
+  - call_id
+  - handle_value
+  - handle_generation
+  - code_hash
+false_positives:
+- zh: 合法支持插件、监控代理和安装器在既有宿主中读取服务，产生相同API链。
+  en: Legitimate support plugins, monitoring agents, and installers read services inside existing carriers and produce the
+    same API chains.
+- zh: 缓冲重试、权限过滤与服务状态变化可造成部分或空视图，并非查询者隐藏行为。
+  en: Buffer retries, permission filters, and changing service states can yield partial or empty views without concealment
+    by the querier.
+blind_spots:
+- zh: 未插桩宿主、直接或其他接口、已打开句柄和失配模块入口可能使任务、目标或结果不可归属。
+  en: Uninstrumented carriers, alternate interfaces, preopened handles, and mismatched module entries can lose task, target,
+    or result attribution.
+- zh: API hook与内联入口采集可能被绕开或干扰，返回不证明外传，也不保证全库存或有效调用身份已知。
+  en: API hooks and inline-entry capture can be bypassed or disturbed. Returns establish neither exfiltration nor whole inventories
+    or known effective call identity.
+tuning_guidance:
+  paragraphs:
+  - zh: 部署前在隔离良性宿主验证A/W编码、32/64位结构、句柄重用、尺寸探测、MORE_DATA续页、缺权静默省略、零项与PAUSED等状态，测试采集器自身不覆盖last-error或损害宿主。将实际task哈希与到期时间登记，保留失败和部分返回，禁止只按签名宿主或全局API白名单压制。上述是实施验收条件，本研究没有编译或执行BOF，也无测得覆盖率。
+    en: Before deployment, validate A/W encoding, 32/64-bit structures, handle reuse, sizing, MORE_DATA continuation, silent
+      permission omissions, zero entries, and states such as PAUSED in an isolated benign carrier. Check that capture neither
+      overwrites last-error nor destabilizes the carrier. Register actual task hashes and expiry, preserve failed and partial
+      returns, and avoid suppression through signed-carrier or global API allowlists. These are deployment acceptance conditions;
+      no BOF was compiled or executed and no coverage rate measured here.
+evidence_refs:
+- REF-001305
+- REF-001303
+- REF-001403
+- REF-001404
+- REF-001405
+- REF-000230
+- REF-001368
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-11-08'
+  modified: '2026-11-08'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

@@ -1,0 +1,199 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000409
+strategy_ref: DET-000294
+name:
+  zh: WMI 系统属性查询客户端谱系分析
+  en: WMI System-Attribute Query Client-Lineage Analytic
+summary:
+  zh: 将明确的 OS 与硬件类查询归属到实际客户端并核对批准职责，不从 provider 或错误事件推断返回。
+  en: Attribute explicit OS and hardware-class queries to actual clients and verify approved duties without inferring returns
+    from providers or errors.
+domains:
+- enterprise
+platforms:
+- Windows
+logic:
+  paragraphs:
+  - zh: 在目标版本验证并开启 Microsoft-Windows-WMI-Activity/Trace，保留包含 ExecQuery 文本、ClientMachine、ClientProcessId、User、GroupOperationId
+      与 OperationId 的实际事件。解析 WQL 的 FROM 类与属性集合，将 Win32_OperatingSystem、Win32_BaseBoard、Win32_Processor 和 Win32_QuickFixEngineering
+      的实例读取标为系统属性请求；类架构查询、ExecMethod、事件订阅与 Win32_Process 等其他直接对象分别分流。只消费错误5858或加载5857的环境不满足此合同，WMI provider HostId 不能代替原始
+      client PID。
+    en: Validate and enable Microsoft-Windows-WMI-Activity/Trace on the target version, retaining actual events containing
+      ExecQuery text, ClientMachine, ClientProcessId, User, GroupOperationId, and OperationId. Parse WQL FROM classes and
+      selected properties, labeling instance reads of Win32_OperatingSystem, Win32_BaseBoard, Win32_Processor, and Win32_QuickFixEngineering
+      as system-attribute requests. Route class-schema requests, ExecMethod, event subscriptions, and other direct objects
+      such as Win32_Process separately. An environment consuming only error 5858 or load 5857 records does not meet the contract,
+      and a WMI provider HostId cannot substitute for the original client PID.
+  - zh: 按事件时间把 client_machine 映射为 client_host_id，再用同机进程生存期将 client_process_id 唯一连接到 client_process_guid；进程创建早于查询、且查询在结束前的事实仅说明客户端归属，不单独证明本子项的恶意承载选择。以
+      host、group_operation_id、operation_id 合并同次请求与 provider 事件，不跨重启或把操作ID当全域唯一。远程客户端映射或生存期缺失时保留 client_unresolved，不能错误关联到目标上同PID进程。
+    en: Resolve client_machine to client_host_id at event time, then uniquely join client_process_id to client_process_guid
+      using same-host process lifetimes. Creation before a query and a query before termination establish client attribution
+      only, not independently the child's adversarial carrier choice. Join request and provider events by host, group_operation_id,
+      and operation_id without crossing boots or treating operation IDs as globally unique. Missing remote-client mapping
+      or lifetime yields client_unresolved rather than a join to an unrelated same-PID target process.
+  - zh: 与台账中的 namespace、query_class、selected_properties、客户端映像、主体、主机和批准时间核对，输出 attributed_profile_query、outside_approved_profile
+      或 context_unknown，并附可核验的请求定位。每次查询都保留原始 WQL 与解析状态，合法通用监控不能按产品名整体豁免。本分析不消费返回缓冲区、网络画像或自定义 API hook；即使 Trace 有成功状态，也不能提升为取得具体属性、非空结果或完整枚举。ExecQuery
+      成功可以产生空枚举器，枚举器状态和实际对象需另外采集后才能形成结果级分析。
+    en: Check namespace, query_class, selected_properties, client image, principal, host, and approved time against the register,
+      emitting attributed_profile_query, outside_approved_profile, or context_unknown with verifiable request locations. Preserve
+      raw WQL and parser state for each request rather than exempting legitimate generic monitors by product name. The analytic
+      consumes no return buffers, network profiles, or custom API hooks. Even a trace success state does not establish particular
+      attributes, nonempty results, or complete enumeration. Successful ExecQuery can produce an empty enumerator; enumerator
+      state and actual objects require separately declared collection before result-level analysis.
+  - zh: 原生字段按实际 schema 映射：System/Computer 是 native_target_host，System/TimeCreated 是 event_time；ClientMachine、ClientProcessId、User、NamespaceName、GroupOperationId
+      和 OperationId 分别保留客户端、主体、命名空间与操作身份，query_text 从 Operation 内的 ExecQuery 文本提取。目标主机与客户端分别映射，不能把 System/Computer 当 ClientMachine。ProviderName
+      与 HostId 只标识 provider；provider 事件缺少 OperationId 时仅按目标主机、boot_id 与 GroupOperationId 连接，缺失客户端字段保持未知。若实际版本提供 ClientProcessCreationTime，须验证其编码，FILETIME
+      按 1601 年起的 100 纳秒间隔转换为 UTC 后才与生存期比较；不得直接当 Unix 毫秒。以上字段的缺失和模式差异进入 parser_state 与覆盖报告，不补造成功结果。
+    en: Map native fields against the actual schema. System/Computer supplies native_target_host and System/TimeCreated supplies
+      event_time. Preserve ClientMachine, ClientProcessId, User, NamespaceName, GroupOperationId, and OperationId for client,
+      principal, namespace, and operation identity, extracting query_text from ExecQuery text in Operation. Resolve target
+      and client hosts separately rather than treating System/Computer as ClientMachine. ProviderName and HostId identify
+      only the provider. A provider event lacking OperationId joins only by target host, boot_id, and GroupOperationId, with
+      missing client fields left unknown. If the deployed version provides ClientProcessCreationTime, validate its encoding;
+      convert FILETIME from 100-nanosecond intervals since 1601 to UTC before comparing lifetimes, never treating it as Unix
+      milliseconds. Missing fields and schema differences enter parser_state and coverage reporting rather than generating
+      successful results.
+data_requirements:
+- source_type: windows-wmi-query-trace
+  name:
+    zh: 已验证的 WMI 查询 Trace
+    en: Validated WMI query trace
+  channel: Microsoft-Windows-WMI-Activity/Trace, version-verified query start/provider events
+  required_fields:
+  - native_target_host
+  - event_time
+  - client_machine
+  - client_process_id
+  - native_principal
+  - namespace
+  - query_text
+  - operation
+  - group_operation_id
+  - operation_id
+  - provider_name
+  - provider_host_id
+  - parser_state
+  - client_process_creation_time
+- source_type: windows-client-process-lifetime-map
+  name:
+    zh: 查询客户端的进程生存期
+    en: Query-client process lifetimes
+  channel: Sysmon Event 1/5 joined on the client host
+  required_fields:
+  - client_host_id
+  - process_id
+  - process_guid
+  - image
+  - parent_process_guid
+  - native_principal
+  - process_start_time
+  - process_end_time
+  - mapping_completeness
+- source_type: event-time-wmi-identity-map
+  name:
+    zh: WMI 事件时间设备与主体映射
+    en: WMI event-time device and principal map
+  channel: Deployment-maintained device enrollment and directory map
+  required_fields:
+  - native_host_name
+  - host_id
+  - native_principal
+  - principal_id
+  - valid_from
+  - valid_until
+  - identity_state
+- source_type: approved-wmi-profile-register
+  name:
+    zh: 批准 WMI 主机画像职责台账
+    en: Approved WMI host-profiling duty register
+  channel: Deployment-maintained application and support-job register
+  required_fields:
+  - client_host_id
+  - principal_id
+  - client_image
+  - namespace
+  - query_class
+  - selected_properties
+  - job_id
+  - valid_from
+  - valid_until
+  - register_completeness
+  - policy_version
+- source_type: wmi-trace-collection-health
+  name:
+    zh: WMI Trace 采集健康与版本合同
+    en: WMI trace health and version contract
+  channel: Trace deployment and collector configuration records
+  required_fields:
+  - host_id
+  - event_time
+  - boot_id
+  - windows_build
+  - trace_policy_id
+  - event_schema_version
+  - covered_query_paths
+  - trace_start_time
+  - events_lost
+  - collection_gap
+  - clock_error_bound
+  - collector_version
+observables:
+- zh: 已归属客户端直接提交 OS 或硬件实例查询，客户端职责或字段范围与批准任务不符。
+  en: An attributed client directly submits OS or hardware-instance queries inconsistent with its approved duties or field
+    scope.
+- zh: 请求由既有客户端归属而非独立诊断工具定位，且保留 provider 与 operation 的原始连接证据。
+  en: A request is located through existing-client attribution rather than a separate diagnostic utility, with original provider
+    and operation joins retained.
+correlation:
+  window:
+    zh: 同次操作按实际事件序列关联，初始五分钟容忍日志路由延迟；客户端匹配严格受生存期、重启和时钟误差边界限制，未验证检测率。
+    en: Join an operation by its actual event sequence with an initial five-minute routing-delay allowance. Client matching
+      remains constrained by lifetimes, boots, and clock error; no detection rate is validated.
+  dimensions:
+  - target_host_id
+  - client_host_id
+  - client_process_guid
+  - principal_id
+  - namespace
+  - query_class
+  - group_operation_id
+  - operation_id
+  - provider_host_id
+  - event_time
+  - policy_version
+false_positives:
+- zh: 软件部署、兼容性组件、OEM 工具和监控代理会在进程内查询相同类，动态请求也可能来自批准排障。
+  en: Deployment software, compatibility components, OEM tools, and monitors query the same classes in-process, and dynamic
+    requests can come from approved troubleshooting.
+blind_spots:
+- zh: Trace 未启用、只收错误/加载、模式变化、远程客户端生存期缺失或事件丢失会使归属不完整；非WMI getter 和返回内容不在此合同内。
+  en: Disabled tracing, error/load-only feeds, schema changes, absent remote-client lifetimes, or lost events degrade attribution.
+    Non-WMI getters and return content are outside the contract.
+tuning_guidance:
+  paragraphs:
+  - zh: 先用本地及需要支持的远程成功、空与失败查询验证原始字段、WQL解析和客户端映射，不把某版事件ID推广到所有Windows。按应用和作业实际职责建立字段与类范围允许项，保留未知主体及失配状态；避免永久放行WmiPrvSE、System.Management或已签名客户端。采集器只能在已验证覆盖时把无事件解释为该路径未观察到，不证明查询不存在。
+    en: Validate raw fields, WQL parsing, and client mapping using local and required remote success, empty, and failure queries,
+      without generalizing one version's event IDs to all Windows. Base class/property allowances on actual application and
+      job duties, retaining unknown identities and mismatches. Avoid permanent exemptions for WmiPrvSE, System.Management,
+      or signed clients. Only validated coverage can support a statement that a path was not observed; it cannot establish
+      that querying did not occur.
+evidence_refs:
+- REF-001356
+- REF-001346
+- REF-001354
+- REF-001355
+- REF-001347
+- REF-001306
+- REF-001307
+- REF-001309
+- REF-001310
+- REF-000230
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-11-07'
+  modified: '2026-11-07'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

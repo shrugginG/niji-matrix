@@ -1,52 +1,114 @@
 schema_version: 2.0.0
 type: evasion-subtechnique
 id: NJS-0122-003
-name: {zh: 时间真实性校验, en: Temporal Realism Verification}
-summary: {zh: 攻击者比较系统运行时间、多时钟、睡眠或指令耗时，在时间短暂或加速不一致时退出或保留核心载荷。, en: Adversaries compare system uptime multiple clocks sleeps or instruction timing and exit or withhold core payloads when time is short-lived or inconsistently accelerated.}
+name:
+  zh: 时间真实性校验
+  en: Temporal Realism Verification
+summary:
+  zh: 攻击者用uptime或时间关系判断分析环境，并由判断决定早退、保留或放行核心路径。
+  en: Adversaries judge an analysis environment from uptime or timing relationships and use that judgment to exit, withhold,
+    or release the core path.
 aliases: []
 parent_ref: NJT-0122
-lineage: {attck_subtechnique_inherited: false}
+lineage:
+  attck_subtechnique_inherited: false
 definition_and_concept:
   paragraphs:
-  - zh: 时间真实性校验是攻击者读取系统运行时间、墙钟、单调时钟、时间戳计数器、sleep 前后差值或计算循环耗时，并判断环境是否因刚启动、分析窗口过短、sleep 跳过或 VM 指令开销而不真实，再控制退出、等待或载荷释放。直接目的在于识别沙箱时间模型；稳定变量是时间证据一致性，而不是固定秒数或延迟 API。
-    en: Temporal Realism Verification is an evasion sub-technique in which an adversary reads system uptime, wall clock, monotonic clock, timestamp counter, before-and-after sleep differences, or computation-loop timing, judges whether the environment is unrealistic because it has just booted, has a short analysis horizon, skips sleep, or adds VM instruction cost, and then controls exit, waiting, or payload release. Its immediate purpose is to identify the sandbox's time model. The stable variable is consistency of temporal evidence rather than a fixed number of seconds or delay API.
+  - zh: 时间真实性校验把运行时间或测得时间关系用于判断当前环境是否像短生命周期或时间被操纵的分析环境，再控制退出或核心路径。最小实例可以只比较一次uptime；多时钟一致性或指令耗时是其他可能实现，需另证比较及后继链。稳定变量是时间证据参与环境判断，不是延迟API、时钟数量或固定秒数。
+    en: Temporal Realism Verification uses uptime or a measured timing relationship to judge whether an environment resembles
+      short-lived or time-manipulated analysis and controls exit or the core path. A minimal instance can compare uptime once.
+      Multiclock consistency or instruction timing are other possible implementations requiring their own comparison and successor
+      evidence. The stable variable is timing evidence used for environment judgment rather than a delay API, clock count,
+      or fixed duration.
 stealth_characteristics:
   paragraphs:
-  - zh: 时间真实性校验让短时沙箱在样本到达恶意路径前结束，或在加速 sleep 时因多时钟不一致被识别。运行时间、时钟读取、阈值、循环资源、分支和加速前后载荷差分仍可观察；一致控制全部时间源和延长分析会限制效果，但成本高。
-    en: Temporal Realism Verification causes a short sandbox to end before the sample reaches its malicious path or exposes sleep acceleration through inconsistency among clocks. Uptime, clock reads, thresholds, loop resources, branches, and payload differentials before and after acceleration remain observable. Coherent control of every time source and longer analysis constrain the effect but are costly.
+  - zh: 时间真实性校验可让短uptime运行提前结束，或在已证明的时间关系异常后保留核心路径，使分析只见检查与早退。时钟读取、位宽单位、比较、退出和放行工件仍可观察。长uptime不保证全部路径出现；真实启动、计数回绕、休眠和测量扰动也可能产生相同值或差异。
+    en: Temporal Realism Verification can end short-uptime runs or withhold the core path after an established timing anomaly,
+      leaving analysis with checks and exit. Reads, widths and units, comparisons, exits, and release artifacts remain observable.
+      Longer uptime does not guarantee every path; real boot, counter wrap, suspend behavior, and measurement disturbance
+      can produce the same values or differences.
 scope_boundary_definition:
   paragraphs:
-  - zh: 纳入时间证据被用于判断分析环境并实际改变核心后继行为。普通 sleep、业务调度、速率限制、许可证时间和纯资源消耗是反例。没有环境判别的延迟归 NJT-0107；系统工件归 NJS-0122-001，用户活动归 NJS-0122-002。
-    en: Scope includes timing evidence used to classify an analysis environment and actually change core successor behavior. Ordinary sleep, business scheduling, rate limiting, license time, and pure resource consumption are counterexamples. Delay without environment judgment belongs to NJT-0107, system artifacts to NJS-0122-001, and user activity to NJS-0122-002.
+  - zh: 只纳入时间证据进入分析环境判断并改变后继的情形。sleep、timer/message计数或RDTSC循环若只等待固定条件完成，即使为越过沙箱窗口，也归NJT-0107；必须另有uptime或时间关系的环境判断才入本项。最近输入充分性归NJS-0122-002人类活动充分性门控；正常调度、许可、基准测试和同步故障是反例。uptime不因被称pocket
+      litter重复归NJS-0122-001系统指纹分析环境判别。
+    en: Include timing evidence only when it enters analysis-environment judgment and changes successors. Sleep, timer/message
+      counting, or RDTSC loops that merely complete a fixed wait belong to NJT-0107 even if intended to outlast sandbox observation.
+      This child additionally requires environment judgment from uptime or timing relationships. Last-input sufficiency belongs
+      to NJS-0122-002 Human-Activity Sufficiency Gating; scheduling, licensing, benchmarks, and synchronization faults are
+      counterexamples. Calling uptime pocket litter does not duplicate it under NJS-0122-001 System-Fingerprint Analysis Classification.
 application_scenarios_and_threat_model:
   application_scenarios:
     paragraphs:
-    - zh: Upatre 调用 GetTickCount，并在系统运行不足约十二分钟时退出；WildFire 改写运行时间后样本继续恶意例程。其他样本可比较 sleep 前后多个时钟或高 VM-exit 指令耗时识别时间加速和虚拟化。
-      en: Upatre called GetTickCount and exited when system uptime was below roughly twelve minutes; after WildFire changed the uptime, the sample continued its malicious routine. Other samples can compare multiple clocks before and after sleep or timing of high-VM-exit instructions to identify acceleration and virtualization.
+    - zh: Upatre报告样本把GetTickCount与0xAFE74，即720500毫秒比较，低于阈值时退出；改变返回uptime后继续恶意例程。这不是通用十二分钟规则，也不证明该样本使用多时钟或sleep加速检测。其他实现须有自己的时间类型、比较和后继证据。
+      en: The reported Upatre sample compared GetTickCount with 0xAFE74, or 720500 milliseconds, and exited below it. Changed
+        returned uptime permitted its malicious routine. This is not a universal twelve-minute rule and does not establish
+        multiclock or sleep-acceleration detection in that sample. Other implementations need their own time-type, comparison,
+        and successor evidence.
   threat_model:
     attacker_model:
       paragraphs:
-      - zh: 攻击者需选择真实环境和沙箱分布不同的时间信号，并处理休眠、刚重启和低性能主机。固定阈值会漂移，多时钟校验增加代码和兼容成本；长时间运行与一致加速会削弱判断。
-        en: The adversary needs a timing signal whose distributions differ between real environments and sandboxes and must handle sleep, recent reboot, and slow hosts. Fixed thresholds drift, and multiclock validation increases code and compatibility cost. Long execution and coherent acceleration weaken the judgment.
+      - zh: 攻击者可本地执行、读取可用时间源、比较阈值和选择后继，无需修改系统时钟权限。它需容忍真实重启、回绕、休眠和硬件差异；多时钟或指令计时增加兼容成本，插桩开销也会扰动测量。
+        en: The adversary can execute locally, read available clocks, compare thresholds, and choose successors without permission
+          to change the system clock. It must tolerate real reboots, wrap, suspend behavior, and hardware differences. Multiclock
+          or instruction timing adds compatibility costs, and instrumentation overhead can disturb measurements.
     defender_model:
       paragraphs:
-      - zh: 防守方可记录所有时钟/运行时间读取、sleep、循环、CPU 与分支，并在原速、统一加速和不同 uptime 环境比较结果。硬件时钟不可控、样本非确定或分析预算短时形成盲区。
-        en: Defenders can record all clock and uptime reads, sleeps, loops, CPU, and branches and compare outcomes under real time, coherent acceleration, and different uptime environments. Uncontrollable hardware clocks, nondeterministic samples, or short analysis budgets create blind spots.
+      - zh: 防守方需专门采集样本实际读取的时间源、原始返回、单位和比较位置，另用不随来宾加速的主机单调时钟测量。GetTickCount是32位毫秒且约49.7天回绕；QPC需本机频率转换，TSC不是毫秒。未采集硬件或外部源保留未知，hook
+          Sleep不证明全部时间源一致。
+        en: Defenders need specialized capture of clocks actually read, raw values, units, and comparison locations, with
+          independent host-monotonic measurement unaffected by guest acceleration. GetTickCount is 32-bit milliseconds wrapping
+          after about 49.7 days. QPC needs local frequency conversion, and TSC is not milliseconds. Uncaptured hardware or
+          external sources remain unknown; hooking Sleep does not establish coherence of every source.
 stealth_mechanisms:
 - mechanism_ref: NM-BT
   role: primary
-  summary: {zh: 时间真实性判断把载荷隔离在短时或加速分析窗口之外, en: Temporal-realism judgment isolates payloads beyond short or accelerated analysis windows}
+  summary:
+    zh: 时间环境判断在特定运行条件下抑制核心路径
+    en: Temporal environment judgment suppresses the core path under selected run conditions
   analysis:
     paragraphs:
-    - zh: 攻击者用时间一致性决定是否进入核心路径，沙箱看到早退或持续等待而真实环境释放载荷。分析观察被时间条件收缩，形成行为透明；统一时钟控制和结果差分可恢复隐藏路径。
-      en: The adversary uses temporal consistency to decide whether to enter the core path, leaving a sandbox with early exit or continued waiting while a real environment releases the payload. Analysis observation contracts under the timing condition, producing Behavioral Transparency. Coherent clock control and outcome differentials recover the hidden path.
-  evidence_refs: [REF-000410, REF-000443, REF-000445]
+    - zh: 攻击者让时间条件比较决定是否进入核心路径，短uptime分支只留下检查与早退，而改变条件后的放行出现恶意例程。Upatre支持这种行为透明链，纯等待不支持。时钟返回与比较仍可检查，干预实验只有在时间解码有效、其他条件受控及结果可复现时才加强因果，不能保证恢复全部隐藏功能。
+      en: The adversary lets a timing comparison decide entry to the core path. A short-uptime branch leaves checks and exit,
+        while changed conditions permit a malicious routine. Upatre supports this Behavioral Transparency chain; pure waiting
+        does not. Returns and comparisons remain inspectable. Interventions strengthen attribution only with valid time decoding,
+        controlled conditions, and reproducible outcomes, without guaranteeing recovery of every hidden function.
+  evidence_refs:
+  - REF-000445
   confidence: high
-defense: {detections: {coverage: available, strategy_refs: [DET-000119]}, mitigations: {coverage: available, mitigation_refs: [MIT-000120]}}
-evidence: {claim_refs: [CLM-000657], case_refs: [CASE-000165], reference_refs: [REF-000410, REF-000443, REF-000445]}
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000119
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000120
+evidence:
+  claim_refs:
+  - CLM-000657
+  case_refs:
+  - CASE-000165
+  reference_refs:
+  - REF-000410
+  - REF-000443
+  - REF-000445
+  - REF-000625
+  - REF-001436
+  - REF-001437
 research:
   limitations:
     paragraphs:
-    - zh: Upatre 直接证明 uptime 门控和防守改写后的结果，但十二分钟不是通用阈值。真实新启动设备和短命工作负载可满足同样条件；必须用受控时间变化证明后继差分，不能把 sleep 或 GetTickCount 本身视为恶意。
-      en: Upatre directly establishes uptime gating and the outcome after defensive rewriting, but twelve minutes is not a universal threshold. Real newly booted devices and ephemeral workloads can satisfy the same condition. Controlled timing changes must establish the successor differential, and sleep or GetTickCount alone is not malicious.
-lifecycle: {status: review, version: 0.1.0, created: '2026-09-21', modified: '2026-09-21', contributors: [Niji Matrix Research], reviewers: []}
+    - zh: Upatre支持报告样本的比较、早退与修改后继续，不证明所有版本、准确率或通用阈值。DWORD回绕可使长寿命系统出现小值，真实启动也会如此。REF-000443的timer/RDTSC等待例子只证明延迟，不证明多时钟比较后判定时间造假。实验还需排除插桩、外部响应和预算差异，本研究未运行恶意样本。
+      en: Upatre establishes comparison, exit, and changed-return continuation for the reported sample, not every version,
+        accuracy, or universal threshold. DWORD wrap can produce small values on long-running systems, as can real boot. REF-000443
+        timer/RDTSC waits establish delay, not a multiclock comparison judging fabricated time. Experiments must exclude instrumentation,
+        external-response, and budget differences. No malware was executed in this research.
+lifecycle:
+  status: review
+  version: 0.2.0
+  created: '2026-09-21'
+  modified: '2026-11-08'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

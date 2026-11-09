@@ -1,0 +1,142 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000389
+strategy_ref: DET-000282
+name:
+  zh: Windows 显式设备枚举与状态语义分流
+  en: Windows Explicit Device Enumeration and State-Semantics Routing
+summary:
+  zh: 识别设备枚举命令并按连接过滤、请求对象和批准工作生成有结果等级的发现线索。
+  en: Identify device-enumeration commands and produce result-qualified leads using connection filters, requested objects,
+    and approved work.
+domains:
+- enterprise
+platforms:
+- Windows
+logic:
+  paragraphs:
+  - zh: 从 DeviceProcessEvents 的 ProcessCreated 记录选取 pnputil 的 /enum-devices、/enum-interfaces、/enum-devicetree 或 /enum-containers
+      请求，解析完整参数而非仅命中进程名。/enum-drivers 分流到驱动发现，/scan-devices 是请求硬件重扫而不是本分析的枚举等价物。保留 /connected、/disconnected、/class、/instanceid
+      和 /properties 等实际请求范围，核对该参数在目标 Windows 版本是否受支持；仅据执行记为尝试。
+    en: Select ProcessCreated DeviceProcessEvents for pnputil requests using /enum-devices, /enum-interfaces, /enum-devicetree,
+      or /enum-containers and parse complete arguments rather than the image name alone. Route /enum-drivers to driver discovery;
+      /scan-devices requests a hardware rescan rather than equivalent enumeration. Retain actual scope such as /connected,
+      /disconnected, /class, /instanceid, and /properties, checking support on the target Windows version. Execution alone
+      is an attempt.
+  - zh: 将 DeviceId、ProcessId 和 ProcessCreationTime 归一为 host_id、process_id 和 process_start，连接 AccountSid、LogonId、父进程及批准支持作业；避免把
+      XDR DeviceId 当作外设实例标识。4104 若已开启可补充 Get-PnpDevice 等脚本语义，但没有脚本内容不表示没有 API 查询。对罕见调用者、与主机职责不符的跨类盘点或入侵会话升高优先级；只有另有可验证输出时才记录设备集合和结果成功，不从零退出码或空日志推断。
+    en: Normalize DeviceId, ProcessId, and ProcessCreationTime as host_id, process_id, and process_start, joining AccountSid,
+      LogonId, parent process, and approved support work. Do not mistake XDR DeviceId for a peripheral-instance identifier.
+      Enabled 4104 can supplement script semantics such as Get-PnpDevice, but absent scripts do not exclude API querying.
+      Prioritize unusual callers, cross-class inventories inconsistent with host role, or compromised sessions. Record device
+      sets and successful results only with independently validated output, not from zero exit status or absent logs.
+data_requirements:
+- source_type: endpoint-process-events
+  name:
+    zh: 已部署 MDE 的进程与参数记录
+    en: Process and argument records from deployed MDE
+  channel: Microsoft Defender XDR DeviceProcessEvents
+  required_fields:
+  - timestamp
+  - action_type
+  - device_id
+  - process_id
+  - process_creation_time
+  - file_name
+  - folder_path
+  - process_command_line
+  - account_sid
+  - logon_id
+  - initiating_process_id
+  - initiating_process_creation_time
+- source_type: approved-peripheral-work
+  name:
+    zh: 设备支持任务与主机身份映射
+    en: Device-support work and host identity mapping
+  channel: Managed asset inventory and approved support jobs
+  required_fields:
+  - host_id
+  - host_aliases
+  - principal
+  - executable
+  - mode
+  - device_scope
+  - job_id
+  - valid_from
+  - valid_to
+- source_type: conditional-device-query-script
+  name:
+    zh: 仅启用脚本分支时的重组 PowerShell 内容
+    en: Reconstructed PowerShell content only when script enrichment is enabled
+  channel: Microsoft-Windows-PowerShell/Operational event 4104 when configured
+  required_fields:
+  - host_id
+  - timestamp
+  - process_id
+  - script_block_id
+  - message_number
+  - message_total
+  - script_block_text
+- source_type: conditional-device-query-result
+  name:
+    zh: 仅启用结果分支时的可信设备查询输出
+    en: Trusted device-query output only when the result branch is enabled
+  channel: Separately deployed authorized stdout or result-artifact collection
+  required_fields:
+  - host_id
+  - timestamp
+  - process_id
+  - process_start
+  - query_scope
+  - result_content
+  - result_validated
+  - collector_id
+observables:
+- zh: 明确的设备清单请求、连接过滤与目标类范围
+  en: Explicit device inventories with connection filters and class scope
+- zh: 调用者和批准作业不一致以及查询结果等级
+  en: Caller mismatch with approved work and query-result evidence level
+correlation:
+  window:
+    zh: 先以同一进程生命周期连接参数，再以十五分钟作业窗口核验主体；该窗口是部署起点而非恶意阈值。
+    en: Join arguments within one process lifetime and check principals within an initial fifteen-minute work window; this
+      is a deployment starting point rather than a maliciousness threshold.
+  dimensions:
+  - host_id
+  - process_id
+  - process_start
+  - account_sid
+  - logon_id
+false_positives:
+- zh: 打印、会议或驱动支持、受管资产盘点及设备故障诊断
+  en: Printer, conferencing, or driver support, managed inventories, and device troubleshooting
+blind_spots:
+- zh: 进程内 SetupAPI、GUI 和缺失命令行不一定产生可判定请求；默认日志没有设备返回集合。
+  en: In-process SetupAPI, GUIs, and missing command lines may lack attributable requests; default logs do not contain returned
+    device sets.
+tuning_guidance:
+  paragraphs:
+  - zh: 批准项绑定二进制完整路径、操作者、目标主机角色和支持工单期限，避免按 Microsoft 签名或 pnputil 名称整体放行。先用目标版本支持的只读枚举验证字段和参数归一，再保存未知结果；不要为提高命中率而把 /enum-drivers
+      或 /scan-devices 混入。
+    en: Bind approvals to full binary paths, operators, host roles, and expiring support tickets rather than allowing all
+      Microsoft-signed or pnputil activity. Validate fields and argument normalization with supported read-only enumeration
+      on the target version, retaining unknown outcomes. Do not mix /enum-drivers or /scan-devices into this logic to inflate
+      coverage.
+  - zh: 脚本分支先重组 ScriptBlockId、MessageNumber、MessageTotal 与 ScriptBlockText；利用资产清单将 Computer 与 XDR DeviceId 映射到同一 host_id，无法映射时分别保留，不强行连接。结果分支的输出必须绑定同一进程生命周期与实际查询范围；未部署相应采集时停留在请求等级。
+    en: Reconstruct ScriptBlockId, MessageNumber, MessageTotal, and ScriptBlockText before script enrichment. Use the asset
+      inventory to map Computer and XDR DeviceId to one host_id; retain separate records if mapping is unavailable. Bind supplemental
+      output to the same process lifetime and actual query scope, retaining request-level conclusions when that collection
+      is not deployed.
+evidence_refs:
+- REF-001273
+- REF-001272
+- REF-000598
+- REF-000463
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-11-06'
+  modified: '2026-11-06'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

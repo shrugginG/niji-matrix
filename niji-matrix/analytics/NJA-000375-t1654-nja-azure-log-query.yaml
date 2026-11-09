@@ -1,0 +1,105 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000375
+strategy_ref: DET-000275
+name:
+  zh: Azure 日志检索内容与返回级别关联
+  en: Azure Log Query Content and Return-Level Correlation
+summary:
+  zh: 从已启用的用户查询审计识别非职责日志调查，区分失败、空结果、聚合结果与记录返回候选。
+  en: Use enabled user-query auditing to identify out-of-duty log investigation while distinguishing failed, empty, aggregate,
+    and record-return candidates.
+domains:
+- enterprise
+platforms:
+- IaaS
+logic:
+  paragraphs:
+  - zh: 在目标 Log Analytics workspace 预先启用 Audit 诊断，并对实际使用的用户入口执行受控查询以验证 LAQueryLogs。按 TimeGenerated、AADTenantId、AADObjectId、AADClientId、RequestTarget、RequestContext、QueryText、ResponseCode、ResponseRowCount
+      和 CorrelationId 建立检索序列；结合资产内已登记的安全和认证表、身份或主机筛选词判断调查对象，不用任意敏感关键字单独定性。将非 200、200 且零行、200 且有行分别标记为 failed_query、empty_query
+      和 returned_result_rows。
+    en: Enable Audit diagnostics on the target Log Analytics workspace in advance and validate LAQueryLogs with controlled
+      queries through the user entry paths actually used. Build query sequences from TimeGenerated, AADTenantId, AADObjectId,
+      AADClientId, RequestTarget, RequestContext, QueryText, ResponseCode, ResponseRowCount, and CorrelationId. Determine
+      investigated objects from registered security and authentication tables plus identity or host predicates, rather than
+      arbitrary sensitive keywords alone. Grade non-200, 200 with zero rows, and 200 with rows as failed_query, empty_query,
+      and returned_result_rows respectively.
+  - zh: 按主体、workspace 与十五分钟窗口连接获批工作；对非职责来源读取认证历史、自身活动或安全调查表加权，并保留查询的实际投影和聚合语义。summarize、count 等一行聚合不能升级为原始事件恢复，返回行也不证明客户端持久保存。LAQueryLogs
+      不覆盖所有服务间执行，Sentinel 各门户和调查入口的公开覆盖说明存在差异；未经入口验证的部分标记 outside_validated_coverage，不能用缺少事件排除读取。
+    en: Join approved work by principal, workspace, and a fifteen-minute window. Weight out-of-duty access to authentication
+      history, the principal's own activity, or security-investigation tables while retaining actual projection and aggregation
+      semantics. One-row summarize or count results do not establish raw-event recovery, and returned rows do not establish
+      client retention. LAQueryLogs does not cover all service-to-service execution, and public descriptions of Sentinel portal
+      and investigation-entry coverage differ. Mark unvalidated entry paths outside_validated_coverage rather than excluding
+      reads because an audit event is absent.
+data_requirements:
+- source_type: azure-laquerylogs
+  name:
+    zh: 预先启用的 Log Analytics 查询审计
+    en: Previously Enabled Log Analytics Query Audit
+  channel: LAQueryLogs
+  required_fields:
+  - time_generated
+  - aad_tenant_id
+  - aad_object_id
+  - aad_client_id
+  - request_target
+  - request_context
+  - query_text
+  - response_code
+  - response_row_count
+  - correlation_id
+- source_type: approved-log-workspace-query-scope
+  name:
+    zh: 已批准 workspace 与查询职责范围
+    en: Approved Workspace and Query-Duty Scope
+  channel: null
+  required_fields:
+  - principal_id
+  - workspace_id
+  - approved_start
+  - approved_end
+  - permitted_tables
+  - validated_entry_path
+observables:
+- zh: 查询正文与目标资源、主体、返回状态和行数
+  en: Query text and target resources with principal, response status, and returned-row count
+- zh: 查询覆盖验证状态与主体职责或批准任务的偏差
+  en: Query-coverage validation state and deviation from principal duties or approved work
+correlation:
+  window:
+    zh: 查询与批准任务十五分钟；职责及表访问基线三十天。
+    en: Query-to-approved-work join 15m; duty and table-access baseline 30d.
+  dimensions:
+  - aad_tenant_id
+  - aad_object_id
+  - workspace_id
+  - aad_client_id
+  - correlation_id
+  - query_thumbprint
+false_positives:
+- zh: 威胁狩猎、管理员自查、调查自身工单和跨 workspace 正常响应。
+  en: Threat hunting, administrator self-review, investigation of one's own tickets, and legitimate cross-workspace response.
+blind_spots:
+- zh: 未启用审计、服务间查询、未验证的门户入口、混淆字符串、查询别名和审计投递缺失。
+  en: Disabled auditing, service-to-service queries, unvalidated portal entry paths, obfuscated strings, query aliases, and
+    missing audit delivery.
+tuning_guidance:
+  paragraphs:
+  - zh: 按真实表结构、workspace 权限模式和入口测试维护覆盖表；对相同主体的正常工作保留按任务到期的例外，不永久排除安全团队。对别名和查询函数进行语义展开，保留不可展开状态，不把行数阈值视为数据泄露证明。
+    en: Maintain a coverage table based on actual schemas, workspace access mode, and entry-path tests. Retain task-expiring
+      exceptions for a principal's legitimate work rather than excluding the security team permanently. Resolve aliases and
+      query functions semantically where possible, retain unresolved states, and never treat a row-count threshold as proof
+      of disclosure.
+evidence_refs:
+- REF-001233
+- REF-001234
+- REF-001235
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-11-05'
+  modified: '2026-11-05'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

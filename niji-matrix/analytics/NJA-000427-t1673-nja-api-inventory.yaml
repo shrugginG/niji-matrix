@@ -1,0 +1,189 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000427
+strategy_ref: DET-000303
+name:
+  zh: vSphere对象清单请求与分页返回核验
+  en: vSphere Object-Inventory Requests and Paginated Return Verification
+summary:
+  zh: 对实际部署的管理请求采集核验VM过滤范围、会话、返回对象、分页及属性取得状态。
+  en: Verify VM filter scope, sessions, returned objects, pagination, and property acquisition in deployed management-request
+    capture.
+domains:
+- enterprise
+platforms:
+- VMware vSphere
+logic:
+  paragraphs:
+  - zh: 仅在SDK包装器或授权管理边界已部署并验收请求/返回采集时启用；普通TLS、hostd连接和默认EDR不满足。选择RetrievePropertiesEx及同会话ContinueRetrievePropertiesEx，保留_this的collector、specSet、对象/遍历过滤、type、all及pathSet，并按对象类型合并适用PropertySpec的属性路径集合且保留原过滤关联。过滤语义或已返回managed
+      object type明确为VirtualMachine才归类，泛PropertyCollector请求不够。按authority_id及UserSession.key或经采集器确认的认证会话归组；原生userName、ipAddress、userAgent按实际提供保留，ipAddress可为pipe，缺失为空，不能据账号或地址猜人类操作者。
+    en: Enable only with deployed and accepted SDK-wrapper or authorized management-boundary request/response capture; ordinary
+      TLS, hostd connections, and default EDR are insufficient. Select RetrievePropertiesEx and same-session ContinueRetrievePropertiesEx,
+      retaining _this collector, specSet, object/traversal filters, type, all, and pathSet, retaining filter associations
+      and combining applicable PropertySpec paths by object type. Classify only when filter semantics or returned managed-object
+      type explicitly identifies VirtualMachine; a generic PropertyCollector request is insufficient. Group by authority_id
+      and UserSession.key or collector-validated authentication session. Retain supplied native userName, ipAddress, and userAgent,
+      allowing pipes and nulls without inferring a human from an account or address.
+  - zh: 将方法返回或SOAP fault映射return_status和fault_type；授权允许或入口的System.Anonymous不等于成功返回，对象可见性仍单独评估。将returnval.objects的ObjectContent.obj映射object_type及managed_object_ref，propSet名值保留property_pairs，missingSet保留属性及fault。只声明实际值，不从pathSet补齐，不合并缺失、null与fault。只取引用能证明引用取得，不能声称未返回名称、路径或状态；每个对象分别保存取得值与缺失属性。PropertySpec的all为true时忽略pathSet；明确仅请求对象引用而不请求属性时，property_state置为not_requested，不能用空路径集合宣称全部属性取得。
+    en: Map method returns or SOAP faults to return_status and fault_type. Authorization allowance or entry-level System.Anonymous
+      does not establish successful returns because object visibility is independently evaluated. Map ObjectContent.obj in
+      returnval.objects to object_type and managed_object_ref; retain propSet pairs as property_pairs and missingSet properties/faults.
+      Declare actual values only without filling from pathSet or merging missing, null, and fault. Reference-only acquisition
+      establishes the reference rather than an unreturned name, path, or state; preserve acquired values and missing properties
+      separately for every object. PropertySpec all=true ignores pathSet. For an explicit reference-only request, set property_state
+      to not_requested rather than interpreting an empty path set as acquisition of every property.
+  - zh: 返回token保存不可逆摘要，同会话同collector连接下一请求token摘要。分别输出capture_state、page_state与property_state：丢包、截断或未采到返回使capture_state为partial或not_captured；只有确认采集完整、已见续页连续且token未设置，才把page_state置为complete_for_visible_request。token未耗尽或续页fault使page_state为partial。即使页链完整，missingSet有fault或明确请求路径未解析为值时仍输出property_state=partial，不能宣称全部请求属性取得；仅在具体pathSet均已核对且无缺失fault时输出complete_for_explicit_paths，all=true或无法展开属性范围时为not_fully_assessable。成功零对象为empty_visible_result，无返回为inventory_request_observed，有fault为inventory_request_failed；任何complete标签都不超越过滤、权限与时间范围，且不证明电源变化或加密。
+    en: Retain irreversible token digests and join the next request digest within the same session and collector. Output capture_state,
+      page_state, and property_state separately. Loss, truncation, or uncaptured returns make capture_state partial or not_captured.
+      Set page_state to complete_for_visible_request only with complete capture, a continuous observed continuation chain,
+      and an unset token. An unexhausted token or continuation fault makes page_state partial. Even with a complete page chain,
+      missingSet faults or unresolved explicitly requested paths make property_state partial rather than establishing all
+      requested properties. Use complete_for_explicit_paths only after reconciling concrete pathSet values without missing
+      faults; all=true or unexpandable property scope remains not_fully_assessable. Successful zero objects produce empty_visible_result,
+      absent returns inventory_request_observed, and faults inventory_request_failed. Every complete label remains bounded
+      by filters, access, and time and establishes neither power changes nor encryption.
+  - zh: 将请求及已证返回同登记权域、主体、来源、对象、属性和时间比较，保留scope_mismatch或approval_unknown。身份与collector键来自声明输入，不从显示名或时间猜测。健康登记包括采集位置、支持方法、明文取得方式、请求返回覆盖、解析版本、丢失与时钟误差；方法不支持或返回失效降为请求级或coverage_unknown。API恶意采用证据弱于命令分支，这是待部署验证设计而非测得效果。
+    en: Compare requests and confirmed returns with registered authority, principal, origin, objects, properties, and time,
+      retaining scope_mismatch or approval_unknown. Identity and collector keys derive from declared inputs rather than names
+      or time guesses. Health registers include position, supported methods, plaintext access, request/response coverage,
+      parser version, loss, and clock uncertainty. Unsupported methods or failed returns reduce conclusions to request-level
+      or coverage_unknown. Evidence for malicious API adoption is weaker than for commands; this is a design requiring deployment
+      validation rather than measured effectiveness.
+data_requirements:
+- source_type: validated-vsphere-inventory-transactions
+  name:
+    zh: 经验证的vSphere清单原生事务采集
+    en: Validated vSphere Native Inventory Transaction Capture
+  channel: custom SDK wrapper or authorized plaintext management boundary; not default hostd or EDR
+  required_fields:
+  - timestamp
+  - authority_id
+  - request_id
+  - authenticated_session_key
+  - collector_object_ref
+  - method
+  - raw_filter_spec
+  - requested_property_types
+  - requested_property_paths
+  - request_token_digest
+  - return_captured
+  - return_status
+  - fault_type
+  - returned_objects
+  - returned_token_digest
+  - capture_complete
+  - truncated
+  - collector_id
+  - parser_version
+  - requested_property_all
+- source_type: vsphere-authenticated-session-map
+  name:
+    zh: vSphere原生认证会话与采集映射
+    en: vSphere Native Authenticated Session and Capture Mapping
+  channel: validated SessionManager or client-session instrumentation
+  required_fields:
+  - authority_id
+  - authenticated_session_key
+  - native_user_session_key
+  - user_name
+  - client_identity
+  - user_agent
+  - login_time
+  - session_end_time
+  - mapping_evidence_id
+  - attribution_status
+- source_type: vsphere-approved-inventory-jobs
+  name:
+    zh: vSphere批准清单作业登记
+    en: vSphere Approved Inventory Job Register
+  channel: administrator-maintained job and scope register
+  required_fields:
+  - authority_id
+  - approved_principal
+  - source_scope
+  - object_scope
+  - property_scope
+  - job_id
+  - owner
+  - valid_from
+  - valid_to
+  - register_version
+- source_type: vsphere-transaction-capture-health
+  name:
+    zh: vSphere事务采集支持与健康
+    en: vSphere Transaction Capture Support and Health
+  channel: independent collector capability and heartbeat registry
+  required_fields:
+  - authority_id
+  - collector_id
+  - capture_position
+  - supported_methods
+  - plaintext_capture_method
+  - request_capture_enabled
+  - response_capture_enabled
+  - parser_version
+  - heartbeat_interval_seconds
+  - last_arrival
+  - loss_state
+  - parse_status
+  - clock_offset_seconds
+  - clock_uncertainty_seconds
+observables:
+- zh: 请求过滤或返回对象类型明确为VirtualMachine的属性检索。
+  en: Property retrieval with request filters or returned object types explicitly identifying VirtualMachine.
+- zh: 同会话collector的token链、ObjectContent引用、属性名值与缺失fault分别形成页链及属性状态。
+  en: Same-session collector token chains, ObjectContent references, property pairs, and missing faults separately establish
+    page and property states.
+- zh: 请求或返回范围与批准主体、来源、对象、属性或窗口不符。
+  en: Request or return scope inconsistent with approved principal, origin, objects, properties, or window.
+correlation:
+  window:
+    zh: 同session及collector从首请求到token耗尽或明确失败，默认三十分钟调查窗；长作业按token与request_id延伸，不合并同用户名。native dateTime转UTC并保留精度和秒级误差。
+    en: Maintain the same-session collector chain from initial request to token exhaustion or explicit failure, starting with
+      thirty minutes. Extend by tokens and request_id rather than merging usernames. Normalize native dateTime to UTC while
+      preserving precision and uncertainty in seconds.
+  dimensions:
+  - authority_id
+  - authenticated_session_key
+  - collector_object_ref
+  - request_id
+  - request_token_digest
+  - returned_token_digest
+  - managed_object_ref
+  - job_id
+  - collector_id
+false_positives:
+- zh: vSphere客户端、备份、合规及资产工具正常遍历，完整分页或大量对象不直接恶意。
+  en: vSphere clients, backup, compliance, and asset tools legitimately traverse; full pagination or many objects are not
+    directly malicious.
+blind_spots:
+- zh: 未包装客户端、host shell、GUI缓存和其他API不在采集路径；TLS只证明连接。
+  en: Unwrapped clients, host shells, GUI caches, and other APIs are outside capture; TLS proves only a connection.
+- zh: 会话劫持、采集器控制、过滤解析不足和丢页限制归属及完整性，hostd不能自动补齐。
+  en: Hijacking, collector compromise, weak filter parsing, and missing pages limit attribution and completeness; hostd cannot
+    automatically fill gaps.
+tuning_guidance:
+  paragraphs:
+  - zh: 上线前用获批查询验收过滤、对象权限差异、只取引用、空返回、missingSet、fault和多页链，确认请求及返回均采到；专门测试token耗尽但某属性仍有missingSet的情况，确认page_state完整而property_state部分。原始结构保留大小写，规范字段小写，不保存可复用会话凭据或明文token。例外按具体作业对象与属性，不永久放行ReadOnly或备份账号；批准缺失需调查，不自动判恶。
+    en: Before enabling, accept filters, object-access differences, references only, empty returns, missingSet, faults, and
+      multipage chains using approved queries and confirm both requests and responses. Explicitly test token exhaustion with
+      a missingSet property fault, ensuring complete page_state but partial property_state. Preserve native casing in raw
+      structures while normalizing field names to lowercase, without reusable session credentials or plaintext tokens. Scope
+      exceptions by job objects and properties rather than permanently allowing ReadOnly or backup accounts. Missing approval
+      warrants investigation rather than automatic malicious classification.
+evidence_refs:
+- REF-000625
+- REF-001430
+- REF-001431
+- REF-001432
+- REF-001433
+- REF-001429
+- REF-001435
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-11-08'
+  modified: '2026-11-08'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

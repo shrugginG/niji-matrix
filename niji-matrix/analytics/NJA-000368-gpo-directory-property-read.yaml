@@ -1,0 +1,132 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000368
+strategy_ref: DET-000273
+name:
+  zh: GPO 目录属性读取与主体职责差分
+  en: GPO Directory Property Read and Principal Role Differential
+summary:
+  zh: 在明确审计覆盖的目录对象上识别属性读取，并结合本机登录关联、对象范围和批准任务评估异常调查。
+  en: Identify property reads on directory objects with verified audit coverage and assess abnormal surveying through same-server
+    logon joins, object scope, and approved work.
+domains:
+- enterprise
+platforms:
+- Windows
+logic:
+  paragraphs:
+  - zh: 先在选定域控制器确认 Audit Directory Service Access 成功审计及目标对象的读取 SACL 实际生效，再选择成功 4662 中包含 Read Property 0x10 的事件。用独立目录清单把 ObjectType、ObjectName
+      与 Properties 中的类、对象或属性 GUID 解析到 groupPolicyContainer 和已审计的属性，保留不能解析的值。List Contents、Read Control、Write Property 与 Read
+      Property 分开处理；一次属性读取不证明完整 LDAP 查询、模板文件内容或目标实际生效策略。
+    en: First verify that successful Audit Directory Service Access auditing and the target read SACL work on the selected
+      domain controllers, then select successful event 4662 records containing Read Property 0x10. Resolve class, object,
+      or attribute GUIDs in ObjectType, ObjectName, and Properties to groupPolicyContainer and audited properties through
+      independent directory inventory, retaining unresolved values. Keep List Contents, Read Control, Write Property, and
+      Read Property separate. A property read establishes neither the full LDAP query, template-file content, nor policy actually
+      effective on a target.
+  - zh: 将 SubjectLogonId 与同一域控制器 4624 的 TargetLogonId 连接，并核对主体 SID、会话生命周期和来源字段；不跨服务器或重启直接拼接登录标识。缺少来源或会话事件时只输出 directory_property_read
+      并标记归属不足。按可解析 GPO 标识、主体和稳定源资产归组，比较职责、预期策略范围、批准管理源与工单有效期；非管理来源读取超出任务范围的策略对象时提高调查优先级。正常策略处理也会访问这些对象，必须保留正常客户端反例，不能仅按对象数量或计算机账户尾缀判恶。
+    en: Join SubjectLogonId to TargetLogonId in event 4624 on the same domain controller and check principal SID, session
+      lifetime, and origin fields; do not join logon identifiers directly across servers or restarts. If origin or session
+      events are missing, emit directory_property_read with incomplete attribution. Group by resolved GPO identity, principal,
+      and stable source asset and compare role, expected policy scope, approved administration origin, and ticket validity.
+      Prioritize nonadministrative origins reading policy objects outside their work scope. Normal policy processing accesses
+      these objects too, so retain normal-client counterexamples rather than judging intent from object count or a computer-account
+      suffix.
+data_requirements:
+- source_type: windows-directory-object-read
+  name:
+    zh: 已配置读取 SACL 的目录对象访问
+    en: Directory object access with configured read SACLs
+  channel: Domain controller Security event 4662 with success auditing and matching SACL
+  required_fields:
+  - timestamp
+  - dc_id
+  - event_record_id
+  - audit_outcome
+  - subject_user_sid
+  - subject_logon_id
+  - object_type
+  - object_name
+  - access_mask
+  - properties
+- source_type: windows-network-logon
+  name:
+    zh: 同一域控制器的登录会话
+    en: Logon sessions on the same domain controller
+  channel: Domain controller Security event 4624
+  required_fields:
+  - timestamp
+  - dc_id
+  - target_logon_id
+  - target_user_sid
+  - logon_type
+  - ip_address
+- source_type: directory-policy-and-work-inventory
+  name:
+    zh: 目录策略标识与批准工作清单
+    en: Directory policy identity and approved work inventory
+  channel: Independent directory or GPMC inventory and approved-job registry
+  required_fields:
+  - gpo_guid
+  - object_guid_or_dn
+  - object_class
+  - attribute_guid_map
+  - source_asset
+  - principal_role
+  - expected_policy_scope
+  - job_id
+  - valid_from
+  - valid_to
+observables:
+- zh: 审计覆盖对象上的成功 Read Property 及可解析 GPO 标识
+  en: Successful Read Property on covered objects with resolved GPO identity
+- zh: 读取源、主体职责或对象范围与批准任务不一致
+  en: Read origin, principal role, or object scope inconsistent with approved work
+correlation:
+  window:
+    zh: 登录关联优先使用同服务器会话生命周期；初始以十五分钟归组策略读取，并用三十日职责与任务基线比较，所有时窗都需按本地负载校准。
+    en: Prefer the same-server session lifetime for logon correlation. Initially group policy reads over fifteen minutes and
+      compare against a thirty-day role and work baseline, calibrating all windows to local workloads.
+  dimensions:
+  - dc_id
+  - subject_user_sid
+  - subject_logon_id
+  - source_asset
+  - gpo_guid
+  - object_guid_or_dn
+  - job_id
+  - time
+false_positives:
+- zh: 正常登录和后台策略刷新、GPMC 管理、合规盘点及调查取证会读取相同对象，应核对实际来源、任务和策略范围。
+  en: Normal sign-in and background refresh, GPMC administration, compliance inventory, and forensics read the same objects;
+    verify actual origin, work, and policy scope.
+blind_spots:
+- zh: 未配置匹配 SACL 的既往读取无法补采；4662 不保证完整谓词、返回值或原始客户端进程，GUID 映射和会话缺失会降低归属能力。
+  en: Past reads without matching SACLs cannot be recovered retrospectively; 4662 does not guarantee full predicates, returned
+    values, or original client processes, and missing GUID mappings or sessions weaken attribution.
+- zh: 本地结果或文件视图可能不触发本分析，域控制器选择、复制、事件丢失和代理来源会造成部分视图，缺失事件不证明没有调查。
+  en: Local-result or file views may not trigger this analytic; domain-controller selection, replication, event loss, and
+    proxied origins create partial views, and missing events do not establish absence of surveying.
+tuning_guidance:
+  paragraphs:
+  - zh: 先对少量重要 GPO 和实际关心的属性验证读取、列举、写入与拒绝访问各自产生的事件，再扩展覆盖。保存原始权限位与属性 GUID，监测域控制器事件量和丢失。正常例外绑定源资产、职责、对象和到期时间；不把管理员身份、计算机账户或办公时间永久排除。该分析不依赖完整
+      LDAP 抓包，也不把目录变更日志当作读取覆盖。
+    en: Validate events produced by reads, listing, writes, and denied access on a small set of important GPOs and relevant
+      properties before extending coverage. Preserve raw rights and attribute GUIDs and monitor domain-controller event volume
+      and loss. Bind normal exceptions to source asset, role, object, and expiry rather than permanently excluding administrators,
+      computer accounts, or business hours. The analytic requires neither complete LDAP packet capture nor a claim that directory-change
+      logs cover reads.
+evidence_refs:
+- REF-001214
+- REF-001213
+- REF-000341
+- REF-000377
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-11-05'
+  modified: '2026-11-05'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

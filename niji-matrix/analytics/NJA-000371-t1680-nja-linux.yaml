@@ -1,0 +1,107 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000371
+strategy_ref: DET-000274
+name:
+  zh: Linux 存储盘点命令与会话偏离
+  en: Linux Storage-Inventory Commands and Session Deviation
+summary:
+  zh: 从经配置执行审计恢复设备和容量查询请求，并与批准作业和权限范围比较。
+  en: Recover device and capacity query requests from configured execution audit and compare them with approved work and authority
+    scope.
+domains:
+- enterprise
+platforms:
+- Linux
+logic:
+  paragraphs:
+  - zh: 预先为所需架构和执行边界配置 audit 规则，按同一 audit 事件序号重组 SYSCALL、EXECVE 和 PROCTITLE，恢复 exe、参数、pid、ppid、auid 和 ses。识别 lsblk 的设备或文件系统列，以及
+      df 的容量查询；fdisk、parted 仅在参数明确为 list 或 print 时作为只读盘点，不能把分区修改也视为发现。以 auid 和 ses 连接操作者，比较主机职责、批准备份或盘点时间与请求目标，异常会话中的存储查询产生可调查线索。
+    en: Configure audit rules in advance for required architectures and execution boundaries. Reassemble SYSCALL, EXECVE,
+      and PROCTITLE by audit event serial to recover executable, arguments, pid, ppid, auid, and ses. Identify lsblk device
+      or filesystem columns and df capacity queries; treat fdisk or parted as read-only inventory only when arguments explicitly
+      select list or print rather than partition modification. Join the operator using auid and ses and compare host role,
+      approved backup or inventory time, and requested target. Storage queries in deviating sessions produce an investigative
+      lead.
+  - zh: 审计中的 execve success 只表示执行系统调用成功，不是磁盘属性查询成功。保留启动证据级别，除非另有该会话输出；lsblk 的设备、分区、文件系统和多挂载关系须分别解释，不用条目数量直接推断物理磁盘数量。无丢失计数和规则覆盖记录时，缺少事件不能解释为未执行查询。
+    en: A successful execve audit record establishes execution-system-call success rather than a successful disk-attribute
+      query. Retain the launch evidence level unless session output is separately available. Interpret lsblk devices, partitions,
+      filesystems, and multiple mounts separately rather than deriving physical disk count from row count. Without loss counters
+      and rule-coverage records, missing events cannot establish absent queries.
+data_requirements:
+- source_type: linux-audit-exec
+  name:
+    zh: Linux audit 执行事件
+    en: Linux audit execution events
+  channel: /var/log/audit/audit.log
+  required_fields:
+  - timestamp
+  - audit_event_serial
+  - type
+  - exe
+  - pid
+  - ppid
+  - auid
+  - ses
+  - argc
+  - argv
+  - success
+- source_type: linux-audit-health
+  name:
+    zh: Linux 审计状态
+    en: Linux audit health
+  channel: auditctl -s
+  required_fields:
+  - host
+  - timestamp
+  - enabled
+  - lost
+  - backlog
+observables:
+- zh: 经重组的存储工具及其读取参数
+  en: Reassembled storage utilities and their read arguments
+- zh: 请求范围、主机角色或会话身份偏离批准容量与备份作业
+  en: Request scope, host role, or session identity deviates from approved capacity and backup work
+correlation:
+  window:
+    zh: 事件序号内重组，十五分钟同一会话上下文和三十天作业基线；初始值需按维护周期调整。
+    en: Reassemble within event serials and use fifteen minutes of same-session context with a thirty-day work baseline; adapt
+      starting values to maintenance cycles.
+  dimensions:
+  - host
+  - audit_event_serial
+  - auid
+  - session_id
+  - pid
+  - ppid
+  - executable
+  - target_device
+false_positives:
+- zh: 容量监控、软件安装、灾备验证和存储故障排查
+  en: Capacity monitoring, software installation, recovery validation, and storage troubleshooting
+blind_spots:
+- zh: 进程内库调用、直接读取 sysfs 或替代二进制不在已配置执行规则内；argv 不保存返回属性。
+  en: In-process library calls, direct sysfs reads, or alternative executables may fall outside configured execution rules;
+    argv does not contain returned attributes.
+- zh: 容器、auid 未设定、审计规则缺失与 backlog 丢失可能破坏会话关联。
+  en: Containers, unset auid, missing rules, or backlog loss may break session correlation.
+tuning_guidance:
+  paragraphs:
+  - zh: 在测试环境验证 b32/b64 和 execve/execveat 覆盖，按实际安装路径配置规则并观察 lost/backlog，不假定路径监控可覆盖所有改名工具。以作业主体、参数模板和主机角色建立例外；失去 argv 或会话时降低结论，不把审计日志的
+      success 当作命令退出码。
+    en: Validate b32/b64 and execve/execveat coverage in a test environment, configure actual installed paths, and monitor
+      lost/backlog without assuming path monitoring covers renamed tools. Build exceptions from job principal, argument templates,
+      and host role. Lower confidence when argv or session data is absent, and do not treat audit success as the command's
+      exit code.
+evidence_refs:
+- REF-000994
+- REF-000840
+- REF-001225
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-11-05'
+  modified: '2026-11-05'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

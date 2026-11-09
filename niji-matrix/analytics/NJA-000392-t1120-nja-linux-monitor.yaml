@@ -1,0 +1,124 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000392
+strategy_ref: DET-000283
+name:
+  zh: Linux 显式设备变更监听启动核验
+  en: Linux Explicit Device-Change Monitor Launch Verification
+summary:
+  zh: 从执行审计识别 udevadm monitor 的监听选择，核验其主体及持续运维授权。
+  en: Identify udevadm monitor listening choices from execution audit and verify principals and ongoing operational authorization.
+domains:
+- enterprise
+platforms:
+- Linux
+logic:
+  paragraphs:
+  - zh: 按同一 audit serial 重建 udevadm monitor 的 argv，解析 --kernel、--udev、--property 和 --subsystem-match，保留请求监听的事件层和范围；命令启动只证明监听尝试。核对
+      auid、ses、父进程和批准硬件诊断任务，优先调查无期限的非设备管理会话监听。无需等待短窗口内重复执行才产生线索，因一个监听进程可以长期存在。
+    en: Reconstruct argv for udevadm monitor by audit serial and parse --kernel, --udev, --property, and --subsystem-match,
+      retaining requested event layer and scope. Launch establishes only an attempted listener. Check auid, ses, parent process,
+      and approved hardware-diagnostics work, prioritizing indefinite listeners in non-device-management sessions. Do not
+      require repeated execution within a short window, since one monitor can persist.
+  - zh: 若有经批准取得的 monitor 输出，将 ACTION、DEVPATH、SUBSYSTEM 与事件时间保留为返回级旁证；kernel 和 udev 两层可能对应同一次变化，不按两次设备接入计数。输出来源必须关联实际监听进程，不从系统
+      udev 记录推定任意进程收到反馈。没有输出保留“监听尝试、反馈未知”；原生 libudev 套接字监听超出此显式命令分析范围。
+    en: Where approved collection obtains monitor output, retain ACTION, DEVPATH, SUBSYSTEM, and event time as returned-evidence
+      corroboration. Kernel and udev layers may describe the same change and are not counted as two arrivals. Output provenance
+      must link to the actual listener rather than inferring reception by any process from system udev records. Without output
+      retain 'listening attempted, feedback unknown.' Native libudev socket listeners are outside this explicit-command analytic.
+data_requirements:
+- source_type: linux-execution-audit
+  name:
+    zh: 经配置的监听命令执行审计
+    en: Configured execution audit for monitor commands
+  channel: Linux audit SYSCALL/EXECVE/PROCTITLE
+  required_fields:
+  - host_id
+  - audit_serial
+  - timestamp
+  - auid
+  - ses
+  - pid
+  - ppid
+  - exe
+  - argv
+  - success
+- source_type: approved-peripheral-work
+  name:
+    zh: 设备支持任务与主机身份映射
+    en: Device-support work and host identity mapping
+  channel: Managed asset inventory and approved support jobs
+  required_fields:
+  - host_id
+  - host_aliases
+  - principal
+  - executable
+  - mode
+  - device_scope
+  - job_id
+  - valid_from
+  - valid_to
+- source_type: conditional-device-monitor-output
+  name:
+    zh: 仅启用反馈确认时的实际监听输出
+    en: Actual monitor output only when feedback confirmation is enabled
+  channel: Separately deployed authorized stdout capture for the selected udevadm monitor process
+  required_fields:
+  - host_id
+  - timestamp
+  - process_id
+  - process_start
+  - action
+  - devpath
+  - subsystem
+  - collector_id
+observables:
+- zh: udevadm monitor 的内核或规则后事件选择与非批准启动会话
+  en: Kernel or post-rule event selection in udevadm monitor and unapproved initiating sessions
+correlation:
+  window:
+    zh: 同一执行事件先重建监听配置，授权状态保留到进程结束或遥测中断；启动后不要求在固定短窗口内反复查询。
+    en: Reconstruct listener configuration from one execution event and retain authorization state through process exit or
+      telemetry interruption; repeated queries within a short fixed window are not required.
+  dimensions:
+  - host_id
+  - audit_serial
+  - auid
+  - ses
+  - pid
+  - timestamp
+false_positives:
+- zh: 设备规则开发、现场硬件诊断、自动化测试和支持采集
+  en: Device-rule development, hardware diagnostics, automated testing, and support collection
+blind_spots:
+- zh: 不捕获进程内 libudev 监听；exec 记录不证明监听持续存活或实际收到事件，事件重放也不证明物理插拔。
+  en: In-process libudev listeners are not captured; execution records establish neither continued lifetime nor event reception,
+    and event replay does not establish physical hotplug.
+tuning_guidance:
+  paragraphs:
+  - zh: 为长期硬件调试建立有到期时间的主体与子系统批准项，将事件层、输出需求和终止条件写入任务。对 root、合法 udev 工具或没有重复执行的进程均不整体豁免；若组织不能取得输出，告警措辞必须停留在启动和授权异常，不能声称取得了哪种设备身份。
+    en: Give long-running hardware diagnostics expiring principal and subsystem approvals specifying event layer, output needs,
+      and termination conditions. Do not exempt root, legitimate udev tools, or processes without repeated execution wholesale.
+      If output is unavailable, alert wording must remain at launch and authorization anomalies rather than naming acquired
+      device identities.
+  - zh: host_id 来自可信采集来源并与资产清单核对，原始 audit node 存在时另行保留，不能假定默认日志一定含 node。按 host_id 与 audit_serial 拼接，缺少主机身份时禁止跨机合并；执行事件时间可作为该次进程起点，但后续
+      PID 关联仍须排除重用。
+    en: Derive host_id from a trusted collection origin and verify it against inventory, retaining native audit node separately
+      when present rather than assuming it exists by default. Join by host_id and audit_serial and prohibit cross-host merging
+      without identity. Execution time can establish this process start, but later PID joins must still exclude reuse.
+  - zh: 反馈分支把输出中的 ACTION、DEVPATH 与 SUBSYSTEM 映射为规范键，同时保留采集时间和进程起点。无输出或无法证明输出来自该监听器时，保留反馈未知，不将系统 udev 记录补造成应用收到的消息。
+    en: Map ACTION, DEVPATH, and SUBSYSTEM from captured output to canonical keys while retaining collection time and process
+      start. Missing output or unverified listener provenance leaves feedback unknown; system udev records must not be substituted
+      for messages received by the application.
+evidence_refs:
+- REF-001278
+- REF-001279
+- REF-000840
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-11-06'
+  modified: '2026-11-06'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

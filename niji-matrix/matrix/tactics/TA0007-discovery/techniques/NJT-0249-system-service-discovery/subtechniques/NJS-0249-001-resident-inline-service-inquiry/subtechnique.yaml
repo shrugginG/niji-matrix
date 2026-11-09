@@ -1,0 +1,156 @@
+schema_version: 2.0.0
+type: evasion-subtechnique
+id: NJS-0249-001
+name:
+  zh: 驻留内联服务查询
+  en: Resident Inline Service Inquiry
+summary:
+  zh: 将具体服务状态读取放入既有宿主的内联任务，省去为此次调查创建独立服务诊断进程的观察入口。
+  en: Place a particular service-status read in an existing carrier's inline task, removing creation of a separate service-diagnostic
+    process as the observation entry for that inquiry.
+aliases: []
+parent_ref: NJT-0249
+lineage:
+  attck_subtechnique_inherited: false
+definition_and_concept:
+  paragraphs:
+  - zh: 驻留内联服务查询是攻击者把一次服务枚举或状态读取交给已在执行的任务宿主，由其内联代码调用管理接口并处理返回，而不为该任务启动独立服务诊断工具。稳定变量是具体查询相对独立执行器的承载边界；驻留只表示查询开始前宿主已经存在，不要求长期潜伏、可信签名或某个工具品牌。
+    en: Resident Inline Service Inquiry gives a service enumeration or status read to an already executing task carrier whose
+      inline code calls management interfaces and handles returns without launching a separate service-diagnostic utility
+      for that task. The stable variable is the particular inquiry's carriage boundary relative to a separate executor. Resident
+      means the carrier exists before the inquiry, without requiring long-term dwell, a trusted signature, or a tool brand.
+  - zh: 固定TrustedSec源码把sc_query任务通过beacon_inline_execute交给go入口，再按参数选择EnumServicesStatusExA枚举或QueryServiceStatusEx单服务读取并组织输出。官方BOF文档解释宿主内任务与逐次fork-and-run的足迹差，因而证据连接了具体信息对象、任务入口和生命周期，而不是只根据“BOF”名称或API存在建立分类。
+    en: Pinned TrustedSec source passes sc_query through beacon_inline_execute to a go entry, then selects EnumServicesStatusExA
+      enumeration or QueryServiceStatusEx for one service and formats output. Official BOF documentation explains the footprint
+      difference from per-task fork-and-run. The evidence therefore connects the information object, task entry, and lifecycle
+      rather than deriving classification from the term BOF or API availability alone.
+stealth_characteristics:
+  paragraphs:
+  - zh: 驻留内联服务查询使一次服务调查不再以新建sc诊断进程出现，依靠每任务工具创建识别服务检查的观察因此失去入口。宿主仍然存在，管理请求、内联代码和返回缓冲区也未被消除；当宿主本就异常或有请求级插桩时，该承载变化未必降低识别能力。
+    en: Resident Inline Service Inquiry prevents one service survey from appearing as a newly created sc diagnostic process,
+      removing the entry used by observations that identify service checks through per-task utility creation. The carrier
+      remains, as do management requests, inline code, and return buffers. When the carrier is already anomalous or request-level
+      instrumentation exists, this change need not reduce recognition.
+  - zh: 查询客户端仍与SCM交互，远端模式还保留身份与管理路径，内联不使所有服务计算都发生在宿主内部。服务所属PID不是读取者，进程创建账户也不必然代表调用时有效身份。更完整的调用与任务链可以恢复归属；仅缺少sc启动或看到一个旧进程不能证明本子项。
+    en: The query client still interacts with SCM, and remote modes retain identity and management paths. Inline carriage
+      does not place all service computation inside the carrier. A service's owning PID is not the reader, and a process-creation
+      account need not represent effective identity at call time. Better call and task chains can recover attribution. Missing
+      sc launches or an old process alone do not establish this child.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 纳入要求有具体服务读取、已存在宿主与同次内联任务之间的正面关联，且实现链表明没有为该任务另起诊断执行器。固定能力证据只覆盖服务API；程序可能使用其他接口，但需要各自的承载与查询证据。独立加载器进程运行一个BOF、普通sc内部调用API、静态导入或任意WMI请求均不能自动纳入。
+      普通Win32服务是本项直接对象；指定查询若实际指向driver，归NJT-0180，类型未知或混合结果不自动归入本子项。
+    en: Inclusion requires a positive association among a particular service read, an existing carrier, and the same inline
+      task, with an implementation chain showing no diagnostic executor launched for that task. The pinned capability evidence
+      covers service APIs only. Other interfaces require their own carriage and inquiry evidence. A standalone loader executing
+      a BOF, ordinary sc internally calling APIs, static imports, or arbitrary WMI requests do not qualify automatically.
+      Ordinary Win32 services are this child's direct objects. A named inquiry actually targeting a driver belongs to NJT-0180;
+      unknown types or mixed results do not qualify automatically.
+  - zh: 本项不把服务查询扩展为任务枚举、服务启动、注入或内存隐藏，也不把后继安全工具停用或分析环境判断并入读取。合法代理、安装器和支持插件也会在现有进程中读取服务，它们是正常反例；是否恶意仍需实际工作和代码来源。查询提出、成功返回、部分结果和用户可见输出分别保留证据等级。
+    en: The child does not expand service inquiry into task enumeration, service start, injection, or memory hiding, nor merge
+      subsequent security-tool disabling or analysis-environment decisions into the read. Legitimate agents, installers, and
+      support plugins also read services in existing processes and remain normal counterexamples; maliciousness requires actual
+      work and code provenance. Submitted requests, successful returns, partial results, and user-visible output retain separate
+      evidence levels.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: 操作者已经控制短任务宿主、需要检查单个服务或Win32服务清单且希望避免每次启动服务诊断工具时，可选择内联读取。固定实现的本地缺省和可选远端参数说明两种能力路径，但远端必须另具权限；该源码未证明哪个恶意主体、何时或对哪个受害者使用此能力。
+      en: An operator controlling a short-task carrier can select inline reads when checking one service or a Win32 service
+        list while avoiding a service-diagnostic utility for each request. The pinned implementation's local default and optional
+        remote arguments establish two capability paths, with separate authority required remotely. The code does not establish
+        a malicious actor, operation time, or victim using this capability.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者需要可运行既有宿主、提供与其体系结构相符的内联代码、设置查询目标并接收返回。SCM和逐服务读取权限继续约束结果；该承载不给客户端额外授权。BOF短时单线程执行可以阻塞其他任务，错误还可能使宿主崩溃，因此不是无成本替代独立工具。
+        en: The adversary must operate an existing carrier, supply architecture-compatible inline code, set inquiry targets,
+          and receive returns. SCM and individual-service authority still constrain results; carriage adds no authorization.
+          Short single-threaded BOF execution can block other tasks, and errors can crash the carrier, so it is not a cost-free
+          substitute for separate utilities.
+      - zh: 固定枚举分支只选择SERVICE_WIN32和全部状态，不能代表驱动、其他数据库或所有调度器。它未实现完整续页循环，输出状态文字表也存在边界，故不能假定一切状态都能可靠打印；具体返回结构与状态码比工具成功提示更有证明力。源码可以证明设计能力，实际成功仍需运行证据。
+        en: The pinned enumeration branch selects SERVICE_WIN32 and all states rather than drivers, other databases, or every
+          scheduler. It lacks a complete continuation loop and its status-text table has a boundary, so reliable printing
+          of every state cannot be assumed. Actual returned structures and status codes are stronger than a tool success message.
+          Code establishes designed capability while successful use requires runtime evidence.
+    defender_model:
+      paragraphs:
+      - zh: 目标观察模型主要依赖每任务进程创建，能够看到宿主却缺少服务读取分派。额外配置的任务入口与SCM调用插桩可以在同一宿主生存期内连接代码、句柄、目标与返回；这不是Sysmon默认能力。不能拿services.exe、服务状态结构里的PID或本机同号PID充当原始查询客户端。
+        en: The target observation model chiefly relies on per-task process creation and sees the carrier without service-read
+          dispatch. Additional task-entry and SCM-call instrumentation can connect code, handles, targets, and returns within
+          one carrier lifetime; this is not default Sysmon capability. Services.exe, a PID in a service-status structure,
+          or a same-number local PID cannot stand for the original inquiry client.
+      - zh: 入口地址或ABI版本失配、已打开句柄缺失、跨线程任务归属未知、错误被覆盖及输出丢失会破坏链条。此时只能保留已证实请求、部分返回或来源未知，不能从“没见独立工具”倒推内联任务。覆盖之外的接口与任务仍是盲区，健康记录必须与行为记录一起保留。
+        en: Entry-address or ABI mismatch, missing preopened handles, unknown cross-thread task attribution, overwritten errors,
+          and lost output break the chain. Retain established requests, partial returns, or unknown origins without inferring
+          an inline task from absent utilities. Uncovered interfaces and tasks remain gaps, and health must accompany behavioral
+          records.
+stealth_mechanisms:
+- mechanism_ref: NM-BT
+  role: primary
+  summary:
+    zh: 用既有宿主的查询任务绕过独立服务工具创建边界
+    en: Use the existing carrier's inquiry task to avoid a separate service-tool creation boundary
+  analysis:
+    paragraphs:
+    - zh: 具体服务查询在已执行宿主的内联入口完成，使每次调用不再产生一个新的服务诊断执行器。固定入口与API实现提供正面能力证据，BOF官方文档说明其相对fork-and-run的进程边界变化；因此只按sc创建识别调查的观察会失去预期信号。管理调用和宿主代码仍在、权限不增加，工具可能被其他观察识别，故不能解释为普遍不被检测。证据尚无野外采用或控制实验，置信度为中等。
+      en: The particular service inquiry executes at an inline entry in an existing carrier, so each call does not produce
+        a new service-diagnostic executor. Pinned entry and API implementation provide positive capability evidence, and official
+        BOF documentation explains the process-boundary change from fork-and-run. Observation identifying inquiries solely
+        from sc creation loses its expected signal. Management calls and carrier code remain, authority does not increase,
+        and other observations can identify the tool, so this is not universal nondetection. There is no field-adoption or
+        controlled-experiment evidence, yielding medium confidence.
+  evidence_refs:
+  - REF-001305
+  - REF-001303
+  - REF-001403
+  - REF-001404
+  - REF-000230
+  confidence: medium
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000301
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000255
+evidence:
+  claim_refs:
+  - CLM-001339
+  - CLM-001340
+  - CLM-001334
+  - CLM-001343
+  - CLM-001344
+  case_refs: []
+  reference_refs:
+  - REF-001305
+  - REF-001303
+  - REF-001403
+  - REF-001404
+  - REF-001405
+  - REF-000336
+  - REF-000230
+  - REF-001368
+research:
+  limitations:
+    paragraphs:
+    - zh: 子项证据是固定开源实现与官方执行模型，没有编译、加载、恶意软件执行或宿主采集实验。源码设计的读取、格式化与回传链不证明某次执行已经成功；枚举缓冲处理和状态文字表还可能限制健壮性。不存在可据此归因的野外案例、查询频率或检测率。
+      en: Evidence consists of pinned open implementation and an official execution model, without compilation, loading, malware
+        execution, or carrier-capture experiments. Designed read, formatting, and reporting chains do not establish a successful
+        invocation, and enumeration-buffer handling and the status-text table can limit robustness. No field case, inquiry
+        frequency, or detection rate can be attributed from this evidence.
+    - zh: 防御需要所选宿主的明确入口和SCM采集合同，不能把默认EDR或缺少新进程替代这些输入。继承或早先打开句柄、未覆盖接口、跨线程任务和源代码变更都可能降低归属；未来真实使用、完整状态与分页测试和跨传感器对照将改变边界与置信度。
+      en: Defense requires explicit entry and SCM-capture contracts for selected carriers rather than default EDR or absent
+        process creation. Inherited or preopened handles, uncovered interfaces, cross-thread tasks, and source changes can
+        degrade attribution. Actual use, full-state and pagination tests, and cross-sensor comparisons could change boundaries
+        and confidence.
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-11-08'
+  modified: '2026-11-08'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

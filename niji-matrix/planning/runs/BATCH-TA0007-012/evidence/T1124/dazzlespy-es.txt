@@ -1,0 +1,536 @@
+Watering hole deploys new macOS malware, DazzleSpy, in Asia
+Investigación y análisis de ciberseguridad para la era de la IA ·
+Pronto nos mudamos a ESET Blog
+Español
+English
+Deutsch
+Português
+Français
+Consejos de seguridad
+Seguridad para empresas
+Investigaciones
+Artículos
+White papers
+Reportes
+Temas
+Seguridad digital
+Investigaciones
+Phishing
+Recursos y herramientas
+Seguridad para empresas
+Desafíos ESET (CTF)
+Concientización
+Ransomware
+Estafas y engaños
+Cibercrimen
+Malware
+Privacidad
+Seguridad y menores
+Cursos online gratuitos
+Contraseñas
+Seguridad en IoT
+Infraestructuras críticas
+Securidad en móviles
+Antimalware Day
+Informes
+Consejos de seguridad
+Seguridad en redes sociales
+Otros temas
+Destacados
+WeLiveScience
+Crisis en Ucrania – Centro de Recursos de Seguridad Digital
+WeLiveProgress
+COVID-19
+Guías
+Infografías
+Glosario
+Sobre nosotros
+Acerca de WeLiveSecurty
+Nuestros expertos
+Contáctanos
+Qué es Antimalware Day
+Español
+English
+Deutsch
+Português
+Français
+Investigación y análisis de ciberseguridad para la era de la IA · <a href='https://www.eset.com/blog/en/' target='_blank'>Pronto nos mudamos a ESET Blog</a>
+Investigaciones
+Ataque de watering hole despliega DazzleSpy: el nuevo malware para macOS
+Comprometieron el sitio web de una estación de radio prodemocracia de Hong Kong para distribuir un exploit para Safari que instalaba malware para espionaje en los equipos Mac de los visitantes al sitio.
+Marc-Etienne M.Léveillé
+25 Jan 2022
+•
+,
+16 min. read
+El 11 de noviembre, Google TAG publicó un
+artículo en su blog
+sobre
+ataques de watering hole
+que estaban conduciendo a
+exploits
+para el popular navegador web Safari que se ejecuta en macOS. Los investigadores de ESET habían estado investigando esta campaña la semana anterior a esa publicación, descubriendo detalles adicionales sobre los blancos de ataque y el malware utilizado para comprometer a las víctimas. Aquí proporcionamos información detallada del exploit para WebKit utilizado para comprometer a los usuarios de Mac y un análisis del payload, que es una nueva familia de malware dirigida a macOS. Pero primero, veamos cómo las víctimas entraron en contacto con el código malicioso en primer lugar.
+Víctimas
+Felix Aimé de SEKOIA.IO
+informó
+que uno de los sitios web utilizados para propagar los exploits era un sitio web falso dirigido a activistas de Hong Kong. Algunos elementos que respaldan esta información son: que en la página principal se lee “Liberate Hong Kong, the revolution of our times”, que en español significa “Liberar a Hong Kong, la revolución de nuestros tiempos”; la fecha de registro (muy reciente) del dominio
+fightforhk[.]com
+, 19 de octubre de 2021, y el hecho de que ya no se puede acceder al sitio web. También pudimos confirmar que
+Internet Archive
+almacenó una copia de la página web del 13 de noviembre. Esta copia incluye el
+iframe
+malicioso, como se observa en la Figura 1.
+Figura 1.
+fightforhk[.]com
+, archivado por Wayback Machine el 13 de noviembre
+Los investigadores de ESET encontraron otro sitio web, esta vez legítimo pero comprometido, que también distribuyó el mismo exploit durante los meses previos a la publicación de Google TAG: el de
+D100
+, que es la estación de radio online prodemocracia de Hong Kong. Como se observa en la Figura 2, se inyectó un
+iframe
+en las páginas servidas por
+bc.d100[.]net
+(la sección del sitio web utilizada por los suscriptores) entre el 30 de septiembre y el 4 de noviembre de 2021.
+Ambos métodos de distribución tienen algo en común: atraen a visitantes de Hong Kong a favor de la democracia. Parece que ellos eran el objetivo principal de esta amenaza.
+Figura 2. Extracto de
+https://bc.d100[.]net/Product/Subscription
+del 4 de noviembre de 2021
+Cadena de explotación
+Como se observa en la Figura 3, la página alojada en el dominio malicioso
+amnestyhk[.]org
+chequea la versión de macOS instalada por el visitante y redirige a la siguiente etapa si el navegador está corriendo en macOS 10.15.2 o posterior.
+Figura 3. Contenido de la página
+defaultaa.html
+en
+amnestyhk[.]org
+La siguiente etapa, denominada
+4ba29d5b72266b28.html
+(consulte la Figura 4), simplemente carga el JavaScript que contiene el código del exploit
+– mac.js
+.
+Figura 4. Contenido de la página
+4ba29d5b72266b28.html
+Tenga en cuenta que el tag del script para cargar
+caps.js
+ha sido comentado. La versión anterior del exploit cargaba
+Capstone.js
+desde ese archivo, mientras que, en la nueva versión,
+Capstone.js
+se antepone al código del exploit en
+mac.js
+.
+Exploit de WebKit
+El exploit utilizado para obtener ejecución del código en el navegador es bastante complejo y tenía más de 1000 líneas de código una vez formateadas correctamente. Es interesante notar que parte del código, que sugiere que la vulnerabilidad también podría haber sido explotada en iOS e incluso en dispositivos habilitados para PAC (
+Pointer Authentication Code
+) como el iPhone XS y más nuevos, ha sido comentado, tal como se aprecia en la Figura 5.
+Figura 5. Extracto del exploit en JavaScript que contiene comentarios sobre cómo apuntar a dispositivos tanto iOS como habilitados para PAC
+Hemos confirmado que el
+parche
+identificado por Google TAG corrige la vulnerabilidad. Si bien es posible que a esta vulnerabilidad se le haya asignado la
+CVE-2021-1789
+, no pudimos confirmarlo debido a la falta de detalles técnicos disponibles públicamente. A continuación, describimos nuestra comprensión de cómo la vulnerabilidad afecta a las versiones de Safari anteriores a la 14.1.
+El exploit implementa dos primitivas para obtener acceso de lectura y escritura en la memoria: una para filtrar la dirección de un objeto (
+addrof
+) y otra para crear un objeto JavaScript falso a partir de una dirección de memoria determinada (
+fakeobj
+). Usando estas dos funciones, el exploit crea dos array de diferentes tipos que se superponen en la memoria y, por lo tanto, puede establecer un valor en una de ellas que se trata como un puntero cuando se accede a través de la otra. La técnica está bien descrita por Samuel Groß en sus
+múltiples publicaciones
+sobre el tema. A continuación, explicamos la vulnerabilidad que hizo posible la fuga de direcciones de objetos.
+El exploit se basa en un efecto secundario causado por la modificación de la propiedad de un objeto para que sea accesible a través de una función “getter” mientras se enumeran las propiedades del objeto en el código compilado JIT. El motor de JavaScript especula erróneamente que el valor de la propiedad se almacena en caché en un array y no es el resultado de llamar a la función getter. Extrajimos la parte relevante del código que habilita la primitiva
+addrof
+, tal como se puede observar en la Figura 6. Los comentarios que comienzan con
+(e)r
+son de ESET Research.
+Figura 6. Extracto comentado del exploit que permite la filtración de direcciones de objetos
+La primera corrupción que ocurre aquí es el resultado de
+bar(vic)
+. La función devolverá un puntero a un objeto JSCell (para ser más precisos, un
+GetterSetter
+), que nunca debería ser accesible desde el código JavaScript. Este es el resultado de
+describe(bar(vic))
+en una consola de JavaScriptCore:
+Cell
+: 0x7fffb34dc080 (0x7ffff38cc4c8:[0x3af5,
+GetterSetter
+, {}, NonArray, Leaf]), StructureID: 15093
+Este JSCell luego se convierte en un JSObject llamando a la función
+Object
+de JavaScript. Internamente, esto da como resultado llamar al método
+toObject
+de JSCell. No existe una implementación para convertir un GetterSetter en un JSObject y el código finalmente retrocederá y
+asumirá que su tipo es un símbolo
+. El GetterSetter se convertirá por error en un
+Symbol
+. Es posible que haya notado la afirmación de que el tipo de celda es un Symbol antes de realizar la conversión en el código; sin embargo, la macro
+ASSERT
+en WebKit es
+compilada a partir de lanzamientos de builds
+.
+En memoria, la ubicación de
+getter[0]
+es la misma que el valor de este símbolo corrupto. Por lo tanto, reasignar un valor a
+getter[0]
+cambiará el valor del símbolo. Su valor se obtiene de JavaScript usando su método
+toString
+.
+El código JavaScriptCore actualizado ahora verifica si el objeto
+contiene propiedades con GetterSetter
+después de la enumeración de propiedades, antes de considerar si se puede acceder al atributo del objeto "rápidamente".
+Detallar la creación del objeto falso requeriría un artículo propio. En resumen, abusa del mismo fallo, aunque esta vez el objeto se manipula de manera que el código compilado por JIT accede a un elemento que está fuera de los límites y devuelve una dirección que fue colocada de forma cuidadosa en el heap antes de la obtención.
+El resto del código permite bypassear mitigaciones, como
+Gigacage
+, y carga la siguiente etapa.
+Como explica Google TAG, JavaScript carga en la memoria un archivo ejecutable Mach-O. El loader rudimentario no implementa la importación de símbolos desde bibliotecas externas; en cambio, las direcciones de
+dlopen
+y
+dlsym
+se conectan al Mach-O cargado. Estos se pueden usar desde el ejecutable para cargar dinámicamente y obtener las direcciones de funciones de bibliotecas externas.
+Escalada de privilegios a root
+Ahora que se obtuvo la ejecución del código, la siguiente etapa es un Mach-O que se carga en la memoria y se ejecuta. Este Mach-O explota una vulnerabilidad local de escalación de privilegios para ejecutar la siguiente etapa como root. Nuestro examinación confirma el análisis de Google de que la vulnerabilidad explotada fue descrita por Xinru Chi y Tielei Wang en una
+presentación en zer0con 2021
+, pero Tielei Wang también la
+presentó con más detalles en MOSEC 2021
+. La vulnerabilidad recibió el número
+CVE-2021-30869
+. La Figura 7 muestra una llamada a una función que Tielei Wang llamó
+adjust_port_type
+en su última presentación. Esta función, responsable de cambiar el tipo interno de un puerto Mach, se implementa de la misma manera en el Mach-O que se presentó en MOSEC. No debería ser posible cambiar el tipo de un puerto Mach a menos que exista una vulnerabilidad.
+Figura 7. Alterando el tipo de puerto desde
+IKOT_NAMED_ENTRY
+a
+IKOT_HOST_PRIV
+para obtener acceso a puertos Mach especiales (privilegiados)
+Para resumir, el Mach-O hace lo siguiente:
+Descarga un archivo de la URL proporcionada como argumento
+Descifra este archivo usando AES-128-EBC y TEA con un delta personalizado
+Escribe el archivo resultante en
+$TMPDIR/airportpaird
+y lo convierte en ejecutable
+Utiliza el exploit de escalación de privilegios para eliminar el atributo
+com.apple.quarantineattribute
+del archivo para evitar pedirle al usuario que confirme el lanzamiento del ejecutable sin firmar.
+Utiliza la misma escalada de privilegios para iniciar la siguiente etapa con privilegios de root
+En el payload descifrado es donde nuestro análisis más difiere con respecto a lo que describió Google TAG: el payload entregado a los visitantes al sitio D100 que eran vulnerables era un nuevo malware para macOS que llamamos DazzleSpy.
+DazzleSpy
+DazzleSpy es un backdoor equipado con múltiples funciones que brinda a los atacantes una gran cantidad de opciones para controlar y exfiltrar archivos de una computadora comprometida. Nuestra muestra es un archivo binario Mach-O compilado para la arquitectura de CPU x86_64.
+Persistencia
+Para persistir en el dispositivo comprometido, el malware agrega un archivo Property List (plist; consulte la Figura 8) llamado
+com.apple.softwareupdate.plist
+a la carpeta
+LaunchAgents
+. El archivo ejecutable del malware se denomina
+softwareupdate
+y se guarda en la carpeta
+$HOME/.local/
+.
+Figura 8. Archivo Property List en la carpeta
+LaunchAgents
+Comunicaciones con el C&C
+DazzleSpy se conecta a un servidor C&C hardcodeado; la dirección IP y el puerto encontrado en la muestra que desciframos fueron
+88.218.192[.]128:5633
+. Al principio, el malware realiza un handshake TLS, luego usa un protocolo personalizado para intercambiar objetos JSON para entregar comandos desde el servidor C&C a las Mac comprometidas. El binario de DazzleSpy contiene un certificado X.509 utilizado como autoridad certificadora (CA). Verifica que el certificado del servidor sea emitido por esa autoridad. En la práctica, se utiliza el mismo certificado firmado automáticamente tanto para la CA como para el servidor C&C. La técnica protege las comunicaciones del malware de posibles escuchas al negarse a enviar datos si el cifrado de extremo a extremo no es posible.
+La Tabla 1 contiene la lista de comandos soportados por DazzleSpy. La primera columna es el nombre del comando que debe estar presente en el objeto JSON recibido desde el servidor C&C; muchos admiten parámetros opcionales u obligatorios.
+Tabla 1. Comandos desde el C&C de DazzleSpy
+Command name
+Purpose
+heartbeat
+Sends heartbeat response.
+info
+Collects information about compromised computer, including:
+• Hardware UUID and Mac serial number
+• Username
+• Information about disks and their sizes
+• macOS version
+• Current date and time
+• Wi-Fi SSID
+• IP addresses
+• Malware binary path and MD5 hash of the main executable
+• Malware version
+• System Integrity Protection status
+• Current privileges
+• Whether it’s possible to use
+CVE-2019-8526
+to dump the keychain
+searchFile
+Searches for the specified file on the compromised computer.
+scanFiles
+Enumerates files in
+Desktop
+,
+Downloads
+, and
+Documents
+folders.
+cmd
+Executes the supplied shell command.
+restartCMD
+Restarts shell session.
+restart
+Depending on the supplied parameter: restarts C&C command session, shell session or RDP session, or cleans possible malware traces (
+fsck_hfs.log
+file and application logs).
+processInfo
+Enumerates running processes.
+keychain
+Dumps the keychain using a CVE-2019-8526 exploit if the macOS version is lower than 10.14.4. The public
+KeySteal
+implementation is used.
+downloadFileInfo
+Enumerates the supplied folder, or provides creation and modification timestamps and SHA-1 hash for a supplied filename.
+downloadFile
+Exfiltrates a file from the supplied path.
+file
+File operations: provides information, renames, removes, moves, or runs a file at the supplied path.
+uninstall
+Deletes itself from the compromised computer.
+RDPInfo
+Provides information about a remote screen session.
+RDP
+Starts or ends a remote screen session.
+mouseEvent
+Provides mouse events for a remote screen session.
+acceptFileInfo
+Prepares for file transfer (creates the folder at the supplied path, changes file attributes if it exists).
+acceptFile
+Writes the supplied file to disk. With additional parameters, updates itself or writes files required for exploiting the CVE-2019-8526 vulnerability.
+socks5
+Starts or ends SOCKS5 session (not implemented).
+recoveryInfo
+These seem like file recovery functions that involve scanning a partition. These functions do not seem to work and are probably still in development; they contain lots of hardcoded values.
+recovery
+#rowspan#
+Artefactos
+Al analizar el binario DazzleSpy encontramos una serie de artefactos interesantes que podrían sugerir un nombre interno para el malware y el origen de los autores.
+En varios lugares (por ejemplo, observe la Figura 9), el malware se refiere a
+osxrk
+y la string
+1.1.0
+parece ser un número de versión interna.
+Figura 9. Posible nombre interno y número de versión del malware DazzleSpy
+Además, parece que los autores de DazzleSpy no estaban tan preocupados por la seguridad operativa, ya que dejaron el nombre de usuario
+wangping
+en rutas embebidas en el binario. La Figura 10 contiene rutas que revelan este nombre de usuario y los nombres de los módulos internos.
+Figura 10. Rutas embebidas en el binario DazzleSpy
+Una vez que el malware obtiene la fecha y hora actual en una computadora comprometida, como se observa en la Figura 11, convierte la fecha obtenida a la zona horaria de Asia/Shanghai (también conocida como hora estándar de China), antes de enviarla al servidor de C&C.
+Figura 11. Código descompilado de la función
+getSystemDate
+Además, cabe señalar que el malware DazzleSpy contiene una serie de mensajes internos en chino, como se aprecia en la Figura 12.
+Figura 12. Mensaje de error interno en chino
+Conclusión
+Dada la complejidad de los exploits utilizados en esta campaña, consideramos que el grupo detrás de esta operación tiene sólidas capacidades técnicas. Si bien hay información pública sobre la vulnerabilidad de escalación de privilegios locales (LPE) utilizada aquí, no pudimos encontrar nada publicado sobre la vulnerabilidad específica de WebKit utilizada para obtener la ejecución del código en Safari. También es interesante que se fuerza el cifrado de extremo a extremo en DazzleSpy y que no se comunicará con su servidor C&C si alguien intenta escuchar la transmisión sin cifrar. Esto lo logra mediante la inserción de un proxy de inspección TLS entre el sistema comprometido y el servidor C&C.
+Las operaciones de watering hole que ha llevado adelante este grupo muestran que es probable que sus objetivos sean personas políticamente activas y a favor de la democracia en Hong Kong. Esta campaña tiene similitudes con una de 2020 en la que se distribuyó el malware LightSpy iOS (descrito por
+TrendMicro
+y
+Kaspersky
+) de la misma manera, utilizando la inyección de
+iframe
+en sitios web dirigidos a ciudadanos de Hong Kong que los llevó a un exploit de WebKit. No podemos confirmar en este momento si ambas campañas son del mismo grupo, pero el equipo de ESET Research continuará rastreando e informando sobre actividades maliciosas similares.
+Indicadores de Compromiso (IoCs)
+Muestras
+SHA-1
+Filename
+ESET detection name
+Description
+F3772A23595C0B51AE32D8E7D601ACBE530C7E97
+mac.js
+JS/Exploit.Agent.NQK
+JavaScript code with WebKit exploit launching an LPE.
+95889E0EF3D31367583DD31FB5F25743FE92D81D
+N/A
+OSX/Exploit.Agent.C
+Mach-O file with LPE launching next stage.
+EE0678E58868EBD6603CC2E06A134680D2012C1B
+server.enc
+OSX/DazzleSpy
+DazzleSpy Mach-O after decryption of
+server.enc
+.
+Nombre de archivos
+$HOME/Library/LaunchAgents/com.apple.softwareupdate.plist
+$HOME/.local/softwareupdate
+$HOME/.local/security.zip
+$HOME/.local/security/keystealDaemon
+$HOME/.local/security/libkeystealClient.dylib
+Red
+URL del exploit de Safari
+https://amnestyhk[.]org/ss/defaultaa.html
+https://amnestyhk[.]org/ss/4ba29d5b72266b28.html
+https://amnestyhk[.]org/ss/mac.js
+https://amnestyhk[.]org/ss/server.enc
+Servidores de C&C de DazzleSpy
+servidor
+88.218.192[.]128:5633
+Certificado CA de DazzleSpy
+SHA-256:
+1F862B89CC5557F8309A6739DF30DC4AB0865668193FDFF70BA93F05D4F8C8B8
+Certificate:
+	Data:
+		Version: 1 (0x0)
+		Serial Number: 10557282746731470350 (0x928300b9284a1e0e)
+	Signature Algorithm: sha256WithRSAEncryption
+		Issuer: C=11, ST=11, L=11, O=11, OU=11, CN=11/emailAddress=11@qq.com
+		Validity
+			Not Before: May 18 07:26:17 2021 GMT
+			Not After : May 16 07:26:17 2031 GMT
+		Subject: C=11, ST=11, L=11, O=11, OU=11, CN=11/emailAddress=11@qq.com
+        Subject Public Key Info:
+			Public Key Algorithm: rsaEncryption
+				Public-Key: (2048 bit)
+				Modulus: …
+				Exponent: 65537 (0x10001)
+	Signature Algorithm: sha256WithRSAEncryption
+-----BEGIN CERTIFICATE-----
+MIIDTDCCAjQCCQCSgwC5KEoeDjANBgkqhkiG9w0BAQsFADBoMQswCQYDVQQGEwIx
+MTELMAkGA1UECAwCMTExCzAJBgNVBAcMAjExMQswCQYDVQQKDAIxMTELMAkGA1UE
+CwwCMTExCzAJBgNVBAMMAjExMRgwFgYJKoZIhvcNAQkBFgkxMUBxcS5jb20wHhcN
+MjEwNTE4MDcyNjE3WhcNMzEwNTE2MDcyNjE3WjBoMQswCQYDVQQGEwIxMTELMAkG
+A1UECAwCMTExCzAJBgNVBAcMAjExMQswCQYDVQQKDAIxMTELMAkGA1UECwwCMTEx
+CzAJBgNVBAMMAjExMRgwFgYJKoZIhvcNAQkBFgkxMUBxcS5jb20wggEiMA0GCSqG
+SIb3DQEBAQUAA4IBDwAwggEKAoIBAQDFfrP+LbCk9KhPH2gQ3V5lBWCpuM+yzBzn
+ofL2RJiTMedP467Js4wzrP+qCkXs9STaOZCvYRFaCmfY9bG7PsrgqG90OHfVkttG
+5xIdEpd5XPl+GYl/48ridpE7mgw+KO0oRxoyUO1if9nRXvHNGmx0C3i9Rb6ahynv
+dEBAZVxeX20fDHMr0dvVe4TKst9g5W02o31zU54mx2f7m2Kgit+n+UsDA/uBRF/c
+GcWsvQFVlcguFmBDt58t98BO5nEmI3iDEfUi8FTf2HVSS0LAYC83IkwZyWpML9Jn
+uVg67KFKprNMmzBxDK0eDa9ZHObohj3iscM3IYXlCnicbOLYTCvRAgMBAAEwDQYJ
+KoZIhvcNAQELBQADggEBAAvkJC5Fi8+Kz8roBhzCY3ayPLMMMj49aHGU/JDLZwsh
+WSng5/eY7LrGkTqP0tKay/rrxQvyMeZftvB0DMCbxu0vndK/jTqruxS+ZXDkqyOb
+ykU0Z6TqRZ/ltgcK9ii4R6PgUEynrJVZHtUHDtemulpHgPRjkFDA4emOui1kFdNT
+gnUr0vgh12KlVNAm64UVh9kkneCTFZtYeCAGNw5kFknv5OgsjcaueqCsm3a3dxFq
+7JqReIV1WDx+QEBXgM4itvQRY+d5pv5eOlz8sBzxFR7+Gh/Q9aJoPL+ZX7kouMEU
+bKwsEwNCrWZWQu41ghFi/8MdqBxb2Nb9H4gCupqKdiI=
+-----END CERTIFICATE-----
+Técnicas de MITRE ATT&CK
+Esta tabla fue creada utilizando la
+version 10
+del framework MITRE ATT&CK.
+Tactic
+ID
+Name
+Description
+Resource Development
+T1583.001
+Acquire Infrastructure: Domains
+Domain names such as
+amnestyhq[.]org
+were acquired to use on compromised web servers.
+T1583.004
+Acquire Infrastructure: Server
+Servers (or virtual servers) were rented to serve WebKit exploits and used as C&C servers for DazzleSpy.
+T1584.004
+Compromise Infrastructure: Server
+A legitimate website was compromised to add an
+iframe
+loading malicious JavaScript code.
+T1587.001
+Develop Capabilities: Malware
+DazzleSpy is macOS malware developed to steal information from its victims.
+T1587.003
+Develop Capabilities: Digital Certificates
+DazzleSpy verifies the authenticity of its C&C server using an X.509 certificate.
+T1587.004
+Develop Capabilities: Exploits
+An undocumented Safari exploit was used to compromise the targets.
+T1608.004
+Stage Capabilities: Drive-by Target
+This operation compromised a website that is likely to be visited by its targets, to distribute malware.
+Initial Access
+T1189
+Drive-by Compromise
+The compromised website served the exploit to visitors using Safari on a Mac.
+Execution
+T1569
+System Services
+The exploit sends Mach messages to
+launchd
+to remove the quarantine flag and to
+kuncd
+to launch the malware.
+Persistence
+T1543.001
+Create or Modify System Process: Launch Agent
+DazzleSpy persists by installing a Launch Agent.
+Privilege Escalation
+T1068
+Exploitation for Privilege Escalation
+An LPE exploit for macOS is used to elevate privileges to root.
+Defense Evasion
+T1620
+Reflective Code Loading
+The LPE exploit downloading the next stage is loaded and executed in memory only.
+Credential Access
+T1555.001
+Credentials from Password Stores: Keychain
+DazzleSpy can steal credentials from the macOS keychain.
+Discovery
+T1083
+File and Directory Discovery
+DazzleSpy can be used to enumerate files in specific folders.
+T1057
+Process Discovery
+DazzleSpy can obtain the list of running processes.
+T1082
+System Information Discovery
+DazzleSpy can obtain the macOS version.
+T1016
+System Network Configuration Discovery
+DazzleSpy can obtain the IP address and Wi-Fi SSID.
+T1033
+System Owner/User Discovery
+DazzleSpy can obtain the current username from a compromised Mac.
+T1124
+System Time Discovery
+DazzleSpy can obtain the system time on a compromised Mac.
+Collection
+T1005
+Data from Local System
+DazzleSpy can search for documents on the compromised system.
+T1113
+Screen Capture
+DazzleSpy has the ability to record screen activity.
+Command and Control
+T1071
+Application Layer Protocol
+DazzleSpy uses a custom JSON-based protocol for its C&C communications.
+T1132.001
+Data Encoding: Standard Encoding
+DazzleSpy uses base64 to encode parts of its C&C communications.
+T1573
+Encrypted Channel
+DazzleSpy uses TLS encryption.
+T1571
+Non-Standard Port
+DazzleSpy uses TCP port 5633.
+Exfiltration
+T1041
+Exfiltration Over C2 Channel
+DazzleSpy exfiltrates data over its C&C communications channel.
+¿Quieres recibir nuestros mejores contenidos?
+Suscríbete a nuestro newsletter
+Newsletter sobre Crisis en Ucrania
+Newsletter semanal
+Suscríbete
+Artículos relacionados
+Investigaciones
+SlippyNunchucks abusó de Sogou Input Method para desplegar DarkVigil mediante secuestro de DNS
+Investigaciones
+SlippyNunchucks abusó de Sogou Input Method para desplegar DarkVigil mediante secuestro de DNS
+Investigaciones
+Gorbag: el nuevo grupo alineado con Rusia que recopila inteligencia de organizaciones ucranianas
+Investigaciones
+Gorbag: el nuevo grupo alineado con Rusia que recopila inteligencia de organizaciones ucranianas
+Investigaciones
+MythicRatatoskr: el backdoor que utilizó la red Yggdrasil antes de un ataque destructivo de Sandworm
+Investigaciones
+MythicRatatoskr: el backdoor que utilizó la red Yggdrasil antes de un ataque destructivo de Sandworm
+Tabla de contenidos
+Compartir
+Discusión
+Investigación y análisis de ciberseguridad para la era de la IA ·
+Pronto nos mudamos a ESET Blog
+Acerca de
+RSS Feed
+Contáctanos
+Dirección
+Información Legal
+Política de Cookies
+Política de privacidad
+Copyright © 1992 - 2026 ESET, spol. s r.o. - Todos los derechos reservados.

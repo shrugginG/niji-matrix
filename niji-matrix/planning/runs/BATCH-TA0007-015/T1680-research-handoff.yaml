@@ -1,0 +1,647 @@
+handoff_schema_version: '2.0.0'
+type: technique-research-handoff
+batch_ref: BATCH-TA0007-015
+work_item_ref: WORK-TA0007-T1680
+temporary_key_prefix: B015-T1680
+candidate:
+  source_type: attack
+  source_attack_id: T1680
+  name: {zh: "本地存储发现", en: "Local Storage Discovery"}
+recommendation:
+  decision: adapt
+  confidence: medium
+  original_attack_subtechniques_imported: false
+  rationale:
+    paragraphs:
+      - zh: "保留发现驱动器、磁盘、分区、卷及其容量、空闲空间、文件系统和标识属性的父行为，但将正式对象收敛到目标主机可见的存储状态。Microsoft 对 Volt Typhoon 的一手调查确认驱动器名称、容量、空闲空间和文件系统类型的发现；官方接口文档给出结果语义。存储盘点与维护具有相同接口外观，足以建立中等置信度的特征伪装机理，但不能据此宣称实测漏报或攻击者选择了某种独立匿迹子项。"
+        en: "Preserve the parent behavior of discovering drives, disks, partitions, volumes, and their capacity, free space, filesystem, and identity attributes, while converging the formal object on storage state visible to a target host. Microsoft's firsthand Volt Typhoon investigation establishes discovery of drive names, capacity, free space, and filesystem types, while official interfaces define the result semantics. Shared interfaces with inventory and maintenance support a medium-confidence feature-disguise mechanism, without establishing measured misses or attacker selection of an independent stealth child."
+      - zh: "固定基线还包括 IaaS 提供方卷清单和 ESXi 的虚拟磁盘路径示例；前者已经由 NJT-0139 的卷、快照和资源关系范围覆盖，后者在只取得路径时属于 NJT-0182。使用 adapt 明确这些分流，避免为同一个资源盘点或文件列表建立重复父项。已映射网络驱动器可以作为主机逻辑驱动器事实纳入，但不据此声称发现了远端可用共享。"
+        en: "The pinned baseline also includes provider-side IaaS volume inventories and ESXi virtual-disk path examples. The former already falls within NJT-0139's volumes, snapshots, and resource relationships, while path-only results belong to NJT-0182. Adapt makes these resolutions explicit and avoids duplicate parents for resource inventory or file listings. An already mapped network drive may be included as a host logical-drive fact without claiming enumeration of remotely available shares."
+  supported_direct_object: Host-visible drive, disk, partition, volume, and mounted-filesystem identities, relationships, and storage attributes; a remote management query may target that host without changing the object boundary.
+  proposed_taxonomy_coverage: deferred
+  proposed_formal_child_count: 0
+  scope_branch_resolutions:
+    - branch: Windows local or remotely requested Win32_LogicalDisk query
+      resolution: parent-core
+      reason: The queried host's logical disk is the direct object; query origin does not make its attached storage a network share.
+    - branch: Windows mapped network-drive entries
+      resolution: parent-core
+      reason: Preserve already-present logical-drive facts, including DRIVE_REMOTE or ProviderName where returned. This does not enumerate the server's available share set or establish access to files.
+    - branch: Get-PSDrive provider results
+      resolution: evidence-deferred
+      reason: Require FileSystem provider and evidence that the root/result describes storage rather than an arbitrary temporary directory alias. Registry, certificate, environment, alias, and function drives are not storage disks.
+    - branch: Linux block-device and mounted-filesystem state
+      resolution: parent-core
+      reason: lsblk reports device/partition/filesystem facts; df reports mounted-filesystem capacity. Device presence, mount state, and filesystem state are different facts.
+    - branch: macOS disk and volume state
+      resolution: parent-core
+      reason: Disk and logical-volume identities and capacities are storage facts. Apple's diskutil example supports capability and normal repair use, not adversarial use in a macOS intrusion.
+    - branch: ESXi storage core device and filesystem list
+      resolution: parent-core
+      reason: Host storage-device and filesystem inventory remains this candidate even when a datastore is backed by external storage. Adapter information alone must not be inflated into returned volume capacity.
+    - branch: ESXi .vmdk pathname listing
+      resolution: adjacent-technique
+      target_ref: NJT-0182
+      reason: A virtual-disk file path is a namespace result; neither volume metadata nor its contents are proved.
+    - branch: IaaS guest-visible attached or mounted disks
+      resolution: parent-core
+      reason: Guest storage state is the same host-visible direct object as on a physical host.
+    - branch: AWS DescribeVolumes, GCP compute disks list, Azure disk list
+      resolution: adjacent-technique
+      target_ref: NJT-0139
+      reason: These return provisioned cloud resource inventories and attachment relationships. They do not prove guest mounting, a live filesystem, caller-visible free space, or content access.
+    - branch: Raw-volume or block-device content extraction
+      resolution: adjacent-technique
+      target_ref: NJT-0108
+      reason: Metadata discovery and opening a handle are insufficient for raw-content acquisition or a bypass of the live-file view.
+    - branch: Disk destruction or encryption
+      resolution: adjacent-technique
+      target_ref: NJT-0202
+      reason: Discovery may precede impact, but returned storage facts do not prove a destructive write, loss of recoverability, or encryption.
+proposed_content:
+  name: {zh: "本地存储发现", en: "Local Storage Discovery"}
+  summary:
+    zh: "取得目标主机可见的驱动器、磁盘和卷及其存储属性，使后继目标选择混入正常存储盘点和维护查询的外观。"
+    en: "Obtain drives, disks, volumes, and storage attributes visible to a target host so subsequent target selection resembles ordinary storage inventory and maintenance queries."
+  aliases: []
+  definition_and_concept:
+    paragraphs:
+      - zh: "本地存储发现是攻击者在已访问环境中取得目标主机可见的驱动器、磁盘、分区、卷或挂载文件系统，以及容量、空闲空间、文件系统类型、卷标、标识和对应关系等存储事实的行为。这些信息帮助确定可用存储范围、后继文件查找根、数据暂存空间或影响目标；直接结果是存储对象和属性，而不是文件正文。"
+        en: "Local Storage Discovery obtains drives, disks, partitions, volumes, or mounted filesystems visible to a target host, together with storage facts such as capacity, free space, filesystem type, label, identity, and relationships. These facts help identify available storage, roots for later file searches, staging capacity, or impact targets. The direct result is a storage object and its attributes rather than file content."
+      - zh: "本地说明存储事实相对于目标主机的可见性，并不要求查询进程与被查询主机相同。原生命令、管理类、GUI 和进程内 API 都可提供结果；已有网络映射可以出现在逻辑驱动器列表中。主机名、盘符字符串或工具启动本身不足以证明查询返回了有效存储对象，云提供方的资源卷清单也不能替代客体操作系统的挂载和容量事实。"
+        en: "Local describes visibility relative to the target host and does not require the querying process to run on that same host. Native commands, management classes, GUIs, and in-process APIs can provide results, and existing network mappings may appear in a logical-drive list. A hostname, drive-letter string, or tool launch alone does not prove a valid storage result, and a provider's provisioned-volume inventory does not substitute for guest operating-system mount or capacity facts."
+  stealth_characteristics:
+    paragraphs:
+      - zh: "本地存储发现借用文件管理器、安装器、容量监控、备份和故障处理已经需要的只读接口。相同的容量查询或逻辑磁盘枚举既可服务正常运维，也可用于恶意目标选择，单个受信工具名称或一次成功查询很难说明操作者意图。Volt Typhoon 的调查支持这类原生环境测绘实际发生，但没有给出存储查询专属的检测率。"
+        en: "Local Storage Discovery borrows read interfaces already needed by file managers, installers, capacity monitoring, backup, and troubleshooting. The same capacity query or logical-disk enumeration can support operations or adversarial targeting, so a trusted tool name or one successful query says little about the controller's intent. Volt Typhoon reporting establishes adversarial native-environment mapping but provides no storage-query-specific detection rate."
+      - zh: "命令参数、脚本内容、调用主体、会话、目标主机和后继访问仍然可以留下痕迹。进程内调用不一定产生独立子进程，主机进程日志也通常不保存返回的卷属性；这限制了只看进程创建的观察面，却不自动证明攻击者为绕过监控选择了该路径。配额、挂载命名空间、映射会话和访问权还可能让不同主体看到不同容量或驱动器集合。"
+        en: "Arguments, script content, principal, session, target host, and later accesses can remain observable. In-process calls need not create a separate child process, and host process logs generally do not contain returned volume attributes. This limits process-creation visibility without proving deliberate attacker selection to evade monitoring. Quotas, mount namespaces, mapping sessions, and access rights can also give different principals different capacity values or drive sets."
+  scope_boundary_definition:
+    paragraphs:
+      - zh: "纳入针对具体主机存储对象的身份、存在性、类型、容量、空闲空间、卷和文件系统状态查询，包括已映射驱动器的主机视图、云客体内存储状态以及 ESXi 设备和文件系统清单。磁盘、分区、卷和挂载点必须按实际结果区分；Get-PSDrive 的非文件系统 provider 或指向普通目录的临时驱动器不得直接当作磁盘。只见启动或句柄时只能记录请求阶段，返回属性后才可确认相应事实。"
+        en: "Include identity, existence, type, capacity, free-space, volume, and filesystem-state queries for a specific host's storage objects, including its existing mapped-drive view, cloud guest storage state, and ESXi device or filesystem inventories. Distinguish disks, partitions, volumes, and mount points according to actual results. Non-filesystem Get-PSDrive providers and temporary drives rooted at ordinary directories are not automatically disks. A launch or handle establishes only a request stage; returned attributes are required to confirm the corresponding facts."
+      - zh: "取得文件和目录名称或 .vmdk 路径归 NJT-0182，枚举远端可用共享归网络共享发现；只看到一个已映射盘符不满足后者。AWS、GCP 和 Azure 提供方的卷资源清单由 NJT-0139 处理，实际打开或复制存储内容属于后继收集，绕过文件视图的原始内容读取需满足 NJT-0108。格式化、加密和关键扇区写入另行判断影响结果。容量监控、安装检查、备份、磁盘修复和事件响应都是正常反例，不能只凭相同工具或查询字段判断恶意。"
+        en: "File and directory names or .vmdk paths belong to NJT-0182, while enumeration of remotely available shares belongs to Network Share Discovery; an already mapped drive letter does not establish the latter. Provider-side AWS, GCP, and Azure volume inventories are handled by NJT-0139. Opening or copying storage content is later collection, and raw-content reads bypassing the file view must meet NJT-0108. Formatting, encryption, and critical-sector writes require separate impact assessment. Capacity monitoring, installation checks, backup, repair, and incident response are legitimate counterexamples, so matching tools or requested fields alone do not establish malice."
+  application_scenarios_and_threat_model:
+    application_scenarios:
+      paragraphs:
+        - zh: "取得端点会话或主机管理通道后，攻击者可在搜索文件之前确认哪些卷存在、哪里已挂载以及可供暂存的空间。勒索或破坏准备中，这些事实可以帮助选择存储目标，但不能从一次盘点反推加密或破坏已经发生。Microsoft 观察的 Volt Typhoon 存储属性发现提供真实恶意使用锚点，平台文档则仅证明 Windows、Linux、macOS 和 ESXi 查询能力。"
+          en: "After obtaining an endpoint session or host-management channel, an adversary may identify existing volumes, mounts, and staging capacity before searching for files. During ransomware or destructive preparation these facts can guide storage targeting, without making one inventory evidence of completed encryption or destruction. Microsoft's observed Volt Typhoon storage-attribute discovery anchors real adversarial use; platform documentation establishes query capability on Windows, Linux, macOS, and ESXi only."
+    threat_model:
+      attacker_model:
+        paragraphs:
+          - zh: "攻击者至少需要能执行查询的进程、会话或远程管理权限，并能够读取或取得其结果。不默认需要管理员：部分卷和容量事实可向普通调用者开放，另一些设备标识、低层探测或 ESXi 管理信息受额外授权限制。可见范围还依赖用户映射、配额、容器或挂载命名空间及接口失败状态，不能假设一次查询覆盖整机所有物理存储。"
+            en: "The attacker needs a process, session, or remote-management authority able to issue a query and obtain its results. Administrator access is not assumed: some volume or capacity facts are available to ordinary callers, while device identities, low-level probing, or ESXi management information may require additional authorization. User mappings, quotas, container or mount namespaces, and interface failures also constrain visibility, so one query cannot be assumed to cover all physical storage."
+      defender_model:
+        paragraphs:
+          - zh: "防守方可能拥有端点进程和命令行、按策略开启的 PowerShell 脚本块、Linux exec 审计及 ESXi shell 与认证日志，并能与批准盘点、备份和维修作业关联。这些来源主要证明调用者和请求语义，不能普遍给出返回容量或盘符集合；原生进程内 API、GUI 和未接入的远程管理路径形成覆盖差异。只有确实取得查询输出或经验证的调用结果记录时，才可把尝试提升为成功的存储事实取得。"
+            en: "The defender may have endpoint process and command-line events, policy-enabled PowerShell script blocks, Linux execution audit, and ESXi shell and authentication logs, correlated with approved inventory, backup, and repair jobs. These sources primarily establish the caller and request semantics rather than universally providing returned capacities or drive sets. In-process APIs, GUIs, and unintegrated remote-management paths produce coverage differences. Promote an attempt to successful acquisition of storage facts only when query output or validated result telemetry actually exists."
+  stealth_mechanisms:
+    - mechanism_ref: NM-FD
+      role: primary
+      summary:
+        zh: "存储目标选择使用与正常盘点和容量维护相同的只读接口"
+        en: "Storage targeting uses the same read interfaces as ordinary inventory and capacity maintenance"
+      analysis:
+        paragraphs:
+          - zh: "攻击者以现有身份调用逻辑磁盘、容量或设备清单接口，产生与合法盘点相同的工具、方法和只读请求外观。防守方若依赖工具签名、写入告警或单次命令，就难以从这一外观判断所得存储信息是用于维护还是后继取数和破坏。把查询主体、会话、资产职责和批准作业接合后，区别才能增强。Microsoft 的实案与接口文档支持恶意使用和正常功能重叠，缺少存储查询的规避指令与漏报对照，因此机理保持 medium。"
+            en: "An adversary uses an existing identity to invoke logical-disk, capacity, or device-inventory interfaces, producing the same tool, method, and read-request appearance as legitimate inventory. A defender relying on signatures, write alerts, or one command cannot readily determine whether the storage facts support maintenance or later theft and destruction. Joining principal, session, asset role, and approved work improves distinction. Microsoft's case and interface documentation support adversarial use and functional overlap, but provide neither storage-query evasion instructions nor missed-detection comparisons, so the mechanism remains medium-confidence."
+      evidence_keys: [REF-000073, B015-T1680-REF-LOGICALDISK, B015-T1680-REF-FREESPACE, REF-000994, B015-T1680-REF-APPLE]
+      confidence: medium
+  subtechnique_taxonomy:
+    coverage: deferred
+    subtechnique_refs: []
+    narrative:
+      paragraphs:
+        - zh: "已独立检查进程内查询、既存存储视图复用、窄范围查询、时间稀释和跨主体查询五种匿迹轴。前两者可能改变独立进程或设备探测的可观察位置，但现有文档主要证明接口与缓存能力，尚未提供攻击者有意选择以及同案痕迹对照；窄范围、低频和多主体也可来自普通容量监控和分权运维。"
+          en: "Five stealth axes were examined independently: in-process queries, reuse of existing storage views, narrowly scoped queries, temporal dilution, and querying across principals. The first two may change where separate execution or device probing is visible, but current documentation mainly establishes interface and cache capabilities without attacker selection and same-case trace comparisons. Narrow scope, low frequency, and multiple principals also arise in ordinary capacity monitoring and delegated operations."
+        - zh: "Windows、Linux、macOS、ESXi、API、命令行、盘符、物理盘、网络映射和卷字段都不是独立匿迹变量。提供方资源盘点和原始内容读取有现存相邻对象。当前正式子项为空并保留 deferred，今后只有稳定变量、相对痕迹差异和不同防御需求同时得到支持才提升。"
+          en: "Windows, Linux, macOS, ESXi, APIs, command lines, drive letters, physical disks, network mappings, and volume fields are not independently stealth variables. Provider resource inventory and raw-content reading have existing neighboring objects. The formal child set remains empty with deferred coverage; promotion requires support for a stable variable, relative trace differences, and a distinct defense need together."
+proposed_subtechniques: []
+defense_candidates:
+  detection_strategies:
+    - key: B015-T1680-DET-STORAGE-QUERY
+      disposition: create
+      name: {zh: "主机存储查询与操作会话关联", en: "Host Storage Query and Operational-Session Correlation"}
+      summary: {zh: "识别偏离批准作业的存储对象和属性查询，并保持请求、返回结果与后继内容操作的区别。", en: "Identify storage-object and attribute queries outside approved work while separating requests, returned results, and later content operations."}
+      description:
+        paragraphs:
+          - zh: "策略围绕主机存储对象而非工具名称组织检测。Windows 分析恢复命令和脚本中的逻辑磁盘查询意图，Linux 分析恢复设备或容量工具的真实执行参数，ESXi 分析把存储清单命令接回认证会话。三者以批准维护范围和调用来源判断可疑性，默认输出查询尝试；成功返回属性需要独立结果证据，后继原始读取和破坏不得并入发现结论。"
+            en: "The strategy organizes detection around host storage objects rather than utility names. The Windows analytic recovers logical-disk query intent from commands and scripts, the Linux analytic recovers device or capacity utility execution arguments, and the ESXi analytic joins storage-inventory commands to authentication sessions. Each evaluates approved maintenance scope and caller origin, reporting query attempts by default. Returned attributes require independent result evidence; later raw reads or destruction remain separate conclusions."
+      detects_keys: [B015-T1680-PARENT]
+      domains: [enterprise]
+      analytic_keys: [B015-T1680-NJA-WINDOWS, B015-T1680-NJA-LINUX, B015-T1680-NJA-ESXI]
+      evidence_keys: [REF-000073, REF-000598, REF-000463, REF-000994, B015-T1680-REF-AUDITCTL, B015-T1680-REF-AUSEARCH, B015-T1680-REF-ESXCLI, B015-T1680-REF-ESXI-AUDIT, B015-T1680-REF-LOGICALDISK, B015-T1680-REF-PSDRIVE]
+  detection_analytics:
+    - key: B015-T1680-NJA-WINDOWS
+      disposition: create
+      strategy_key: B015-T1680-DET-STORAGE-QUERY
+      name: {zh: "Windows 逻辑存储查询意图与进程谱系", en: "Windows Logical-Storage Query Intent and Process Lineage"}
+      summary: {zh: "将逻辑磁盘与文件系统驱动器查询接回异常调用主体，不把工具启动或脚本处理视为返回成功。", en: "Join logical-disk and filesystem-drive queries to abnormal callers without treating a launch or processed script as successful return."}
+      domains: [enterprise]
+      platforms: [Windows]
+      logic:
+        paragraphs:
+          - zh: "在已接入端点上解析 wmic logicaldisk 的读取操作，以及 Get-CimInstance 或 Get-WmiObject 对 Win32_LogicalDisk、Win32_DiskDrive、Win32_Volume 的查询；对 Get-PSDrive 只将明确 FileSystem 过滤或经结果确认的存储对象提升为存储查询。重组同主机、同进程且同 ScriptBlockId 的 4104 片段后解析脚本，借助 DeviceId、ProcessId 和 ProcessCreationTime 固定调用谱系，避免仅按 PID 跨重启关联。把首次出现的调用祖先、非管理角色用户或批准作业范围外的目标与盘点台账比较，并保存命令和脚本证据。"
+            en: "On integrated endpoints parse read operations using wmic logicaldisk and Get-CimInstance or Get-WmiObject queries for Win32_LogicalDisk, Win32_DiskDrive, or Win32_Volume. Treat Get-PSDrive as a storage query only with explicit FileSystem filtering or results confirming a storage object. Reassemble 4104 fragments by host, process, and ScriptBlockId before parsing. Anchor lineage using DeviceId, ProcessId, and ProcessCreationTime rather than joining recycled PIDs across restarts. Compare new calling ancestry, non-management-role users, or targets beyond approved work with the inventory register and retain command and script evidence."
+          - zh: "输出应标明 process-launch 或 script-processed 的证据级别；4104 不证明分支执行或返回成功，进程创建也不证明工具执行完成。无 provider 过滤的 Get-PSDrive 仅作为待核实线索。若调查另外取得对应命令输出，可验证存储对象和返回属性，再提升到 result-confirmed；正文读取、加密或原始卷访问仍作为后继独立事实。"
+            en: "Label output with process-launch or script-processed evidence levels: 4104 does not prove branch execution or successful return, and process creation does not prove completion. Unfiltered Get-PSDrive remains a lead requiring validation. If an investigation separately obtains matching command output, validate its storage objects and attributes before promoting to result-confirmed. Body reads, encryption, and raw-volume access remain separate successor facts."
+      data_requirements:
+        - source_type: endpoint-process
+          name: {zh: "Defender 端点进程事件", en: "Defender endpoint process events"}
+          channel: DeviceProcessEvents
+          required_fields: [Timestamp, DeviceId, FileName, FolderPath, ProcessId, ProcessCreationTime, ProcessCommandLine, AccountSid, InitiatingProcessId, InitiatingProcessFileName]
+        - source_type: powershell-script-block
+          name: {zh: "Windows PowerShell 脚本块事件", en: "Windows PowerShell script-block events"}
+          channel: Microsoft-Windows-PowerShell/Operational
+          required_fields: [Computer, TimeCreated, EventID, ProcessID, ScriptBlockId, ScriptBlockText, MessageNumber, MessageTotal]
+      observables:
+        - {zh: "明确读取逻辑磁盘属性的命令或处理过的脚本内容", en: "Commands or processed script content explicitly requesting logical-disk attributes"}
+        - {zh: "存储查询由异常祖先进程或未登记运维身份发起", en: "Storage queries launched by unusual ancestry or an unregistered operational identity"}
+        - {zh: "Get-PSDrive 的 provider 与 root 语义是否确实对应存储对象", en: "Whether Get-PSDrive provider and root semantics actually describe storage objects"}
+      correlation:
+        window: {zh: "先以同一进程生命周期重组，采用十五分钟会话上下文并与三十天批准作业基线比较；这些是部署初值而非实测阈值。", en: "Reassemble within one process lifetime, use fifteen minutes of session context, and compare with thirty days of approved work; these are deployment starting values rather than measured thresholds."}
+        dimensions: [host, process_id, process_creation_time, parent_process, principal, script_block_id, target_host]
+      false_positives:
+        - {zh: "安装器、磁盘容量告警、资产管理和备份前检查", en: "Installers, disk-capacity alerts, asset management, and pre-backup checks"}
+        - {zh: "获批远程帮助台和事件响应调查", en: "Approved remote help-desk and incident-response investigations"}
+      blind_spots:
+        - {zh: "原生进程内 API 或 GUI 不产生这些命令和脚本语义；脚本分支可能未运行。", en: "Native in-process APIs or GUIs lack these command and script semantics, and a script branch may not run."}
+        - {zh: "未部署 Defender、未启用脚本块日志、版本差异或片段丢失导致缺口；此分析不提供完整返回值。", en: "Missing Defender deployment, disabled script logging, version differences, or lost fragments create gaps; the analytic does not supply complete return values."}
+      tuning_guidance:
+        paragraphs:
+          - zh: "允许项应绑定调用祖先、账户、目标主机角色、脚本身份和作业时间，不按 wmic 或 PowerShell 签名永久放行。区分 Windows PowerShell 与 PowerShell Core 通道；实际采集字段和分片重组需用测试事件验证。无返回内容时保持尝试级别，普通目录 PSDrive 和非文件系统 provider 不计作已确认磁盘发现。"
+            en: "Bind allowances to ancestry, account, target-host role, script identity, and job time rather than permanently trusting wmic or PowerShell signatures. Distinguish Windows PowerShell and PowerShell Core channels and validate actual fields and fragment reassembly with test events. Keep attempt-level confidence without return content, and exclude arbitrary-directory PSDrives and non-filesystem providers from confirmed disk discovery."
+      evidence_keys: [REF-000598, REF-000463, B015-T1680-REF-LOGICALDISK, B015-T1680-REF-PSDRIVE, REF-000073]
+    - key: B015-T1680-NJA-LINUX
+      disposition: create
+      strategy_key: B015-T1680-DET-STORAGE-QUERY
+      name: {zh: "Linux 存储盘点命令与会话偏离", en: "Linux Storage-Inventory Commands and Session Deviation"}
+      summary: {zh: "从经配置执行审计恢复设备和容量查询请求，并与批准作业和权限范围比较。", en: "Recover device and capacity query requests from configured execution audit and compare them with approved work and authority scope."}
+      domains: [enterprise]
+      platforms: [Linux]
+      logic:
+        paragraphs:
+          - zh: "预先为所需架构和执行边界配置 audit 规则，按同一 audit 事件序号重组 SYSCALL、EXECVE 和 PROCTITLE，恢复 exe、参数、pid、ppid、auid 和 ses。识别 lsblk 的设备或文件系统列，以及 df 的容量查询；fdisk、parted 仅在参数明确为 list 或 print 时作为只读盘点，不能把分区修改也视为发现。以 auid 和 ses 连接操作者，比较主机职责、批准备份或盘点时间与请求目标，异常会话中的存储查询产生可调查线索。"
+            en: "Configure audit rules in advance for required architectures and execution boundaries. Reassemble SYSCALL, EXECVE, and PROCTITLE by audit event serial to recover executable, arguments, pid, ppid, auid, and ses. Identify lsblk device or filesystem columns and df capacity queries; treat fdisk or parted as read-only inventory only when arguments explicitly select list or print rather than partition modification. Join the operator using auid and ses and compare host role, approved backup or inventory time, and requested target. Storage queries in deviating sessions produce an investigative lead."
+          - zh: "审计中的 execve success 只表示执行系统调用成功，不是磁盘属性查询成功。保留启动证据级别，除非另有该会话输出；lsblk 的设备、分区、文件系统和多挂载关系须分别解释，不用条目数量直接推断物理磁盘数量。无丢失计数和规则覆盖记录时，缺少事件不能解释为未执行查询。"
+            en: "A successful execve audit record establishes execution-system-call success rather than a successful disk-attribute query. Retain the launch evidence level unless session output is separately available. Interpret lsblk devices, partitions, filesystems, and multiple mounts separately rather than deriving physical disk count from row count. Without loss counters and rule-coverage records, missing events cannot establish absent queries."
+      data_requirements:
+        - source_type: linux-audit-exec
+          name: {zh: "Linux audit 执行事件", en: "Linux audit execution events"}
+          channel: /var/log/audit/audit.log
+          required_fields: [timestamp, audit_event_serial, type, exe, pid, ppid, auid, ses, argc, argv, success]
+        - source_type: linux-audit-health
+          name: {zh: "Linux 审计状态", en: "Linux audit health"}
+          channel: auditctl -s
+          required_fields: [host, timestamp, enabled, lost, backlog]
+      observables:
+        - {zh: "经重组的存储工具及其读取参数", en: "Reassembled storage utilities and their read arguments"}
+        - {zh: "请求范围、主机角色或会话身份偏离批准容量与备份作业", en: "Request scope, host role, or session identity deviates from approved capacity and backup work"}
+      correlation:
+        window: {zh: "事件序号内重组，十五分钟同一会话上下文和三十天作业基线；初始值需按维护周期调整。", en: "Reassemble within event serials and use fifteen minutes of same-session context with a thirty-day work baseline; adapt starting values to maintenance cycles."}
+        dimensions: [host, audit_event_serial, auid, session_id, pid, ppid, executable, target_device]
+      false_positives:
+        - {zh: "容量监控、软件安装、灾备验证和存储故障排查", en: "Capacity monitoring, software installation, recovery validation, and storage troubleshooting"}
+      blind_spots:
+        - {zh: "进程内库调用、直接读取 sysfs 或替代二进制不在已配置执行规则内；argv 不保存返回属性。", en: "In-process library calls, direct sysfs reads, or alternative executables may fall outside configured execution rules; argv does not contain returned attributes."}
+        - {zh: "容器、auid 未设定、审计规则缺失与 backlog 丢失可能破坏会话关联。", en: "Containers, unset auid, missing rules, or backlog loss may break session correlation."}
+      tuning_guidance:
+        paragraphs:
+          - zh: "在测试环境验证 b32/b64 和 execve/execveat 覆盖，按实际安装路径配置规则并观察 lost/backlog，不假定路径监控可覆盖所有改名工具。以作业主体、参数模板和主机角色建立例外；失去 argv 或会话时降低结论，不把审计日志的 success 当作命令退出码。"
+            en: "Validate b32/b64 and execve/execveat coverage in a test environment, configure actual installed paths, and monitor lost/backlog without assuming path monitoring covers renamed tools. Build exceptions from job principal, argument templates, and host role. Lower confidence when argv or session data is absent, and do not treat audit success as the command's exit code."
+      evidence_keys: [REF-000994, B015-T1680-REF-AUDITCTL, B015-T1680-REF-AUSEARCH]
+    - key: B015-T1680-NJA-ESXI
+      disposition: create
+      strategy_key: B015-T1680-DET-STORAGE-QUERY
+      name: {zh: "ESXi 存储清单命令与认证会话", en: "ESXi Storage-Inventory Commands and Authenticated Sessions"}
+      summary: {zh: "通过 World ID 将存储清单命令关联到交互用户和来源，并识别维护范围偏离。", en: "Join storage-inventory commands to interactive users and sources through World IDs and identify maintenance-scope deviations."}
+      domains: [enterprise]
+      platforms: [ESXi]
+      logic:
+        paragraphs:
+          - zh: "收集 ESXi auth.log 与 shell.log，将同主机 shell World ID 对回认证会话、用户名、来源地址和起止时间。解析 esxcli storage core device list、storage filesystem list 及可证实为只读的属性查询，排除 rescan、set、remove 等变更操作。将非维护来源、新登录账户或工单以外主机上的存储查询与批准管理窗口比较；查询 .vmdk 文件名的普通 ls 或 find 交给文件与目录发现。"
+            en: "Collect ESXi auth.log and shell.log and join each shell World ID on the same host to its authentication session, username, source address, and session bounds. Parse esxcli storage core device list, storage filesystem list, and other verified read-only attribute queries while excluding changes such as rescan, set, or remove. Compare storage queries from non-maintenance origins, new users, or hosts outside work orders with approved management windows. Ordinary ls or find requests for .vmdk names belong to File and Directory Discovery."
+          - zh: "shell.log 证明会话输入了命令，不保存全部结果，也不覆盖所有 SDK 或 vCenter API 调用。输出为已归属的存储查询命令，只有额外输出证据才确认返回对象。会话缺口、World ID 重用和日志轮转必须限制连接窗口，不能靠相同 root 名称跨主机合并操作者。"
+            en: "shell.log establishes a command entered in a session rather than complete results and does not cover every SDK or vCenter API call. Report an attributed storage-query command, confirming returned objects only with additional output evidence. Session gaps, World ID reuse, and rotation must bound joins; the same root name cannot identify one operator across hosts."
+      data_requirements:
+        - source_type: esxi-shell
+          name: {zh: "ESXi Shell 命令记录", en: "ESXi Shell command records"}
+          channel: /var/log/shell.log
+          required_fields: [host, timestamp, world_id, command]
+        - source_type: esxi-authentication
+          name: {zh: "ESXi Shell 认证与会话", en: "ESXi Shell authentication and sessions"}
+          channel: /var/log/auth.log
+          required_fields: [host, timestamp, world_id, username, source_ip, session_event]
+      observables:
+        - {zh: "非批准会话输入存储设备或文件系统清单命令", en: "Storage-device or filesystem-inventory commands entered by an unapproved session"}
+        - {zh: "认证来源、World ID、命令与维护工单范围不一致", en: "Authentication source, World ID, command, and maintenance work-order scope disagree"}
+      correlation:
+        window: {zh: "限于认证会话起止并向两侧各容忍两分钟时钟偏差；未见结束时最长一小时，需本地验证。", en: "Bound joins to authentication-session lifetime with two minutes of clock tolerance on either side; cap at one hour without a close record and validate locally."}
+        dimensions: [host, world_id, username, source_ip, session_start, command]
+      false_positives:
+        - {zh: "获批存储维护、容量排障、升级与支持调查", en: "Approved storage maintenance, capacity troubleshooting, upgrades, and support investigations"}
+      blind_spots:
+        - {zh: "管理 API 或非交互路径不一定进入 shell.log；本机日志可被高权限主体修改，且无返回属性。", en: "Management APIs or noninteractive paths need not enter shell.log; privileged actors can alter local logs, which lack returned attributes."}
+        - {zh: "本地控制台无来源 IP 时只能保留本地来源标记，不能要求不存在的网络地址。", en: "A local console lacks a source IP and requires a local-origin marker rather than a fabricated network address."}
+      tuning_guidance:
+        paragraphs:
+          - zh: "实测当前 ESXi 版本的 auth 与 shell 格式，区分登录 PID 与实际 Shell World ID，以 host 和会话边界限制关联；控制台来源用 local 明确标记。维护例外绑定来源、账户、主机、命令类别和工单期限，保留例外会话的原始日志并远程转发。"
+            en: "Test auth and shell formats on the deployed ESXi version, distinguish the login PID from the actual shell World ID, and bound joins by host and session. Mark console origin as local. Bind maintenance exceptions to source, account, host, command class, and work-order expiry, retaining and forwarding raw records for excepted sessions."
+      evidence_keys: [B015-T1680-REF-ESXCLI, B015-T1680-REF-ESXI-AUDIT]
+  mitigations:
+    - key: B015-T1680-MIT-STORAGE-ACCOUNTABILITY
+      disposition: create
+      name: {zh: "存储盘点执行约束与查询问责", en: "Storage-Inventory Execution Constraints and Query Accountability"}
+      summary: {zh: "约束未批准代码与管理入口，并使存储盘点请求可同批准作业核验。", en: "Constrain unapproved code and management entry points and make storage-inventory requests verifiable against approved work."}
+      description:
+        paragraphs:
+          - zh: "卷存在性和容量是安装、运行和维护需要的信息，不能普遍对已授权进程隐藏。控制通过应用与脚本信任减少不必要查询执行能力，并以批准作业、命令和会话证据减少原生工具外观带来的辨识困难；它不以隐藏盘符或文件内容加密充当存储发现阻断。"
+            en: "Volume presence and capacity are needed for installation, runtime, and maintenance and cannot generally be hidden from authorized processes. Controls reduce unnecessary querying capability through application and script trust and reduce ambiguity from native-tool appearance using approved work, commands, and session evidence. Hiding drive letters or encrypting file content is not treated as blocking storage discovery."
+      domains: [enterprise]
+      measures:
+        - key: approved-inventory-execution
+          name: {zh: "批准盘点执行约束", en: "Approved inventory execution constraints"}
+          description:
+            paragraphs:
+              - zh: "将盘点任务绑定管理身份、目标主机、脚本或二进制信任和时间范围；在支持环境用 App Control 和受限 PowerShell 约束未批准代码及直接互操作能力，保留必要的受控容量查询。"
+                en: "Bind inventory jobs to management identity, target host, script or binary trust, and time scope. Where supported, use App Control and constrained PowerShell to limit unapproved code and direct interop while preserving necessary controlled capacity queries."
+          control_type: exposure-reduction
+        - key: attributable-storage-query-audit
+          name: {zh: "可归属存储查询审计", en: "Attributable storage-query audit"}
+          description:
+            paragraphs:
+              - zh: "开启并外部保留进程、受保护脚本块、经配置 Linux exec 和 ESXi auth/shell 记录，记录采集规则与缺口，验证同一测试查询能回溯到主体与会话；只在确有输出采集时保存返回属性并标注结果级别。"
+                en: "Enable and externally retain process, protected script-block, configured Linux exec, and ESXi auth/shell records, documenting collection rules and gaps. Verify that a test query traces back to its principal and session. Retain returned attributes and label result evidence only when output collection actually exists."
+          control_type: detective-support
+      applications:
+        - target_key: B015-T1680-PARENT
+          use:
+            paragraphs:
+              - zh: "对本地存储发现，登记资产和容量盘点、备份及维修的主体和查询范围，收紧无需执行任意脚本的入口，并将实际存储查询与登记作业比较。Windows 非文件系统 PSDrive、ESXi 路径列表和云提供方资源清单按各自边界分流，避免用泛化磁盘告警替代对象判断。"
+                en: "For Local Storage Discovery, register principals and query scope for asset and capacity inventories, backup, and repair. Constrain entry points that do not need arbitrary scripts and compare observed storage queries with registered work. Route non-filesystem Windows PSDrives, ESXi path listings, and cloud-provider resource inventory according to their boundaries rather than replacing object analysis with a generic disk alert."
+          expected_effect:
+            paragraphs:
+              - zh: "未批准代码取得查询执行能力的机会减少，原生盘点外观更容易与具体操作者和作业范围核对。即使部分容量接口仍可被调用，调查也可更可靠地保留请求语义，并区分未知结果与证实返回。"
+                en: "Unapproved code has fewer opportunities to obtain querying capability, and native inventory appearance becomes easier to check against a concrete operator and work scope. Even when some capacity interfaces remain callable, investigation can retain request semantics more reliably and distinguish unknown results from confirmed returns."
+          limitations:
+            paragraphs:
+              - zh: "已获准进程和普通用户仍可能读取基本容量，ConstrainedLanguage 也不等于禁止 Get-PSDrive 或全部 CIM 查询。受信脚本和管理身份被盗后仍会保留正常外观；API、GUI、非交互管理和未采集输出形成盲区。审计有事件量与敏感信息成本，须先验证兼容性并控制访问和保留。"
+                en: "Authorized processes and ordinary users may still read basic capacity, and ConstrainedLanguage does not prohibit Get-PSDrive or every CIM query. Stolen trusted scripts or management identities can retain normal appearance. APIs, GUIs, noninteractive management, and absent output collection create gaps. Audit has volume and sensitive-information costs requiring compatibility validation and controlled access and retention."
+      evidence_keys: [REF-000200, REF-000463, REF-000598, B015-T1680-REF-FREESPACE, B015-T1680-REF-AUDITCTL, B015-T1680-REF-ESXI-AUDIT]
+existing_library_reuse:
+  reference_refs: [REF-000073, REF-000025, REF-000994, REF-000598, REF-000463, REF-000200, REF-000334]
+  claim_refs: []
+  case_refs: []
+  strategy_refs: []
+  analytic_refs: []
+  mitigation_refs: []
+  relationship_refs: []
+  checked_neighbors:
+    - id: NJT-0182
+      disposition: split
+      rationale: File/path names and directory listings differ from drive/disk/volume object attributes; its DET-000210, NJA-000255/NJA-000256 and MIT-000192 require namespace-specific observations and list/traverse control, so do not reuse by title similarity.
+    - id: NJT-0108
+      disposition: split
+      rationale: Raw-view-to-sensitive-content bypass is different from metadata discovery. DET-000105 and MIT-000107 do not prevent low-privilege capacity queries and must not be borrowed as complete coverage.
+    - id: NJT-0139
+      disposition: reuse
+      rationale: Existing parent owns provider-side provisioned volumes, snapshots and resource relationships. Keep all three pinned cloud providers in explicit branch resolutions rather than add a duplicate storage-resource parent.
+    - id: MIT-000078
+      disposition: defer
+      rationale: Interpreter entry/trust/audit measures are relevant for one route but do not cover all native storage-tool and ESXi inventory requests. Proposed storage-control object includes approved inventory scope and target-specific result calibration. Primary may instead extend MIT-000078 only with an explicitly route-limited application, without broadening its measures by stealth.
+    - id: MIT-000176
+      disposition: split
+      rationale: Its identity is history-policy/sink control and independent recording; storage discovery need not suppress history. Do not attach the parent solely to obtain logging coverage.
+    - id: MIT-000190
+      disposition: split
+      rationale: Driver-state baseline and SeDebugPrivilege constraints do not apply interchangeably to ordinary disk-capacity queries.
+  publication_identity_notes:
+    - REF-000073 is the exact Microsoft 2023 publication despite the existing filename and locator focusing on SOHO egress. Reuse this REF and extend locator/notes if needed; do not mint a second Microsoft publication REF for its Discovery section.
+    - REF-000025 is the exact AA24-038A advisory. Online HTML and attempted PDF were inaccessible in this research session; no new factual conclusion is attributed solely to that inaccessible version.
+    - REF-000994 is the exact lsblk manual URL and was independently read. Reuse rather than create another lsblk reference.
+    - REF-000334, REF-000623 and REF-000868 all concern event 4688; use the confirmed existing identity if 4688 is added. Proposed Windows analytic uses DeviceProcessEvents and 4104, so no new 4688 REF is necessary.
+    - Existing Volt Typhoon CASE-000026, CASE-000032, CASE-000036, CASE-000045, CASE-000141 and CASE-000297 concern external reconnaissance, SOHO/intermediary routing or shadow-copy NTDS access. Their central observed facts do not equal host storage-attribute discovery.
+library_candidates:
+  references:
+    - key: B015-T1680-REF-LOGICALDISK
+      disposition: create
+      title_zh: Win32_LogicalDisk 类
+      title_en: Win32_LogicalDisk Class
+      source_type: official-documentation
+      publisher: Microsoft
+      url: https://learn.microsoft.com/en-us/windows/win32/cimwin32prov/win32-logicaldisk
+      locator: Class syntax and DeviceID, DriveType, FileSystem, FreeSpace, Size, ProviderName and VolumeSerialNumber properties
+      supported_conclusion: Defines the logical-disk result object and storage attributes, not hostile intent or query success in a victim.
+    - key: B015-T1680-REF-PSDRIVE
+      disposition: create
+      title_zh: Get-PSDrive 的会话驱动器与 provider 边界
+      title_en: Get-PSDrive Session Drives and Provider Boundaries
+      source_type: official-documentation
+      publisher: Microsoft
+      url: https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.management/get-psdrive?view=powershell-7.5
+      locator: Description; examples 1 and 3
+      supported_conclusion: Includes logical, mapped, provider and temporary drives; FileSystem drives need root/result validation before treating them as disks.
+    - key: B015-T1680-REF-FREESPACE
+      disposition: create
+      title_zh: GetDiskFreeSpaceExW 的容量、调用者配额与返回状态
+      title_en: GetDiskFreeSpaceExW Capacity, Caller Quotas and Return Status
+      source_type: official-documentation
+      publisher: Microsoft
+      url: https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-getdiskfreespaceexw
+      locator: Parameters, per-user quotas, FILE_LIST_DIRECTORY access and return value
+      supported_conclusion: Caller-available space differs from total free space; API success and output attributes are required, not a process or handle alone.
+    - key: B015-T1680-REF-DRIVETYPE
+      disposition: create
+      title_zh: GetDriveTypeW 的有效和无效驱动器结果
+      title_en: GetDriveTypeW Valid and Invalid Drive Results
+      source_type: official-documentation
+      publisher: Microsoft
+      url: https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-getdrivetypew
+      locator: Return values including DRIVE_UNKNOWN, DRIVE_NO_ROOT_DIR, DRIVE_FIXED and DRIVE_REMOTE
+      supported_conclusion: A root query may be invalid or unknown; a mapped remote drive is a logical-drive type rather than proof of share enumeration.
+    - key: B015-T1680-REF-VOLUMEINFO
+      disposition: create
+      title_zh: GetVolumeInformationW 的卷属性和序列号语义
+      title_en: GetVolumeInformationW Volume Attributes and Serial-Number Semantics
+      source_type: official-documentation
+      publisher: Microsoft
+      url: https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-getvolumeinformationw
+      locator: Returned volume and filesystem fields, OS-assigned volume serial versus physical-medium serial, and success status
+      supported_conclusion: Volume metadata is distinct from device manufacturing identity and from filesystem contents.
+    - key: B015-T1680-REF-ESXCLI
+      disposition: create
+      title_zh: ESXCLI 存储命令参考
+      title_en: ESXCLI Storage Command Reference
+      source_type: official-documentation
+      publisher: Broadcom
+      url: https://developer.broadcom.com/xapis/esxcli-command-reference/latest/namespace/esxcli_storage.html
+      locator: storage core device list; storage filesystem list; read and state-changing command distinctions
+      supported_conclusion: Defines ESXi host storage inventory capability, not a Royal intrusion result or all SDK auditing.
+    - key: B015-T1680-REF-ESXI-AUDIT
+      disposition: create
+      title_zh: 审计 ESXi Shell 登录和命令
+      title_en: Auditing ESXi Shell Logins and Commands
+      source_type: official-documentation
+      publisher: Broadcom
+      advisory_id: '321910; legacy 2004810'
+      url: https://knowledge.broadcom.com/external/article/321910/auditing-esxi-shell-logins-and-commands.html
+      locator: auth.log and shell.log; authentication PID versus shell World ID; examples and join method
+      supported_conclusion: Interactive shell commands can be attributed through World ID and authentication logs. Command output and all API paths are not guaranteed.
+    - key: B015-T1680-REF-APPLE
+      disposition: create
+      title_zh: 修复分离 Fusion Drive 中的磁盘清单示例
+      title_en: Disk Inventory Example in How to Fix a Split Fusion Drive
+      source_type: official-documentation
+      publisher: Apple
+      published: '2025-12-08'
+      url: https://support.apple.com/en-us/102226
+      locator: High Sierra or earlier recovery instructions, diskutil list and logical-volume group output
+      supported_conclusion: Disk identities and capacity are legitimate repair facts. This older-platform example does not establish all current APFS fields or adversarial use.
+    - key: B015-T1680-REF-AUDITCTL
+      disposition: create
+      title_zh: auditctl 规则、架构与审计丢失状态
+      title_en: auditctl Rules, Architectures and Audit-Loss Status
+      source_type: official-documentation
+      publisher: Linux Audit
+      url: https://man7.org/linux/man-pages/man8/auditctl.8.html
+      locator: Rule options, architecture handling and auditctl -s lost/backlog output
+      supported_conclusion: Execution auditing requires rules and health validation; missing records cannot independently establish absence.
+    - key: B015-T1680-REF-AUSEARCH
+      disposition: create
+      title_zh: ausearch 的事件重组、执行与会话字段
+      title_en: ausearch Event Reassembly, Execution and Session Fields
+      source_type: official-documentation
+      publisher: Linux Audit
+      url: https://man7.org/linux/man-pages/man8/ausearch.8.html
+      locator: Shared syscall event IDs; pid, ppid, auid, session and success selectors
+      supported_conclusion: Audit records can be joined at event and session boundaries, but syscall success does not establish a utility's returned storage attributes.
+  claims:
+    - key: B015-T1680-CLM-OBSERVED
+      disposition: create
+      proposition:
+        zh: "Microsoft 在 Volt Typhoon 入侵调查中观察到文件系统类型、驱动器名称、容量和空闲空间发现。"
+        en: "Microsoft observed discovery of filesystem types, drive names, capacity, and free space during Volt Typhoon investigations."
+      evidence_keys: [REF-000073]
+      evidence_mode: observed-adversarial-use
+      confidence: high
+      limitation: No command-by-command return data, storage-specific evasion choice or measured detection effect is supplied.
+    - key: B015-T1680-CLM-BOUNDARY
+      disposition: create
+      proposition:
+        zh: "驱动器或卷属性与文件命名空间、远端共享集合和云资源清单是不同直接结果；Get-PSDrive 还可能返回非存储 provider。"
+        en: "Drive or volume attributes differ from file namespaces, remotely available share sets, and cloud resource inventories; Get-PSDrive can also return non-storage providers."
+      evidence_keys: [B015-T1680-REF-LOGICALDISK, B015-T1680-REF-PSDRIVE, B015-T1680-REF-DRIVETYPE, REF-000994]
+      evidence_mode: documented-capability-and-boundary-analysis
+      confidence: high
+    - key: B015-T1680-CLM-FEATURE-OVERLAP
+      disposition: create
+      proposition:
+        zh: "恶意存储测绘可使用正常盘点和容量维护接口；单次工具或查询外观不足以区分控制者意图，但未证明检测下降幅度。"
+        en: "Adversarial storage mapping can use normal inventory and capacity-maintenance interfaces; one utility or query appearance is insufficient to distinguish controller intent, without proving the magnitude of detection reduction."
+      evidence_keys: [REF-000073, B015-T1680-REF-LOGICALDISK, B015-T1680-REF-FREESPACE, REF-000994, B015-T1680-REF-APPLE]
+      evidence_mode: observational-inference
+      confidence: medium
+    - key: B015-T1680-CLM-DEFENSE-LEVELS
+      disposition: create
+      proposition:
+        zh: "进程、脚本块、执行审计和 ESXi shell 记录可恢复请求和主体，但不能普遍证明返回的存储属性；查询结果需额外输出证据。"
+        en: "Process, script-block, execution-audit, and ESXi shell records can recover requests and principals but do not universally establish returned storage attributes; query results require additional output evidence."
+      evidence_keys: [REF-000598, REF-000463, B015-T1680-REF-AUDITCTL, B015-T1680-REF-AUSEARCH, B015-T1680-REF-ESXI-AUDIT]
+      evidence_mode: documented-telemetry-analysis
+      confidence: high
+  cases:
+    - key: B015-T1680-CASE-VOLT-STORAGE
+      disposition: create
+      name_zh: Volt Typhoon 主机存储属性发现
+      name_en: Volt Typhoon Host Storage-Attribute Discovery
+      actor_or_campaign: Volt Typhoon
+      date_range: Observed activity discussed in Microsoft's 2023-05-24 report; storage-specific event dates not disclosed
+      central_observed_facts:
+        zh: "Microsoft 的入侵调查报告明确记录文件系统类型、驱动器名称、容量和空闲空间发现。该事件与同文档的 SOHO 路由、凭据转储和代理创建是不同观察对象，不复用那些案例的主体事实。"
+        en: "Microsoft's intrusion reporting explicitly records discovery of filesystem types, drive names, capacity, and free space. This event has different central facts from the same publication's SOHO routing, credential dumping, and proxy creation and does not reuse those cases' meanings."
+      evidence_keys: [REF-000073]
+      does_not_prove: Specific Windows API selection, in-process stealth, returned per-host disk values, telemetry avoidance, or subsequent encryption/destruction.
+  detection_strategies: []
+  detection_analytics: []
+  mitigations: []
+  relationships: []
+research:
+  completed_reads:
+    - .agents/skills/niji-matrix-authoring/SKILL.md
+    - .agents/skills/niji-matrix-authoring/references/technique-development.md
+    - .agents/skills/niji-matrix-authoring/references/taxonomy-breadth-control.md
+    - .agents/skills/niji-matrix-authoring/references/structured-technique-contract.md
+    - .agents/skills/niji-matrix-authoring/references/shared-library-governance.md
+    - .agents/skills/niji-matrix-authoring/references/program-batch-control.md
+    - niji-matrix/docs/technique-field-specification.md
+    - niji-matrix/docs/defense-object-specification.md
+    - niji-matrix/docs/njt-0001-exemplar.md
+    - NJT-0001 actual parent; NJT-0182; NJT-0108; NJT-0139; MIT-000078; MIT-000176; MIT-000190; MIT-000192; MIT-000107
+  fixed_baseline:
+    enterprise_version: '19.1'
+    workbook_record: fixed-baseline-inventory.json T1680
+    attack_subtechnique_count: 0
+    attack_subtechnique_ids: []
+    current_web_pages_not_used_to_migrate_baseline: true
+  taxonomy_breadth_review:
+    attack_subtechnique_count: 0
+    attack_subtechnique_ids: []
+    represented_dimensions: [host_drive_disk_partition_volume_attributes, windows_logical_and_mapped_drives, linux_block_and_filesystem_state, macos_disks, esxi_storage, provider_volume_resources]
+    breadth_trigger: ordinary
+    coverage_resolutions:
+      - {cluster: Host storage identities and attributes, disposition: parent-core}
+      - {cluster: Platforms and command/API interfaces, disposition: not-stealth-distinct}
+      - {cluster: Provider-provisioned volume inventory, disposition: adjacent-technique, target_ref: NJT-0139}
+      - {cluster: .vmdk paths or arbitrary directory PSDrives, disposition: adjacent-technique, target_ref: NJT-0182}
+      - {cluster: Raw sensitive-content reads, disposition: adjacent-technique, target_ref: NJT-0108}
+    candidate_stealth_axes_examined:
+      - key: in-process-query-placement
+        variable: Attacker chooses storage-query code inside an already running process instead of a separate utility.
+        prerequisites: Controlled code execution and compatible storage API; no assumption of administrator rights for every API.
+        trace_change: May remove a separate child-process command line while leaving API invocation and results within the existing process.
+        defender_effect: Process-launch-only detection can miss query semantics; runtime/API instrumentation would differ.
+        evidence: Official GetDriveType/GetDiskFreeSpaceEx/GetVolumeInformation capabilities; Microsoft case establishes storage discovery without this implementation.
+        disposition: evidence-deferred
+        reason: No same-incident evidence of intentional in-process selection, relative trace comparison or observed evasion. API versus CLI alone is an interface split, so no NJS.
+      - key: reuse-existing-storage-view
+        variable: Read an existing host storage database or cached view rather than trigger fresh block-device probing.
+        prerequisites: Readable, sufficiently fresh view and matching object scope.
+        trace_change: lsblk normally reads sysfs and udev; direct labels/types probing occurs under documented fallback conditions.
+        defender_effect: Device-probe observations and catalog/view-read observations differ; returned facts can be stale.
+        evidence: REF-000994 documents capability and fallback, not attacker preference.
+        disposition: evidence-deferred
+        reason: A default implementation and legitimate cache use do not prove attacker-controlled evasion. No adversarial source/output/trace comparison.
+      - key: query-scope-minimization
+        variable: Select only necessary devices or attributes rather than broad inventory.
+        prerequisites: Prior target knowledge and sufficient feedback.
+        trace_change: Fewer requested targets/fields, but event density and API request count are not guaranteed to decrease.
+        defender_effect: A narrow query can resemble ordinary free-space checks; role and target context become more useful.
+        evidence: lsblk explicit devices/columns and Microsoft API individual-root queries are documented; adversarial controlled comparison absent.
+        disposition: evidence-deferred
+        reason: Functional request scoping is not by itself a stable stealth child; legitimate capacity checks are strong counterexamples.
+      - key: temporal-query-dilution
+        variable: Spread independent storage questions over longer intervals.
+        prerequisites: Time tolerance and storage facts remaining useful.
+        trace_change: Hypothesized lower short-window density.
+        defender_effect: Would require longer session or principal correlation if deliberately implemented.
+        evidence: No candidate-specific observed implementation, schedule or evasion measurement found in examined primary sources.
+        disposition: evidence-deferred
+        reason: Do not import NJT-0001 timing children into host storage discovery or infer evasion from ordinary monitoring intervals.
+      - key: cross-principal-query-partition
+        variable: Partition complementary host-storage questions across controlled sessions or identities.
+        prerequisites: Multiple controlled principals and a shared result-aggregation path.
+        trace_change: Hypothesized fragmentation of one inventory across identities.
+        defender_effect: Would require identity-independent host/object joins.
+        evidence: No storage-specific multi-principal complementarity or aggregation evidence found.
+        disposition: evidence-deferred
+        reason: Multiple administrators, host roles or mappings are ordinary conditions and cannot establish deliberate partitioning.
+    second_pass_required: false
+    second_pass_completed: true
+    proposed_niji_child_count: 0
+    breadth_gap_explained: true
+    reviewer_notes:
+      zh: "零个 ATT&CK 子项未阻止开放研究，五种独立匿迹轴已分别检查。当前证据足以支持父行为及共享正常接口的中等机理，不足以把某个实现分裂成稳定、防御有别的子项；保留 deferred 而非宣称永远无子技术。"
+      en: "Zero ATT&CK children did not stop open-ended inquiry; five distinct stealth axes were examined. Evidence supports the parent behavior and a medium-confidence normal-interface overlap mechanism but does not justify splitting an implementation into a stable child with distinct defense requirements. Keep deferred rather than claiming no future taxonomy."
+  six_step_causal_review:
+    - step: Behavior and direct purpose
+      finding: Acquire host-visible storage facts for environmental knowledge; Microsoft provides observed hostile discovery.
+    - step: Attacker-controlled design
+      finding: Query interface, subject/session and target attributes can be selected, but the case does not demonstrate a particular evasion instruction.
+    - step: Trace change
+      finding: Reuse of legitimate query interfaces produces ordinary inventory-like command/method appearance; in-process or cached variants remain deferred.
+    - step: Defender observation effect
+      finding: Single-event classification cannot reliably distinguish maintenance and adversarial targeting; request telemetry generally lacks returned facts.
+    - step: Stealth effect and competing explanation
+      finding: Reduced distinguishability is a reasoned medium-confidence consequence; normal monitoring/repair strongly competes, and no event-loss or measured miss claim is made.
+    - step: Evidence, defense and limits
+      finding: Combine Microsoft incident evidence with implementation and telemetry sources. Recover caller/request lineage and job context; result confirmation and independent child existence remain separate gates.
+  evidence_coverage:
+    parent_behavior_keys: [REF-000073, B015-T1680-REF-LOGICALDISK, REF-000994, B015-T1680-REF-ESXCLI, B015-T1680-REF-APPLE]
+    boundary_keys: [B015-T1680-REF-PSDRIVE, B015-T1680-REF-DRIVETYPE, B015-T1680-REF-FREESPACE, B015-T1680-REF-VOLUMEINFO]
+    mechanism_support:
+      - {mechanism_ref: NM-FD, confidence: medium, evidence_keys: [REF-000073, B015-T1680-REF-LOGICALDISK, B015-T1680-REF-FREESPACE, REF-000994, B015-T1680-REF-APPLE]}
+    child_existence_support: []
+    unsupported_or_deferred:
+      - In-process API selection as an attacker-chosen evasion axis
+      - Cached-view preference as an evasion axis
+      - Narrow request, timing or cross-principal NJS
+      - Any claimed telemetry-loss magnitude or detection-rate improvement
+      - macOS analytic coverage using an unverified endpoint event schema
+      - Native API return collection using a product that does not actually emit return values
+  source_verification:
+    accessed: '2026-11-05'
+    independently_browsed_primary_sources:
+      - https://www.microsoft.com/en-us/security/blog/2023/05/24/volt-typhoon-targets-us-critical-infrastructure-with-living-off-the-land-techniques/
+      - https://learn.microsoft.com/en-us/windows/win32/cimwin32prov/win32-logicaldisk
+      - https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.management/get-psdrive?view=powershell-7.5
+      - https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-getdrivetypew
+      - https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-getdiskfreespaceexw
+      - https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-getvolumeinformationw
+      - https://man7.org/linux/man-pages/man8/lsblk.8.html
+      - https://developer.broadcom.com/xapis/esxcli-command-reference/latest/namespace/esxcli_storage.html
+      - https://knowledge.broadcom.com/external/article/321910/auditing-esxi-shell-logins-and-commands.html
+      - https://support.apple.com/en-us/102226
+      - https://learn.microsoft.com/en-us/defender-xdr/advanced-hunting-deviceprocessevents-table
+      - https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_logging?view=powershell-5.1
+      - https://learn.microsoft.com/en-us/powershell/scripting/security/app-control/application-control
+      - https://man7.org/linux/man-pages/man8/auditctl.8.html
+      - https://man7.org/linux/man-pages/man8/ausearch.8.html
+    planning_only_boundary_sources:
+      - url: https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_DescribeVolumes.html
+        finding: EBS provisioned volumes, size and attachmentSet are cloud-resource facts; DryRun checks permission without performing the request.
+      - url: https://docs.cloud.google.com/sdk/gcloud/reference/compute/disks/list
+        finding: Project-wide regional/zonal provisioned disks, not guest free-space results.
+      - url: https://learn.microsoft.com/en-us/cli/azure/disk?view=azure-cli-latest
+        finding: az disk list inventories managed disks, not guest mount state.
+    failed_or_insufficient_fetches:
+      - CISA AA24-038A HTML/PDF inaccessible; preserve existing REF identity without adding conclusions from unseen text.
+      - Original Trend Micro Royal ESXi URL returned a corporate navigation shell without article body; no Royal storage discovery claim or case is proposed.
+      - Attempted ESET Attor guessed URL inaccessible; no inferred Attor storage case.
+      - Red Hat RHEL 9 audit guide returned 403 and older guide 503; Linux defense relies on independently read auditctl and ausearch primary project manuals instead.
+      - Apple archived diskutil manpage returned 404; the successful Apple support article is explicitly limited to its documented older-platform repair example.
+  result_evidence_ladder:
+    - level: launched_or_processed
+      supported_by: Process creation, shell command entry or script-block processing
+      does_not_establish: Query executed to completion, valid storage objects or returned attributes
+    - level: query_attempted
+      supported_by: Runtime or management-operation evidence specifically identifying a storage query
+      does_not_establish: Success, returned values, full host coverage or harmful use
+    - level: query_success_indicated
+      supported_by: Actual interface status or verified command completion
+      does_not_establish: Full returned object set if content is not retained; execve success is not command completion
+    - level: valid_storage_result
+      supported_by: Matching output or result record with actual drive/disk/volume identity and requested attributes
+      does_not_establish: Remote share-set enumeration, file-content acquisition, raw-view bypass, encryption or destruction
+  content_depth_review:
+    compared_with_njt_0001: true
+    field_responsibilities_complete: true
+    candidate_specific_prose: true
+    repeated_prose_reviewed: true
+    notes:
+      zh: "定义分开存储对象与其结果，匿迹特性保留普通盘点冲突和结果日志缺口，范围显式处理主机与云资源、映射与共享、路径与卷、发现与原始读取。威胁模型不默认管理员，防御不假设进程日志带返回值；限制保留平台和实案差异。未套用 NJT-0001 的机理或子项数量，正文需由主 Agent 再审。"
+      en: "Definition separates storage objects and results; stealth characteristics preserve normal-inventory ambiguity and missing result logs; boundaries explicitly distinguish host state from cloud resources, mappings from shares, paths from volumes, and discovery from raw reads. The threat model does not assume administrator rights and defenses do not invent return values in process logs. Limitations retain platform and incident-evidence differences. NJT-0001 mechanism or child counts were not copied; the primary agent must review the prose again."
+  automation_review:
+    canonical_prose_bulk_generated: false
+    mechanical_uses: [read-only catalog searches, YAML serialization and parse checking of this handoff]
+  limitations:
+    paragraphs:
+      - zh: "目前真实恶意行为主要由 Microsoft 对 Volt Typhoon 的一手调查支撑，未公开逐主机返回容量、完整工具参数、成功或失败状态和查询时刻的检测结果。官方文档证明接口能力与正常需求，不证明攻击者选择接口是为了匿迹；Linux、macOS 和 ESXi 的平台范围也不能由一个 Windows 活动案例自动获得同等实案强度。"
+        en: "Real adversarial behavior is presently anchored mainly in Microsoft's firsthand Volt Typhoon investigation, which does not disclose per-host capacities, complete utility arguments, success or failure status, or detection outcomes at query time. Official documentation establishes interfaces and legitimate needs rather than attacker choice for stealth. The Linux, macOS, and ESXi scope does not automatically receive equal incident support from one Windows campaign."
+      - zh: "防御方案的字段和通道有文档依据，尚未在域端点、Linux 审计和 ESXi 主机部署验证。进程、脚本与命令日志缺返回内容，原生 API、GUI、配额和命名空间差异仍限制判断；macOS 的独立分析待验证实际传感器合同。未证明的实现、时间和来源变量保留为 deferred，未来同案调用与返回记录、正常基线和观察差分可改变分类与置信度。"
+        en: "Defense fields and channels have documentary support but have not been deployed on domain endpoints, Linux audit, or ESXi hosts. Process, script, and command records lack return content, while native APIs, GUIs, quotas, and namespace differences constrain interpretation; a macOS-specific analytic awaits a verified sensor contract. Unproved implementation, timing, and origin variables remain deferred. Same-incident invocation and return records, legitimate baselines, and observation differentials could change taxonomy and confidence."
+  rejected_mechanisms:
+    - mechanism_ref: NM-BT
+      reason: In-process APIs and missing default audit are observation gaps, but examined evidence does not establish attacker-designed exploitation of the gap or a particular path selected for evasion.
+    - mechanism_ref: NM-ST
+      reason: No storage-specific intentional timing or complementary source partition evidence; routine monitoring cadence is insufficient.
+    - mechanism_ref: NM-DO
+      reason: No supported concealment of storage-query payload, return values or query syntax; encrypted downstream traffic is a separate object.
+  open_questions:
+    - Obtain an incident trace showing deliberate in-process or cached storage discovery with a comparator and output.
+    - Validate Windows 4104 fragment schema and Linux audit normalization in deployed collectors.
+    - Validate ESXi World ID joins and read-only esxcli coverage on installed versions; all SDK calls remain outside shell-only coverage.
+    - Add a macOS-specific analytic only after inspecting an actual endpoint execution/session data contract.
+integration:
+  status: pending
+  resolutions: []

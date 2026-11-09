@@ -1,0 +1,141 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000403
+strategy_ref: DET-000290
+name:
+  zh: Windows 远端系统调查与缓存显示命令分析
+  en: Windows Remote-System Survey and Cache-Display Command Analysis
+summary:
+  zh: 对主机枚举或缓存显示命令按进程父链、用户与会话分组，输出待调查的发现尝试。
+  en: Group host-enumeration or cache-display commands by ancestry, user, and session to report discovery attempts requiring
+    investigation.
+domains:
+- enterprise
+platforms:
+- Windows
+logic:
+  paragraphs:
+  - zh: 在启用 Sysmon Event 1 的主机读取完整命令行、进程和父进程 GUID、用户、LogonGuid 与时间。按参数语义识别 arp -a 或 -g 以及 ipconfig /displaydns 的本地知识显示请求；单纯
+      ipconfig 属于本机配置。没有目标主机参数的 net view，以及指定 /domain:名称的计算机列表请求，可标记为主机调查尝试；仅 /domain 返回域列表，不能当成计算机清单。带目标主机参数的 net view 查询共享，路由至网络共享发现。ping
+      必须有远端目标，排除明确的 localhost、环回地址及能够核实的本机名称；无法确定目标或选项语义时保留歧义，不从映像名称推断调查对象。
+    en: On hosts collecting Sysmon Event 1, read full command lines, process and parent GUIDs, users, LogonGuid, and time.
+      Parse arp -a or -g and ipconfig /displaydns as requests to display local knowledge; plain ipconfig concerns local configuration.
+      Bare net view without a target-host argument and computer-list requests with /domain:name can indicate host-survey attempts.
+      A bare /domain lists domains rather than computers. Net view with a target-host argument requests shares and belongs
+      to share discovery. Ping requires a remote target; exclude explicit localhost, loopback addresses, and verifiable local
+      names. Preserve uncertainty about target or option semantics rather than infer the information object from image names.
+  - zh: 先在同一设备和有效 LogonGuid 内以十分钟关联相邻调查请求，再由 ProcessGuid 与 ParentProcessGuid 关联已记录父链。空、全零或无法解析的会话 GUID 不作为可合并的公共会话；此时只保留进程
+      GUID 关联并标记会话未知。用事件时间有效的账户映射和设备职责、批准台账比较所请求动作与父链上下文；异常父进程、越出批准范围的调查及同会话多种资料显示请求提高调查优先级，但单次请求也保留。台账缺失或关联失败表示上下文未知，不能据此认定未批准。
+    en: Initially correlate neighboring survey requests over ten minutes within the same device and valid LogonGuid, using
+      ProcessGuid and ParentProcessGuid for recorded ancestry. Empty, zero, or unparseable session GUIDs must not become a
+      shared session key; retain process-GUID associations with unknown session instead. Compare requested actions and ancestry
+      with event-time account mapping, device roles, and approval records. Unusual parents, surveying outside approved scope,
+      and multiple material-display requests raise investigative priority without discarding isolated requests. Missing registers
+      or failed joins mean unknown context rather than unauthorized activity.
+  - zh: 身份映射应保留 Computer、User 原值及映射生效期，不能用今天的资产归属替换事件时的设备或账户。批准数据只约束用途，不是恶意判据。本分析输出命令级发现尝试及所依据的事件，不消费命令输出或 API 返回值，也不要求 Event
+      3、Event 22 或后续连接。没有独立结果证据时不输出非空主机清单，不把事件缺席解释为无网络或已成功规避。
+    en: Preserve native Computer and User values and mapping validity, without replacing event-time device or account ownership
+      with today's inventory. Approval data describes purpose rather than establishing maliciousness. This analytic reports
+      command-level discovery attempts and supporting events, consumes no command output or API returns, and requires neither
+      Event 3, Event 22, nor later connections. Without independent result evidence, it produces no nonempty host inventory
+      and does not interpret missing events as network silence or successful evasion.
+  - zh: 数据要求使用规范字段 computer、utc_time、process_guid、parent_process_guid、image、command_line、user、logon_guid 和 parent_image，依次对应
+      Sysmon 原始 Computer、UtcTime、ProcessGuid、ParentProcessGuid、Image、CommandLine、User、LogonGuid 和 ParentImage；Computer 来自事件系统头，其余值按部署版本的事件数据提取。规范化只改变键名，保留原值、时间精度和缺失状态，不把不存在的
+      GUID 或父链填为有效身份。
+    en: The required canonical fields computer, utc_time, process_guid, parent_process_guid, image, command_line, user, logon_guid,
+      and parent_image map respectively to native Sysmon Computer, UtcTime, ProcessGuid, ParentProcessGuid, Image, CommandLine,
+      User, LogonGuid, and ParentImage. Computer comes from the event system header; extract the other values from event data
+      for the deployed version. Normalization changes keys only, preserving values, time precision, and missing states rather
+      than inventing valid GUIDs or ancestry.
+data_requirements:
+- source_type: windows-sysmon-process-create
+  name:
+    zh: Sysmon 进程创建事件
+    en: Sysmon process-creation events
+  channel: Microsoft-Windows-Sysmon/Operational Event ID 1
+  required_fields:
+  - computer
+  - utc_time
+  - process_guid
+  - parent_process_guid
+  - image
+  - command_line
+  - user
+  - logon_guid
+  - parent_image
+- source_type: analyst-approved-discovery-baseline
+  name:
+    zh: 分析人员维护的资产职责与批准调查台账
+    en: Analyst-maintained asset-role and approved-survey register
+  channel: null
+  required_fields:
+  - device_ref
+  - principal_key
+  - device_role
+  - approved_action
+  - approved_path_scope
+  - approved_parent_context
+  - valid_from
+  - valid_until
+  - approval_ref
+- source_type: time-scoped-identity-map
+  name:
+    zh: 带生效时间的设备和账户标识映射
+    en: Time-scoped device and principal identity map
+  channel: null
+  required_fields:
+  - device_ref
+  - native_device_name
+  - platform
+  - native_principal_key
+  - principal_key
+  - valid_from
+  - valid_until
+observables:
+- zh: 带显示参数的 arp 或 DNS 缓存显示请求，且执行主体或父链偏离该主机用途
+  en: ARP display or DNS-cache display requests whose principal or ancestry departs from the host's role
+- zh: 同一会话中面向远端系统的调查请求与多类本地主机资料读取相邻出现
+  en: Remote-system survey requests adjacent to multiple local host-material reads within a session
+correlation:
+  window:
+    zh: 十分钟用于初始会话内关联，调查时按真实会话延长；这是部署起点而非经过验证的规避阈值。
+    en: Ten minutes for initial session correlation, extended to the real session during investigation; this is a deployment
+      starting point rather than a validated evasion threshold.
+  dimensions:
+  - computer
+  - logon_guid
+  - user
+  - process_guid
+  - parent_process_guid
+  - utc_time
+false_positives:
+- zh: 服务台排障、已批准的资产盘点、网络部署和管理员维护会执行相同命令。
+  en: Help-desk troubleshooting, approved inventory, network deployment, and administration run the same commands.
+blind_spots:
+- zh: 直接 API、本地内存读取和未出现在进程命令行中的脚本语义不可见；Event 1 不记录输出或枚举结果。
+  en: Direct APIs, local-memory reads, and script semantics absent from process arguments are invisible; Event 1 does not
+    contain output or enumeration results.
+- zh: 过滤掉短命进程或失去进程父链时不能完整恢复调查序列，命令变形也需要语义解析。
+  en: Filtering short-lived processes or losing ancestry prevents full reconstruction, and altered command forms need semantic
+    parsing.
+tuning_guidance:
+  paragraphs:
+  - zh: 按设备职责、用户、批准工单和实际参数建立基线，避免仅按微软签名、进程路径或管理员组永久放行。先用实际排障记录确认解析分支，再验证模拟命令能进入采集链路；不以命中率或固定数量阈值宣称恶意。对高权限受侵会话保留单次命令，以免稀少本地读取被最低频次规则消除。
+    en: Baseline device roles, users, approved work, and actual arguments rather than permanently allowing Microsoft signatures,
+      paths, or administrator groups. Validate parsing against real troubleshooting and verify simulated commands reach collection
+      before use. Do not equate match rates or a fixed count with maliciousness. Retain isolated commands from compromised
+      privileged sessions so minimum-frequency rules do not erase sparse local reads.
+evidence_refs:
+- REF-000230
+- REF-001332
+- REF-001331
+- REF-000625
+- REF-001250
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-11-07'
+  modified: '2026-11-07'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

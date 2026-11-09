@@ -1,0 +1,116 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000370
+strategy_ref: DET-000274
+name:
+  zh: Windows 逻辑存储查询意图与进程谱系
+  en: Windows Logical-Storage Query Intent and Process Lineage
+summary:
+  zh: 将逻辑磁盘与文件系统驱动器查询接回异常调用主体，不把工具启动或脚本处理视为返回成功。
+  en: Join logical-disk and filesystem-drive queries to abnormal callers without treating a launch or processed script as
+    successful return.
+domains:
+- enterprise
+platforms:
+- Windows
+logic:
+  paragraphs:
+  - zh: 在已接入端点上解析 wmic logicaldisk 的读取操作，以及 Get-CimInstance 或 Get-WmiObject 对 Win32_LogicalDisk、Win32_DiskDrive、Win32_Volume
+      的查询；对 Get-PSDrive 只将明确 FileSystem 过滤或经结果确认的存储对象提升为存储查询。重组同主机、同进程且同 ScriptBlockId 的 4104 片段后解析脚本，借助 DeviceId、ProcessId
+      和 ProcessCreationTime 固定调用谱系，避免仅按 PID 跨重启关联。把首次出现的调用祖先、非管理角色用户或批准作业范围外的目标与盘点台账比较，并保存命令和脚本证据。
+    en: On integrated endpoints parse read operations using wmic logicaldisk and Get-CimInstance or Get-WmiObject queries
+      for Win32_LogicalDisk, Win32_DiskDrive, or Win32_Volume. Treat Get-PSDrive as a storage query only with explicit FileSystem
+      filtering or results confirming a storage object. Reassemble 4104 fragments by host, process, and ScriptBlockId before
+      parsing. Anchor lineage using DeviceId, ProcessId, and ProcessCreationTime rather than joining recycled PIDs across
+      restarts. Compare new calling ancestry, non-management-role users, or targets beyond approved work with the inventory
+      register and retain command and script evidence.
+  - zh: 输出应标明 process-launch 或 script-processed 的证据级别；4104 不证明分支执行或返回成功，进程创建也不证明工具执行完成。无 provider 过滤的 Get-PSDrive 仅作为待核实线索。若调查另外取得对应命令输出，可验证存储对象和返回属性，再提升到
+      result-confirmed；正文读取、加密或原始卷访问仍作为后继独立事实。
+    en: 'Label output with process-launch or script-processed evidence levels: 4104 does not prove branch execution or successful
+      return, and process creation does not prove completion. Unfiltered Get-PSDrive remains a lead requiring validation.
+      If an investigation separately obtains matching command output, validate its storage objects and attributes before promoting
+      to result-confirmed. Body reads, encryption, and raw-volume access remain separate successor facts.'
+data_requirements:
+- source_type: endpoint-process
+  name:
+    zh: Defender 端点进程事件
+    en: Defender endpoint process events
+  channel: DeviceProcessEvents
+  required_fields:
+  - timestamp
+  - device_id
+  - file_name
+  - folder_path
+  - process_id
+  - process_creation_time
+  - process_command_line
+  - account_sid
+  - initiating_process_id
+  - initiating_process_file_name
+- source_type: powershell-script-block
+  name:
+    zh: Windows PowerShell 脚本块事件
+    en: Windows PowerShell script-block events
+  channel: Microsoft-Windows-PowerShell/Operational
+  required_fields:
+  - computer
+  - time_created
+  - event_id
+  - process_id
+  - script_block_id
+  - script_block_text
+  - message_number
+  - message_total
+observables:
+- zh: 明确读取逻辑磁盘属性的命令或处理过的脚本内容
+  en: Commands or processed script content explicitly requesting logical-disk attributes
+- zh: 存储查询由异常祖先进程或未登记运维身份发起
+  en: Storage queries launched by unusual ancestry or an unregistered operational identity
+- zh: Get-PSDrive 的 provider 与 root 语义是否确实对应存储对象
+  en: Whether Get-PSDrive provider and root semantics actually describe storage objects
+correlation:
+  window:
+    zh: 先以同一进程生命周期重组，采用十五分钟会话上下文并与三十天批准作业基线比较；这些是部署初值而非实测阈值。
+    en: Reassemble within one process lifetime, use fifteen minutes of session context, and compare with thirty days of approved
+      work; these are deployment starting values rather than measured thresholds.
+  dimensions:
+  - host
+  - process_id
+  - process_creation_time
+  - parent_process
+  - principal
+  - script_block_id
+  - target_host
+false_positives:
+- zh: 安装器、磁盘容量告警、资产管理和备份前检查
+  en: Installers, disk-capacity alerts, asset management, and pre-backup checks
+- zh: 获批远程帮助台和事件响应调查
+  en: Approved remote help-desk and incident-response investigations
+blind_spots:
+- zh: 原生进程内 API 或 GUI 不产生这些命令和脚本语义；脚本分支可能未运行。
+  en: Native in-process APIs or GUIs lack these command and script semantics, and a script branch may not run.
+- zh: 未部署 Defender、未启用脚本块日志、版本差异或片段丢失导致缺口；此分析不提供完整返回值。
+  en: Missing Defender deployment, disabled script logging, version differences, or lost fragments create gaps; the analytic
+    does not supply complete return values.
+tuning_guidance:
+  paragraphs:
+  - zh: 允许项应绑定调用祖先、账户、目标主机角色、脚本身份和作业时间，不按 wmic 或 PowerShell 签名永久放行。区分 Windows PowerShell 与 PowerShell Core 通道；实际采集字段和分片重组需用测试事件验证。无返回内容时保持尝试级别，普通目录
+      PSDrive 和非文件系统 provider 不计作已确认磁盘发现。
+    en: Bind allowances to ancestry, account, target-host role, script identity, and job time rather than permanently trusting
+      wmic or PowerShell signatures. Distinguish Windows PowerShell and PowerShell Core channels and validate actual fields
+      and fragment reassembly with test events. Keep attempt-level confidence without return content, and exclude arbitrary-directory
+      PSDrives and non-filesystem providers from confirmed disk discovery.
+evidence_refs:
+- REF-000598
+- REF-000463
+- REF-001217
+- REF-001218
+- REF-000073
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-11-05'
+  modified: '2026-11-05'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

@@ -1,0 +1,189 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000404
+strategy_ref: DET-000291
+name:
+  zh: Linux 既存远端主机资料读访问关联
+  en: Linux Read-Access Correlation for Existing Remote-Host Material
+summary:
+  zh: 关联已审计 SSH 与主机资料的读取请求及调用进程，识别异常账户、载体或跨用户范围。
+  en: Correlate audited read-access requests to SSH and host material with calling processes to identify anomalous accounts,
+    carriers, or cross-user scope.
+domains:
+- enterprise
+platforms:
+- Linux
+logic:
+  paragraphs:
+  - zh: 对需要保护的 SSH config、known_hosts、历史及特定主机映射文件部署持久 Linux Audit 读访问规则，使用稳定 key，并验证文件替换、用户目录和挂载变化后的覆盖。按采集器提供的主机标识、启动实例、audit
+      时间戳和事件序号合并 SYSCALL 与 PATH；name、syscall、success、exit、pid、ppid、auid、uid、ses、exe、comm、arch 和 a0-a3 均取自相应记录。路径和系统调用记录未配齐时，保留记录缺失而非拼接邻近进程的访问。
+    en: Deploy persistent Linux Audit read-access rules with stable keys for protected SSH config, known_hosts, history, and
+      particular host-mapping files, validating coverage after file replacement, user-directory changes, and mount changes.
+      Join SYSCALL and PATH by collector host identity, boot instance, audit timestamp, and event serial. Obtain name, syscall,
+      success, exit, pid, ppid, auid, uid, ses, exe, comm, arch, and a0-a3 from their respective records. Missing path or
+      syscall records remain incomplete rather than being filled from a nearby process's access.
+  - zh: 根据 arch 解码系统调用号及参数；open 的标志位来自 a1，openat 来自 a2，再结合 success 与 exit 区分成功的可读打开和失败尝试。openat2 的参数包含指向结构的指针，原始 a0-a3 不能直接提供其访问模式；只有经过验证的规则语义或额外解析证据才可补充，否则保留模式未知。成功的可读打开不等于返回了文件正文，更不等于解析出了哪些主机；既有文件描述符及内存缓存读取也不因本规则存在就被完整覆盖。
+    en: Decode syscall numbers and arguments using arch; open flags are in a1 and openat flags in a2. Combine mode, success,
+      and exit to separate successful read-capable opens from failed attempts. Openat2 includes a pointer to an argument structure,
+      so raw a0-a3 do not directly supply its access mode. Only validated rule semantics or additional parsing evidence can
+      supplement it; otherwise retain unknown mode. A successful read-capable open does not establish returned file contents
+      or parsed hosts, and these rules do not guarantee coverage of existing descriptors or in-memory cache reads.
+  - zh: 以五分钟汇总同一设备和有效登录身份的相关资料访问，结合采集器的启动实例与事件时身份映射保留 auid、uid、ses 的不同含义。未设置的 auid 或 ses 不与其他未知会话合并；PID、PPID 只支持候选关联，没有独立进程生存期时不重建确定进程树。按批准台账中的动作、路径、用途和有效期识别职责偏离；缺少台账或身份映射时保留上下文未知，普通
+      SSH、备份、解析器及排障读取是正常反例。已知受侵会话的一次读取也可调查，不设置排除稀少操作的最低频次。
+    en: Aggregate related access over five minutes within a device and valid login context, preserving the distinct meanings
+      of auid, uid, and ses through boot-scoped collector identity and event-time mapping. Unset auid or ses values must not
+      merge unknown sessions. PID and PPID support tentative associations rather than a definitive process tree without independent
+      lifetime evidence. Compare actions, paths, purpose, and validity with approval records, retaining unknown context if
+      registers or identity joins are absent. Ordinary SSH, backups, resolvers, and troubleshooting are benign counterparts.
+      An isolated read in a compromised session remains investigable without a minimum-frequency exclusion.
+  - zh: auditctl -l 的规则清单与 auditctl -s 的 enabled、lost、backlog 由采集健康代理按时间送入，主机标识和启动实例来自采集器元数据，不能假定原始记录总有 node。lost 增长、规则缺失或持续积压表示对应时段覆盖受损；容器路径必须结合实际挂载视图解释，无法映射时保留路径范围未知。告警仅声明资料访问或候选提取嫌疑，不依赖保存正文，也不补推
+      IP 清单、跨主机主体或 SSH 成功。
+    en: A collection-health agent supplies time-stamped auditctl -l rules and auditctl -s enabled, lost, and backlog values.
+      Collector metadata supplies host identity and boot instance; native records do not always contain node. Increasing lost
+      counts, missing rules, or sustained backlog indicate impaired coverage for that interval. Interpret container paths
+      using the actual mount view and retain unknown path scope when it cannot be mapped. Report material access or suspected
+      candidate extraction without requiring retained contents or inferring IP inventories, cross-host actors, or successful
+      SSH.
+data_requirements:
+- source_type: linux-audit-file-read-access
+  name:
+    zh: Linux Audit 目标文件读访问规则记录
+    en: Linux Audit targeted file read-access rule records
+  channel: /var/log/audit/audit.log
+  required_fields:
+  - audit_timestamp
+  - audit_serial
+  - type
+  - syscall
+  - success
+  - exit
+  - pid
+  - ppid
+  - auid
+  - uid
+  - exe
+  - comm
+  - name
+  - key
+  - ses
+  - a0
+  - a1
+  - a2
+  - a3
+  - arch
+- source_type: analyst-approved-discovery-baseline
+  name:
+    zh: 分析人员维护的资产职责与批准调查台账
+    en: Analyst-maintained asset-role and approved-survey register
+  channel: null
+  required_fields:
+  - device_ref
+  - principal_key
+  - device_role
+  - approved_action
+  - approved_path_scope
+  - approved_parent_context
+  - valid_from
+  - valid_until
+  - approval_ref
+- source_type: time-scoped-identity-map
+  name:
+    zh: 带生效时间的设备和账户标识映射
+    en: Time-scoped device and principal identity map
+  channel: null
+  required_fields:
+  - device_ref
+  - native_device_name
+  - platform
+  - native_principal_key
+  - principal_key
+  - valid_from
+  - valid_until
+- source_type: linux-audit-collection-health
+  name:
+    zh: Linux Audit 规则和采集健康状态
+    en: Linux Audit rule and collection-health status
+  channel: auditctl -s and auditctl -l, collected by the deployed audit health agent
+  required_fields:
+  - device_ref
+  - timestamp
+  - enabled
+  - lost
+  - backlog
+  - loaded_rule_key
+  - loaded_rule_path
+  - collector_host_id
+  - boot_id
+- source_type: linux-audit-collector-envelope
+  name:
+    zh: 采集器提供的主机与启动实例来源元数据
+    en: Collector-supplied host and boot-instance provenance
+  channel: Deployed audit collector metadata with authenticated host inventory mapping
+  required_fields:
+  - collector_host_id
+  - device_ref
+  - boot_id
+  - native_node
+  - received_timestamp
+  - mapping_valid_from
+  - mapping_valid_until
+observables:
+- zh: 不符合进程职责的 SSH 主机资料可读打开或其他经规则记录的读访问
+  en: Read-capable opens or other rule-recorded read accesses to SSH host material inconsistent with process purpose
+- zh: 同一载体短时访问多种远端主机资料或跨越多个用户目录
+  en: One carrier accesses multiple remote-host materials or user directories within a short interval
+correlation:
+  window:
+    zh: 五分钟用于合并连续提取行为，进程生存期和真实登录会话用于调查扩展；不以此作为已验证检测率边界。
+    en: Five minutes merges consecutive extraction behavior, with process lifetimes and real login sessions extending investigation;
+      this does not establish a validated detection-rate boundary.
+  dimensions:
+  - collector_host_id
+  - boot_id
+  - auid
+  - uid
+  - ses
+  - pid
+  - ppid
+  - audit_timestamp
+  - audit_serial
+  - name
+false_positives:
+- zh: SSH 正常启动、备份、同步、配置管理、DNS 排障和安全审计会读取相同文件。
+  en: Ordinary SSH startup, backup, synchronization, configuration management, DNS troubleshooting, and security audits read
+    the same files.
+blind_spots:
+- zh: 未配置规则、用户路径变化、丢失审计事件、已打开描述符与内存中的缓存 API 不在本分析保证覆盖内；成功打开也不证明内容被消费。
+  en: Missing rules, changed user paths, lost audit records, already-open descriptors, and in-memory cache APIs are outside
+    guaranteed coverage; successful opening also does not prove content consumption.
+- zh: 容器挂载命名空间会改变路径解释，高权限主体可影响审计；缺少节点标识时不能跨主机使用 PID 关联。
+  en: Container mount namespaces change path interpretation, privileged principals can affect auditing, and missing node identity
+    prevents cross-host PID correlation.
+- zh: PID 与 PPID 不包含稳定进程生存期；当 PID 重用或 ses 未设置时，不自动重建确定的进程树，只保留同次系统调用和路径的关联。node 需由采集器配置或来源元数据补齐，不能假定每条原始审计记录都有节点字段。
+  en: PID and PPID do not encode stable process lifetimes. With PID reuse or an unset ses, do not reconstruct a definitive
+    process tree; retain correlation of the syscall and path within the same audit event. Configure node through the collector
+    or source metadata rather than assuming every raw record contains it.
+tuning_guidance:
+  paragraphs:
+  - zh: 先以受控可读打开验证规则、字段合并、权限解码及节点标识，再按主机角色与访问者职责调优。高频公共 hosts 文件可降低权重，跨用户读取私有 SSH 资料提高权重；白名单应绑定用途、身份与路径，不能将整个解释器或备份账户永久豁免。监控
+      audit lost 与 backlog，明确缺失事件时的覆盖中断。
+    en: First validate rules, record merging, permission decoding, and node identity through controlled read-capable opens,
+      then tune for host roles and reader purpose. Down-weight frequent public hosts access and raise priority for cross-user
+      private SSH material. Bind allowances to purpose, identity, and path rather than permanently exempting an interpreter
+      or backup account. Monitor audit lost and backlog and mark coverage interruptions when records are missing.
+evidence_refs:
+- REF-001042
+- REF-000201
+- REF-001323
+- REF-001333
+- REF-000840
+- REF-001334
+- REF-001335
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-11-07'
+  modified: '2026-11-07'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

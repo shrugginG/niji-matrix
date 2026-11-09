@@ -1,0 +1,135 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000401
+strategy_ref: DET-000288
+name:
+  zh: 已审计键读取权限与进程实例差异
+  en: Audited Key Read Rights and Process-Instance Differences
+summary:
+  zh: 在经验证的覆盖范围中识别键查询或枚举权限被使用，并保留其不等于返回内容的证据层级。
+  en: Identify exercised key-query or enumeration rights within validated coverage while preserving their distinction from
+    returned content.
+domains:
+- enterprise
+platforms:
+- Windows
+logic:
+  paragraphs:
+  - zh: 先在目标 Windows 构建与具体键上配置 Audit Registry 和匹配 QueryValue、EnumerateSubKeys 的成功 SACL，分别运行取值及子键枚举验证实际事件，再登记覆盖分支、主体、权限和有效期。生产分析只处理
+      EventID 4663 且 ObjectType 为 Key 的记录，按 AccessMask 位判断 0x1 或 0x8 被使用；不能套用文件对象的 ReadData 或 ReadEA 文字，也不依赖本地化 AccessList
+      文本。4656 可辅助定位请求，不能提升为已使用权限。
+    en: First configure Audit Registry and success SACLs matching QueryValue and EnumerateSubKeys on concrete keys and Windows
+      builds, validate actual events with separate value and subkey tests, and register covered branches, principals, rights,
+      and validity. In production process only EventID 4663 with ObjectType Key, testing AccessMask bits 0x1 or 0x8. Do not
+      apply file-object ReadData or ReadEA labels or depend on localized AccessList text. Event 4656 can locate requests but
+      cannot establish exercised rights.
+  - zh: 将访问按主机、PID、进程创建区间与用户登录会话关联到读取者，并与允许读取该分支的任务清单比较。对非预期读取者或跨不相关分支的环境探索输出 rights-used 异常，不由 AccessMask 推断具体 API、值名称或返回数据。正常读取密集的分支按角色调优；没有事件时先检查覆盖表与采集健康，不能判定未发生读取或成功匿迹。
+    en: Associate accesses with the reader by host, PID, process-creation interval, and logon identity, comparing approved
+      tasks for each branch. Report rights-used anomalies for unexpected readers or environmental exploration across unrelated
+      branches without inferring a specific API, value name, or returned data from AccessMask. Tune busy branches by role.
+      Missing events first require coverage and collection-health review rather than a conclusion of no read or successful
+      evasion.
+data_requirements:
+- source_type: windows-registry-access-audit
+  name:
+    zh: 经匹配审核策略与 SACL 验证的键访问事件
+    en: Key-access events validated against matching audit policy and SACL
+  channel: Microsoft-Windows-Security-Auditing / Security Event 4663
+  required_fields:
+  - timestamp
+  - host_id
+  - event_id
+  - user_sid
+  - logon_id
+  - process_id
+  - process_image
+  - object_type
+  - registry_path
+  - access_mask
+- source_type: windows-process-creation
+  name:
+    zh: 用于消除 PID 重用的进程创建记录
+    en: Process-creation records for PID-reuse disambiguation
+  channel: Security 4688
+  required_fields:
+  - timestamp
+  - host_id
+  - process_id
+  - process_image
+  - parent_process_id
+  - user_sid
+- source_type: registry-audit-coverage-register
+  name:
+    zh: 经测试的审核覆盖与允许读取者台账
+    en: Tested audit-coverage and approved-reader register
+  channel: null
+  required_fields:
+  - host_id
+  - registry_scope
+  - audited_rights
+  - audited_principals
+  - allowed_readers
+  - coverage_valid_from
+  - coverage_valid_until
+  - validation_result
+observables:
+- zh: 非预期进程实际使用键查询值或枚举子键权限
+  en: An unexpected process exercises key-value-query or subkey-enumeration rights
+- zh: 同进程实例跨非相关配置分支出现已用读取权限
+  en: One process instance exercises read rights across unrelated configuration branches
+correlation:
+  window:
+    zh: 以真实进程生存期消除 PID 重用，并在 10 分钟任务窗口内关联读取；覆盖登记须在事件时刻有效。
+    en: Disambiguate PID reuse with the true process lifetime and correlate reads within a ten-minute task window; coverage
+      registration must be valid at event time.
+  dimensions:
+  - host_id
+  - user_sid
+  - logon_id
+  - process_id
+  - registry_path
+  - access_mask
+  - time
+false_positives:
+- zh: 安全代理、管理代理、系统初始化和升级会合法读取多个分支。
+  en: Security and management agents, initialization, and upgrades legitimately read multiple branches.
+blind_spots:
+- zh: 未匹配 SACL、审核未生效、日志溢出和不同版本行为可缺失事件；事件本身不含返回值或可靠视图标志。
+  en: Mismatched SACLs, ineffective auditing, log overflow, and version differences can omit events; the event itself lacks
+    returned values and reliable view flags.
+- zh: 远程服务承载可改变可见进程归属，离线 hive 文件解析不自动产生该活动键的事件。
+  en: Remote-service execution can change visible process attribution, while offline-hive parsing does not automatically create
+    events on the original active keys.
+tuning_guidance:
+  paragraphs:
+  - zh: 优先对高价值的一般配置分支、关键主机和受控账户建立目标化成功读取审计，验证两种权限的事件并远程保留；避免全树 SACL 造成日志过载。允许读取者例外保留 owner、版本、路径和期限。用户 hive、重定向视图、远程服务和受保护分支应逐组测试，缺少返回内容时使用专用跟踪而非扩大解释
+      4663。
+    en: Prioritize targeted success auditing for high-value general-configuration branches, critical hosts, and controlled
+      accounts, validate both rights, and retain events remotely. Avoid whole-tree SACLs that overload logging. Approved-reader
+      exceptions retain owner, version, path, and expiry. Test user hives, redirected views, remote services, and protected
+      branches separately. Use dedicated tracing for missing result detail rather than broaden the interpretation of 4663.
+  - zh: 4663 的规范字段依次映射 TimeCreated、Computer、EventID、SubjectUserSid、SubjectLogonId、ProcessId、ProcessName、ObjectType、ObjectName
+      和 AccessMask；process_id 需转为一致格式。4688 映射同前述合同。覆盖台账是额外管理数据，须保存测试及 SACL/策略版本，不能从事件缺失倒推生效。registry_path 表示键对象路径，不冒充 value_name
+      或 query_result。 读取主体以4663的SubjectUserSid为准；4688主体用于创建上下文，跨身份创建时保留TargetUserSid差异，不以创建者SID覆盖实际读取者。
+    en: The normalized 4663 fields map respectively to TimeCreated, Computer, EventID, SubjectUserSid, SubjectLogonId, ProcessId,
+      ProcessName, ObjectType, ObjectName, and AccessMask, with consistent PID representation. The 4688 mapping follows its
+      documented contract. The coverage register is additional administrative data retaining tests and SACL or policy versions;
+      effectiveness cannot be inferred from absent events. registry_path denotes a key-object path rather than an invented
+      value_name or query_result. The reader identity comes from 4663 SubjectUserSid. The 4688 subject describes creation
+      context; preserve TargetUserSid differences for cross-identity creation rather than overwrite the actual reader with
+      the creator SID.
+evidence_refs:
+- REF-000379
+- REF-001315
+- REF-001312
+- REF-001313
+- REF-001314
+- REF-000334
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-11-06'
+  modified: '2026-11-06'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

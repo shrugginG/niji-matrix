@@ -1,0 +1,113 @@
+schema_version: 2.0.0
+type: evasion-subtechnique
+id: NJS-0228-002
+parent_ref: NJT-0228
+name:
+  zh: 本地缓存旁路取材
+  en: Local-Cache-Bypassing Material Acquisition
+summary:
+  zh: 直接构造并处理 Kerberos 回复材料，避免将每个目标服务票据加入本机常规登录缓存。
+  en: Construct and process Kerberos response material directly, avoiding addition of every target service ticket to the ordinary local logon
+    cache.
+aliases: []
+lineage:
+  attck_subtechnique_inherited: false
+definition_and_concept:
+  paragraphs:
+  - zh: 本地缓存旁路取材是攻击者直接发送和解析Kerberos协议交互，把返回材料交给自身输出或内存处理路径，而不让每个目标服务票据进入本机常规认证缓存。它改变材料取得后的落点，使本机票据缓存增长不再完整表示取材范围。
+    en: Local-Cache-Bypassing Material Acquisition sends and parses Kerberos exchanges directly, routing returned material into adversary-controlled
+      output or memory rather than adding every target service ticket to the ordinary authentication cache. It changes the acquisition destination
+      so local ticket-cache growth no longer represents the full acquisition scope.
+  - zh: 其边界由是否有意绕开常规缓存填充决定，而非工具名称或文件格式。协议回复可以仍由正规KDC产生；攻击者取得原始密文无需伪造票据，也无需进行离线口令猜测。
+    en: The boundary is intentional bypass of ordinary cache population rather than tool name or file format. Replies can still be produced
+      by the legitimate KDC. Acquiring their raw ciphertext requires neither ticket forgery nor offline password guessing.
+stealth_characteristics:
+  paragraphs:
+  - zh: 本地缓存旁路取材使防守方在缓存中看不到与目标请求数量相称的服务票据增长。原始Windows实验对比标准API取材与手工TGS交互，说明后者可只留下少量辅助缓存痕迹，削弱以大量缓存条目为依据的主机指标。
+    en: Local-Cache-Bypassing Material Acquisition prevents local caches from growing in proportion to target requests. The original Windows
+      experiment compares standard API acquisition with manual TGS exchanges and shows that the latter can leave only limited auxiliary cache
+      traces, weakening a host indicator based on numerous cached entries.
+  - zh: KDC仍接收请求并可生成4769，来源进程也可能直接连接88端口并产生材料输出。匿迹效果只针对缓存观察面；启用域控与进程网络遥测后，异常客户端行为仍可被观察，缓存缺少条目不能自行证明旁路。
+    en: The KDC still receives requests and may generate 4769, while the source process may connect directly to port 88 and produce material
+      output. The effect is confined to cache observation. DC and process-network telemetry can still observe unusual client behavior, and
+      missing cache entries do not independently prove bypass.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 纳入有直接协议处理和材料输出证据的常规缓存旁路；仅把既有缓存导出、从磁盘复制ccache或离线构造票据都不满足本项。请求密度可以高或低，与低密度服务票据取材是可组合的独立变量。
+    en: Include bypass supported by direct protocol handling and material-output evidence. Exporting an existing cache, copying ccache from
+      disk, or offline ticket construction does not satisfy this child. Request density may be high or low, making it independently composable
+      with Low-Density Service-Ticket Material Acquisition.
+  - zh: 合法非Windows客户端、自带Kerberos栈的服务、测试程序、容器和内存缓存都可能不填充Windows登录缓存。必须核对批准客户端、实际backend、进程所有者和输出，不得把没有klist条目或非lsass网络连接直接判成恶意。
+    en: Legitimate non-Windows clients, services with their own Kerberos stacks, test programs, containers, and memory caches may not populate
+      a Windows logon cache. Check approved clients, actual backend, process ownership, and output rather than treating missing klist entries
+      or a non-lsass connection as malicious.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: 适用于攻击者在受侵端点收集多服务材料，并预期主机侧会检查票据缓存规模的场景。手工协议实现也可从独立主机发送请求，但缺少本机缓存观测的场景不能据此声称获得额外规避。
+      en: This applies when an adversary collects material for multiple services on a compromised endpoint and expects host-side inspection
+        of ticket-cache size. Manual protocol implementations can also operate from an independent host, but additional evasion cannot be
+        claimed where local-cache observation was absent to begin with.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者须能发起合法格式的Kerberos交互并解析返回的加密部分，通常持有有效TGT或另一可满足协议的取材条件。它可能免去对其他用户LSASS的直接读取，但并不普遍免除所用TGT或会话密钥的取得条件。
+        en: The adversary must initiate validly formatted Kerberos exchanges and parse returned encrypted parts, normally holding a valid
+          TGT or another condition satisfying the exchange. The path may avoid directly reading another user LSASS context but does not universally
+          remove acquisition prerequisites for its TGT or session key.
+    defender_model:
+      paragraphs:
+      - zh: 防守方能观察进程网络连接、KDC事务和输出文件或内存取证，但必须额外采集本机缓存快照才能比较缓存差异。常规Sysmon并不记录票据内容，KDC事件也不标记客户端是否填充缓存；两端按设备、进程、身份、服务与时间连接后才有意义。
+        en: Defenders may observe process-network connections, KDC transactions, and output files or memory evidence, but need additional
+          local-cache snapshots to compare cache behavior. Ordinary Sysmon does not record ticket contents, and KDC events do not say whether
+          the client populated its cache. Joining device, process, identity, service, and time across both sides is necessary.
+stealth_mechanisms:
+- mechanism_ref: NM-BT
+  role: primary
+  summary:
+    zh: 在直接协议处理路径取得材料而避开本机缓存增长指标
+    en: Acquire through direct protocol handling outside local cache-growth indicators
+  analysis:
+    paragraphs:
+    - zh: 直接解析回复并输出材料改变了常规缓存消费者路径，使每个目标服务票据不必写入登录缓存。缓存计数看不到完整取材图像，但4769、进程连接与输出仍存在，故影响是对特定端点观察的旁路。
+      en: Direct reply parsing and material output replace the ordinary cache-consumer path, so every target service ticket need not enter
+        the logon cache. Cache counts miss the full acquisition picture while 4769, process connections, and output remain. The effect is
+        bypass of a specific endpoint observation.
+  evidence_refs:
+  - REF-001185
+  - REF-001183
+  confidence: medium
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000268
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000236
+evidence:
+  claim_refs:
+  - CLM-001151
+  case_refs: []
+  reference_refs:
+  - REF-001185
+  - REF-001183
+  - REF-000854
+  - REF-000855
+  - REF-001187
+research:
+  limitations:
+    paragraphs:
+    - zh: 支持性实验针对2019年Windows与相应实现，不能推定所有操作系统的缓存语义相同。未观察到缓存增长可能源于传感器、backend、会话切换或清理；没有直接回复与输出关联时只能保留候选。
+      en: The supporting experiment concerns Windows and implementations in 2019; cache semantics cannot be generalized across all operating
+        systems. Missing cache growth may result from sensors, backend choice, session changes, or cleanup. Without correlation of direct
+        replies and output, the result remains a candidate.
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-11-05'
+  modified: '2026-11-05'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

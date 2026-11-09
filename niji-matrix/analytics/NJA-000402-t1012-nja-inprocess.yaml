@@ -1,0 +1,157 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000402
+strategy_ref: DET-000289
+name:
+  zh: 驻留进程直接 Registry 读取与执行器差分
+  en: Resident-Process Direct Registry Reads and Executor Differential
+summary:
+  zh: 对既有进程的异常读取建立原语证据，并在完整覆盖时检验是否省去每任务查询执行器。
+  en: Establish primitive-level evidence of unusual reads in an existing process and test omission of a per-task query executor
+    where coverage is complete.
+domains:
+- enterprise
+platforms:
+- Windows
+logic:
+  paragraphs:
+  - zh: 在重点主机或响应调查中额外部署 Process Monitor，以受控时段捕获 Registry 与进程活动，保留 PML 和进程树。先用已知测试值及子键对 RegQueryValue、RegEnumKey 或部署实际输出的等价操作名称、Path、Result
+      和进程归属逐一验证；不得由产品简介假定任意字段齐全。分析读取发生在已存在的进程实例中、目标为一般配置探索且不符合批准任务的记录，将操作状态与有值输出分别标记；ERROR_MORE_DATA、NAME NOT FOUND 和仅长度查询不得充当取得值。
+    en: Additionally deploy Process Monitor on priority hosts or during response, capturing Registry and process activity
+      for controlled intervals and preserving PML and the process tree. Validate operation names such as RegQueryValue and
+      RegEnumKey or actual equivalent output, Path, Result, and process attribution with known test values and subkeys. A
+      product introduction does not guarantee every field. Analyze reads by an already existing process instance that explore
+      general configuration outside approved work, keeping operation status separate from obtained value output. ERROR_MORE_DATA,
+      NAME NOT FOUND, and size-only queries do not establish acquired values.
+  - zh: 同一进程实例的直接操作记录首先支持已观察驻留进程读取。只有任务记录、实际执行代码或调用链与该次查询正面关联，才能进一步标记驻留承载得到支持；同期采集完整且任务边界明确时，才比较每任务执行器是否被省去，缺少新进程本身不提高等级。可用栈解析时检查模块与批准职责的关系，结合环境探索范围和未批准来源排序。没有相应证明来源时保留查询线索与承载未知，不凭
+      COFF 装载或注入事件认定本子项。
+    en: Direct operation records for the same process instance first establish an observed resident-process read. Raise the
+      level to supported resident carriage only when task records, executing code, or a call chain positively link to that
+      inquiry. Compare omission of a per-task executor only with complete contemporaneous capture and an established task
+      boundary; missing process events alone do not raise the level. Where stack resolution exists, compare modules with approved
+      duties and rank environmental scope and unapproved provenance. Without the required proof source, retain a query lead
+      with carrier unknown rather than confirming this child from COFF loading or injection.
+data_requirements:
+- source_type: dedicated-registry-operation-trace
+  name:
+    zh: 额外部署并验证导出的 Registry 操作跟踪
+    en: Additionally deployed Registry-operation tracing with validated exports
+  channel: Process Monitor PML and validated event export
+  required_fields:
+  - timestamp
+  - host_id
+  - process_id
+  - process_image
+  - operation
+  - registry_path
+  - result
+- source_type: windows-process-creation
+  name:
+    zh: 与跟踪同期完整保留的进程创建
+    en: Process creation retained completely alongside the trace
+  channel: Security 4688 or validated Sysmon Event 1
+  required_fields:
+  - timestamp
+  - host_id
+  - process_id
+  - process_image
+  - parent_process_id
+- source_type: registry-trace-validation-register
+  name:
+    zh: 跟踪覆盖健康与批准读取台账
+    en: Trace-health and approved-reader register
+  channel: null
+  required_fields:
+  - host_id
+  - trace_start
+  - trace_end
+  - capture_filters
+  - dropped_event_status
+  - validation_result
+  - approved_readers
+  - registry_scope
+- source_type: conditional-query-carriage-proof
+  name:
+    zh: 仅启用承载确认时的查询任务与实现证明
+    en: Query-task and implementation proof only when carrier confirmation is enabled
+  channel: Independently verified task records, executing-code provenance, or authorized call-chain capture
+  required_fields:
+  - client_host
+  - process_instance_id
+  - task_id
+  - query_scope
+  - task_start
+  - task_end
+  - carriage_mode
+  - evidence_locator
+  - verification_state
+observables:
+- zh: 既有进程直接执行与其批准角色不符的一般配置分支读取
+  en: An existing process directly reads general-configuration branches outside its approved role
+- zh: 完整同期覆盖中同一任务没有新查询执行器，且原语归属于已有实例
+  en: Complete concurrent coverage shows no new query executor for a task whose primitive belongs to the existing instance
+correlation:
+  window:
+    zh: 使用完整专用跟踪区间及承载进程生存期；按 5 分钟任务聚合，并在隔离实验中用相同令牌、键、值和视图比较进程内与新执行器路径。
+    en: Use the complete dedicated-capture interval and carrier lifetime; group tasks over five minutes and compare in-process
+      versus new-executor paths in an isolated experiment using the same token, key, value, and view.
+  dimensions:
+  - host_id
+  - process_id
+  - process_start_time
+  - registry_path
+  - operation
+  - result
+  - time
+false_positives:
+- zh: 浏览器、配置代理、插件和诊断服务也会在既有进程中直接读取，且无需创建子进程。
+  en: Browsers, configuration agents, plugins, and diagnostic services directly read inside existing processes without creating
+    children.
+blind_spots:
+- zh: 专用跟踪未部署、过滤或丢失、进程寿命不完整、未解析堆栈和时钟差会妨碍执行器差分；未取得返回数据时结果内容仍未知。
+  en: Absent, filtered, or dropped dedicated traces, incomplete lifetimes, unresolved stacks, and clock differences impair
+    executor comparisons; content remains unknown without returned data.
+- zh: 仅靠操作记录不能识别 BOF 格式、控制主体或恶意目的；读取者也可能已是被入侵的合法程序。
+  en: Operation records alone identify neither BOF format, controller, nor malicious purpose, and the reader may be a compromised
+    legitimate program.
+tuning_guidance:
+  paragraphs:
+  - zh: 先按批准的读取者与配置范围建立基线，再扩大跟踪；保留有界采集窗口和磁盘预算，并检查过滤与丢失。实验分别验证取值、子键枚举、长度查询、失败、32/64 视图和不同权限，避免把 API 名、一次返回成功或无命令行直接解释为隐蔽读取。部署不能提供完整
+      trace 时，以 键读取权限分析 的权限层结果维持部分覆盖，明确其内容和归因限制。
+    en: Establish approved readers and configuration scopes before broadening capture, using bounded intervals and disk budgets
+      and checking filters and loss. Separately validate value reads, subkey enumeration, size-only requests, failures, 32-bit
+      or 64-bit views, and differing rights. Do not treat an API name, one success status, or absent command line as covert
+      reading. Where complete tracing is unavailable, retain partial rights-level coverage from the key-read-rights analytic
+      with explicit content and attribution limits.
+  - zh: 承载确认分支要求证明材料关联到被观察的同一客户端实例、任务范围与时点，并验证实际执行的入口或调用链；仅有通用产品文档、API 导入或可能存在的代码不能提升等级。没有该来源时仍可运行查询检测，但承载方式和有意替代保持未知。
+    en: Carrier confirmation requires evidence tied to the same observed client instance, task scope, and time, verifying
+      the executing entry or call chain. Generic product documentation, imports, or possibly present code do not raise the
+      level. Query detection can run without this source, but carrier selection and deliberate substitution remain unknown.
+  - zh: 专用 trace 规范字段映射到实测导出中的 Time、Process Name、PID、Operation、Path、Result；host_id 由采集主机标识附加，并保留原 PML 对照。启动时间、时区和原生日志时间先统一；Process
+      Monitor 不作为默认 EDR 通道。Detail、Stack 和任何返回数据仅在实测存在且语义验证后补充，不列为普遍必需字段。进程与台账的映射、派生实例起点和健康结果均须记录来源。 process_start_time 从完整进程创建记录派生，time
+      对应统一后的 timestamp；不能由 PID 单独生成永久实例。 本专用分析的直接归属分支限于本地读取，client_host 对应捕获主机 host_id；远程服务端 PID 不能直接当作远端查询客户端，跨机实现需要独立的两端会话与任务证明。
+    en: Trace normalization maps to experimentally verified Time, Process Name, PID, Operation, Path, and Result exports.
+      Attach host_id from the capture host and retain original PML for comparison. Normalize start times, timezone, and log
+      clocks first. Process Monitor is not a default EDR channel. Detail, Stack, and returned data are supplements only after
+      their presence and meaning are validated, not universal required fields. Record provenance for process and register
+      mappings, derived instance starts, and health results. Derive process_start_time from complete creation records and
+      map time to normalized timestamp; PID alone does not form a permanent instance. The direct-attribution branch of this
+      dedicated analytic covers local reads, with client_host mapped to capture-host host_id. A remote service PID is not
+      the remote query client; cross-host implementations need independent evidence joining both endpoint sessions and tasks.
+evidence_refs:
+- REF-001322
+- REF-001313
+- REF-001314
+- REF-001312
+- REF-001303
+- REF-001320
+- REF-000379
+- REF-000334
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-11-06'
+  modified: '2026-11-06'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

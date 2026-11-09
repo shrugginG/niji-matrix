@@ -1,0 +1,132 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000397
+strategy_ref: DET-000285
+name:
+  zh: 策略组映射文件实际读取与同服务器来源差分
+  en: Exercised Reads of Policy Group-Mapping Files and Same-Server Origin Differential
+summary:
+  zh: 用组映射文件 ReadData、服务器登录与批准策略处理清单发现异常中央关系采集候选。
+  en: Use ReadData on group-mapping files, server logons, and approved policy-processing inventories to identify abnormal
+    central relationship-collection candidates.
+domains:
+- enterprise
+platforms:
+- Windows
+- Active Directory
+logic:
+  paragraphs:
+  - zh: 维护确实承载组映射的策略文件和 GPO GUID、目录关联及适用范围清单，不把 SYSVOL 中任意文件都当成组关系。为选定文件配置 ReadData SACL 和 Audit File System，先验证 4663 中 ObjectType、ObjectName
+      与 AccessMask 含 0x1 ReadData 的实际使用语义。正常化路径大小写与共享到本地路径映射，区分内容读取与仅目录列举；5145 访问检查不能代替本分支的实际权限使用证据。
+    en: Maintain an inventory of policy files that actually contain group mappings, with GPO GUIDs, directory links, and applicability
+      scope, rather than treating every SYSVOL file as group data. Configure ReadData SACLs and Audit File System for selected
+      files and validate the exercised-right semantics of 4663 ObjectType, ObjectName, and AccessMask containing 0x1 ReadData.
+      Normalize path case and share-to-local mappings and distinguish content reads from directory listing; a 5145 authorization
+      check cannot replace exercised-right evidence in this branch.
+  - zh: 按同一策略服务器及 SubjectLogonId 连接 4624 TargetLogonId，获取主体、登录类型和可用源地址；服务器进程常为文件服务，不可当作原始采集器。二十分钟内比较读取涉及的 GPO、组映射范围和源主体与正常客户端策略处理及批准治理任务。跨越多个无关作用域或由异常主体来源读取且没有有效任务时，输出
+      policy_relationship_collection_candidate，同时保留所有文件读取事实；单个高价值文件也可进入调查。
+    en: Join 4624 TargetLogonId by the same policy server and SubjectLogonId to obtain principal, logon type, and available
+      source address. The server process is often a file service and must not be treated as the original collector. Over twenty
+      minutes, compare GPOs, group-mapping scope, and source principal with normal client policy processing and approved governance
+      work. Reads across unrelated scopes or by an unusual principal and origin without valid work produce policy_relationship_collection_candidate
+      while retaining all file-read facts; one high-value file can also warrant investigation.
+  - zh: 可用的 4662 GPC 读取、客户端采集进程或结果证据可在调查中补充关联，但不是本分析假定默认存在的数据。单凭没有成员主机枚举事件不能确认替代，正常策略读取也不能证明攻击者已解析成员边；只有后续验证的采集器配置或结果才能提高对子项路径的判断。配置声明与现场成员始终标为不同事实等级。
+    en: Available 4662 GPC reads, client collector processes, or result artifacts can enrich investigation but are not data
+      assumed by this analytic. Missing member-host enumeration events cannot confirm substitution, and an ordinary policy
+      read does not prove that an adversary parsed membership edges. Only subsequently verified collector configuration or
+      results can strengthen the child-path conclusion. Keep configuration declarations and current membership at distinct
+      evidence levels.
+data_requirements:
+- source_type: policy-group-mapping-read
+  name:
+    zh: 有 ReadData SACL 和文件系统审核的策略文件访问
+    en: Policy file access with ReadData SACLs and file-system auditing
+  channel: Policy server Security event 4663
+  required_fields:
+  - timestamp
+  - computer
+  - subject_user_sid
+  - subject_logon_id
+  - object_type
+  - object_name
+  - access_mask
+  - process_id
+  - process_name
+- source_type: policy-server-logon
+  name:
+    zh: 同策略服务器的登录会话
+    en: Logon sessions on the same policy server
+  channel: Security event 4624
+  required_fields:
+  - timestamp
+  - computer
+  - target_user_sid
+  - target_logon_id
+  - logon_type
+  - ip_address
+- source_type: group-policy-relationship-inventory
+  name:
+    zh: 组映射文件、历史 GPO 关联与批准任务
+    en: Group-mapping files, historical GPO links, and approved work
+  channel: Configuration management and policy audit inventory
+  required_fields:
+  - server
+  - file_path
+  - gpo_guid
+  - mapping_content_type
+  - applicable_scope
+  - approved_principal
+  - approved_source
+  - job_id
+  - valid_from
+  - valid_to
+observables:
+- zh: 指向已确认组映射文件的 ReadData 权限使用
+  en: Exercised ReadData on verified group-mapping files
+- zh: 读取源与正常客户端处理或有效治理任务不符
+  en: Read origin unmatched to normal client processing or valid governance work
+correlation:
+  window:
+    zh: 以二十分钟文件序列和三十日刷新及治理基线为工程起点；仅在同服务器会话生存期内连接登录标识，并保留当时 GPO 版本。
+    en: Start with a twenty-minute file sequence and thirty-day refresh and governance baseline; join logon identifiers only
+      within the same server's session lifetime and retain the contemporaneous GPO version.
+  dimensions:
+  - computer
+  - subject_user_sid
+  - subject_logon_id
+  - ip_address
+  - gpo_guid
+  - file_path
+  - applicable_scope
+false_positives:
+- zh: 正常策略刷新、GPMC、备份、合规和授权攻击路径审计会读取相同映射；应用范围不常见本身不能证明恶意。
+  en: Normal policy refresh, GPMC, backup, compliance, and authorized attack-path reviews read the same mappings; uncommon
+    applicability scope alone does not establish maliciousness.
+blind_spots:
+- zh: 无 SACL、文件路径映射失效、已有离线副本或其他未监测策略存储会造成遗漏；4663 不公开文件全部返回内容或解析结果，来源未知时无法可靠关联采集端。
+  en: Missing SACLs, stale file-path mappings, existing offline copies, or other unmonitored policy stores create gaps. A
+    4663 record exposes neither complete returned file content nor parsing results, and unknown origins prevent reliable collector
+    attribution.
+tuning_guidance:
+  paragraphs:
+  - zh: 按实际部署建立组映射文件清单而不是仅匹配通用文件名；用合法刷新和受控读取测试分别确认对象类型、ReadData 与源会话关联。先审计重点 GPO、核查日志容量与正常机器账户，再扩展，例外绑定来源、身份、作用域和到期任务；保留命中以调查被盗治理身份。
+    en: Build the mapping-file inventory from actual deployment rather than generic filenames and test object type, ReadData,
+      and source-session joins separately with normal refresh and controlled reads. Audit priority GPOs first, verify capacity
+      and normal machine identities, then expand. Bind exceptions to origin, identity, scope, and expiring work while retaining
+      matches to investigate stolen governance identities.
+evidence_refs:
+- REF-001283
+- REF-001213
+- REF-000379
+- REF-000377
+- REF-001214
+- REF-001294
+- REF-001295
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-11-06'
+  modified: '2026-11-06'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

@@ -1,0 +1,95 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000372
+strategy_ref: DET-000274
+name:
+  zh: ESXi 存储清单命令与认证会话
+  en: ESXi Storage-Inventory Commands and Authenticated Sessions
+summary:
+  zh: 通过 World ID 将存储清单命令关联到交互用户和来源，并识别维护范围偏离。
+  en: Join storage-inventory commands to interactive users and sources through World IDs and identify maintenance-scope deviations.
+domains:
+- enterprise
+platforms:
+- ESXi
+logic:
+  paragraphs:
+  - zh: 收集 ESXi auth.log 与 shell.log，将同主机 shell World ID 对回认证会话、用户名、来源地址和起止时间。解析 esxcli storage core device list、storage filesystem
+      list 及可证实为只读的属性查询，排除 rescan、set、remove 等变更操作。将非维护来源、新登录账户或工单以外主机上的存储查询与批准管理窗口比较；查询 .vmdk 文件名的普通 ls 或 find 交给文件与目录发现。
+    en: Collect ESXi auth.log and shell.log and join each shell World ID on the same host to its authentication session, username,
+      source address, and session bounds. Parse esxcli storage core device list, storage filesystem list, and other verified
+      read-only attribute queries while excluding changes such as rescan, set, or remove. Compare storage queries from non-maintenance
+      origins, new users, or hosts outside work orders with approved management windows. Ordinary ls or find requests for
+      .vmdk names belong to File and Directory Discovery.
+  - zh: shell.log 证明会话输入了命令，不保存全部结果，也不覆盖所有 SDK 或 vCenter API 调用。输出为已归属的存储查询命令，只有额外输出证据才确认返回对象。会话缺口、World ID 重用和日志轮转必须限制连接窗口，不能靠相同
+      root 名称跨主机合并操作者。
+    en: shell.log establishes a command entered in a session rather than complete results and does not cover every SDK or
+      vCenter API call. Report an attributed storage-query command, confirming returned objects only with additional output
+      evidence. Session gaps, World ID reuse, and rotation must bound joins; the same root name cannot identify one operator
+      across hosts.
+data_requirements:
+- source_type: esxi-shell
+  name:
+    zh: ESXi Shell 命令记录
+    en: ESXi Shell command records
+  channel: /var/log/shell.log
+  required_fields:
+  - host
+  - timestamp
+  - world_id
+  - command
+- source_type: esxi-authentication
+  name:
+    zh: ESXi Shell 认证与会话
+    en: ESXi Shell authentication and sessions
+  channel: /var/log/auth.log
+  required_fields:
+  - host
+  - timestamp
+  - world_id
+  - username
+  - source_ip
+  - session_event
+observables:
+- zh: 非批准会话输入存储设备或文件系统清单命令
+  en: Storage-device or filesystem-inventory commands entered by an unapproved session
+- zh: 认证来源、World ID、命令与维护工单范围不一致
+  en: Authentication source, World ID, command, and maintenance work-order scope disagree
+correlation:
+  window:
+    zh: 限于认证会话起止并向两侧各容忍两分钟时钟偏差；未见结束时最长一小时，需本地验证。
+    en: Bound joins to authentication-session lifetime with two minutes of clock tolerance on either side; cap at one hour
+      without a close record and validate locally.
+  dimensions:
+  - host
+  - world_id
+  - username
+  - source_ip
+  - session_start
+  - command
+false_positives:
+- zh: 获批存储维护、容量排障、升级与支持调查
+  en: Approved storage maintenance, capacity troubleshooting, upgrades, and support investigations
+blind_spots:
+- zh: 管理 API 或非交互路径不一定进入 shell.log；本机日志可被高权限主体修改，且无返回属性。
+  en: Management APIs or noninteractive paths need not enter shell.log; privileged actors can alter local logs, which lack
+    returned attributes.
+- zh: 本地控制台无来源 IP 时只能保留本地来源标记，不能要求不存在的网络地址。
+  en: A local console lacks a source IP and requires a local-origin marker rather than a fabricated network address.
+tuning_guidance:
+  paragraphs:
+  - zh: 实测当前 ESXi 版本的 auth 与 shell 格式，区分登录 PID 与实际 Shell World ID，以 host 和会话边界限制关联；控制台来源用 local 明确标记。维护例外绑定来源、账户、主机、命令类别和工单期限，保留例外会话的原始日志并远程转发。
+    en: Test auth and shell formats on the deployed ESXi version, distinguish the login PID from the actual shell World ID,
+      and bound joins by host and session. Mark console origin as local. Bind maintenance exceptions to source, account, host,
+      command class, and work-order expiry, retaining and forwarding raw records for excepted sessions.
+evidence_refs:
+- REF-001222
+- REF-001223
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-11-05'
+  modified: '2026-11-05'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

@@ -1,0 +1,214 @@
+schema_version: 2.0.0
+type: technique
+id: NJT-0235
+name:
+  zh: 网络共享发现
+  en: Network Share Discovery
+summary:
+  zh: 查询本机对外共享配置或远端共享资源清单，以选择后继访问目标，并借用正常共享管理接口的外观增加单事件意图判断难度。
+  en: Query local sharing configuration or remote share inventories to select later access targets while resembling ordinary
+    share administration and complicating intent classification from individual events.
+aliases: []
+classification:
+  tactic_refs:
+  - TA0007
+  origin:
+    kind: attack-retained
+    source_attack_id: T1135
+    source_attack_version: '19.1'
+  decision_ref: DEC-TA0007-T1135
+definition_and_concept:
+  paragraphs:
+  - zh: 网络共享发现是攻击者在已访问环境中查询服务器提供的共享文件夹、共享盘或相应共享配置，以识别可能承载业务资料或后继访问机会的资源。成功查询的直接结果是某个服务器提供哪些共享及其属性，而不是共享内有哪些文件，更不是已经取得文件正文。查询可以面向远端主机，也可以在受陷服务器上读取本机向网络提供的共享配置。
+    en: Network Share Discovery queries a server's shared folders, shared drives, or corresponding sharing configuration inside
+      an accessed environment to identify resources that may hold business information or support later access. A successful
+      query directly establishes which shares a server offers and their attributes, rather than which files they contain or
+      whether content has been obtained. The query can address a remote host or inspect the network shares offered by the
+      compromised server itself.
+  - zh: Windows 的 net view 带目标主机、net share 的只读查询、NetShareEnum 与相应 SRVSVC 操作，以及 Samba 的 smbclient 列表功能，是取得共享信息的不同实现。请求、返回空清单、返回部分条目和取得共享名称须分别记录；调用工具、连上
+      SMB 或打开 IPC$ 均不能替代返回结果。查询级别决定可取得名称、类型或较丰富配置，返回权限资料仍不能证明调用者实际具有文件读取权。
+    en: Targeted Windows net view, read-only net share queries, NetShareEnum and the corresponding SRVSVC operation, and Samba
+      smbclient listing are implementations for obtaining share information. Record a request, an empty result, a partial
+      page, and returned share identities separately. Launching a tool, connecting to SMB, or opening IPC$ does not substitute
+      for a returned result. The requested information level determines whether names, types, or richer configuration can
+      be obtained; returned permission information still does not establish exercised file-read authority.
+stealth_characteristics:
+  paragraphs:
+  - zh: 网络共享发现可以使用管理员排查共享、资产盘点和迁移准备时使用的同一命令与协议。攻击者借用这些功能时，活动可呈现为正常的共享管理查询，防守方仅凭系统工具签名、账户能够认证或 SMB 协议正常便难以区分用途。需要辨别的是发起进程、用户职责与被查询服务器集合之间的关系，而非命令名称是否出现在系统中。
+    en: Network Share Discovery can use the commands and protocols employed for administrative troubleshooting, inventories,
+      and migration preparation. An adversary borrowing these facilities can resemble ordinary share administration, so a
+      signed utility, successful authentication, or valid SMB traffic poorly separates the purposes. The relevant distinction
+      is the relationship among initiating process, user responsibilities, and queried servers, rather than whether a command
+      exists on the system.
+  - zh: 客户端命令行或 API 调用、远端 RPC 请求与响应、连接元数据和经配置的服务器共享审计仍会留下痕迹。5140 和 5145 可以帮助还原连接与权限检查，但通常不保存枚举返回的共享清单。若防守方可观察 SRVSVC 返回并关联客户端进程，正常接口外观造成的区分困难会缩小；单主机低事件量、默认未审计或加密传输本身不足以证明攻击者实施了独立匿迹变体。
+    en: Client command lines or API calls, remote RPC requests and responses, connection metadata, and configured server share
+      auditing remain observable. Events 5140 and 5145 can help reconstruct connections and authorization checks but generally
+      do not preserve the returned share inventory. Observing SRVSVC results and attributing them to the client process reduces
+      the ambiguity of ordinary interfaces. Low event volume, absent default auditing, or encrypted transport alone does not
+      establish an independently selected evasion variant.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 纳入为识别共享资源而进行的只读本地配置查询和远程清单枚举，包括按名称查询已知共享的配置；区分尝试和实际返回结果。net view 不带主机或只列域与计算机时属于远程系统发现线索；只有 SMB 端口可达或协议握手属于服务观察；仅识别本机盘符、容量或已有映射关系不构成服务器共享清单枚举。
+    en: Include read-only local configuration queries and remote inventories intended to identify shared resources, including
+      configuration lookup for a known share, while distinguishing attempts from actual results. Untargeted net view or domain
+      and computer listings provide remote-system discovery leads. SMB port reachability or a protocol handshake is a service
+      observation. Identifying local drive letters, capacity, or an existing mapping alone is not enumeration of a server's
+      share inventory.
+  - zh: 已知共享内的文件与目录列表归 NJT-0182，实际正文获取归 NJT-0216；NJS-0216-001 要求在既有映射语境中取得远端正文，不因发现阶段同样能看到盘符而复制为新子项。创建、删除、修改共享、建立映射和对共享进行横向执行是另行判定的操作。合法共享盘点、访问故障排查、备份预检、迁移及安全审计均可产生相同查询，必须保留这些正常反例。
+    en: Paths and directory entries inside a known share belong to NJT-0182, while actual content acquisition belongs to NJT-0216.
+      NJS-0216-001 requires remote content acquisition through a preexisting mapping context and must not be copied merely
+      because drive letters are also visible during discovery. Share creation, removal, modification, mapping creation, and
+      lateral execution through a share require separate classification. Legitimate inventories, access troubleshooting, backup
+      prechecks, migration, and security audits can issue the same queries and remain necessary counterexamples.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: 攻击者进入 Windows 工作站、文件服务器或能够访问企业 SMB 的 Linux/macOS 主机后，可在已有目标主机线索上查询共享入口，再选择是否浏览目录、验证访问或收集资料。WithSecure 的 No Pineapple
+        调查明确记录攻击者使用 net share 收集信息；ESET 也在 LunarWeb 已恢复命令包中记录共享资源侦察。前者证明恶意使用具体原生命令，后者补充父级场景；两者均未公开逐服务器返回名称、有效访问验证或枚举漏报测量，不能据此断言独立匿迹子项或正文读取成功。
+      en: After entering a Windows workstation, file server, or Linux or macOS host with enterprise SMB access, an adversary
+        can query share entry points on known hosts before deciding whether to browse, verify access, or collect information.
+        WithSecure explicitly records net share information gathering in its No Pineapple investigation, while ESET records
+        shared-resource reconnaissance in a recovered LunarWeb command package. The former establishes malicious use of a
+        specific native command and the latter supplements the parent scenario. Neither publishes per-server returned names,
+        exercised access checks, or missed-enumeration measurements, so neither establishes an independent evasion child or
+        successful content acquisition.
+    - zh: 在受陷共享服务器上进行本地查询，可以先了解该服务器向外提供的资源，再决定后续远程使用。它与从客户端向多个服务器请求清单具有不同遥测入口，但分类对象仍是共享配置；本地与远端、Windows 与 macOS、命令与 API 本身都不构成子技术。
+      en: A local query on a compromised share server can reveal resources it offers before later remote use. Its telemetry
+        entry point differs from a client requesting inventories from several servers, but the classified information remains
+        sharing configuration. Local versus remote execution, Windows versus macOS, and commands versus APIs do not independently
+        define children.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者需要在受控主机执行查询，能够接触本地共享配置或到达远端共享管理服务，并拥有目标实现接受的认证或匿名上下文。Windows NetShareEnum 的名称与基本属性查询级别不要求特殊组成员资格；较丰富级别的非交互调用受组权限和系统版本约束。不能把低级别要求推广为任意匿名调用成功，也不能假定列出的共享对当前身份均可打开。
+        en: The adversary needs query execution on a controlled host, access to local sharing configuration or a reachable
+          remote share-management service, and an authenticated or anonymous context accepted by that implementation. Windows
+          NetShareEnum name and basic-attribute levels do not require special group membership, whereas richer noninteractive
+          levels are subject to group and operating-system constraints. The lower-level requirement does not imply that arbitrary
+          anonymous requests succeed or that every listed share can be opened by the caller.
+      - zh: 攻击者可选择要查询的服务器、信息级别和查询方式，并在实现支持时续取结果页。操作受网络分段、服务可用性、当前身份、返回长度和动态共享状态限制；分页与重试首先是正常完整性处理，只有额外证据证明其用于改变防守关联时才可讨论匿迹变量。已有映射仅提供特定共享关系，不赋予查询整台服务器共享清单的额外权限。
+        en: The adversary can select servers, information levels, and query methods and continue result pages where supported.
+          Segmentation, service availability, current identity, response limits, and changing share state constrain the operation.
+          Pagination and retries are ordinary completeness handling unless additional evidence shows selection to change defensive
+          correlation. An existing mapping supplies a particular share relationship, not additional authority to enumerate
+          the server's entire inventory.
+    defender_model:
+      paragraphs:
+      - zh: 防守方可在客户端保留进程、完整参数、执行身份和登录会话，按职责建立共享管理查询基线；服务器端可在预先启用策略后保留共享访问和认证上下文。服务器日志里的执行进程或系统 PID 不能代替原始客户端进程，必须经客户端时间、连接或会话信息关联。单靠源
+          IP 和用户名通常只能还原请求来源。
+        en: Defenders can retain client processes, complete arguments, execution identities, and logon sessions and baseline
+          share-management queries by operational role. Configured server auditing can retain share-access and authentication
+          context. A server event's execution process or system PID is not the original client process; attribution requires
+          joining client timing, connections, or session information. Source IP and user name alone usually identify the requester
+          rather than its initiating process.
+      - zh: 若部署能够解析 SRVSVC 请求与响应的传感器，可进一步观察操作号、调用标识、查询级别、返回状态、条目数、共享名称及续取句柄；这些不是 5140/5145 或普通进程创建事件默认提供的字段。加密 SMB、RPC 保护、缺包、本地调用及传感器无法解码时，应保留命令或请求层级结论，而不补写已返回清单或有效访问成功。
+        en: A sensor capable of decoding SRVSVC requests and responses can additionally observe operation number, call identifier,
+          level, return status, entry count, share names, and continuation handle. Events 5140 and 5145 and ordinary process
+          creation do not provide these fields by default. With encrypted SMB, protected RPC, packet loss, local calls, or
+          unavailable decoding, retain command- or request-level conclusions instead of inventing a returned inventory or
+          successful effective access.
+stealth_mechanisms:
+- mechanism_ref: NM-FD
+  role: primary
+  summary:
+    zh: 借用正常共享管理接口使侦察查询呈现合法运维外观
+    en: Borrow ordinary share-management interfaces to give reconnaissance an administrative appearance
+  analysis:
+    paragraphs:
+    - zh: 攻击者使用本机共享管理命令或系统提供的枚举接口，使共享侦察与合法资源盘点共享工具来源和请求语义。防守方若按陌生二进制或异常协议筛选，查询的正常外观会削弱单事件区分能力，分析需要转向执行者、查询范围和批准任务之间的关系。Microsoft
+        的命令与 ShareEnum 文档证明合法管理用途，WithSecure 直接记录恶意 net share 使用；两者共同支持这种有条件的特征相似性。
+      en: Using native share-management commands or system enumeration interfaces gives adversarial reconnaissance the tool
+        provenance and request semantics of legitimate inventories. Defenses selecting unfamiliar binaries or anomalous protocols
+        lose some single-event distinction, shifting analysis toward relationships among executor, query scope, and approved
+        work. Microsoft command and ShareEnum documentation establishes legitimate administrative use, while WithSecure directly
+        records malicious net share use. Together they support this conditional feature similarity.
+    - zh: 共享请求和返回并未因此消失，结果也不会因为调用接口合法而具有良性意图。现有案例没有证明攻击者专为规避检测选择这些接口，也未比较其他实现的告警率，所以本机理为 medium；不增加“未产生文件读取日志所以不可见”等机理。返回清单与后继访问之间的分层是证据边界，而非另一个匿迹效果。
+      en: Requests and responses remain present, and a legitimate interface does not make the result's purpose benign. Available
+        cases do not establish selection specifically to evade detection or compare alert rates against other implementations,
+        so this mechanism remains medium confidence. Do not add an invisibility mechanism based on absent file-read logs.
+        Separating inventories from later access is an evidentiary boundary, not another evasion effect.
+  confidence: medium
+  evidence_refs:
+  - REF-001250
+  - REF-001251
+  - REF-001255
+  - REF-000639
+  - REF-001230
+subtechnique_taxonomy:
+  coverage: deferred
+  subtechnique_refs: []
+  narrative:
+    paragraphs:
+    - zh: 已独立检查正常管理外观、既有关系复用、结果页与查询节奏、真实来源分散及传输可检查性。正常管理外观属于父级现象；已有映射事实不等于服务器清单，并与已有正文收集子项有明确边界。分页和缓冲长度由接口完整性要求解释，缺少有意拆分活动以改变防守关联的结论级证据。
+      en: Ordinary administrative appearance, reuse of existing relationships, result-page and timing control, distribution
+        of real origins, and transport inspectability were examined independently. Administrative appearance remains a parent-level
+        property. A known mapping is not a server inventory and has a clear boundary from the existing content-acquisition
+        child. Pagination and buffer limits are explained by interface completeness requirements, without conclusion-level
+        evidence of intentional splitting to change defensive correlation.
+    - zh: 来源分散和加密通道可能影响观察，但当前资料未建立恶意共享枚举中的稳定选择、实际痕迹对照和独立防御差异。因而正式子项保持为空、分类为 deferred；不按 net、API、SMB、操作系统、共享类别或本地/远端位置创建子项。
+      en: Distributed origins and encrypted channels can affect observation, but available material does not establish stable
+        adversarial selection, actual trace comparison, and independent defensive differences for share enumeration. The formal
+        child set therefore remains empty with deferred taxonomy. Commands, APIs, SMB, operating systems, share types, and
+        local versus remote location do not define children.
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000278
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000244
+evidence:
+  claim_refs:
+  - CLM-001193
+  - CLM-001194
+  - CLM-001195
+  - CLM-001196
+  - CLM-001197
+  case_refs:
+  - CASE-000362
+  - CASE-000363
+  reference_refs:
+  - REF-000334
+  - REF-000474
+  - REF-000476
+  - REF-000623
+  - REF-000625
+  - REF-000639
+  - REF-000840
+  - REF-001230
+  - REF-001248
+  - REF-001249
+  - REF-001250
+  - REF-001251
+  - REF-001252
+  - REF-001253
+  - REF-001254
+  - REF-001255
+  - REF-001256
+  - REF-001257
+research:
+  limitations:
+    paragraphs:
+    - zh: WithSecure 直接记录 No Pineapple 使用 net share，ESET 记录 LunarWeb 命令包中的共享资源侦察，但公开资料不提供逐服务器返回共享、这次共享调用的完整参数、查询身份、分页轨迹或有效访问结果。合法接口外观造成区分困难是结合平台语义的有界推断，尚无受控告警率或攻击者规避选择测量；因此不能将父级案例提升为时间、来源或加密子项。
+      en: WithSecure directly records net share use in No Pineapple and ESET records shared-resource reconnaissance in a LunarWeb
+        command package, but public material does not provide per-server returned shares, complete share-call arguments, caller
+        identity, pagination traces, or effective-access results. Classification ambiguity from legitimate interfaces is a
+        bounded inference from platform semantics without controlled alert-rate or adversarial selection measurements. The
+        parent cases therefore cannot be promoted into timing, origin, or encryption children.
+    - zh: 网络侧结果确认依赖可解码且完整的 RPC 请求/响应，普通进程、连接和 5140/5145 不提供完整清单。Windows 级别与非交互权限具有版本差异，动态清单跨页可能重复或遗漏；Apple 的共享列表手册是历史资料，目标
+        macOS 版本与传感器字段仍需部署验证。本文分析初始窗口及例外模型尚未在真实企业共享环境测量效果。
+      en: Network result confirmation requires decodable complete RPC exchanges; ordinary process, connection, and 5140 or
+        5145 events do not expose the inventory. Windows information levels and noninteractive privileges vary by version,
+        and live lists can duplicate or omit entries across pages. Apple's listing manual is historical, requiring target-version
+        and sensor-field validation. Initial analytic windows and exception models have not been evaluated in a real enterprise
+        share environment.
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-11-05'
+  modified: '2026-11-05'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

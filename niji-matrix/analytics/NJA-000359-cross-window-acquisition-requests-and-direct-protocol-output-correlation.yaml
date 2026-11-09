@@ -1,0 +1,174 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000359
+strategy_ref: DET-000268
+name:
+  zh: 跨窗口取材请求与直接协议输出关联
+  en: Cross-Window Acquisition Requests and Direct-Protocol Output Correlation
+summary:
+  zh: 识别持续的新服务目标、无预认证成功回复或异常进程直接取材，并以材料输出决定是否确认取得。
+  en: Identify persistent new service targets, successful replies without preauthentication, or unusual direct acquisition by a process,
+    using material output to determine acquisition confirmation.
+domains:
+- enterprise
+platforms:
+- Windows
+- Active Directory
+logic:
+  paragraphs:
+  - zh: 集中成功4769并按realm、TargetUserName/TargetDomainName、规范化IpAddress和ServiceSid/ServiceName累积目标关系。在一小时、二十四小时与七日窗口对照三十日同角色基线，检验新服务目标覆盖、连续稀疏请求与加密选择变化；阈值由环境回放确定，不要求高峰或RC4。4768分支关注Status=0且PreAuthType=0的回复，并连接当时的DONT_REQ_PREAUTH配置；初始无预认证探测后正常挑战与失败请求不算成功取材。ServiceName通常是服务账户名称，不应直接当完整SPN，精确SPN需协议遥测或版本化目录映射。
+    en: Centralize successful 4769 and accumulate target relationships by realm, TargetUserName or TargetDomainName, normalized IpAddress,
+      and ServiceSid or ServiceName. Compare one-hour, twenty-four-hour, and seven-day windows with a thirty-day peer-role baseline for new-service
+      coverage, persistent sparse requests, and encryption-choice changes. Set thresholds by local replay rather than requiring a burst or
+      RC4. The 4768 branch considers Status zero and PreAuthType zero joined to the contemporaneous DONT_REQ_PREAUTH setting. Initial unauthenticated
+      probes followed by a normal challenge, and failed requests, do not establish successful acquisition. ServiceName is commonly the service-account
+      name rather than a complete SPN; exact SPNs require protocol telemetry or versioned directory mapping.
+  - zh: 将候选连接到源端Sysmon 1/3或等价EDR的ProcessGuid、User、SourceIp和KDC地址；检查实际配置的日志是否保留源端口和DC事件中的IpPort，不能只以同一NAT地址绑定进程。非预期进程直接连接88、可识别回复输出或经授权内存/文件检验可加强直接取材分支。缓存快照差异只作可选佐证，不把缺少klist条目视为旁路证明。成功回复与陌生服务关系输出request_material_candidate；只有对应返回密文或票据凭据被检查并归于攻击者控制进程/接收者时，升级confirmed_material_acquisition；低密度与缓存旁路分类还须各自实施证据。
+    en: Join candidates to source Sysmon 1 and 3 or equivalent EDR using ProcessGuid, User, SourceIp, and KDC address. Check whether configured
+      telemetry retains source ports and the DC event IpPort; a shared NAT address cannot identify a process. An unexpected process connecting
+      directly to port 88, recognizable reply output, or authorized memory or file inspection strengthens the direct-acquisition branch.
+      Cache-snapshot differences are optional corroboration, and missing klist entries do not prove bypass. Successful replies and unfamiliar
+      service relationships yield request_material_candidate. Upgrade to confirmed_material_acquisition only when corresponding reply ciphertext
+      or ticket credentials are inspected and attributed to an adversary-controlled process or recipient. Low-density and cache-bypass classification
+      each need their own implementation evidence.
+data_requirements:
+- source_type: kdc-service-ticket-events
+  name:
+    zh: KDC 服务票据请求
+    en: KDC service-ticket requests
+  channel: Security/4769; success audit required
+  required_fields:
+  - system.timecreated
+  - system.computer
+  - system.version
+  - targetusername
+  - targetdomainname
+  - servicename
+  - servicesid
+  - ipaddress
+  - ipport
+  - ticketencryptiontype
+  - status
+- source_type: kdc-as-ticket-events
+  name:
+    zh: KDC AS 回复审计
+    en: KDC AS-reply audit
+  channel: Security/4768; success audit required
+  required_fields:
+  - system.timecreated
+  - system.computer
+  - system.version
+  - targetusername
+  - targetdomainname
+  - ipaddress
+  - preauthtype
+  - ticketencryptiontype
+  - status
+- source_type: directory-service-configuration
+  name:
+    zh: 身份和服务目标配置快照
+    en: Identity and service-target configuration snapshots
+  channel: versioned AD inventory
+  required_fields:
+  - valid_from
+  - valid_to
+  - objectsid
+  - samaccountname
+  - serviceprincipalname
+  - useraccountcontrol
+  - msds-supportedencryptiontypes
+  - owner
+  - approved_client_hosts
+- source_type: endpoint-process-network
+  name:
+    zh: 源端进程网络事件
+    en: Source process-network events
+  channel: configured Sysmon Operational/1,3 or validated EDR equivalent
+  required_fields:
+  - utctime
+  - computer
+  - processguid
+  - processid
+  - image
+  - user
+  - sourceip
+  - sourceport
+  - destinationip
+  - destinationport
+- source_type: controlled-material-inspection
+  name:
+    zh: 经授权材料输出检验
+    en: Authorized material-output inspection
+  channel: controlled incident/lab artifact inspection; not native 4769 or Sysmon content
+  required_fields:
+  - inspection_time
+  - host_id
+  - process_start_key
+  - artifact_id
+  - artifact_digest
+  - material_class
+  - principal
+  - realm
+  - service_or_reply_type
+  - format_validation_result
+  - custody_or_recipient
+observables:
+- zh: 同一身份跨多个窗口持续请求此前未用过的服务账户，即使每个短窗口数量很低。
+  en: One identity persistently requests previously unused service accounts across windows despite low short-window counts.
+- zh: 意外进程直接与KDC交互，且其输出经检验包含相应Kerberos回复密文，缓存数量并不反映目标范围。
+  en: An unexpected process exchanges directly with a KDC and produces inspected Kerberos reply ciphertext while cache counts do not represent
+    the target scope.
+- zh: 无预认证账户收到成功AS回复，且返回加密部分被复制到非批准接收者。
+  en: A no-preauthentication account receives a successful AS reply whose encrypted part is copied to an unapproved recipient.
+correlation:
+  window:
+    zh: 请求到源端输出默认五分钟，窗口统计为一小时、二十四小时和七日；角色与服务关系基线三十日，批处理周期和取材间隔用回放调优。
+    en: Default five minutes from request to source output; aggregate one-hour, twenty-four-hour, and seven-day windows with a thirty-day
+      role and service-relationship baseline, tuned by replay to batch schedules and acquisition intervals.
+  dimensions:
+  - realm
+  - principal
+  - service_account_sid
+  - service_spn_if_available
+  - source_device
+  - client_address
+  - client_port_if_available
+  - domain_controller
+  - process_guid
+  - artifact_digest
+false_positives:
+- zh: 新应用上线、合法多服务SSO、资产扫描、获批安全评估和批量任务会产生新服务覆盖；遗留无预认证账户可合法请求回复。
+  en: New applications, legitimate multi-service SSO, inventory scanning, approved assessment, and batch tasks create new-service coverage.
+    Legacy accounts without preauthentication can request replies legitimately.
+- zh: Java、Linux互操作、测试客户端或自带协议栈的服务可合法从非lsass进程连接88端口。
+  en: Java, Linux interoperability, test clients, and services with their own stacks can legitimately connect to port 88 outside lsass.
+blind_spots:
+- zh: 4768/4769不提供材料输出、明文PAC或离线猜测结果。加密类型只是背景；AES也能产生可测试材料。独立主机或纯内存输出缺少端点数据时无法确认取得。
+  en: 4768 and 4769 do not provide material output, plaintext PACs, or offline-guessing outcomes. Encryption type is context, and AES can
+    also yield testable material. An independent host or memory-only output without endpoint data prevents acquisition confirmation.
+- zh: 不完整DC采集、跨域referral、IP复用、端口缺失和高延迟可破坏关联。Sysmon网络事件需显式启用，不能假定总有ProcessGuid与请求一一映射。
+  en: Incomplete DC collection, cross-realm referrals, reused IPs, missing ports, and delay can break joins. Sysmon network events require
+    explicit enablement; a one-to-one request-to-ProcessGuid mapping cannot be assumed.
+tuning_guidance:
+  paragraphs:
+  - zh: 按用户、计算机与服务身份、服务角色、批准客户端及任务周期分别建基线。核对事件版本、ServiceSid解析和加密字段含义，再使用三十日回放设置阈值；不要通过排除全部服务账户、所有AES或签名进程消除误报。无法取得材料输出时保留候选级别，缓存旁路与低密度意图只由独立实施证据提升。
+    en: Baseline user, computer, and service identities separately by service role, approved clients, and schedule. Validate event versions,
+      ServiceSid resolution, and encryption-field semantics before setting thresholds through thirty-day replay. Do not remove false positives
+      by excluding all service accounts, every AES request, or signed processes. Retain candidate status when material output is unavailable,
+      and elevate cache-bypass or low-density intent only through independent implementation evidence.
+evidence_refs:
+- REF-000854
+- REF-000855
+- REF-000230
+- REF-001183
+- REF-001185
+- REF-001186
+- REF-001187
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-11-05'
+  modified: '2026-11-05'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

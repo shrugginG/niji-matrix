@@ -1,0 +1,114 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000387
+strategy_ref: DET-000281
+name:
+  zh: IAM 密码策略读取的身份会话与自助来源差分
+  en: IAM Password-Policy Read Identity-Session and Self-Service Origin Differential
+summary:
+  zh: 在账号管理与自助基线上识别异常 GetAccountPasswordPolicy 请求，保留错误结果并避免假定审计包含密码规则响应。
+  en: Identify abnormal GetAccountPasswordPolicy requests against account-management and self-service baselines while retaining
+    errors and avoiding assumptions that audit contains policy responses.
+domains:
+- enterprise
+platforms:
+- IaaS
+logic:
+  paragraphs:
+  - zh: 从涵盖 IAM 全局服务事件的 CloudTrail 采集链选择 eventSource 为 iam.amazonaws.com 且 eventName 为 GetAccountPasswordPolicy 的请求，用 recipientAccountId、userIdentity
+      的实际类型和会话主体、sourceIPAddress 及 userAgent 关联来源。按事件 ID 去重，保留 errorCode 与 errorMessage 的存在性；AccessDenied、NoSuchEntity 与无错误记录分开呈现，不从
+      NoSuchEntity 推断没有默认规则。
+    en: Select eventSource iam.amazonaws.com and eventName GetAccountPasswordPolicy from a CloudTrail collection path covering
+      IAM global-service events. Correlate origin using recipientAccountId, actual userIdentity type and session principal,
+      sourceIPAddress, and userAgent. Deduplicate by event ID and preserve the presence of errorCode and errorMessage. Present
+      AccessDenied, NoSuchEntity, and records without an error separately, and do not interpret NoSuchEntity as absence of
+      default requirements.
+  - zh: 对比同一账号的密码更新界面、账号管理作业与角色来源，来源网络、会话角色或用途明显偏离时产生调查候选，十五分钟内的其他目录或认证相关操作只用于排序。无错误只能作为服务处理状态的线索，responseElements 对只读操作通常为空，不能声称已经从审计恢复最小长度、复杂性或锁定阈值。本分析保留请求层结论；客户端返回内容的采集与验证属于另行部署的结果分析。
+    en: Compare with password-change interfaces, account-management jobs, and role origins in the same account, producing
+      survey candidates for material deviations in network origin, session role, or purpose. Other directory or authentication-related
+      operations within fifteen minutes affect ranking only. Absence of an error is an indication of service processing, while
+      responseElements is generally null for read-only operations; audit does not reconstruct minimum length, complexity,
+      or lockout thresholds. This analytic retains request-level conclusions. Collecting and validating client responses requires
+      a separately deployed result analysis.
+data_requirements:
+- source_type: aws-cloudtrail-iam
+  name:
+    zh: 覆盖 IAM 全局服务读取的 CloudTrail
+    en: CloudTrail covering IAM global-service reads
+  channel: AWS CloudTrail management events
+  required_fields:
+  - event_time
+  - event_id
+  - event_source
+  - event_name
+  - recipient_account_id
+  - user_identity
+  - source_ip_address
+  - user_agent
+- source_type: approved-iam-work-origin
+  name:
+    zh: 账号管理与自助会话来源基线
+    en: Account-management and self-service session-origin baseline
+  channel: IAM role and approved automation inventory
+  required_fields:
+  - account_id
+  - principal
+  - role_session
+  - owner
+  - expected_origins
+  - workload_purpose
+  - valid_from
+  - valid_to
+observables:
+- zh: IAM GetAccountPasswordPolicy 操作
+  en: IAM GetAccountPasswordPolicy operations
+- zh: 读取来源与已知自助或管理任务不匹配
+  en: Read origins unmatched to known self-service or administrative work
+- zh: 出现访问拒绝或自定义实体不存在等不同结果
+  en: Distinct results including access denial or absent custom entity
+correlation:
+  window:
+    zh: 使用十五分钟身份会话窗口与三十日来源基线作为待验证起点，长期保留按账号去重后的读取事件。
+    en: Use a fifteen-minute identity-session window and thirty-day origin baseline as starting points to validate, retaining
+      deduplicated reads by account over longer periods.
+  dimensions:
+  - recipient_account_id
+  - principal
+  - role_session
+  - source_ip_address
+  - event_id
+false_positives:
+- zh: 用户更新自身密码、控制台安全凭据页面、合规工具和 IAM 运维会合法查询账号规则。频率低或具有读取权限既不证明恶意，也不应成为永久放行条件。
+  en: Users changing their passwords, console security-credentials pages, compliance tools, and IAM operations legitimately
+    query account rules. Low frequency and read entitlement neither establish maliciousness nor justify permanent allowances.
+blind_spots:
+- zh: 未纳入全局服务读取、集中采集延迟、日志保留不足或会话身份规范化错误会割裂来源。审计一般没有只读返回内容，联邦身份与根用户规则也不能由此操作证明。
+  en: Excluding global-service reads, central collection delays, inadequate retention, and incorrect session normalization
+    fragment provenance. Audit generally lacks read-only response contents, and this operation does not establish federated-identity
+    or root-user rules.
+tuning_guidance:
+  paragraphs:
+  - zh: 用已知自助页面、自动化、拒绝权限和没有自定义策略的账号验证事件链；原生 eventTime、eventID、eventSource、eventName、recipientAccountId、sourceIPAddress 与 userAgent
+      映射为上述规范键，userIdentity 保留类型与完整会话信息。错误字段仅在存在时解析，缺少它们不补造响应。例外绑定角色、来源和任务有效期，按实际控制台行为检查，避免整账号静默。
+    en: Validate the event path using known self-service pages, automation, denied permissions, and an account without a custom
+      policy. Map native eventTime, eventID, eventSource, eventName, recipientAccountId, sourceIPAddress, and userAgent to
+      the canonical keys above while retaining userIdentity type and full session details. Parse error fields only when present
+      and do not invent a response when absent. Bind exceptions to role, origin, and work expiry, checking actual console
+      behavior rather than suppressing an entire account.
+  - zh: 将缺失 errorCode、errorMessage 和不适用的角色会话字段规范化为 null，保留事件而不因空字段丢弃成功或直接 IAM 用户请求。role_session 从 userIdentity 的会话结构派生，非角色调用保留未知或不适用。
+    en: Normalize absent errorCode, errorMessage, and inapplicable role-session fields to null, retaining successful and direct
+      IAM-user requests rather than discarding them. Derive role_session from userIdentity session structure and keep non-role
+      callers unknown or not applicable.
+evidence_refs:
+- REF-001264
+- REF-001265
+- REF-001266
+- REF-000524
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-11-06'
+  modified: '2026-11-06'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

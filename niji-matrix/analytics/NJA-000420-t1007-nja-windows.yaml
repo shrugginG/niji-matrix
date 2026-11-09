@@ -1,0 +1,143 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000420
+strategy_ref: DET-000301
+name:
+  zh: Windows服务与任务命令请求核验
+  en: Windows Service and Task Command Request Verification
+summary:
+  zh: 解析sc、tasklist服务映射和schtasks读取命令，输出范围明确的查询请求线索。
+  en: Parse sc, tasklist service mappings, and schtasks reads to produce inquiry-request leads with explicit scope.
+domains:
+- enterprise
+platforms:
+- windows
+logic:
+  paragraphs:
+  - zh: 预部署Sysmon创建与终止记录，将System.Computer、UtcTime、ProcessGuid、ProcessId、Image、CommandLine、User和ParentProcessGuid分别规范为host_id、UTC
+      event_time、process_guid、十进制process_id、image、command_line、process_account和parent_process_guid；事件5关闭该实例，缺结束只保留开放边界。按真实映像与Windows引用规则解析标记，匹配sc.exe
+      query、tasklist.exe /svc和schtasks.exe /query或无动作的缺省查询；帮助、sc start/stop/config/delete及schtasks /create/change/run/end/delete单独分流，不通过包含工具名命中。
+    en: Predeploy Sysmon creation and termination capture. Normalize System.Computer, UtcTime, ProcessGuid, ProcessId, Image,
+      CommandLine, User, and ParentProcessGuid to host_id, UTC event_time, process_guid, decimal process_id, image, command_line,
+      process_account, and parent_process_guid. Event 5 closes the instance; absent termination leaves an open boundary. Parse
+      actual images and Windows quoting to match sc.exe query, tasklist.exe /svc, and schtasks.exe /query or actionless default
+      queries. Route help, sc start/stop/config/delete, and schtasks /create/change/run/end/delete separately instead of matching
+      tool-name substrings.
+  - zh: 保存sc的UNC目标、指定服务、两层type参数、state、group及ri/bufsize；未显式给出过滤只标记工具缺省而不编造所有服务。纯driver过滤分流NJT-0180，不按服务工具名称重计；type=all只输出混合对象请求，缺返回与消费语义时不把全部条目归普通服务，也不推断驱动已加载。tasklist仅在/svc时标记服务映射，保留/fi与/s目标；普通列表归进程发现。schtasks保留/s、/tn、/fo与/v范围，读任务不表示执行；/u是输入凭据名而非已认证主体，/p值在安全接收层遮蔽后不参与分析。
+    en: Preserve sc's UNC target, named service, both type options, state, group, and ri/bufsize. Unspecified filters remain
+      tool defaults rather than invented coverage of all services. Route pure driver filters to NJT-0180 rather than counting
+      them by service-utility name. Type=all produces a mixed-object request only; without returns and consumption semantics,
+      do not assign every entry to ordinary services or infer loaded drivers. Label tasklist as a service mapping only with
+      /svc, retaining /fi and /s; ordinary lists belong to Process Discovery. Preserve schtasks /s, /tn, /fo, and /v scope
+      without equating reading with execution. /u is an input credential name rather than an authenticated principal; redact
+      /p values at secure ingestion and exclude them from analysis.
+  - zh: 与独立批准台账逐项比较host_id、process_account、映像身份、目标、查询动作及有效UTC区间，台账owner与版本可追溯。缺条目标记approval_not_found，台账离线、账户不完整或参数截断标记approval_unknown，均不直接判为恶意。可按同一进程或父实例五分钟内重复查询排序，不把该窗口或次数当恶意阈值，也不额外消费未声明的网络、凭据或输出数据。
+    en: Compare host_id, process_account, image identity, target, inquiry action, and valid UTC interval with an independent
+      approval register whose owner and version are traceable. Missing entries mean approval_not_found; an unavailable register,
+      incomplete account, or truncated arguments mean approval_unknown. Neither establishes maliciousness. Rank repeated inquiries
+      within five minutes for one process or parent instance without treating the window or count as a malicious threshold
+      or consuming undeclared network, credential, or output data.
+  - zh: 输出request_observed与result_unknown，进程启动不能确认查询成功、空集、分页完整或服务状态。服务属于哪个PID也不由创建事件取得。健康台账声明通道、配置版本、启用区间、最后心跳、时钟偏差上界与丢失/截断数；不完整时保留正面命中并降低范围或归属，不能从无事件反推未查询。远端输入只保留requested_target，不建立已完成远程会话。
+    en: Emit request_observed and result_unknown. Process launch establishes neither query success, emptiness, complete pagination,
+      nor service state, and creation supplies no service-owning PID. The health register declares channel, configuration
+      version, enabled intervals, last heartbeat, maximum skew, and loss/truncation counts. Retain positive hits with degraded
+      scope or attribution under incomplete capture rather than inferring absent inquiries. Remote input remains requested_target
+      without establishing a completed remote session.
+data_requirements:
+- source_type: sysmon-process-lifecycle
+  name:
+    zh: 已部署Sysmon的进程创建与终止
+    en: Deployed Sysmon process creation and termination
+  channel: Microsoft-Windows-Sysmon/Operational
+  required_fields:
+  - host_id
+  - event_time
+  - event_id
+  - process_guid
+  - process_id
+  - image
+  - command_line
+  - process_account
+  - parent_process_guid
+- source_type: approved-management-inquiry-register
+  name:
+    zh: 外部维护的管理查询批准台账
+    en: Externally maintained management-inquiry approval register
+  channel: null
+  required_fields:
+  - register_version
+  - register_status
+  - owner
+  - host_id
+  - principal_name
+  - content_identity
+  - target_scope
+  - inquiry_scope
+  - valid_from
+  - valid_until
+- source_type: collection-health-register
+  name:
+    zh: 采集配置与转发解析健康台账
+    en: Capture-configuration and forwarding/parser health register
+  channel: null
+  required_fields:
+  - host_id
+  - channel
+  - collector_version
+  - configuration_version
+  - enabled_from
+  - enabled_until
+  - last_heartbeat
+  - clock_skew_bound_ms
+  - dropped_count
+  - truncated_count
+observables:
+- zh: 实际命令动作请求服务状态、服务与进程映射或计划任务登记。
+  en: Actual command actions request service status, service-to-process mappings, or scheduled-task registrations.
+- zh: 显式state/type、目标服务、任务名和远端目标限定请求范围。
+  en: Explicit state/type filters, service targets, task names, and remote targets constrain request scope.
+- zh: 请求与已登记工作范围不符或批准依据缺失时，保留可核验线索。
+  en: Requests outside registered work scope or without located approval retain verifiable leads.
+correlation:
+  window:
+    zh: 使用实际进程实例生存期与请求时点台账有效区间，五分钟只用于本地验证后的重复查询排序。
+    en: Use actual process lifetimes and register validity at request time; five minutes supports only locally validated repeat-inquiry
+      ranking.
+  dimensions:
+  - host_id
+  - process_guid
+  - parent_process_guid
+  - process_id
+  - event_time
+  - requested_target
+  - inquiry_scope
+false_positives:
+- zh: 支持、监控、补丁与计划任务审计使用相同命令，批准台账可能滞后。
+  en: Support, monitoring, patching, and schedule audits use the same commands, and approval registers can lag.
+- zh: 查询语法错误、只读诊断脚本或无权限调用仍会产生工具启动。
+  en: Invalid query syntax, read-only diagnostics, and unauthorized calls can still launch utilities.
+blind_spots:
+- zh: 进程日志不含标准输出或API状态，不能确认返回清单、空集或完整性。
+  en: Process logs contain neither stdout nor API status and cannot establish inventories, emptiness, or completeness.
+- zh: 自定义客户端、未启用创建记录和截断参数会绕开或损害此工具入口观察。
+  en: Custom clients, disabled creation capture, and truncated arguments evade or degrade this utility-entry surface.
+tuning_guidance:
+  paragraphs:
+  - zh: 用合法维护样本验证query与变更动作、重复type参数、/svc、/s和引号，保留工具缺省与显式全范围的差别。按任务负责人和到期时间登记范围，避免永久放行sc或schtasks路径。健康或台账缺失显示未知，不以压制这些请求改善表面误报率；本研究未部署或测试主机规则。
+    en: Validate query versus mutation actions, repeated type arguments, /svc, /s, and quoting with benign maintenance examples,
+      preserving tool defaults versus explicit all-scope requests. Register scope by work owner and expiry instead of permanently
+      allowing sc or schtasks paths. Display missing health or approval as unknown rather than suppressing such requests to
+      improve apparent false-positive rates. No host rule was deployed or tested in this research.
+evidence_refs:
+- REF-001401
+- REF-001402
+- REF-001296
+- REF-000230
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-11-08'
+  modified: '2026-11-08'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

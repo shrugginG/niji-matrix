@@ -1,0 +1,183 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000422
+strategy_ref: DET-000301
+name:
+  zh: WMI服务查询原始客户端分析
+  en: WMI Service-Query Original-Client Analysis
+summary:
+  zh: 从已启用Trace中的服务类请求识别原始客户端，保留读取结果未知与远端归属限制。
+  en: Identify original clients of service-class requests in enabled tracing while preserving unknown results and remote-attribution
+    limits.
+domains:
+- enterprise
+platforms:
+- windows
+logic:
+  paragraphs:
+  - zh: 先在目标Windows版本验证并启用Microsoft-Windows-WMI-Activity/Trace。取事件11原始XML中System.Computer和TimeCreated.SystemTime作为observer_host与UTC
+      event_time，Operation_New的ClientMachine、ClientMachineFQDN、ClientProcessId、User、Operation、NamespaceName、OperationId、GroupOperationId、CorrelationId和IsLocal分别映射客户端名、十进制client_pid、query_user、operation_text、namespace及操作键，保持client与observer不同。解析实际ExecQuery/WQL中的Win32_Service与root/cimv2；仅命名空间授权、5857加载、5858错误或Provider::CreateInstanceEnum不能单独替代原始客户端请求，ExecMethod/start/stop分流为独立动作。
+    en: First validate and enable Microsoft-Windows-WMI-Activity/Trace for the target Windows version. Use event 11 raw XML
+      System.Computer and TimeCreated.SystemTime as observer_host and UTC event_time. Map Operation_New ClientMachine, ClientMachineFQDN,
+      ClientProcessId, User, Operation, NamespaceName, OperationId, GroupOperationId, CorrelationId, and IsLocal to client
+      names, decimal client_pid, query_user, operation_text, namespace, and operation keys, keeping client distinct from observer.
+      Parse actual ExecQuery/WQL for Win32_Service in root/cimv2. Namespace authorization, 5857 loading, 5858 errors, or Provider::CreateInstanceEnum
+      alone cannot replace an original-client request; route ExecMethod/start/stop separately.
+  - zh: 客户端主机名通过独立资产别名台账按事件时点解析，只有IsLocal及名称均经验证时才使用observer本机。以实际客户端主机、client_pid和请求时间连接唯一覆盖该时间的Sysmon事件1/5生存期，映射ProcessGuid、Image、User和开始/结束时间；不把System.Execution的provider
+      PID或远端同号本机PID当客户端。ClientProcessCreationTime如出现只保留raw，不在未验证单位时用于关联。缺少历史客户端创建、别名冲突、时钟偏差或PID生存期重叠时保留client_unknown，不能用当前进程快照补造历史。
+    en: Resolve client host names through an independent event-time asset-alias register, using the observer only when IsLocal
+      and names are validated. Join the actual client host, client_pid, and request time to the unique Sysmon event 1/5 lifetime
+      covering that time, mapping ProcessGuid, Image, User, and start/end instants. Neither the provider PID in System.Execution
+      nor a same-number observer-local PID is the client. Retain ClientProcessCreationTime raw when present without using
+      an unvalidated unit for joins. Missing historical creation, conflicting aliases, clock skew, or overlapping PID lifetimes
+      produce client_unknown rather than a history invented from current snapshots.
+  - zh: 对查询文本保留类、投影和过滤，逐项比较独立作业台账中的query_user、实际客户端、客户端内容身份、目标namespace/类及有效区间；客户端创建User只作进程来源，不覆盖Trace的query_user。已见客户端请求足以给出request_observed，但无显式结果源就保持result_unknown；ExecQuery接受请求、建立枚举器、SACL成功授权或provider运行都不证明读到服务、无服务、全部字段或完整分页，也不证明GOSAR采用进程内客户端。
+    en: Preserve class, projection, and filters from query text and compare query_user, actual client, client content identity,
+      target namespace/class, and validity against an independent work register. The client's creation User is process provenance
+      rather than an override for trace query_user. An observed client request supports request_observed but results remain
+      result_unknown without an explicit result source. ExecQuery acceptance, enumerator creation, successful SACL authorization,
+      or provider execution establishes neither acquired services, no services, all fields, complete paging, nor GOSAR in-process
+      client carriage.
+  - zh: 关联OperationId必须包含observer、CorrelationId/GroupOperationId和采集session，不能把数值跨重启全局连接。健康台账记录Trace版本、启用区间、session、原始XML解析覆盖、丢失/截断、时钟误差和心跳；台账离线、身份未知或日志缺失分别保留批准未知与覆盖退化。输出请求、客户端归属和批准状态，未知不自动告警为恶意；不消费未声明的标准输出、服务状态变化或网络回传。
+    en: Scope OperationId joins by observer, CorrelationId/GroupOperationId, and capture session rather than joining numeric
+      values globally across restarts. Health records tracing version, enabled intervals, session, raw-XML parser coverage,
+      loss/truncation, skew, and heartbeat. Unavailable registers, unknown identity, and missing logs retain unknown approval
+      and degraded coverage respectively. Emit request, client attribution, and approval states without labeling unknowns
+      malicious, and consume no undeclared stdout, service-state changes, or network reporting.
+data_requirements:
+- source_type: wmi-operation-trace
+  name:
+    zh: 经版本验证并启用的WMI客户端操作Trace
+    en: Version-validated and enabled WMI client-operation tracing
+  channel: Microsoft-Windows-WMI-Activity/Trace
+  required_fields:
+  - observer_host
+  - event_time
+  - event_id
+  - client_machine
+  - client_machine_fqdn
+  - client_pid
+  - client_birth_raw
+  - query_user
+  - operation_text
+  - namespace
+  - operation_id
+  - group_operation_id
+  - correlation_id
+  - is_local
+  - capture_session
+- source_type: sysmon-client-lifecycle
+  name:
+    zh: 实际客户端主机的历史Sysmon生存期
+    en: Historical Sysmon lifetimes on actual client hosts
+  channel: Microsoft-Windows-Sysmon/Operational
+  required_fields:
+  - host_id
+  - event_time
+  - event_id
+  - process_guid
+  - process_id
+  - image
+  - process_account
+- source_type: event-time-asset-alias-register
+  name:
+    zh: 独立维护的事件时点资产别名表
+    en: Independently maintained event-time asset-alias register
+  channel: null
+  required_fields:
+  - alias
+  - canonical_host_id
+  - valid_from
+  - valid_until
+  - mapping_version
+  - mapping_status
+- source_type: approved-management-inquiry-register
+  name:
+    zh: 外部维护的WMI服务查询批准台账
+    en: Externally maintained WMI service-query approval register
+  channel: null
+  required_fields:
+  - register_version
+  - register_status
+  - owner
+  - client_host_id
+  - principal_name
+  - content_identity
+  - target_scope
+  - inquiry_scope
+  - valid_from
+  - valid_until
+- source_type: collection-health-register
+  name:
+    zh: Trace与客户端生存期采集健康台账
+    en: Trace and client-lifetime collection-health register
+  channel: null
+  required_fields:
+  - host_id
+  - channel
+  - collector_version
+  - configuration_version
+  - enabled_from
+  - enabled_until
+  - capture_session
+  - xml_parser_coverage
+  - dropped_count
+  - truncated_count
+  - clock_skew_bound_ms
+  - last_heartbeat
+observables:
+- zh: 原始客户端Trace请求Win32_Service，投影与过滤限定实际请求范围。
+  en: Original-client tracing requests Win32_Service with projection and filters constraining requested scope.
+- zh: 原始客户端与批准namespace、职责或查询范围不符，但provider正常身份不作放行条件。
+  en: The original client differs from approved namespaces, duties, or query scope without normal provider identity becoming
+    an allow condition.
+correlation:
+  window:
+    zh: 使用查询时点唯一客户端生存期和有效别名映射，操作键限同一Trace session；五分钟仅供同客户端请求排序。
+    en: Use the unique client lifetime and valid alias mapping at query time, scoping operation keys to one trace session;
+      five minutes serves only same-client request ranking.
+  dimensions:
+  - observer_host
+  - capture_session
+  - correlation_id
+  - group_operation_id
+  - operation_id
+  - client_host_id
+  - client_pid
+  - process_guid
+  - query_user
+  - namespace
+false_positives:
+- zh: 监控、配置管理、服务支持和资产盘点正常执行服务类查询。
+  en: Monitoring, configuration management, service support, and inventory legitimately query service classes.
+- zh: 合法代理升级改变映像身份，历史资产别名或作业台账暂未更新。
+  en: Legitimate agent upgrades change image identity before asset aliases or work registers update.
+blind_spots:
+- zh: Trace未启用、版本不匹配或远端客户端历史不可得会失去归属；直接SCM不在WMI观察面。
+  en: Disabled or mismatched tracing and unavailable remote-client history lose attribution; direct SCM lies outside the WMI
+    surface.
+- zh: 无provider结果和枚举返回输入，无法确定实际条目、空集、失败或分页完整性。
+  en: Without provider-result and enumeration-return inputs, actual entries, emptiness, failures, and complete pagination
+    remain unknown.
+tuning_guidance:
+  paragraphs:
+  - zh: 用良性本地、远端与不同权限查询验证事件11字段、query_user、客户端PID重用、别名和UTC时钟范围，再按实际管理职责登记允许类与字段。不要把WmiPrvSE或root/cimv2全局白名单；保留来源未知便于补证，也不以强制拦截正常查询弥补未知。本研究只设计合同，没有运行这些验证。
+    en: Validate event 11 fields, query_user, reused client PIDs, aliases, and UTC clock bounds with benign local, remote,
+      and differently authorized queries before registering classes and fields by actual duties. Do not globally allow WmiPrvSE
+      or root/cimv2. Preserve unknown origins for enrichment rather than compensating with forced blocking of normal queries.
+      This research designs the contract without running those checks.
+evidence_refs:
+- REF-001406
+- REF-001309
+- REF-001310
+- REF-001306
+- REF-001307
+- REF-000230
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-11-08'
+  modified: '2026-11-08'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

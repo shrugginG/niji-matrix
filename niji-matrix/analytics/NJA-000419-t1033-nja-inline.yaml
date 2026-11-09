@@ -1,0 +1,225 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000419
+strategy_ref: DET-000300
+name:
+  zh: 插桩身份读取与内联任务来源分析
+  en: Instrumented Identity Reads and Inline-Task Origin Analysis
+summary:
+  zh: 在明确插桩范围内关联具体身份调用、句柄来源、任务入口和实际返回，区分进程SID与线程名称。
+  en: Within explicitly instrumented scope, join identity calls, handle origins, task entry, and actual returns while separating
+    process SIDs from thread names.
+domains:
+- enterprise
+platforms:
+- windows
+logic:
+  paragraphs:
+  - zh: 本分析依赖额外部署的受控Windows调用与任务采集器，不声称系统日志或默认EDR提供这些字段。采集器在指定进程架构内对OpenProcessToken、OpenThreadToken、句柄复制与关闭、GetTokenInformation及GetUserNameExA/W保留调用进入和返回；分派器或受控分析环境在实际任务入口与退出记录task_id、代码内容哈希、入口地址、宿主出生实例、线程和单调序列。只有观察到同一task_id在既有实例内执行具体身份读取，且代码和分派语义与内联承载一致，才标记inline_carriage_observed。只有宿主较老或没有新进程事件不能满足此条件；未知分派器和未关联入口保持承载未知。每类API不适用的输入字段置null，未捕获字段标为unknown，二者不能互相替代。
+    en: This analytic requires an additionally deployed controlled Windows call and task collector, not system logs or assumed
+      default EDR fields. Within specified process architectures, preserve entry and return for OpenProcessToken, OpenThreadToken,
+      handle duplication and closure, GetTokenInformation, and GetUserNameExA/W. At actual task entry and exit, a dispatcher
+      or controlled analysis environment records task_id, code-content hash, entry address, host birth instance, thread, and
+      monotonic sequence. Mark inline_carriage_observed only when the same task_id positively executes identity reads inside
+      an existing instance and its code and dispatch semantics establish inline carriage. An old host or absent creation event
+      is insufficient; unknown dispatchers and unjoined entries leave carriage unknown. Set fields inapplicable to an API
+      to null and uncaptured fields to unknown, keeping the states distinct.
+  - zh: 句柄映射键为host_id、process_instance、handle_value和handle_generation，记录创建API、源进程或线程、令牌类别、请求权限与关闭序列；复制要追踪来源，缺少来源不得默认自身令牌。对GetTokenInformation，仅TokenInformationClass=TokenUser的成功返回属于此身份结果，TokenGroups和TokenPrivileges另作相邻事实。BOOL非零后按ReturnLength字节、采集buffer_capacity和captured_bytes确认完整缓冲区，验证TOKEN_USER.User.Sid及其边界后复制SID值；不把进程内指针当身份。首次零长缓冲的ERROR_INSUFFICIENT_BUFFER通常是探测长度，须同线程后续调用单独记录，不能充当已取得SID。失败、权限拒绝、无映射和截断分别输出状态，不从TOKEN_QUERY授权推断读取成功。
+    en: Key handle lineage by host_id, process_instance, handle_value, and handle_generation, preserving creation API, source
+      process or thread, token class, requested access rights, and close sequence. Trace duplication origins and never default
+      an unresolved handle to the current token. For GetTokenInformation, only a successful TokenInformationClass=TokenUser
+      return is this identity result; TokenGroups and TokenPrivileges remain adjacent facts. After nonzero BOOL success, use
+      ReturnLength in bytes, buffer_capacity, and captured_bytes to verify completeness, validate TOKEN_USER.User.Sid and
+      buffer bounds, and copy the SID value rather than treating a process pointer as identity. ERROR_INSUFFICIENT_BUFFER
+      from an initial zero-length probe is a sizing request, requiring a separately observed subsequent call. Failure, denial,
+      unresolved lineage, and truncation receive distinct states; TOKEN_QUERY authorization does not establish a successful
+      read.
+  - zh: GetUserNameEx记录NameFormat、A/W变体、缓冲区容量、输入与输出nSize、BOOLEAN返回、失败时即时GetLastError及实际捕获字节。成功名称长度按该接口的TCHAR数且不含终止符解释，A变体保留实际代码页，W变体为UTF-16；ERROR_MORE_DATA只表示缓冲区不足，保留原始长度并按经本地验证的变体单位处理，不用失败缓冲区拼出名称。ERROR_NONE_MAPPED与ERROR_NO_SUCH_DOMAIN不表示账户不存在。将结果标为calling_thread_name，将TokenUser按句柄标为process_token_sid或thread_token_sid；即使工具把名称与SID打印同行也不合并，更不据此宣称人类操作者已识别。当前契约不消费WTS、WMI、环境或stdout结果，不能外推这些接口的成功、空集或分页。成功调用不解释遗留GetLastError，只在失败时即时保存。
+    en: For GetUserNameEx, record NameFormat, A/W variant, buffer capacity, input and output nSize, BOOLEAN result, immediate
+      failure GetLastError, and actually captured bytes. Interpret successful name length as this API's TCHAR count excluding
+      the terminator, retain the actual code page for A and UTF-16 for W. ERROR_MORE_DATA establishes only insufficiency;
+      preserve the raw size and apply locally validated variant units rather than constructing a name from a failed buffer.
+      ERROR_NONE_MAPPED and ERROR_NO_SUCH_DOMAIN do not establish account absence. Label names calling_thread_name and TokenUser
+      as process_token_sid or thread_token_sid according to handle origin. Never merge them because a tool prints them on
+      one row or claim identification of a human operator. This contract consumes no WTS, WMI, environment, or stdout results
+      and cannot infer their success, empty sets, or pagination. Ignore stale GetLastError after success and preserve it immediately
+      only on failure.
+  - zh: 将同线程调用序列和task_id连接到明确出生的进程实例，并按任务进入至退出的区间核对批准代码哈希、宿主、主体与有效期。调用进入未见返回时保留request_only，取得SID或名称时分别标记result_observed，承载已证实且无对应批准时提出内联身份调查核查线索；批准未知不是恶意结论。采集器健康记录需给出hook与任务覆盖版本、架构、启用区间、时钟与单调序列映射、丢失和截断计数，缺口影响的句柄与任务均降为未知。每个输入的UTC时间用于跨源展示，单调序列用于同进程先后关系；不能用名称变化推断身份切换，也不能以无事件证明查询未发生。host_id来自采集器部署标识，boot_instance记录启动实例，process_instance由host_id、boot_instance、PID与process_birth_time共同确定。
+    en: Join same-thread call sequences and task_id to a positively identified process birth instance, checking approved code
+      hash, host, principal, and validity over actual task entry-to-exit intervals. Entry without return remains request_only;
+      captured SID and name independently become result_observed. Proven carriage outside matched approval produces an inline
+      identity-inquiry lead, while unknown approval does not establish maliciousness. Collector health must state hook and
+      task-coverage version, architecture, enabled intervals, clock-to-monotonic mapping, loss, and truncation. Affected handles
+      and tasks degrade to unknown. UTC instants support cross-source display and monotonic sequences order in-process events.
+      A changed name does not prove identity transition, and absent events do not prove no inquiry. host_id comes from collector
+      enrollment, boot_instance identifies a boot, and host_id, boot_instance, PID, and process_birth_time together determine
+      process_instance.
+data_requirements:
+- source_type: custom-identity-api-trace
+  name:
+    zh: 额外部署的身份调用进入与返回插桩
+    en: Additionally deployed identity-call entry and return instrumentation
+  channel: null
+  required_fields:
+  - host_id
+  - process_instance
+  - thread_id
+  - task_id
+  - call_id
+  - event_time
+  - monotonic_sequence
+  - api_name
+  - api_variant
+  - token_information_class
+  - handle_value
+  - handle_generation
+  - name_format
+  - buffer_capacity
+  - input_size
+  - output_size
+  - size_unit
+  - captured_bytes
+  - capture_complete
+  - native_return
+  - last_error
+  - sid_value
+  - name_value
+  - code_page
+- source_type: custom-token-handle-lineage
+  name:
+    zh: 额外部署的令牌句柄代际与来源映射
+    en: Additionally deployed token-handle generations and provenance
+  channel: null
+  required_fields:
+  - host_id
+  - process_instance
+  - handle_value
+  - handle_generation
+  - creation_api
+  - source_process_instance
+  - source_thread_id
+  - token_kind
+  - requested_access
+  - opened_sequence
+  - closed_sequence
+  - provenance_status
+- source_type: custom-task-execution-lineage
+  name:
+    zh: 经验证分派器或分析环境的任务入口与退出
+    en: Validated dispatcher or analysis-environment task entry and exit
+  channel: null
+  required_fields:
+  - host_id
+  - process_instance
+  - thread_id
+  - task_id
+  - code_hash
+  - entry_address
+  - entry_sequence
+  - exit_sequence
+  - event_time
+  - carriage_evidence
+- source_type: custom-instrumented-process-lifecycle
+  name:
+    zh: 同一采集器记录的主机与进程出生实例
+    en: Host and process birth instances from the same collector
+  channel: null
+  required_fields:
+  - host_id
+  - boot_instance
+  - process_instance
+  - process_id
+  - process_birth_time
+  - process_exit_time
+  - image
+  - process_account
+- source_type: approved-inline-identity-task-register
+  name:
+    zh: 外部维护的内联身份任务批准表
+    en: Externally maintained inline identity-task approval register
+  channel: null
+  required_fields:
+  - register_version
+  - register_status
+  - owner
+  - host_id
+  - principal_name
+  - approved_code_hash
+  - approved_host_image
+  - valid_from
+  - valid_until
+- source_type: custom-instrumentation-health
+  name:
+    zh: 自定义插桩覆盖与健康记录
+    en: Custom instrumentation coverage and health
+  channel: null
+  required_fields:
+  - host_id
+  - collector_version
+  - architecture
+  - hook_coverage
+  - task_entry_coverage
+  - enabled_from
+  - enabled_until
+  - monotonic_utc_mapping
+  - clock_skew_bound_ms
+  - dropped_count
+  - truncated_count
+  - last_heartbeat
+observables:
+- zh: 具体TokenUser查询返回带已验证来源的SID，或GetUserNameEx返回独立的线程名称。
+  en: A concrete TokenUser query returns a SID with validated provenance, or GetUserNameEx independently returns a thread
+    name.
+- zh: 同一task_id在既有受控执行实例的正面入口证据，不能用缺失工具事件代替。
+  en: Positive task_id entry evidence inside an existing controlled instance, without substituting missing utility events.
+- zh: 句柄来源、返回状态或采集完整性不足时明确保留未知，而不是自动补成宿主身份。
+  en: Incomplete handle origin, return status, or capture stays unknown instead of being filled with the host account.
+correlation:
+  window:
+    zh: 以实际任务进入至退出和句柄打开至关闭区间关联；失去退出或关闭时只保留已证实前缀，不以固定超时认定完整。
+    en: Correlate over actual task entry-to-exit and handle open-to-close intervals; missing exit or close preserves only
+      the proven prefix, not completeness inferred from a timeout.
+  dimensions:
+  - host_id
+  - process_instance
+  - thread_id
+  - task_id
+  - call_id
+  - handle_value
+  - handle_generation
+  - monotonic_sequence
+false_positives:
+- zh: 合法认证组件、远程支持代理、插件及授权代码在现有宿主中读取身份。
+  en: Legitimate authentication components, support agents, plugins, and authorization code read identity inside existing
+    hosts.
+- zh: 受控红队或分析环境故意运行已批准内联身份任务。
+  en: Authorized red teams and analysis environments deliberately run approved inline identity tasks.
+blind_spots:
+- zh: 没有该额外采集器时本分析不可用；未覆盖接口、架构或任务分派器不应自动归为阴性。
+  en: The analytic is unavailable without the additional collector; uncovered interfaces, architectures, and dispatchers are
+    not negative results.
+- zh: 句柄映射丢失、直接读取缓存、采集器被干扰或返回脱敏会使结果及来源不可解释。
+  en: Lost handle lineage, direct cache reads, collector interference, and redacted returns can make results or provenance
+    uninterpretable.
+tuning_guidance:
+  paragraphs:
+  - zh: 先用合法自身份查询验证成功、长度探测、缓冲区不足、进程与线程令牌、模拟名称差异、句柄重用和丢事件的状态机，明确支持的架构与getter范围。保留精确任务代码批准与到期例外，不能整体放行长寿命代理或将所有TokenUser调用判恶意。该验收是部署要求，本次仅静态核查文档与源码，未进行插桩、模拟或端点测试。
+    en: First validate the state model with benign self-identity checks covering success, sizing probes, insufficiency, process
+      and thread tokens, impersonated-name differences, handle reuse, and event loss. State supported architectures and getters
+      explicitly. Preserve exact task-code approval and expiring exceptions rather than allowing all long-lived agents or
+      flagging every TokenUser call. This is a deployment requirement; this research statically inspected documentation and
+      code without instrumentation, impersonation, or endpoint testing.
+evidence_refs:
+- REF-001305
+- REF-001303
+- REF-001389
+- REF-001390
+- REF-001391
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-11-08'
+  modified: '2026-11-08'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

@@ -1,0 +1,106 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000379
+strategy_ref: DET-000278
+name:
+  zh: Unix 与 macOS 共享列表命令语义判定
+  en: Unix and macOS Share-Listing Command Semantics
+summary:
+  zh: 区分远端 smbclient 清单请求与本地 sharing 只读配置枚举，并按执行上下文识别异常。
+  en: Distinguish remote smbclient inventory requests from local sharing configuration listing and identify abnormal execution
+    context.
+domains:
+- enterprise
+platforms:
+- Linux
+- macOS
+logic:
+  paragraphs:
+  - zh: Linux 预配置 execve/execveat 审计或等价进程传感器，按同一 audit serial 合并 SYSCALL、EXECVE 与 PATH 取得程序、参数和身份；macOS 使用已授权并订阅执行事件的 Endpoint
+      Security 客户端，从 exec target 与参数 helper 提取进程和 argv。解析 smbclient 的 -L/--list 及其目标，只将其分类为远程共享列表请求；直接连接 //server/share 后执行
+      ls 是已知共享内目录发现，get/mget 是读取。对 macOS 的系统 sharing，只纳入 -l 列表请求，排除 -a、-e、-r 等配置变更；本地列表不要求存在出站网络连接。
+    en: On Linux, preconfigure execve or execveat auditing or equivalent process telemetry and combine SYSCALL, EXECVE, and
+      PATH records by audit serial to recover executable, arguments, and identity. On macOS, use an authorized Endpoint Security
+      client subscribed to execution events and extract exec target and argv through the argument helpers. Parse smbclient
+      -L or --list and its target as a remote share-list request. A direct //server/share connection followed by ls is directory
+      discovery inside a known share, while get or mget is reading. For the macOS system sharing utility, match -l listing
+      and exclude configuration changes such as -a, -e, or -r; the local list does not require outbound traffic.
+  - zh: 将命令与执行用户、父进程、主机角色和批准的共享维护任务比较；非共享管理主机或由不相关业务进程触发的列表请求输出 share_query_intent。可关联远端 SRVSVC 响应或明确保存的命令输出提升结果等级，但 audit
+      exec 成功和 Endpoint Security EXEC 本身只证明程序执行。Apple 历史手册验证 sharing 列表语义，部署前仍须在目标 macOS 版本核对路径、参数及输出，不能将旧服务器手册外推为现代默认审计保证。
+    en: Compare the command with user, parent, host role, and approved share-maintenance work. Emit share_query_intent for
+      listing from a host without share-management duties or an unrelated business-process ancestry. A decoded remote response
+      or explicitly captured command output can improve result evidence, but successful audit exec and Endpoint Security EXEC
+      establish execution only. Apple's historical manual verifies sharing list semantics; verify path, arguments, and output
+      on the deployed macOS version rather than treating the old server manual as a modern default-auditing guarantee.
+data_requirements:
+- source_type: unix-process-execution
+  name:
+    zh: Linux 审计或 macOS Endpoint Security 的规范化执行事件
+    en: Normalized Linux audit or macOS Endpoint Security execution events
+  channel: Linux audit SYSCALL/EXECVE/PATH or macOS Endpoint Security EXEC after sensor deployment
+  required_fields:
+  - event_time
+  - host
+  - event_id
+  - process_id
+  - parent_process_id
+  - executable
+  - argv
+  - execution_identity
+- source_type: approved-share-maintenance
+  name:
+    zh: 已批准共享维护工作上下文
+    en: Approved share-maintenance work context
+  channel: null
+  required_fields:
+  - owner
+  - host_role
+  - principal
+  - executable
+  - parent_context
+  - target_scope
+  - valid_until
+observables:
+- zh: smbclient -L/--list 目标与 sharing -l 本地列表
+  en: smbclient -L or --list targets and local sharing -l listings
+- zh: 列表命令与业务进程祖先、执行身份及主机职责不匹配
+  en: Listing commands inconsistent with business-process ancestry, identity, or host role
+correlation:
+  window:
+    zh: 同主机与身份十五分钟，职责基线三十天；在执行开始时关联任务窗口。
+    en: Group by host and identity for 15m against a 30d role baseline and join job windows at execution start.
+  dimensions:
+  - host
+  - event_id
+  - process_id
+  - parent_process_id
+  - execution_identity
+  - target_server
+  - job_owner
+false_positives:
+- zh: Linux 运维、文件共享诊断、Mac 文件服务器管理和合规资产盘点会执行相同命令。
+  en: Linux operations, share diagnostics, Mac file-server administration, and compliance inventories use the same commands.
+blind_spots:
+- zh: 未预配置审计、传感器丢事件、参数缺失、直接库调用及替代客户端会失去覆盖；执行事件不含返回列表，现代 sharing 参数需按版本验证。
+  en: Unconfigured auditing, sensor loss, missing argv, direct library calls, and alternate clients reduce coverage. Execution
+    events omit returned inventories, and modern sharing arguments require version validation.
+tuning_guidance:
+  paragraphs:
+  - zh: 使用测试列表、读取和共享变更分别验证解析分流及日志字段；记录 Linux audit backlog/lost 与 macOS 传感器健康。只为登记的管理员任务建立带范围与期限的例外，不以 smbclient 是系统安装软件或
+      sharing 具有 Apple 签名消除覆盖。
+    en: Test listing, reading, and share modification separately to validate routing and fields, and retain Linux audit backlog
+      or lost-event counters and macOS sensor health. Scope exceptions to registered administrative work with expiry rather
+      than excluding smbclient because it is installed or sharing because it is Apple signed.
+evidence_refs:
+- REF-001252
+- REF-001253
+- REF-001254
+- REF-000840
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-11-05'
+  modified: '2026-11-05'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

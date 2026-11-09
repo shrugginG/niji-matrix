@@ -1,0 +1,35 @@
+# Five-candidate primary admission and convergence
+
+All five complete research handoffs returned before this decision and before official allocation or canonical writing. The bounded T1040 supplemental taxonomy review also returned before the taxonomy was frozen. The primary agent read the proposed bilingual fields, child gates, defense designs and source identities independently, rather than treating file presence or parser success as semantic completion.
+
+| Candidate | Decision | Formal object | Native taxonomy |
+|---|---|---|---|
+| T1680 Local Storage Discovery | adapt | Host-visible storage objects and attributes | Five axes examined; zero formal children, deferred |
+| T1654 Log Enumeration | retain | Log sources, record queries and environment knowledge | Six axes examined; zero formal children, deferred |
+| T1046 Network Service Discovery | retain | Post-access remote-service candidates and protocol facts | One child: service-advertisement lookup substitution |
+| T1135 Network Share Discovery | retain | Server share identities and configuration, including local server queries | Six axes examined; zero formal children, deferred |
+| T1040 Network Sniffing | adapt | Passive Network-Traffic Mapping, with environment-result provenance | One capability-evidenced child: active name-enrichment suppression |
+
+The pinned Enterprise 19.1 workbook has zero ATT&CK children for each candidate. This is planning-only breadth context, never the source of Niji children or a zero-child target. Each candidate has an independent open-ended taxonomy record. The primary agent accepts the two children on different evidence levels: Bradley's firsthand intrusion report establishes an adversarial advertisement-browse operation and Apple/RFC documentation its trace path; NIST explicitly links suppressed lookups to stealthy sniffing and the pinned tcpdump manual specifies the control, supporting a capability-evidenced child without inventing field adoption. Both stealth conclusions remain medium confidence. The absence of a field Case is not itself a child veto when conclusion-level capability and causal evidence pass the remaining gates.
+
+## Cross-technique boundaries
+
+Storage facts differ from file paths, cloud-provider resource graphs and server share lists. Query locality concerns the host whose objects are visible, not whether the management request originated remotely. Provider-side volume inventories retain NJT-0139 ownership; .vmdk path-only results remain NJT-0182; raw-content bypass remains NJT-0108. FileSystem PSDrive output still needs root/result discrimination and does not automatically establish a physical disk.
+
+Log source names, query attempts, returned records and exports remain graded separately. Log clearing, suppression and credential extraction are adjacent behaviors. CloudTrail's historical ReadOnly=false selector does not make LookupEvents a write; successful empty or paged results and the API's Region/history/event-class limits remain explicit. Azure query auditing has diagnostic, caller and portal-entry constraints, so absence of LAQueryLogs cannot rule out reads. Feedback purpose does not alone define a log-acquisition child.
+
+NJT-0001 explicitly covers pre-access external reconnaissance and excludes post-access internal discovery. The T1046 parent therefore has a substantive existing-foothold and remote-service-information boundary rather than a copied tactic label. Its advertisement child changes the acquisition plane, with different same-link query-response evidence and publication controls; it does not recreate the five NJT-0001 children. Queries may reach the service host itself. Advertised instances, resolved endpoints, listener responses, protocol identity and vulnerability remain different facts.
+
+Share inventory differs from local drive mappings, service-port reachability, paths in a known share and actual content acquisition under NJT-0216. Share identities do not prove effective caller access. NetShareEnum levels, ERROR_MORE_DATA, continuation and a changing live list affect result scope; no folder-level ABE claim is transferred to share enumeration. The Chinese attacker model is corrected to say the actor selects which server to query, without assuming administrative control of that server.
+
+NJT-0176 remains credential-result focused, including its three existing children and defenses. The new passive-environment parent does not broaden it by a tactic tag or clone those children. Active advertisement queries belong to T1046; merely receiving one's own ordinary query reply is not sniffing without an independently established observation relation. Capture deployment, received packets, analyst-interpretable facts and adversary-returned facts are different stages. DarkVishnya is not misused as a passive-environment Case, and VPNFilter reverse engineering is capability evidence only.
+
+The new name-enrichment child controls observer-generated auxiliary resolution. Positive settings, actual observation and interpretation mode are required; missing DNS or numeric display alone is insufficient. The pinned -n and -N semantics, parsing versus raw-save-only modes, caches/static mappings, named-filter lookups and packet-carried names are preserved. Standalone offline file inspection does not establish the child. Neither parent nor child requires a fabricated outcome Case, a forced DNS setting or a measured detection benefit.
+
+## Defense, content and evidence acceptance
+
+The proposed package contains seven targeted Strategies, fifteen distinct Analytics, four new Mitigations and two new applications of unchanged MIT-000186 controls. The latter reuses only capture authority, independent lifecycle and PCAP governance for environmental observations; existing credential applications and encryption effects remain intact. The enrichment child additionally requires effective interpretation settings and capture-linked result provenance, beyond the parent's lifecycle checks.
+
+Primary review corrected malformed research flow-scalar mappings, projected handoff fields into explicit schema identities, supplied complete bilingual correlation windows and conditional data requirements, removed ATT&CK breadth instructions from canonical reader prose, and separated query failures, partial returns, exposed facts and confirmed results. These are candidate-specific corrections; no prose was originated by replacing candidate names in a common template. Definitions, stealth properties, scope, scenarios, separate attacker/defender models, supported mechanisms and limitations were compared with NJT-0001 by responsibility and causal completeness.
+
+Formal objects remain draft until machine validation, duplicate/prose checks, bundles, Web tests and actual bilingual pages pass. Only then do they move to review. Human domain review and real Windows/Linux/device/cloud deployment experiments remain separate and unperformed. This delivery does not close TA0007 or authorize work on a sixth candidate.

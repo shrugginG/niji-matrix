@@ -1,0 +1,161 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000377
+strategy_ref: DET-000277
+name:
+  zh: 服务类型查询、公告实例与可选后继访问关联分析
+  en: Service-Type Query Advertisement Instance and Optional Successor Access Correlation
+summary:
+  zh: 识别职责外主动服务浏览，并保留实例可见、端点解析和后继访问的分级证据。
+  en: Identify role-deviant active service browsing while retaining graded evidence for visible instances, endpoint resolution,
+    and successor access.
+domains:
+- enterprise
+platforms:
+- macOS
+- Windows
+- Linux
+- Network Devices
+logic:
+  paragraphs:
+  - zh: 在浏览者实际链路部署经验证可解码 DNS-SD 的抓包或等价传感器，覆盖 UDP 5353 的 IPv4 与 IPv6 组播及实际单播浏览路径；先以发出 PTR 类型或服务实例解析查询的设备形成 browse_attempt。按链路、时间、记录名与服务类型关联
+      PTR 公告实例，并连接相应 SRV 和地址记录；组播应答使用语义与时间关联而不是单凭 transaction ID。观察到相关应答只输出 instance_advertisement_visible，完整主机、端口和地址映射才能输出
+      endpoint_resolved_visible，均不证明某个应用已消费结果。只有可信客户端输出或请求级遥测明确记录结果时，才另记 result_acquisition_confirmed。
+    en: Deploy packet capture or equivalent telemetry with validated DNS-SD decoding on the browser's actual link, covering
+      IPv4 and IPv6 UDP 5353 multicast and the actual unicast browsing path. Create browse_attempt for a device emitting a
+      service-type PTR or instance-resolution query. Associate PTR advertisements by link, time, record name, and service
+      type, then join corresponding SRV and address records. Match multicast responses semantically and temporally rather
+      than by transaction ID alone. A related response yields only instance_advertisement_visible; a complete host, port,
+      and address mapping yields endpoint_resolved_visible. Neither proves application consumption. Record result_acquisition_confirmed
+      only when trusted client output or request-level telemetry explicitly records the result.
+  - zh: 将所查服务类型和浏览域与事件时设备职责、批准发现网关或运维作业比较。单次查询也可在类型与职责不符且来源会话异常时进入审阅，不要求端口扇出或多种类型。若十分钟内同设备连接刚解析的候选端点，附加 successor_connection
+      并按独立连接证据分级；这是增强上下文，不是发现成立的必要门槛。没有结果记录时维持查询尝试等级，没有后继连接时维持服务浏览线索。共享 mDNSResponder 的包不能直接归因到请求进程，必须保留 request_application_unknown，除非有独立请求级证据。
+    en: Compare requested service types and browsing domains with event-time device roles and approved discovery gateways
+      or administrative jobs. Even one query can merit review when type and role disagree and the source session is unusual;
+      port fan-out and multiple service types are not prerequisites. If the same device connects to a newly resolved candidate
+      within ten minutes, append successor_connection and grade it using independent connection evidence. This enriches context
+      rather than becoming a prerequisite for discovery. Without result records preserve the query-attempt level, and without
+      a successor preserve the browse lead. Packets emitted by shared mDNSResponder cannot identify the requesting process;
+      retain request_application_unknown unless independent request-level evidence exists.
+data_requirements:
+- source_type: service-advertisement-packet-records
+  name:
+    zh: 同发现域的查询和公告记录
+    en: Queries and Advertisements in the Actual Discovery Domain
+  channel: Same-link PCAP or validated DNS-SD decoder on the actual discovery gateway
+  required_fields:
+  - timestamp
+  - sensor_id
+  - link_or_vlan
+  - source_ip
+  - destination_ip
+  - source_port
+  - destination_port
+  - dns_message_role
+  - query_name
+  - query_type
+  - record_name
+  - record_type
+  - record_data
+  - record_ttl
+- source_type: discovery-role-and-client-address-map
+  name:
+    zh: 客户端地址职责与批准浏览范围
+    en: Client Address Role and Approved Browsing Scope
+  channel: CMDB and time-aware DHCP or network-access mapping plus discovery policy inventory
+  required_fields:
+  - device_id
+  - ip_address
+  - valid_from
+  - valid_to
+  - link_or_vlan
+  - device_role
+  - approved_service_types
+  - approved_browsing_domains
+  - approved_job_window
+- source_type: optional-successor-connection
+  name:
+    zh: 启用后继关联时的独立连接记录
+    en: Independent connections when successor correlation is enabled
+  channel: Zeek conn.log or equivalently validated connection telemetry
+  required_fields:
+  - timestamp
+  - connection_uid
+  - source_ip
+  - source_port
+  - destination_ip
+  - destination_port
+  - connection_state
+  - transport_history
+- source_type: optional-client-browse-result
+  name:
+    zh: 启用结果确认时的可信客户端输出
+    en: Trusted client output when result confirmation is enabled
+  channel: Separately deployed validated client-output or request-level collector
+  required_fields:
+  - device_id
+  - observed_time
+  - request_context
+  - service_type
+  - browsing_domain
+  - returned_instances
+  - result_scope
+  - collector_identity
+observables:
+- zh: 与设备职责或批准浏览域不一致的主动服务类型查询
+  en: Active service-type queries inconsistent with device role or approved browsing domains
+- zh: 查询、PTR 实例和 SRV 或地址记录之间的语义关系及保留的关联不确定性
+  en: Semantic relationships among queries, PTR instances, and SRV or address records, with association uncertainty retained
+- zh: 同设备可选的后继端点访问，或独立记录的客户端返回结果
+  en: Optional successor endpoint access by the same device or independently recorded client results
+correlation:
+  window:
+    zh: 查询与公告关联初始五分钟，可选后继访问十分钟，设备职责基线七天；按链路时延与缓存行为验证时窗。
+    en: Start with five minutes for query-advertisement association, ten minutes for optional successor access, and seven
+      days of device-role baseline; validate windows against link delay and caching.
+  dimensions:
+  - device_id
+  - link_or_vlan
+  - service_type
+  - browsing_domain
+  - instance_name
+  - record_name
+  - candidate_endpoint
+  - timestamp
+false_positives:
+- zh: 打印、媒体、共享与远程协助客户端的正常服务浏览
+  en: Ordinary printing, media, sharing, and remote-assistance clients browsing services
+- zh: 管理员诊断、发现网关的定期活动查询或新设备首次接入
+  en: Administrator diagnostics, periodic active discovery-gateway queries, or first connection of a new device
+blind_spots:
+- zh: 只有递归 DNS、互联网出口或未镜像本地 VLAN 的防火墙日志时可能完全看不到 mDNS
+  en: Recursive DNS, Internet egress, or firewall logs without local-VLAN mirroring can completely miss mDNS
+- zh: 缓存、已知应答抑制与组播共享响应使查询应答不能可靠一一配对，包可见不等于进程消费
+  en: Caching, known-answer suppression, and shared multicast replies prevent reliable one-to-one pairing; packet visibility
+    does not establish process consumption
+- zh: 共享守护进程、重放、伪造公告和地址历史缺失限制请求应用与真实服务身份的归因
+  en: Shared daemons, replay, forged advertisements, and missing address history limit requesting-application and true-service
+    attribution
+tuning_guidance:
+  paragraphs:
+  - zh: 先用批准客户端在真实链路验证查询、应答、解析和实际连接四种状态确实分开保留，再启用用途偏离规则。按 VLAN、设备角色、服务类型和时间限定批准例外，不能把全部 Bonjour、全部 5353 或全部内网来源直接放行。service_type
+      稀有只作排序信号；共享组播应答无法唯一关联时保存候选集合，不强行指定查询进程或成功结果。
+    en: First use approved clients on the real link to verify separate retention of querying, advertisements, resolution,
+      and actual connections before enabling purpose-deviation rules. Bound exceptions by VLAN, device role, service type,
+      and time rather than allowing all Bonjour, all port 5353, or all internal sources. Service-type rarity is a ranking
+      signal only. Preserve candidate sets when shared multicast responses cannot be uniquely associated instead of assigning
+      a requesting process or successful result.
+evidence_refs:
+- REF-001239
+- REF-001240
+- REF-001242
+- REF-001241
+- REF-000634
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-11-05'
+  modified: '2026-11-05'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

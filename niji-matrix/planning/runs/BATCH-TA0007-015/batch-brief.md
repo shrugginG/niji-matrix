@@ -1,0 +1,39 @@
+# BATCH-TA0007-015 — next five Discovery candidates
+
+## Program and delivery scope
+
+The user requests five more TA0007 Discovery candidates after the accepted T1615 single-candidate pilot. The fixed baseline remains MITRE ATT&CK Enterprise 19.1 in matrix.yaml. Before this delivery, the complete 34-parent inventory has 13 admission decisions, twelve formal TA0007 techniques, four formal NJS and one exclusion; twenty-one candidates await admission. The current subset is T1680 Local Storage Discovery, T1654 Log Enumeration, T1046 Network Service Discovery, T1135 Network Share Discovery and T1040 Network Sniffing, fixed inventory positions 14 through 18.
+
+The previous batch BATCH-TA0007-006 passed content/planning validation with zero errors or warnings, duplicate and prose audits, twelve infrastructure tests, 140 Web tests, bundle construction and fourteen actual bilingual browser checks, with no unexplained reserved IDs. A fresh quality preflight is run before integration here. Existing unrelated TA0006 and prior TA0007 work must be preserved.
+
+This is a justified five-candidate delivery under the user's maximum-five rule. All five fixed parents have zero ATT&CK children, so no numeric high-breadth trigger applies. Their discovery objects must be compared together: storage-device/volume facts, log sources/records, remotely available services, available network shares and passively observed network facts. Each candidate nevertheless receives its own researcher, evidence and admission decision, native-taxonomy record, bilingual field-depth review and defense review. Shared convergence does not permit name-substitution prose or pooled evidence. If unexpected complexity prevents an independent gate, shrink the canonical delivery and complete the remaining scope as sequential batches in this same task.
+
+The previously unstarted planned scopes 007 and 008 are absorbed into active batch 015, which already held T1680 and T1654. This changes delivery coordination only. No candidate outside these five enters canonical writing.
+
+## Information objects and neighboring boundaries
+
+T1680 concerns local drives, disks, volumes and attributes, not arbitrary file/path listing, remote share enumeration, volume-content collection or encryption/destruction. A returned size, free-space measure or volume identity differs from merely opening a disk handle. Local Storage Discovery must be compared with NJT-0182 and collection/impact neighbors.
+
+T1654 concerns identifying/querying log sources or obtaining log records for environmental knowledge. Distinguish channel enumeration, record-query attempts, returned records, exported files, log deletion/tampering and credential extraction. Security-alert feedback must not automatically become a child without a supported stealth variable and observation difference. Existing ESET ComRAT sources may support particular observations but not unreported outcomes.
+
+T1046 concerns remotely available network services inside an accessed environment. TCP reachability, completed handshakes, protocol/service identification and vulnerability conclusions are different evidence levels. Explicitly compare NJT-0001 Active Scanning and its native children, plus existing active/passive enumeration and management-query objects. Do not duplicate the same parent or child solely because the tactic or ATT&CK source differs; propose defensible reuse, adaptation, separation or exclusion before allocation.
+
+T1135 concerns available shared folders/resources, rather than remote-host discovery, service availability, share access authorization, mapped-drive presence or actual file-content acquisition. NetShareEnum/SRVSVC enumeration and SMB file reads expose different observations. Compare existing network-share collection objects and their 5140/5145/4663 caveats; connection or permission checks do not by themselves prove enumeration results.
+
+T1040 concerns passive network observation for environmental knowledge. Existing NJT-0176 under TA0006 is deliberately credential-focused; inspect its complete content and defenses before proposing reuse or expansion. Packet capture capability, an active capture session, captured payload, extracted credentials and environmental facts are distinct outcomes. Preserve the meaning and acceptance gates of existing credential-specific children, evidence and defenses. No broadening through a tactic tag alone.
+
+## Evidence, taxonomy and library governance
+
+Use the local fixed workbook extraction in fixed-baseline-inventory.json as the pinned parent/tactic/child anchor. Current ATT&CK pages may help source discovery, but do not silently migrate the baseline. Zero ATT&CK children is an open-ended native-taxonomy search obligation, never a zero-child conclusion or a quota. Examine materially different candidate stealth axes and record stable variables, trace differences, defender effects, prerequisites, evidence limits and defense value. Interfaces, products, file names and target types do not alone define NJS. Defer unsupported axes rather than manufacture detail.
+
+The fixed parent source anchors behavior only. Verify primary technical documentation and firsthand incident reporting at the level of each material conclusion. Separate documented capability, observed adversarial use, inferred observation effect and measured evasion. Never turn missing default auditing into proven attacker-selected invisibility, or use a process launch, handle open, authorization event or successful connection as proof of a complete information result.
+
+References, Claims, Cases, Strategies, Analytics, Mitigations and Relationships are shared canonical libraries. Researchers may cite confirmed existing IDs and propose temporary keys B015-<ATTACK-ID>-<KIND>-<KEY>. They must not reserve IDs or modify the matrix, canonical libraries, reservations or tactic plan. Only the primary agent resolves reuse/extend/create/split/defer, allocates IDs and writes canonical objects after all five complete handoffs return. Same-publication article/PDF variants require bibliographic identity review; same report does not make different observed events the same Case.
+
+## Research waves and acceptance
+
+Wave one: independent T1680, T1654 and T1046 research. Wave two: independent T1135 and T1040 research. Each researcher handles one parent only, reads the skill, field/defense specifications and NJT-0001 exemplar, browses primary sources and writes only its own T<id>-research-handoff.yaml and supporting research below this run directory. Follow planning/templates/technique-research-handoff.yaml, explicitly including complete bilingual proposed fields, evidence/source identities, admission, six-step causal review where applicable, taxonomy breadth/dispositions and target-specific implementable DET/NJA/MIT proposals. No nested agents.
+
+The primary agent waits for all five handoffs, compares cross-technique and existing-parent/child boundaries, calibrates mechanisms, performs shared-library identity review and independently checks prose, data availability and control effects. Formal objects stay draft until accepted; then remain review pending human domain approval. Candidate count does not guarantee NJT/NJS count. Scripts may serialize reviewed content and perform mechanical validation/build/ID work, never originate semantic conclusions through repeated name substitution.
+
+Acceptance includes candidate-specific evidence/taxonomy/depth/bilingual/defense gates, shared duplicate review, ID sync, make quality, each admitted bundle, npm test and actual Chinese/English parent, child and defense page inspection. Record checks, deferred hypotheses, exact new/reused/extended objects and updated TA0007 counts in the batch summary. Complete the requested five-candidate scope without advancing to a sixth candidate.

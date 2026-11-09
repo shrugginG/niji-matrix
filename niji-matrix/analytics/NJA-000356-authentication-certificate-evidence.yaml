@@ -1,0 +1,130 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000356
+strategy_ref: DET-000265
+name:
+  zh: 批准范围外认证证书签发关联
+  en: Out-of-Approval-Scope Authentication-Certificate Issuance Correlation
+summary:
+  zh: 把认证证书签发结果与请求控制、主体绑定和历史批准范围关联，分开记录材料与认证结果。
+  en: Join authentication-certificate issuance to request control, subject binding, and historical approval scope while preserving separate
+    material and authentication outcomes.
+domains:
+- enterprise
+platforms:
+- Windows
+logic:
+  paragraphs:
+  - zh: 以 CA 实例标识和 Request ID 连接 4886/4887、只读 CA 数据库记录与返回证书。由原始证书解析用途、SAN、EKU、序列号和规范指纹，并按请求时有效的映射规则解析目标主体。对照请求者或 Enrollment Agent 获准主体人群、模板、来源和批准单，标记配置允许但组织未批准的组合。旧版事件字段不足时依赖数据库补齐，不假设所有
+      4887 原生含模板、SAN 或序列号。
+    en: Join events 4886/4887, read-only CA database records, and returned certificates by CA instance and request ID. Parse purpose, SAN,
+      EKU, serial number, and normalized fingerprint from the raw certificate and resolve the target principal under mappings effective at
+      request time. Compare requester or Enrollment Agent authority over subjects, templates, origins, and approval records to identify combinations
+      technically allowed but organizationally unapproved. Enrich older events from the database rather than assuming every 4887 contains
+      a template, SAN, or serial number.
+  - zh: 中继分支补充已验证的 Web Enrollment 接入来源与认证身份；CSR 自报主机不当作可信来源，IIS 无精确 Request ID 时仅保留带置信度的时间/身份关联。请求或弱模板只产生 preparation_only；已签发证书产生 issuance_anomaly；材料返回与对应私钥控制有独立证据后才为
+      acquisition_supported；匹配的成功 4768 另记 authentication_accepted，资源访问仍需后继日志。分析本身提出调查线索，不仅凭请求者与 SAN 不同就判定恶意。
+    en: For relay, add verified enrollment ingress origin and authenticated identity. Do not trust a host name self-reported in a CSR; without
+      an exact request ID in IIS, retain time-and-identity correlation with its confidence. A request or weak template emits preparation_only;
+      an issued certificate emits issuance_anomaly; independent evidence of return and corresponding key control is required for acquisition_supported.
+      A matching successful 4768 separately records authentication_accepted, while resource access requires successor logs. The analytic
+      produces investigative leads and does not classify differing requester and SAN alone as malicious.
+data_requirements:
+- source_type: ca-request-audit
+  name:
+    zh: CA 请求与签发事件
+    en: CA Request and Issuance Events
+  channel: Windows Security 4886/4887; locally verified XML normalization
+  required_fields:
+  - event_time
+  - event_id
+  - ca_instance_id
+  - request_id
+- source_type: ca-request-certificate-inventory
+  name:
+    zh: CA 数据库与证书解析补充
+    en: CA Database and Certificate Parsing Enrichment
+  channel: Validated read-only CA database collector and DER certificate parser
+  required_fields:
+  - ca_instance_id
+  - request_id
+  - requester_name
+  - disposition
+  - raw_certificate
+  - certificate_fingerprint
+  - fingerprint_algorithm
+  - issuer_identity
+  - serial_number
+  - subject
+  - san
+  - eku
+  - not_before
+  - not_after
+- source_type: enrollment-authority-history
+  name:
+    zh: 历史注册批准与代理范围
+    en: Historical Enrollment Approval and Delegation Scope
+  channel: null
+  required_fields:
+  - requester_or_agent
+  - allowed_subject_population
+  - allowed_template
+  - approved_source
+  - approval_id
+  - effective_from
+  - effective_to
+observables:
+- zh: 签发主体超出请求者或代理批准范围
+  en: Issued subject exceeds requester or agent approval scope
+- zh: 被中继身份与已验证接入来源不符
+  en: Relayed identity differs from verified ingress provenance
+- zh: 认证材料结果与后继证书接受分别成立
+  en: Material outcome and successor certificate acceptance are separately supported
+correlation:
+  window:
+    zh: 请求至首次使用先以 24 小时作本地演练起点，按审批/自动注册延迟调整；历史授权按请求发生时间查证，该数值不是通用检测阈值。
+    en: Use 24 hours from request to initial use as a locally tested starting point, adjusted for approval and autoenrollment delay; evaluate
+      authority at request time. This is not a universal detection threshold.
+  dimensions:
+  - ca_instance_id
+  - request_id
+  - requester_name
+  - certificate_fingerprint
+  - fingerprint_algorithm
+  - issuer_identity
+  - serial_number
+  - subject
+false_positives:
+- zh: 合法代理注册、集中设备部署、自动续期、灾备和迁移可使请求者与主体不同；核对精确代理人群、来源和批准窗口。
+  en: Authorized delegation, centralized deployment, renewal, recovery, and migration can use different requester and subject identities;
+    validate exact delegated populations, origins, and approval windows.
+blind_spots:
+- zh: CA 或批准库存失守、数据库清理、缺少原始证书及旧事件缺字段会限制关联；NAT/代理与 IIS 无 Request ID 可使来源仅有弱相关性。
+  en: Compromised CA or approval inventory, database pruning, absent raw certificates, and older event fields limit correlation; NAT, proxies,
+    and missing IIS request IDs can leave only weak origin correlation.
+- zh: 当前强映射、模板和补丁状态可能拒绝历史演示组合；单次签发或成功 HTTP 响应不证明攻击者持有对应私钥。
+  en: Current strong mapping, template, and patch state can reject historical demonstrations; issuance or an HTTP success alone does not
+    establish adversary control of the corresponding private key.
+tuning_guidance:
+  paragraphs:
+  - zh: 先在测试 CA 验证审计策略与 CA audit filter 同时生效，并逐字段记录原生列与补充来源。按请求者、模板、目标人群、源主机和审批期限组合降权，不全局豁免管理员或常见工具。使用无生产权限的受控签发和拒绝样本验证身份映射，显式保存材料结果等级而不记录私钥。
+    en: Verify both audit policy and the CA audit filter on a test CA and document native columns and enrichment sources field by field.
+      Down-weight combinations of requester, template, subject population, source host, and approval period rather than globally exempting
+      administrators or familiar tools. Validate mappings with controlled allowed and denied requests having no production authority and
+      retain material evidence grades without logging private keys.
+evidence_refs:
+- REF-001173
+- REF-001174
+- REF-001175
+- REF-001179
+- REF-001180
+- REF-000708
+- REF-000854
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-11-05'
+  modified: '2026-11-05'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

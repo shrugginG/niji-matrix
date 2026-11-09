@@ -1,0 +1,103 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000378
+strategy_ref: DET-000278
+name:
+  zh: Windows 共享查询参数与执行职责差异
+  en: Windows Share Query Arguments and Execution-Role Difference
+summary:
+  zh: 从完整命令参数筛出查询共享资源的 Windows 原生命令，按发起进程和职责输出查询线索。
+  en: Select Windows native share-resource queries from complete arguments and emit query leads based on initiating process
+    and operational role.
+domains:
+- enterprise
+platforms:
+- Windows
+logic:
+  paragraphs:
+  - zh: 收集启用命令行策略后的客户端 4688，将记录主机、进程开始时间和 NewProcessId 联结为进程实例，保留 Creator 与可用的 Target Subject。解析 net.exe/net1.exe 的参数：view
+      必须带明确的双反斜线目标主机，share 只纳入无修改参数或只带已知共享名的只读查询。bare view、/domain 仅列主机、help、带等号的共享创建及 /delete 等变更不匹配本分析。按十五分钟聚合同一进程树与身份查询的目标，和资产管理、备份预检、迁移任务的身份、父进程及批准目标集合比较；陌生执行链访问职责外服务器或正常运维进程突然扩展查询范围时产生
+      share_query_intent 线索。
+    en: 'Collect client event 4688 with command-line auditing enabled and identify process instances by logging host, start
+      time, and NewProcessId, retaining Creator and available Target Subject context. Parse net.exe or net1.exe arguments:
+      view must have an explicit double-backslash target host, while share must be read-only, with no mutation arguments or
+      only a known share name. Bare view, domain-only host listings, help, share creation containing an equals sign, and removal
+      operations do not match. Aggregate targets over fifteen minutes by process tree and identity and compare them with approved
+      inventory, backup-precheck, and migration identities, parents, and target sets. Emit a share_query_intent lead for unfamiliar
+      execution querying servers outside its duties or an administrative process unexpectedly widening its scope.'
+  - zh: 单一敏感服务器上的职责外查询也可产生线索，不要求先达到横向多目标阈值。命令创建日志不含返回正文，退出成功也不保证存在非空清单；缺少后续结果传感器时结论保持查询意图。服务器访问审计只能补充请求来源，不可用其系统 PID 回填客户端进程。
+    en: An out-of-role query against one sensitive server can qualify without crossing a multi-target threshold. Process creation
+      contains no returned inventory, and a successful exit does not guarantee a nonempty result. Without a result sensor,
+      retain query intent. Server share auditing can enrich requester context but its system PID must not be substituted for
+      the client process.
+data_requirements:
+- source_type: windows-process-creation
+  name:
+    zh: 已启用参数的客户端进程创建审计
+    en: Client process creation auditing with arguments enabled
+  channel: Security event 4688 on the initiating client
+  required_fields:
+  - time_created
+  - computer
+  - new_process_id
+  - new_process_name
+  - process_id
+  - command_line
+  - subject_user_sid
+  - subject_logon_id
+- source_type: approved-share-query-jobs
+  name:
+    zh: 批准共享查询任务与服务器职责清单
+    en: Approved share-query jobs and server-role inventory
+  channel: null
+  required_fields:
+  - job_owner
+  - source_asset
+  - principal
+  - parent_process
+  - target_servers
+  - valid_from
+  - valid_until
+observables:
+- zh: 带明确服务器的 net view 和只读 net share 参数
+  en: Explicit-server net view and read-only net share arguments
+- zh: 查询目标与进程身份、父进程或批准任务范围的差异
+  en: Differences between query targets and approved identity, parent, or job scope
+correlation:
+  window:
+    zh: 同进程查询聚合十五分钟，按三十天职责基线比较；阈值为需试点的分析初值。
+    en: Aggregate queries for 15m and compare against a 30d role baseline; these are initial values requiring pilot validation.
+  dimensions:
+  - client_asset
+  - process_start_time
+  - process_id
+  - parent_process_id
+  - subject_logon_id
+  - principal
+  - target_server
+false_positives:
+- zh: 文件服务器故障排查、共享资产盘点、部署预检和批准迁移均可使用这些参数。
+  en: File-server troubleshooting, share inventories, deployment checks, and approved migrations can issue these arguments.
+blind_spots:
+- zh: 未开启命令行策略、截断参数或内存内 API 调用可失去查询意图；4688 不证明返回结果，PID 还需开始时间避免重用。
+  en: Missing command-line policy, truncated arguments, and in-memory API calls hide query intent. Event 4688 does not establish
+    results, and PID reuse requires process-start disambiguation.
+tuning_guidance:
+  paragraphs:
+  - zh: 在试点机验证 view 的目标解析与 share 的只读/写入分流，对运维任务仅按身份、父进程、目标集合和期限建立例外，不能永久放行 net.exe 或管理员。将单目标敏感查询与多目标扩展分别评分，保留查询线索与结果确认的分层输出。
+    en: Pilot target parsing for view and read-versus-mutation routing for share. Scope administrative exceptions by identity,
+      parent, target set, and expiry instead of permanently allowing net.exe or administrators. Score sensitive single-target
+      queries separately from expansion across targets, retaining separate query-lead and result-confirmation outputs.
+evidence_refs:
+- REF-001250
+- REF-001251
+- REF-000334
+- REF-000623
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-11-05'
+  modified: '2026-11-05'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

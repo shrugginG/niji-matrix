@@ -1,0 +1,206 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000417
+strategy_ref: DET-000299
+name:
+  zh: 经验证的 TCP 表调用载体与返回类别分析
+  en: Validated TCP-Table Call Carrier and Return-Category Analysis
+summary:
+  zh: 以明确部署合同关联实际 TCP 表查询者与调用位置，分开记录请求、返回和可选表行。
+  en: Attribute actual TCP-table readers and call sites under an explicit deployment contract, separating requests, returns,
+    and optional rows.
+domains:
+- enterprise
+platforms:
+- Windows
+logic:
+  paragraphs:
+  - zh: 本分析须先部署并验证专用调用仪器化；它不是默认 EDR 规则。包装 GetExtendedTcpTable 真实入口和返回，生成 call_id 和 call_start_time、call_end_time，记录实际调用进程、线程、调用位置和自带的进程创建时间。以
+      api_name 记录函数名，address_family 映射 ulAf，table_class 映射 TableClass，input_buffer_present 表示 pTcpTable 是否非空，return_status
+      为 DWORD 返回码；返回大小值只作大小语义，不能当作表行数。以 process_instance_id 绑定 device_id、caller_pid 与 process_create_time，通过同期调用位置和模块/内存映射识别实现查询的载体代码。不能从返回表中的
+      dwOwningPid 获得查询者。
+    en: Deploy and validate dedicated call instrumentation before enabling this analytic; it is not a default EDR rule. Wrap
+      the real GetExtendedTcpTable entry and return, generate call_id with call_start_time and call_end_time, and record the
+      actual calling process, thread, call site, and process creation time. api_name records the function; address_family
+      maps ulAf; table_class maps TableClass; input_buffer_present indicates nonnull pTcpTable; and return_status is the DWORD
+      return code. Returned size values retain size semantics and are not row counts. Bind device_id, caller_pid, and process_create_time
+      to process_instance_id, using contemporaneous call-site and module/memory mappings to identify the code implementing
+      the inquiry. dwOwningPid in returned tables does not identify the reader.
+  - zh: 按 call_id 区分大小询问、错误和有缓冲区的 NO_ERROR 返回；只有布局与地址族及表类别一致且成功解码时才标记表返回。本分析仅解码 OWNER_PID 的 ALL、CONNECTIONS 和 LISTENER 类别，其他类别保留调用元数据与未支持解码状态，不套用
+      PID 行布局。有权限启用可选结果采集时，以同一 call_id 保存 table_entry_count、captured_entry_count、capture_truncated 和 rows；IPv4 行映射 dwLocalAddr、dwLocalPort、dwRemoteAddr、dwRemotePort、dwState、dwOwningPid，IPv6
+      行另外映射 ucLocalAddr、ucRemoteAddr 与 dwLocalScopeId、dwRemoteScopeId。将端口和 IPv6 scope 按文档的网络字节序规范化，保留原始值，LISTEN 的远端字段标记无语义；空表与未捕获不同，截断时不能声称完整表。ESTABLISHED
+      只表示该返回时刻的 TCP 状态，不证明数据交付或之后可达。
+    en: Separate size inquiries, errors, and buffered NO_ERROR returns by call_id. Mark a table return only after successful
+      decoding with a layout matching address family and table class. This analytic decodes only OWNER_PID ALL, CONNECTIONS,
+      and LISTENER classes; other classes retain call metadata and unsupported-decode status rather than receiving PID-row
+      layouts. Where authorized optional result capture is enabled, retain table_entry_count, captured_entry_count, capture_truncated,
+      and rows under the same call_id. IPv4 rows map dwLocalAddr, dwLocalPort, dwRemoteAddr, dwRemotePort, dwState, and dwOwningPid.
+      IPv6 rows additionally map ucLocalAddr, ucRemoteAddr, dwLocalScopeId, and dwRemoteScopeId. Normalize ports and IPv6
+      scopes according to documented network byte order while preserving raw values, and mark LISTEN remote fields semantically
+      invalid. Empty and uncaptured tables differ, and truncation prevents a completeness claim. ESTABLISHED denotes TCP state
+      at return time rather than application delivery or later reachability.
+  - zh: 将查询代码的 image、caller_module、caller_memory_type 和职责与批准诊断台账比对，标记未批准载体代码、异常内存来源或偏离批准任务的查询。只有正面调用位置说明查询由既有载体内实现、而非独立诊断工具承担时，才给出子项候选；缺少
+      netstat 日志不参与证明。输出附带证据类别、返回分类、采集状态与未知批准，单次正常 API 不自动定性。结果行不是告警必要条件，缺少结果时仅报告已观测调用，不反推其他端点。
+    en: Compare image, caller_module, caller_memory_type, and duty of the querying code with the diagnostic register, flagging
+      unapproved carrier code, unusual memory provenance, or inquiries outside approved work. Propose the child only when
+      positive call-site evidence places the query implementation within an executing carrier rather than a separate diagnostic
+      utility. Missing netstat logs are not proof. Outputs retain evidence type, return category, capture status, and unknown
+      approval; one ordinary API call is not inherently malicious. Rows are not required for an alert, and absent results
+      produce an observed-call report without inferred endpoints.
+data_requirements:
+- source_type: custom-validated-tcp-table-instrumentation
+  name:
+    zh: 须验证部署的 GetExtendedTcpTable 调用入口与返回采集
+    en: GetExtendedTcpTable entry and return capture requiring validated deployment
+  channel: null
+  required_fields:
+  - device_id
+  - timestamp
+  - call_id
+  - call_start_time
+  - call_end_time
+  - api_name
+  - caller_pid
+  - caller_tid
+  - process_create_time
+  - process_instance_id
+  - image
+  - callsite_address
+  - caller_module
+  - caller_memory_type
+  - address_family
+  - table_class
+  - input_buffer_present
+  - return_status
+  - returned_size_value
+  - decode_status
+- source_type: optional-custom-tcp-table-result-capture
+  name:
+    zh: 经授权启用时的可选结果缓冲区采集
+    en: Optional result-buffer capture when authorized and enabled
+  channel: null
+  required_fields:
+  - device_id
+  - timestamp
+  - call_id
+  - address_family
+  - table_class
+  - table_entry_count
+  - captured_entry_count
+  - capture_truncated
+  - rows
+  - local_address
+  - local_port
+  - remote_address
+  - remote_port
+  - tcp_state
+  - socket_owner_pid
+  - local_scope_id
+  - remote_scope_id
+  - raw_field_values
+- source_type: instrumented-process-lifetime-and-mapping
+  name:
+    zh: 仪器化同步采集的进程生存期和地址映射
+    en: Process lifetimes and address mappings captured with instrumentation
+  channel: null
+  required_fields:
+  - device_id
+  - timestamp
+  - process_instance_id
+  - caller_pid
+  - process_create_time
+  - process_end_time
+  - image
+  - mapping_start
+  - mapping_end
+  - module_path
+  - memory_type
+  - mapping_valid_from
+  - mapping_valid_until
+- source_type: approved-diagnostic-job-register
+  name:
+    zh: 由运维维护的查询载体与代码职责批准台账
+    en: Operations-maintained approval register for query carriers and code duties
+  channel: null
+  required_fields:
+  - job_id
+  - image
+  - caller_module
+  - caller_memory_type
+  - api_name
+  - device_scope
+  - valid_from
+  - valid_until
+- source_type: custom-instrumentation-health
+  name:
+    zh: 专用采集器配置和覆盖完整性
+    en: Dedicated collector configuration and coverage integrity
+  channel: null
+  required_fields:
+  - device_id
+  - timestamp
+  - collector_version
+  - sensor_configuration
+  - hooked_api
+  - coverage_status
+  - capture_enabled
+  - dropped_events
+  - result_capture_enabled
+  - capture_limit
+observables:
+- zh: 由具体调用位置和进程生存期归属的 TCP 表查询。
+  en: TCP-table inquiries attributed through a concrete call site and process lifetime.
+- zh: 大小询问、错误、空表、非空返回与截断的不同结果类别。
+  en: Distinct result categories for size inquiries, errors, empty tables, nonempty returns, and truncation.
+- zh: 实现连接查询的载体代码与批准诊断职责不一致。
+  en: Query-implementing carrier code inconsistent with approved diagnostic duties.
+correlation:
+  window:
+    zh: 同一 call_id 的入口到返回；进程与地址映射仅在各自事件时有效期内关联，诊断任务比较先采用十分钟窗口。
+    en: Entry through return under one call_id; join process and address mappings only within event-time validity, with an
+      initial ten-minute diagnostic-task comparison.
+  dimensions:
+  - device_id
+  - process_instance_id
+  - call_id
+  - caller_module
+  - address_family
+  - table_class
+  - job_id
+false_positives:
+- zh: 终端诊断、资产代理、防火墙和安全产品自身的连接表查询。
+  en: Connection-table queries by endpoint diagnostics, inventory agents, firewalls, and security products.
+- zh: JIT、插件或产品升级改变调用位置和内存映射。
+  en: JIT, plugins, or product upgrades changing call sites and memory mappings.
+blind_spots:
+- zh: 未覆盖进程、替代接口、未注入成功或传感器被篡改时没有可靠调用观测。
+  en: Uncovered processes, alternate interfaces, failed instrumentation, or sensor tampering remove reliable invocation observation.
+- zh: 未捕获返回内容时不能确认表行；结果截断、错误布局与地址映射失效会限制语义。
+  en: Uncaptured returns cannot confirm rows; truncation, wrong layouts, and stale address mappings constrain semantics.
+- zh: 此部署设计未完成性能、跨位数、受保护进程和抗规避验证，不应被描述为当前已有全量产品能力。
+  en: This deployment design lacks performance, cross-bitness, protected-process, and evasion-resistance validation and is
+    not an existing complete product capability.
+tuning_guidance:
+  paragraphs:
+  - zh: 先以受控正常调用验证 IPv4 与 IPv6、不同表类别、大小询问、失败、空表、截断与监听行，确认调用者和 socket 所属 PID 分离。仪器化应保留原函数签名、调用约定和错误行为，并按位数与进程类型评估安全加载；实际部署失败时关闭该分析并报告覆盖缺口。优先保留调用元数据，敏感结果行按最小范围、加密与权限采集，禁止因
+      DLL 合法或命令行普通而全局放行。
+    en: Validate IPv4 and IPv6, table classes, size inquiries, failure, empty tables, truncation, and listeners using controlled
+      benign calls, verifying separation of reader and socket-owner PIDs. Instrumentation must preserve signatures, calling
+      conventions, and error behavior and assess safe loading by bitness and process type. Disable the analytic and report
+      a coverage gap when deployment fails. Prefer call metadata, minimize and protect sensitive result rows, and do not globally
+      allow a legitimate DLL or ordinary command line.
+evidence_refs:
+- REF-001380
+- REF-001382
+- REF-001383
+- REF-001384
+- REF-001387
+- REF-000230
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-11-07'
+  modified: '2026-11-07'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

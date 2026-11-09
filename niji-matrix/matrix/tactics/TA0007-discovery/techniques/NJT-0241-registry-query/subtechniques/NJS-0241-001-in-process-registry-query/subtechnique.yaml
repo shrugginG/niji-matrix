@@ -1,0 +1,153 @@
+schema_version: 2.0.0
+type: evasion-subtechnique
+id: NJS-0241-001
+name:
+  zh: 进程内注册表查询
+  en: In-Process Registry Query
+summary:
+  zh: 有意在既有受控进程中完成环境性 Registry 读取，省去每次任务的新查询进程及其命令行，同时保留可由读取原语审计恢复的痕迹。
+  en: Deliberately read environmental Registry information inside an existing controlled process, removing a new query process
+    and its command line for each task while retaining traces recoverable through read-primitive observation.
+aliases: []
+parent_ref: NJT-0241
+lineage:
+  attck_subtechnique_inherited: false
+definition_and_concept:
+  paragraphs:
+  - zh: 进程内注册表查询是攻击者将环境性键、值或子键调查直接交给既有驻留上下文中的代码执行，而不为每次查询另启命令工具或解释器的匿迹方式。其变量是任务执行是否产生新的查询进程，不是 API 名称。官方 Registry 查询 BOF 是一种已记录实现，但同一边界也适用于其他能在既有进程内完成读取并回传结果的模块。
+    en: In-Process Registry Query assigns environmental key, value, or subkey investigation directly to code in an existing
+      resident context instead of launching a utility or interpreter for each query. Its variable is whether task execution
+      produces a new query process rather than the API name. The officially documented Registry-query BOF is one implementation;
+      the boundary also covers other modules that complete reads and return results inside an existing process.
+  - zh: 承载进程如何最初获得控制可以属于执行或注入技术，不能代替此处的读取证据。成立判断需要把具体 Registry 查询关联到该既有进程实例，并证明采用了直接读取路径而非该进程只启动了 reg.exe。没有新进程事件只是一个待核实的观察，单独不足以证明进程内查询；所有正常程序的配置读取也不自动属于该子项。
+    en: How control of the carrier was first obtained may belong to execution or injection and cannot substitute for read
+      evidence here. Classification requires associating a concrete Registry query with that existing process instance and
+      establishing direct reading rather than merely launching reg.exe from it. Missing new-process events alone are an observation
+      to investigate, not proof of in-process querying. Ordinary application configuration reads do not automatically belong
+      to this child.
+stealth_characteristics:
+  paragraphs:
+  - zh: 进程内注册表查询把每次查询的参数和结果留在已有进程执行与回报路径中，不再为同一任务增加易匹配的 reg.exe 或解释器命令行。依赖新查询执行器、父子关系或工具命令正则的检测因而可能没有直接触发事件。Fortra 明确说明 BOF
+      的进程内执行与较轻足迹，并把 Registry 查询归为此类能力；据此可以支持痕迹差的中等置信度推断，不需要把所有 BOF 都假定成已发生的恶意活动。
+    en: In-Process Registry Query keeps task parameters and results within an existing process's execution and reporting path,
+      adding no readily matched reg.exe or interpreter command line for the same task. Detection dependent on a new query
+      executor, its ancestry, or utility-command expressions can therefore lack its direct trigger. Fortra explicitly documents
+      in-process BOF execution and its lighter footprint and classifies Registry querying as that capability. This supports
+      a medium-confidence trace-difference inference without treating every BOF as an observed malicious action.
+  - zh: 该实现不消除键对象操作。正确部署的读取 SACL、按操作跟踪及进程实例关联仍能记录谁在读取哪些分支，专用调用栈还可能暴露异常模块。过程内代码仍受目标键访问权限制，也可能导致内存和网络痕迹；若防守方已有充分读取覆盖，减少命令进程并不能使读取不可见。
+    en: This implementation does not remove key-object operations. Properly deployed read SACLs, operation tracing, and process-instance
+      correlation can still record who reads which branches, and dedicated stacks may expose an unusual module. Code remains
+      constrained by target-key rights and can leave memory and network traces. Where a defender already has sufficient read
+      coverage, removing command processes does not make the read invisible.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 纳入有意使用既有受控进程中的直接读取模块调查 Registry 环境信息，并省去每任务新查询执行器的实现。BOF、DLL 或其他内联代码只是实现方式，不能分别拆项；32/64 位标志只确定读取视图。同样的受控进程如果启动工具完成读取，其动作保留在父级；仅在新进程中运行自写查询程序，也不满足既有驻留上下文的边界。
+    en: Include deliberate use of a direct-reading module inside an existing controlled process to investigate environmental
+      Registry information while omitting a new query executor per task. BOFs, DLLs, and other inline code are implementations
+      rather than separate children; 32-bit or 64-bit flags only select the view. A controlled process that launches a utility
+      to perform the read stays at the parent. A custom query executable launched in a new process also falls outside the
+      existing-resident-context boundary.
+  - zh: 单纯 COFF 装载或共享模块执行（NJT-0077）、跨进程执行上下文嵌入（NJT-0103）、非标准调用过渡与 syscall 规避（NJT-0073）、内存隐藏或脚本审计绕过都不是本子项的直接行为。它们只有与具体环境性 Registry
+      读取建立谱系后才提供实施上下文。读取恶意模块自身配置、写入持久状态或提取 secret 仍按各自目的分类；合法进程内部读取、日志停采、PID 重用和进程创建保留期不足都构成正常或测量反例。
+    en: COFF loading or shared-module execution (NJT-0077), cross-process execution-context embedding (NJT-0103), nonstandard
+      call transitions or syscall evasion (NJT-0073), memory concealment, and script-audit bypass are not this child’s direct
+      behavior. They provide implementation context only when linked to a concrete environmental Registry read. Reading a
+      malicious module’s own configuration, writing durable state, or extracting secrets retains its purpose-based classification.
+      Legitimate internal reads, collection outages, PID reuse, and inadequate process-event retention are counterexamples
+      from normal operation or measurement.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: 该子项适用于已经拥有驻留执行上下文、希望按需调查配置而减少反复启动工具的操作者。预先知道分支时可定向查询，尚不知道结构时也可枚举子键或值；两者共享省去查询执行器的变量。原生工具足迹成为防守重点时，该实现可以把防守需求转向读取原语与承载进程归属，但不保证查询返回数据，也不提供新的权限。
+      en: The child fits an operator who already has a resident execution context and wants on-demand configuration investigation
+        with fewer repeated utility launches. A known branch can be queried directly, while an unknown structure can be explored
+        through subkey or value enumeration. Both share omission of a query executor. Where utility footprints are a defensive
+        focus, this shifts observation toward read primitives and carrier attribution without guaranteeing returned data or
+        granting additional rights.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者必须控制已有进程的任务执行，并有能够在其中完成读取、处理长度或错误并回传结果的实现。其令牌仍须满足目标键查询或枚举权限，远程访问还须满足身份和服务条件。本文不假定调用 API 就天然无进程：只有选定路径本身不启动新查询执行器，才形成子项中的痕迹差。
+        en: The adversary must control task execution in an existing process and have an implementation that reads, handles
+          lengths or errors, and returns results there. Its token still needs target-key query or enumeration rights, with
+          identity and service conditions for remote access. Calling an API is not assumed to be process-free. The child's
+          trace difference exists only when the selected path itself omits a new query executor.
+      - zh: 本次核查的 Fortra 文档页脚为 Cobalt Strike 4.13、202609280255、2026 年 9 月。该 BOF 合同预期单线程、短时任务，长运行会阻塞其他 Beacon 功能，代码崩溃可能丢失承载进程及访问；因此此实现适合有界查询，而不是无代价长期监听。current
+          路径会变化，本证据不推广到所有历史版本，也不把所有 BOF 的执行副作用都视为本子项。
+        en: The verified Fortra pages carry Cobalt Strike 4.13, build 202609280255, September 2026. This BOF contract expects
+          single-threaded short tasks; long execution blocks other Beacon functions, and a crash can lose the carrier and
+          access. The implementation therefore fits bounded queries rather than cost-free long-running monitoring. The current
+          URL can change, so this evidence does not generalize to every historical version or make every BOF execution effect
+          part of this child.
+    defender_model:
+      paragraphs:
+      - zh: 防守方可观察承载进程寿命、账户和部分代码来源，但单有其创建事件不足以恢复后续任务。目标化 Security 4663 和额外部署的 Registry 操作跟踪可以把访问关联到真实进程，而不是根据 provider、父进程或工具缺失猜测。需要保留进程实例起点和采集健康状态；无法确认完整事件覆盖时，对“无新执行器”的判断必须降为未知。
+        en: A defender may observe carrier lifetime, identity, and some code provenance, while its creation event alone cannot
+          recover later tasks. Targeted Security 4663 and additionally deployed Registry-operation tracing can associate access
+          with the true process rather than infer it from a provider, parent, or absent utility. Process-instance start and
+          collection health must be retained. Without verified event completeness, absence of a new executor remains unknown.
+stealth_mechanisms:
+- mechanism_ref: NM-BT
+  role: primary
+  summary:
+    zh: 以驻留进程的直接读取替代每任务命令执行器，削弱基于新进程的查询观察
+    en: Replace a command executor per task with direct reads in a resident process and weaken new-process-based query observation
+  analysis:
+    paragraphs:
+    - zh: 有意选择进程内 Registry 查询会保留键读取，却去掉同任务新查询进程及其命令参数，导致只消费进程创建的规则缺乏目标事件。官方命令类型与 BOF 执行合同共同证明这条能力链，读取权限和审计文档则说明痕迹仍可在原语层恢复。对此机理映射保持中等置信度：它支持明确观察模型下的因果推断，没有测量现场检测率，也没有声称普通读取审计能识别
+        BOF 本身。
+      en: 'Deliberately selecting in-process Registry querying preserves the key read while removing a new query process and
+        its parameters for that task, depriving process-creation-only rules of their target event. The official command type
+        and BOF execution contract establish this capability chain. Rights and auditing documentation show that traces remain
+        recoverable at the primitive. The mapping is medium confidence: it supports causality under a specified observation
+        model without measuring field detection rates or asserting that ordinary read auditing identifies a BOF itself.'
+  evidence_refs:
+  - REF-001303
+  - REF-001320
+  - REF-001321
+  - REF-001312
+  - REF-000379
+  confidence: medium
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000289
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000249
+evidence:
+  claim_refs:
+  - CLM-001238
+  - CLM-001240
+  - CLM-001239
+  case_refs: []
+  reference_refs:
+  - REF-001303
+  - REF-001320
+  - REF-001321
+  - REF-001312
+  - REF-001313
+  - REF-001314
+  - REF-001315
+  - REF-000379
+  - REF-001322
+  - REF-001318
+research:
+  limitations:
+    paragraphs:
+    - zh: 此次没有取得同时公开具体 Registry 任务、同一驻留进程原语和完整进程事件对照的恶意现场案例，所以子项不引用父级的 Volt Typhoon 案例。官方能力合同足以证明可选择的稳定变量与相应痕迹差，不能证明现场使用比例或对某款传感器的绕过效果。合法插件也能产生同进程读取，部署时必须保留目的、对象和代码来源的判断。
+      en: This research found no malicious field case publishing a specific Registry task, its primitive in the same resident
+        process, and a complete process-event comparison. The child therefore does not inherit the parent's Volt Typhoon case.
+        The official capability contract establishes a selectable stable variable and corresponding trace difference rather
+        than field prevalence or bypass of a particular sensor. Legitimate plugins can also read within one process, requiring
+        evaluation of purpose, object, and code provenance.
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-11-06'
+  modified: '2026-11-06'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

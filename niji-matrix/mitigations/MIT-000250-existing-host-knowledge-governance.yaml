@@ -1,0 +1,106 @@
+schema_version: 2.0.0
+type: mitigation
+id: MIT-000250
+name:
+  zh: 既存主机知识暴露与读取治理
+  en: Existing Host-Knowledge Exposure and Read Governance
+summary:
+  zh: 缩小账户和工作负载可读取的远端主机知识，并为必要资料读取保留可核实的上下文。
+  en: Limit remote-host knowledge readable by accounts and workloads and preserve verifiable context for necessary access.
+description:
+  paragraphs:
+  - zh: 本缓解治理本机保存的连接知识，而不是禁用所有名称缓存或正常主机发现。将私有管理配置保存在其账户与用途所需范围内，避免把管理者主目录或完整连接资料复制给普通工作负载；对必须保留的资料部署有针对性的读取审计。对公开或业务必需的记录，预期效果是减少额外暴露并提高调查能力，不能承诺让受侵账户忘记其本来可读的目标。
+    en: This mitigation governs locally stored connection knowledge rather than disabling all name caching or normal discovery.
+      Keep private management configuration within its required account and purpose, avoid copying administrator home directories
+      or complete connection material into ordinary workloads, and target read auditing at necessary material. For public
+      or business-required records, the effect is reduced additional exposure and better investigation, not making a compromised
+      account forget targets it could already read.
+domains:
+- enterprise
+measures:
+- key: scope-private-connection-material
+  name:
+    zh: 约束私有连接资料的账户与挂载范围
+    en: Scope Private Connection Material by Account and Mount
+  description:
+    paragraphs:
+    - zh: 按实际运维用途检查账户主目录、SSH 配置和已知主机资料的权限与工作负载挂载，采用用户私有目录权限，移除无业务用途的跨账户读取和包含管理连接资料的镜像或副本。保留客户端正常校验主机身份所需内容，不删除可信主机校验来减少枚举。
+      en: Review account home directories, SSH configuration, known-host permissions, and workload mounts against operational
+        purpose. Use user-private directory permissions and remove unnecessary cross-account reads, images, or copies containing
+        management connection material. Preserve data required for normal host-identity verification rather than disabling
+        verification to reduce enumeration.
+  control_type: exposure-reduction
+- key: reduce-plain-hostname-disclosure
+  name:
+    zh: 降低已知主机资料的明文标识暴露
+    en: Reduce Plaintext Identifier Disclosure in Known-Host Material
+  description:
+    paragraphs:
+    - zh: 在支持且符合运维流程的 OpenSSH 客户端使用 HashKnownHosts，并按变更流程处理已有明文条目；该设置不会自动转换原有文件。核实备份和同步副本同样采用预期格式，避免把哈希误当作对未知低熵主机名的强保密保证。
+      en: Use HashKnownHosts on supported OpenSSH clients where operational workflows permit and handle existing plaintext
+        entries through change control; the setting does not automatically convert old files. Verify expected formats in backups
+        and synchronized copies and do not treat hashing as strong confidentiality for unknown low-entropy hostnames.
+  control_type: cost-increasing
+- key: targeted-read-provenance
+  name:
+    zh: 保留目标资料读取来源
+    en: Retain Provenance of Targeted Material Reads
+  description:
+    paragraphs:
+    - zh: 对优先保护资料配置并验证文件读访问审计，保留进程、身份、路径与规则健康信息，外送至受侵账户不能同时删除的存储。控制采集范围以减少普通客户端读取噪声，并定期验证规则随路径和文件更新继续生效。
+      en: Configure and validate file read-access auditing for prioritized material, retaining process, identity, path, and
+        rule-health information in storage the compromised account cannot delete together. Scope collection to control ordinary-client
+        noise and periodically verify rules after path and file changes.
+  control_type: detective-support
+applications:
+- target_ref: NJT-0242
+  use:
+    paragraphs:
+    - zh: 在常被用作调查起点的管理终端、服务器与工作负载检查连接资料可见范围，移除无用途的跨用户主目录访问与管理资料副本，对保留资料部署读取来源审计。将记录知识与实际网络可达性分开治理，必要的目录查询和实时探测仍由对应访问控制和网络措施承担。
+      en: Review connection-material visibility on management endpoints, servers, and workloads likely to become surveying
+        footholds. Remove unnecessary cross-user home access and management-material copies and audit the provenance of retained
+        reads. Govern recorded knowledge separately from actual reachability; required directory queries and fresh probing
+        remain subject to their own access and network controls.
+  expected_effect:
+    paragraphs:
+    - zh: 单个受侵身份更难从不必要的本地副本扩大远端候选集合，仍需保留的主机知识读取具有更好的来源证据。
+      en: A compromised identity has greater difficulty expanding its candidate set through unnecessary local copies, while
+        reads of retained host knowledge have better provenance evidence.
+  limitations:
+    paragraphs:
+    - zh: 不能阻止读取当前账户本来需要的资料、公开映射、远端目录或新鲜主动发现；限制权限与挂载需要测试排障和自动化兼容性，缓存不应被一概禁用。
+      en: This does not prevent reading material the current account legitimately needs, public mappings, remote directories,
+        or fresh active discovery. Permission and mount changes require troubleshooting and automation compatibility testing,
+        and caches should not be disabled indiscriminately.
+- target_ref: NJS-0242-001
+  use:
+    paragraphs:
+    - zh: 优先保护用户私有 SSH 与连接配置，避免其被挂载进不相关容器或复制进通用镜像，支持时减少 known_hosts 明文标识，并验证相关读访问审计。对内存邻居与 DNS 缓存不假设文件审计覆盖，需要结合该平台实际接口可见性记录剩余风险。
+      en: Prioritize private SSH and connection configuration, keep it out of unrelated container mounts and general images,
+        reduce plaintext known_hosts identifiers where supported, and validate read-access auditing. Do not assume file auditing
+        covers in-memory neighbor or DNS caches; record residual risk using the platform's actual interface visibility.
+  expected_effect:
+    paragraphs:
+    - zh: 减少可直接解析的多账户主机知识和额外副本，增加无需探测即可形成候选的成本，同时让文件型复用路径留下可调查的本地来源。
+      en: Reduce directly parseable multi-account host knowledge and extra copies, increase the cost of candidate formation
+        without probing, and leave investigable local provenance for file-based reuse.
+  limitations:
+    paragraphs:
+    - zh: 攻击者控制目标用户或本机高权限后仍可读取其资料或影响审计；哈希不保护其他配置中的同一名称，也不阻止已知候选的验证。审计成功打开不能证明读走完整文件，访问治理也不使已有缓存失效。
+      en: Control of the target user or local privilege can still expose material or affect auditing. Hashing does not protect
+        the same names in other configuration or prevent testing known candidates. Audited opening does not prove full-file
+        consumption, and access governance does not invalidate existing caches.
+evidence_refs:
+- REF-001333
+- REF-000614
+- REF-001042
+- REF-000201
+- REF-001323
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-11-07'
+  modified: '2026-11-07'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

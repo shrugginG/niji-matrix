@@ -1,0 +1,122 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000394
+strategy_ref: DET-000284
+name:
+  zh: 经验证的目录成员属性读取与主体范围差分
+  en: Validated Directory Membership-Property Reads and Actor Scope Differential
+summary:
+  zh: 在匹配 SACL 的目录读取中恢复关系对象与属性范围，并与职责和服务器登录来源比较。
+  en: Recover relationship objects and property scope in SACL-matched directory reads and compare them with duty and server-logon
+    origins.
+domains:
+- enterprise
+platforms:
+- Windows
+- Active Directory
+logic:
+  paragraphs:
+  - zh: 在选定敏感组及相关主体对象上配置 Audit Directory Service Access 和针对需要观察属性的读取 SACL，先验证正常和测试查询确实产生所需 4662。选择 ObjectServer 为 DS 且 AccessMask
+      含 0x10 Read Property 的成功事件，以部署目录的对象 GUID 与 schema/property-set GUID 映射解析 ObjectType、ObjectName 和 Properties；优先核查 member、memberOf
+      与已验证的对应属性集。若映射只到宽属性集或无法确定成员属性，将输出降为 directory_object_read，不能伪称 membership_read。
+    en: Configure Audit Directory Service Access and property-specific read SACLs on selected sensitive groups and relevant
+      principal objects, then verify that normal and test queries produce the required 4662 records. Select successful records
+      with ObjectServer DS and AccessMask containing 0x10 Read Property. Resolve ObjectType, ObjectName, and Properties using
+      the deployed directory's object and schema or property-set GUID mappings, focusing on member, memberOf, and their validated
+      property sets. If a mapping resolves only to a broad set or cannot identify membership properties, downgrade the output
+      to directory_object_read rather than falsely label membership_read.
+  - zh: 按同一域控制器和 SubjectLogonId 连接 4624 的目标登录标识，保留主体、登录类型与源地址；源字段缺失时维持来源未知。十五分钟内比较敏感关系覆盖、主体职责和批准任务，标记不匹配来源或超范围读取。结果只说明受审计属性访问与关系调查候选，不包括完整
+      LDAP 谓词、返回值或递归授权路径；主组与 memberOf 的表示例外须保留。
+    en: Join 4624 target logon identifiers by the same domain controller and SubjectLogonId, retaining principal, logon type,
+      and source address; missing source fields remain unknown. Over fifteen minutes, compare sensitive relationship coverage,
+      actor duties, and approved work and flag unmatched origins or excess scope. Results describe audited property access
+      and relationship-survey candidates, not full LDAP predicates, returned values, or recursive authorization paths. Preserve
+      the primary-group representation exception for memberOf.
+data_requirements:
+- source_type: ad-property-read-audit
+  name:
+    zh: 已验证成员属性读取 SACL 的目录对象事件
+    en: Directory object events with validated membership-property read SACLs
+  channel: Domain controller Security event 4662
+  required_fields:
+  - timestamp
+  - computer
+  - subject_user_sid
+  - subject_logon_id
+  - object_server
+  - object_type
+  - object_name
+  - access_mask
+  - properties
+- source_type: server-logon-context
+  name:
+    zh: 同一域控制器登录会话
+    en: Logon sessions on the same domain controller
+  channel: Security event 4624
+  required_fields:
+  - timestamp
+  - computer
+  - target_user_sid
+  - target_logon_id
+  - logon_type
+  - ip_address
+- source_type: directory-schema-and-review-inventory
+  name:
+    zh: 部署目录 GUID 映射与批准读取范围
+    en: Deployed directory GUID mappings and approved read scope
+  channel: Read-only directory inventory and identity governance
+  required_fields:
+  - object_guid
+  - object_dn
+  - object_class
+  - attribute_or_property_set_guid
+  - mapped_attribute_scope
+  - sensitivity
+  - approved_actor
+  - valid_from
+  - valid_to
+observables:
+- zh: 对已映射成员属性的 Read Property 使用
+  en: Read Property use against mapped membership attributes
+- zh: 主体与目标范围不符或来自非常规登录源
+  en: Actor-to-target scope mismatch or an unusual logon origin
+correlation:
+  window:
+    zh: 初始使用十五分钟读取窗口与三十日职责基线，同服务器登录连接受会话生存期约束；GUID 清单应保留对应时间版本。
+    en: Begin with a fifteen-minute read window and thirty-day duty baseline; same-server logon joins are bounded by session
+      lifetime, and GUID inventories retain the relevant historical version.
+  dimensions:
+  - computer
+  - subject_user_sid
+  - subject_logon_id
+  - object_name
+  - mapped_attribute_scope
+  - ip_address
+false_positives:
+- zh: 身份同步、授权评估、目录治理、备份和响应调查会广泛读取成员属性；按实际服务职责与范围核验而非单纯查询数量放行。
+  en: Identity synchronization, authorization evaluation, directory governance, backup, and response investigations can read
+    membership properties broadly; verify actual service duties and scope rather than allowing activity solely by volume.
+blind_spots:
+- zh: 无匹配 SACL、属性集映射过宽、日志丢失或未验证的计算属性审核会降低覆盖；事件不提供客户端原始进程、全部返回关系或未读取关系的否定证明。
+  en: Missing SACLs, overly broad property-set mappings, lost records, or unvalidated auditing of computed attributes limit
+    coverage. Events do not provide the original client process, all returned relationships, or proof that unobserved relationships
+    were not read.
+tuning_guidance:
+  paragraphs:
+  - zh: 先选少量高价值组与主体，用实际事件确认 SACL、属性 GUID、属性集和 0x10 语义；监测 DC 容量再扩大。不要把所有 4662 都解释为组读取，也不要用 4728/4732/4756 替代。批准任务需限定源、身份、关系范围和有效期，密集同步的例外仍应保存原始命中以调查身份失陷。
+    en: Start with a few valuable groups and principals and verify SACLs, attribute GUIDs, property sets, and 0x10 semantics
+      in actual records before expanding within DC capacity. Do not treat every 4662 as a group read or substitute 4728, 4732,
+      or 4756. Authorized work must bind origin, identity, relationship scope, and expiry; retain raw matches for high-volume
+      synchronization exceptions to investigate compromised identities.
+evidence_refs:
+- REF-001214
+- REF-000377
+- REF-001287
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-11-06'
+  modified: '2026-11-06'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

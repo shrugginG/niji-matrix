@@ -1,0 +1,142 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000412
+strategy_ref: DET-000296
+name:
+  zh: bot 会话输入到控制端定位结果的归属分析
+  en: Attribution from Bot Session Input to Controller Location Result
+summary:
+  zh: 在合法取得的远端证据或受控模拟中确认卸载阶段，并保留请求未返回与缓存复用状态。
+  en: Confirm offloading stages in lawfully obtained remote evidence or controlled simulation while preserving unreturned
+    requests and cache reuse.
+domains:
+- enterprise
+platforms:
+- Windows
+logic:
+  paragraphs:
+  - zh: 此分析不是企业默认传感器。部署前明确证据来源为合法取得的 Crimson 类控制端工件、获授权的服务日志或隔离模拟接收器，以 evidence_origin 与 custody_id 保留来源链。会话采集产生 controller_id、bot_session_id、observed_peer_ip
+      和时间；请求采集用 lookup_id 连接实际 query 地址。按控制端版本验证字段抽取器，并使用具有有效时间的会话地址绑定，不能仅按同秒出现的流量连接归因。
+    en: This is not a default enterprise sensor. Before deployment, restrict evidence to lawfully obtained Crimson-like controller
+      artifacts, authorized service logs, or an isolated simulated receiver, preserving provenance through evidence_origin
+      and custody_id. Session collection supplies controller_id, bot_session_id, observed_peer_ip, and time; request collection
+      uses lookup_id to connect the actual query address. Validate field extractors for the controller version and use time-bounded
+      session-address bindings rather than attributing flows solely because they occur in the same second.
+  - zh: 仅当 observed_peer_ip 与 queried_ip 一致且处于同一有效绑定时，输出控制端定位请求阶段；返回侧还须以 lookup_id 或保全的响应关联，证明 service_status=success、returned_query_ip
+      与输入一致和实际地区字段，才能提升为地址定位结果取得。解析器若有缓存命中，则必须记录原结果的 result_generated_at、原 queried_ip 及 bot 绑定，缺少这些仅标记缓存候选。HTTP 状态、无正文外部流量和企业端回连分别保留较低证据等级，不补造返回。
+    en: Report controller lookup-request stage only when observed_peer_ip equals queried_ip within the same valid binding.
+      Promote it to address-location result acquisition only with a lookup_id-linked or preserved response establishing service_status
+      success, returned_query_ip matching the input, and actual regional fields. A cache hit requires the original result_generated_at,
+      queried_ip, and bot binding; otherwise it remains a cache candidate. HTTP status, content-free external flow, and enterprise
+      callback evidence retain lower evidential stages without invented returns.
+  - zh: 归属结果以地址、控制端和会话表达，不以地区标签识别唯一受害设备。共享出口产生多个 bot 时保留多重身份；若需要回连到企业资产，必须另有带 valid_from 和 valid_to 的 NAT、代理或受控实验映射，没有映射就保持
+      bot 会话级。五分钟只是检索相关工件的起点，缓存读取可以跨越该窗口，不以无新请求排除本项。
+    en: Express attribution by address, controller, and session, not a unique victim device identified by a region label.
+      Preserve multiple identities for bots sharing an exit. Linking back to enterprise assets additionally requires time-bounded
+      NAT, proxy, or controlled-experiment mappings with valid_from and valid_to; otherwise remain at bot-session level. Five
+      minutes is only a starting point for artifact retrieval. Cache reads can cross that window, and absence of a fresh request
+      does not exclude the behavior.
+data_requirements:
+- source_type: lawful-controller-session-artifact
+  name:
+    zh: 合法控制端或受控模拟会话工件
+    en: Lawful Controller or Controlled-Simulation Session Artifact
+  channel: null
+  required_fields:
+  - controller_id
+  - controller_version
+  - bot_session_id
+  - timestamp
+  - observed_peer_ip
+  - binding_valid_from
+  - binding_valid_to
+  - evidence_origin
+  - custody_id
+  - artifact_digest
+  - parser_version
+  - collector_health
+- source_type: lawful-controller-geolocation-result
+  name:
+    zh: 合法控制端定位请求结果及缓存工件
+    en: Lawful Controller Location Request Result and Cache Artifact
+  channel: null
+  required_fields:
+  - controller_id
+  - bot_session_id
+  - lookup_id
+  - timestamp
+  - queried_ip
+  - http_status
+  - service_status
+  - result_state
+  - returned_query_ip
+  - returned_region
+  - cache_state
+  - result_generated_at
+  - evidence_origin
+  - custody_id
+  - artifact_digest
+  - parser_version
+  - collector_health
+- source_type: optional-time-bounded-egress-attribution
+  name:
+    zh: 可选的有效时间出口归属映射
+    en: Optional Time-Bounded Egress Attribution Mapping
+  channel: null
+  required_fields:
+  - asset_id
+  - observed_peer_ip
+  - bot_session_id
+  - valid_from
+  - valid_to
+  - attribution_state
+observables:
+- zh: 同一 bot 会话的已见地址被提交到控制端定位请求
+  en: An observed address from a bot session submitted in a controller location request
+- zh: 有查询键和生成时间的返回地区或缓存结果
+  en: A returned or cached region with a lookup key and generation time
+- zh: 无返回、未知身份、共享地址和过期绑定
+  en: Missing returns, unknown identities, shared addresses, and expired bindings
+correlation:
+  window:
+    zh: 默认五分钟检索新会话关联请求；结果以 lookup_id 配对，缓存以原生成时间与有效绑定扩展。
+    en: Retrieve new-session related requests within five minutes by default; pair results by lookup_id and extend caches
+      using original generation time and valid binding.
+  dimensions:
+  - controller_id
+  - bot_session_id
+  - lookup_id
+  - queried_ip
+  - timestamp
+false_positives:
+- zh: 获授权的远程管理、网络资产地区显示与受控研究接收器具有相同关联形态。
+  en: Authorized remote management, geographical asset displays, and controlled research receivers can have the same correlation
+    shape.
+blind_spots:
+- zh: 仅有企业侧端点数据不能执行直接阶段确认；不可见服务响应或未保全缓存不能证明结果取得。
+  en: Enterprise endpoint data alone cannot directly confirm the stage; unavailable service responses or unpreserved cache
+    cannot establish result acquisition.
+- zh: 仅按 IP 的绑定无法区分共享出口和地址重分配，缺少时间合同应降级为地址级线索。
+  en: IP-only binding cannot distinguish shared egress or reassignment; missing time contracts require downgrade to address-level
+    leads.
+tuning_guidance:
+  paragraphs:
+  - zh: 在隔离环境用自有合成 bot 地址、合法模拟响应和显式缓存复用测试解析器，包含两个 bot 共用出口、地址切换、查询失败、过期结果与工件缺失。受控测试结果不得称为在野测量；保留原始工件摘要和解析器版本。没有远端合法可见性时，将该分析标记未部署，并保留企业侧入侵调查而不声称确认卸载。
+    en: Test parsers in isolation using owned synthetic bot addresses, lawful simulated responses, and explicit cache reuse,
+      covering two bots sharing egress, address changes, failed queries, expired results, and missing artifacts. Controlled
+      tests are not field measurements. Preserve artifact digests and parser versions. Without lawful remote visibility, mark
+      this analytic undeployed and retain enterprise intrusion investigation without claiming confirmed offloading.
+evidence_refs:
+- REF-001358
+- REF-001359
+- REF-001364
+- REF-001365
+- REF-001368
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-11-07'
+  modified: '2026-11-07'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

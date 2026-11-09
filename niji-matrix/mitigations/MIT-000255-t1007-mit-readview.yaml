@@ -1,0 +1,124 @@
+schema_version: 2.0.0
+type: mitigation
+id: MIT-000255
+name:
+  zh: 服务与调度读取视图治理
+  en: Service and Schedule Read-View Governance
+summary:
+  zh: 按职责收敛服务与调度库存读取，保留明确查询范围和任务来源，减少接口外观或宿主身份造成的错误放行。
+  en: Constrain service and schedule-inventory reading by duty while retaining explicit scope and task provenance to reduce
+    mistaken allowance based on interface appearance or carrier identity.
+description:
+  paragraphs:
+  - zh: 本控制把只读管理视图与服务控制、任务执行权限分开治理。它保留正常诊断所需的本地读取，优先收敛不必要的跨角色、远端与配置副本暴露；同时让读取请求有具体负责人、可解释范围和可保护的来源证据。减少读取机会与改善问责是预期收益，无法普遍向已执行代码隐藏服务状态。
+    en: This control governs read-only management views separately from service control and task-execution rights. It preserves
+      local diagnostics while prioritizing unnecessary cross-role, remote, and copied-configuration exposure, and gives requests
+      concrete owners, interpretable scope, and protected provenance. Reduced opportunities and better accountability are
+      expected benefits, without universally hiding service state from executing code.
+domains:
+- enterprise
+measures:
+- key: least-service-and-schedule-read-authority
+  name:
+    zh: 区分并收敛服务和调度读取权
+    en: Distinguish and constrain service and schedule-read authority
+  description:
+    paragraphs:
+    - zh: 审查SCM枚举与逐服务QUERY_STATUS、QUERY_CONFIG权限以及远程管理来源，按支持角色缩小非必要授予而不机械撤销正常系统读取。独立检查任务DACL的读取与执行、写入权限，保护cron配置及库存副本的读取范围；cron.allow/deny只限制crontab使用，不作为已有作业停止措施。分阶段审计和验证兼容性后再强制。
+      en: Review SCM enumeration, per-service QUERY_STATUS/QUERY_CONFIG rights, and remote-management origins, reducing unnecessary
+        grants by support role without mechanically removing normal system reads. Separately inspect task-DACL read versus
+        execute/write authority and protect read scope for cron configuration and inventory copies. Cron.allow/deny constrains
+        utility use rather than stopping existing jobs. Audit and validate compatibility in stages before enforcement.
+  control_type: exposure-reduction
+- key: scoped-service-and-schedule-inquiry-jobs
+  name:
+    zh: 登记查询职责与可见视图
+    en: Register inquiry duties and visible views
+  description:
+    paragraphs:
+    - zh: 为维护读取登记负责人、调用主体、客户端或task代码身份、目标、有效期与具体视图。服务state/type、WMI类/字段、任务文件夹与hidden选项、system/user manager和cron用户范围分别保留，禁止将“全服务”标签覆盖这些差异。签名管理工具和长期代理均不能替代实际工作授权。
+      en: Register owners, calling principals, client or task-code identities, targets, validity, and concrete views for maintenance
+        reads. Preserve service state/type, WMI classes/properties, task folders/hidden options, system/user managers, and
+        cron users separately rather than hiding these differences under an all-services label. Signed utilities and long-lived
+        agents do not replace actual work authorization.
+  control_type: governance
+- key: attributable-read-capture-and-retention
+  name:
+    zh: 验证并保全可归属读取证据
+    en: Validate and preserve attributable read evidence
+  description:
+    paragraphs:
+    - zh: 预部署含参数进程审计和按版本验证的WMI客户端Trace；需要内联覆盖时显式部署所选宿主任务入口、SCM句柄与返回采集。把请求、实际返回、视图完整性、客户端生存期和采集健康送入查询者不能任意修改的保留域，区分授权、请求与结果，敏感任务定义按需授权。没有返回时保留未知，审计记录不充当成功读取证明。
+      en: Predeploy argument-bearing process auditing and version-validated WMI client tracing. When inline coverage is required,
+        explicitly deploy selected-carrier task-entry, SCM-handle, and return capture. Retain requests, actual returns, view
+        completeness, client lifetimes, and collection health beyond arbitrary querier modification, distinguishing authorization,
+        requests, and results and controlling access to sensitive task definitions. Missing returns remain unknown rather
+        than treating audit records as successful-read proof.
+  control_type: detective-support
+applications:
+- target_ref: NJT-0249
+  use:
+    paragraphs:
+    - zh: 对系统服务发现，审查支持账户可远程枚举的SCM和任务视图、过宽的调度配置副本及无人负责的盘点；按工作保留必要读取。将sc、tasklist /svc、schtasks、WMI、systemctl和cron请求绑定具体服务类型、manager或用户范围并集中留存，避免通过禁止start或run而声称已阻止query。
+      en: For System Service Discovery, review remotely enumerable SCM/task views, overly broad schedule copies, and unowned
+        inventory work while preserving necessary reads. Bind sc, tasklist /svc, schtasks, WMI, systemctl, and cron requests
+        to concrete service types, managers, or users with central retention, without claiming that blocking start or run
+        blocks query.
+  expected_effect:
+    paragraphs:
+    - zh: 非必要远端和跨角色库存暴露可缩小，正常工具请求获得可核对的工作范围，服务状态与调度安排不易因工具名正常而绕过目的核验。保全视图和失败状态也减少把缺项误判为服务不存在的风险；这些是工程预期，没有本地检测率测量。
+      en: Unnecessary remote and cross-role inventory exposure can shrink, ordinary utility requests gain checkable work scope,
+        and service-state or schedule inquiries are less likely to bypass purpose checks through normal names. Preserved views
+        and failure states also reduce mistaken absence conclusions from omissions. These are engineering expectations without
+        locally measured detection rates.
+  limitations:
+    paragraphs:
+    - zh: 普通用户、系统组件和批准代理仍可需要这些读取，过度收紧可破坏监控和故障诊断；被控批准主体也可能匹配登记。任务read与execute分开，cron工具限制不停止已有作业，systemctl读权限也不由变更策略自动覆盖。观察合同缺失、其他平台或接口未覆盖时收益降低，不能承诺隐藏所有服务或任务。
+      en: Ordinary users, system components, and approved agents may need these reads, while excessive restrictions can break
+        monitoring and diagnostics. Compromised approved principals can match registrations. Task read and execute are separate,
+        cron utility restrictions do not stop existing jobs, and systemctl reading is not automatically governed by mutation
+        policy. Missing capture contracts and uncovered platforms/interfaces reduce benefit, with no promise to hide every
+        service or task.
+- target_ref: NJS-0249-001
+  use:
+    paragraphs:
+    - zh: 对驻留内联服务查询，把批准绑定实际宿主任务和代码而非宿主名称，验证SCM句柄、target与返回在任务中的来源链并受保护保留。保留必要诊断，优先缩小该调用身份不需要的远端与服务读取能力；没有独立sc进程时仍核验具体API请求，但不以未观测的有效token假造主体批准。
+      en: For Resident Inline Service Inquiry, bind approval to actual carrier tasks and code rather than carrier names, validating
+        and protecting the provenance of SCM handles, targets, and task returns. Preserve necessary diagnostics while reducing
+        unnecessary remote and service-read authority for the caller. Verify concrete API requests without a separate sc process,
+        without inventing principal approval from an unobserved effective token.
+  expected_effect:
+    paragraphs:
+    - zh: 服务读取的语义不再完全依赖每任务工具启动，宿主生命周期借用的观察优势缩小；实际返回与权限视图可以独立保全。读取权收敛降低部分调查机会，但不会迫使查询者创建工具，也不使内联代码自动受应用控制检查。
+      en: Service-read meaning no longer depends entirely on per-task utility launches, reducing the observation advantage
+        of borrowed carrier lifetimes. Actual returns and authority views can be preserved separately. Reduced read grants
+        limit some opportunities without forcing utility creation or making application control automatically inspect inline
+        code.
+  limitations:
+    paragraphs:
+    - zh: 插桩需要明确覆盖且可能影响宿主稳定性，未覆盖接口、早先打开句柄、有效身份未知和受控批准代理仍会限制结果。固定能力代码也不能保证完整返回。无野外与对照实验，预期观察改善不等于已经验证的阻断或漏报率下降。
+      en: Instrumentation requires explicit coverage and can affect carrier stability. Alternate interfaces, preopened handles,
+        unknown effective identity, and compromised approved agents still limit outcomes. Pinned capability code does not
+        guarantee complete returns. Without field and comparison experiments, expected observation improvements are not validated
+        prevention or reduced miss rates.
+evidence_refs:
+- REF-000336
+- REF-000372
+- REF-001408
+- REF-001409
+- REF-001407
+- REF-001309
+- REF-000230
+- REF-000840
+- REF-001305
+- REF-001368
+- REF-001403
+- REF-001404
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-11-08'
+  modified: '2026-11-08'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

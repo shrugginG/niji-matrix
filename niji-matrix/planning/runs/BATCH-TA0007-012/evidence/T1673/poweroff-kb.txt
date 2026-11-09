@@ -1,0 +1,176 @@
+Cookie Settings
+Powering off an unresponsive virtual machine on an ESXi host
+search
+cancel
+Search
+Powering off an unresponsive virtual machine on an ESXi host
+book
+Article ID: 308457
+calendar_today
+Updated On:
+Feedback
+Subscribe
+Products
+VMware vSphere ESXi
+Show More
+Show Less
+Issue/Introduction
+This article provides steps for shutting down an unresponsive virtual machine
+Unable to power off virtual machine on an ESXi host.
+The virtual machine is unresponsive; both force-stop and power-off commands have failed.
+The host cannot access the virtual machine or unlock files.
+vCenter Server continues to show the virtual machine as running.
+Edit Settings option is greyed-out for the virtual machine.
+Unable to perform any task on vm
+Attempting actions on the VMs fails with the errors:
+A general system error occurred: Syscall kill returned error (-1) during vm termination attempt: ## with cartel id: ## and error message: No such process
+Soap error ####. The operation is not allowed in current state
+The attempted operation cannot be performed in the current state (Powered Off)
+The request refers to an object that no longer exists or has never existed
+Another task in progress
+Environment
+ESXi 6.x
+ESXi 7.x
+ESXi 8.x
+ESX 9.x
+Resolution
+If the virtual machine remains unresponsive to power commands from the vSphere Client or ESXi host client, follow the methods below
+Table of Contents
+Determining the virtual machine's location
+Using vim-cmd
+Using esxcli
+Using esxtop
+Determining the virtual machine's location
+Determine the host on which the virtual machine is running.
+This information is available in the virtual machine's Summary tab when viewed in vCenter web client
+Using vim-cmd
+Log in to the ESXi host as root via SSH
+Get a list of all registered virtual machines, identified by their VMID and Display Name by running this command:
+vim-cmd vmsvc/getallvms
+Example output:
+Take note of the impacted virtual machine ID
+VMID
+Get the current state of a virtual machine by running this command:
+vim-cmd vmsvc/power.getstate VMID
+Example output:
+Check if there are hung task on the impacted virtual machine that prevent the machine from powering on by running this command:
+vim-cmd vmsvc/get.tasklist VMID
+Example output:
+(ManagedObjectReference) [
+'vim.Task:haTask-2-vim.VirtualMachine.createSnapshot-1234567',
+'vim.Task:haTask-2-vim.VirtualMachine.consolidateDisks-12345678'
+]
+Run the
+vim-cmd vimsvc/task_info task_id
+command to see the task in more detail.
+For example using the data from step 5:
+vim-cmd vimsvc/task_info haTask-2-vim.VirtualMachine.createSnapshot-1234567
+
+vim.TaskInfo) {
+dynamicType = <unset>,
+key = "haTask-2-vim.VirtualMachine.createSnapshot-1234567",
+task = 'vim.Task:haTask-2-vim.VirtualMachine.createSnapshot-1234567',
+description = (vmodl.LocalizableMessage) null,
+name = "vim.VirtualMachine.createSnapshot",
+descriptionId = "VirtualMachine.createSnapshot",
+entity = 'vim.VirtualMachine:2',
+entityName = "VM_name",
+state = "running",
+cancelled = false,
+cancelable = false,
+error = (vmodl.MethodFault) null,
+result = <unset>,
+progress = 50,
+reason = (vim.TaskReasonUser) {
+dynamicType = <unset>,
+userName = "********",
+},
+queueTime = "YYYY-MM-DDThh:mm:ss.msZ",
+startTime = "YYYY-MM-DDThh:mm.ss.msZ",
+completeTime = <unset>,
+eventChainId = 1234567,
+changeTag = <unset>,
+parentTaskKey = <unset>,
+rootTaskKey = <unset>,
+}
+The task is hung and needs to be cancelled, use the command:
+vim-cmd vimsvc/task_cancel task_id
+Note
+: Not all tasks can be canceled. For instance, in the example above we see the snapshot task has the cancelable flag set to false (
+cancelable = false
+).
+Shutdown the virtual machine using the VMID found in Step 3 and run this command:
+vim-cmd vmsvc/power.shutdown VMID
+Note: If the virtual machine fails to shut down, run this command to hard power-off the VM:
+vim-cmd vmsvc/power.off VMID
+Example output:
+Using esxcli
+Note
+: If
+esxcli
+does not work, use
+localcli
+instead; Replace
+esxcli
+with
+localcli
+.
+Log in to the ESXi host as root via SSH
+Get a list of running virtual machines, identified by World ID and Display Name by running this command:
+esxcli vm process list
+Example output:
+Take a note of the world ID of the non-responsive virtual machine. For example in step 3 the World ID is
+2750434
+.
+Power off the virtual machine from the list by running one of these commands:
+esxcli vm process kill -t soft -w WorldID
+or
+esxcli vm process kill -t hard -w WorldID
+or
+esxcli vm process kill -t force -w WorldID
+Note
+: These command provide different levels of force to stop the virtual machine:
+Soft is the most graceful
+Hard performs an immediate shutdown
+Force should be used as a last resort
+If the VM fails to stop even after running the "
+esxcli vm process kill
+" command, evacuate all other VMs off the ESXi host and restart the ESXi itself.
+If the ESXi host cannot be managed by vCenter (e.g., vMotion does not work for VMs) and the "
+localcli vm process kill
+" command returns a "No such process" error or returns no error but the VM still appears in the "
+localcli vm process list
+" output, back up the running VMs in the Guest OS if necessary, then power off and power on the ESXi server during a maintenance window.
+Using esxtop
+Killing a virtual machine using esxtop is equivalent to a forced hard shutdown with esxcli.
+Log in to the ESXi host as root via SSH
+Show a list of the currently running virtual machines with esxtop
+esxtop
+Press "
+Shift-V
+" to show only running virtual machines.
+Press "
+F
+" to add new fields, and then "
+C
+" to select the LWID (Leader World Id) field. Press "
+Enter"
+to apply the change
+To kill one of the virtual machine processes, Press "
+K
+" and copy the
+LWID
+from the unresponsive VM.
+If none of the above methods work, you need to evacuate all other VMs off the ESXi host and restart the ESXi itself to flush the stale vm process.
+Additional Information
+VMware Skyline Health Diagnostics for vSphere - FAQ
+Investigating virtual machine file locks on ESXi hosts
+Restarting the Management agents in ESXi
+Failed to power on virtual machine
+Powering off an unresponsive virtual machine on an ESXi host
+Feedback
+thumb_up
+Yes
+thumb_down
+No
+Powered by

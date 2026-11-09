@@ -1,0 +1,115 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000380
+strategy_ref: DET-000278
+name:
+  zh: SRVSVC 共享枚举请求与结果分页判定
+  en: SRVSVC Share Enumeration Request and Result-Page Grading
+summary:
+  zh: 将可解码的 NetrShareEnum 请求关联返回状态和条目，分开记录尝试、空结果、部分清单和已返回共享。
+  en: Join decodable NetrShareEnum requests to status and entries, separating attempts, empty results, partial inventories,
+    and returned shares.
+domains:
+- enterprise
+platforms:
+- Windows
+- Linux
+- macOS
+logic:
+  paragraphs:
+  - zh: 仅在经过验证能够重组 RPC 请求与响应的网络或端点协议传感器上启用本分析。识别 SRVSVC 接口的 NetrShareEnum 操作号 15，以连接/绑定、call ID、目标服务器和时间配对请求响应，提取 Level、返回状态、实际条目及续取信息。只见请求输出
+      enumeration_attempt；拒绝和无效级别保留各自错误。NERR_Success 且无条目输出 enumeration_empty；NERR_Success 或 ERROR_MORE_DATA 且返回可解析共享条目时输出
+      shares_returned，同时在后者标记 partial。不得用 TotalEntries 代替实际条目数，也不得把 ERROR_MORE_DATA 当作没有取得任何结果。
+    en: Enable this analytic only on a network or endpoint protocol sensor validated to reassemble RPC requests and responses.
+      Identify NetrShareEnum operation 15 on the SRVSVC interface and pair requests and responses by connection or binding,
+      call ID, target server, and time. Extract level, status, actual entries, and continuation information. A request alone
+      emits enumeration_attempt; preserve denial and invalid-level errors separately. NERR_Success with no entries emits enumeration_empty.
+      NERR_Success or ERROR_MORE_DATA with parsed share entries emits shares_returned, with partial set for the latter. Never
+      substitute TotalEntries for actual entry count or interpret ERROR_MORE_DATA as obtaining no result.
+  - zh: 对同一客户端、有效调用身份、服务器及级别追踪 ResumeHandle 链，去重返回共享并标记未续取、缺失响应或共享状态变化的完整性限制；最终成功只表示该调用上下文的返回完成，不证明所有时期或权限上下文的全局清单。再把查询来源与批准资产盘点范围比较，优先处置陌生身份/主机组合、非批准多服务器枚举及敏感单服务器查询。IPC$、5140、5145、映射盘条目或后继文件读均不能补充成缺失的枚举返回；需要客户端进程归因时另外关联客户端进程连接，不能使用服务器系统
+      PID。共享名称已返回也不等于 caller 可打开共享或已读取正文。
+    en: Track ResumeHandle chains by client, effective caller, server, and level, deduplicate share identities, and flag incompleteness
+      from uncontinued pages, missing responses, or changing share state. Final success completes the returned sequence for
+      that call context, not a global inventory across time or permissions. Compare query origin with approved inventory scope,
+      prioritizing unfamiliar principal and host combinations, unapproved multi-server enumeration, and sensitive single-server
+      queries. IPC$, events 5140 or 5145, mapped-drive entries, and subsequent file reads cannot reconstruct a missing enumeration
+      response. Attribute a client process through separate client process and connection data rather than a server system
+      PID. Returned names do not establish that the caller can open a share or has read content.
+data_requirements:
+- source_type: decoded-srvsvc-request-response
+  name:
+    zh: 经部署验证的 SRVSVC 请求和响应解码
+    en: Deployment-validated SRVSVC request and response decoding
+  channel: Custom RPC-capable protocol sensor; not a default Windows audit event
+  required_fields:
+  - event_time
+  - client_address
+  - server_address
+  - connection_id
+  - rpc_binding_id
+  - rpc_call_id
+  - rpc_interface
+  - rpc_opnum
+  - information_level
+  - response_status
+  - returned_entries
+  - resume_handle
+- source_type: approved-share-inventory-origins
+  name:
+    zh: 授权枚举来源与服务器范围清单
+    en: Authorized enumeration origins and server-scope inventory
+  channel: null
+  required_fields:
+  - owner
+  - source_asset
+  - target_server
+  - permitted_query_scope
+  - valid_until
+observables:
+- zh: SRVSVC 操作号 15 的请求、状态和实际共享条目
+  en: SRVSVC operation 15 requests, statuses, and actual share entries
+- zh: ERROR_MORE_DATA、ResumeHandle 续取与同一上下文返回范围
+  en: ERROR_MORE_DATA, ResumeHandle continuation, and returned scope within one context
+correlation:
+  window:
+    zh: RPC 请求响应初始配对六十秒，续取链十五分钟，来源范围比较二十四小时；均需按延迟和任务调整。
+    en: Start with 60s RPC pairing, 15m continuation chains, and 24h origin-scope comparison, adapting all windows to latency
+      and jobs.
+  dimensions:
+  - client_address
+  - server_address
+  - connection_id
+  - rpc_binding_id
+  - rpc_call_id
+  - information_level
+  - resume_handle
+false_positives:
+- zh: ShareEnum、安全审计、资产管理和共享故障排查会产生相同协议返回，分页也是正常结果处理。
+  en: ShareEnum, security audits, asset management, and share troubleshooting produce identical protocol returns; pagination
+    is normal result handling.
+blind_spots:
+- zh: SMB 加密或 RPC 保护、只见单向流量、缺包、解码器不支持、经代理来源折叠和本地调用会限制配对。协议传感器未记录有效身份时只能归因到连接；多页期间共享变化可使结果重复或遗漏。
+  en: SMB encryption or protected RPC, one-way visibility, packet loss, unsupported decoding, proxy origin collapse, and local
+    calls limit pairing. Without effective-identity telemetry, attribution is connection-only. Share changes during pagination
+    can duplicate or omit entries.
+tuning_guidance:
+  paragraphs:
+  - zh: 用已知非空、空清单、无权限和强制小缓冲续取测试验证解码器的实际字段与状态，初期限制到重点文件服务器；无法读取响应的部署输出请求层级线索。批准扫描器例外必须固定 owner、来源、身份可用性、目标集合和期限，避免把所有 IPC$
+      或管理员访问视为良性，也避免把其视为清单成功。
+    en: Validate decoder fields and states with known nonempty, empty, denied, and deliberately small-buffer continuation
+      tests, initially on priority file servers. Deployments without readable responses emit request-level leads. Scanner
+      exceptions must specify owner, origin, identity availability, target set, and expiry, without treating all IPC$ or administrator
+      activity as benign or as successful inventories.
+evidence_refs:
+- REF-001249
+- REF-001248
+- REF-001255
+- REF-000474
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-11-05'
+  modified: '2026-11-05'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

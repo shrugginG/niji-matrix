@@ -1,0 +1,130 @@
+type: individually-reviewed-handoff-overrides
+candidate: T1007
+content_edits:
+- pointer: /defense_candidates/detection_analytics/1/logic/paragraphs/0
+  value:
+    zh: 预先按实际32/64位ABI部署execve/execveat审计，确认没有never-task等规则排除。将采集器同一host_id/boot_id与msg=audit(epoch:serial)的SYSCALL、EXECVE、PROCTITLE按事件ID组合；epoch按秒转换UTC，串行号不作时间，arch、exe、pid、ppid、auid、uid、euid、ses、success和exit原样保留，EXECVE的argc/a0至aN组成argv。host_id与boot_id由采集器主机和启动元数据提供，不能由PID猜测；PROCTITLE需要按编码解码且不替代缺失参数。审计成功只说明执行系统调用成功，不含后继查询退出码和stdout。
+      host_id与boot_id由采集器已认证的宿主/启动登记附加到审计记录；node可能未配置，只保留其原始可选值，不用它作为权威设备标识或补造同名主机。
+    en: Preconfigure execve/execveat auditing for actual 32/64-bit ABIs and verify exclusions such as never-task. Join SYSCALL,
+      EXECVE, and PROCTITLE by collector host_id/boot_id and msg=audit(epoch:serial). Convert epoch seconds to UTC without
+      treating the serial as time. Retain arch, exe, pid, ppid, auid, uid, euid, ses, success, and exit; construct argv from
+      EXECVE argc and a0 through aN. Supply host_id and boot_id through collector host/boot metadata rather than guessing
+      from a PID. Decode PROCTITLE according to encoding without replacing missing arguments. Audit success establishes execution-syscall
+      success, not the later inquiry exit code or stdout. Attach host_id and boot_id to audit records from the collector’s
+      authenticated host/boot registration. node may be unconfigured; preserve it only as optional raw context rather than
+      an authoritative device identity or a reason to invent a same-named host.
+- pointer: /defense_candidates/detection_analytics/1/data_requirements/0/required_fields
+  value:
+  - host_id
+  - boot_id
+  - audit_epoch
+  - audit_serial
+  - record_type
+  - arch
+  - exe
+  - pid
+  - ppid
+  - auid
+  - uid
+  - euid
+  - ses
+  - success
+  - exit
+  - argc
+  - argv
+  - proctitle
+  - argument_completeness
+- pointer: /defense_candidates/detection_analytics/1/data_requirements/1/required_fields
+  value:
+  - host_id
+  - boot_id
+  - metadata_valid_from
+  - metadata_valid_until
+- pointer: /defense_candidates/detection_analytics/3/logic/paragraphs/0
+  value:
+    zh: 此分析只在已选宿主部署经ABI和模块版本验证的自定义采集，例如用Frida的Interceptor入口/返回与安全指针读取。记录宿主process_id、thread_id、UTC时间和单调序号，按其主机与时间连接Sysmon唯一生存期。对已知任务分派或实际内联入口记录entry_address、task_id、code_hash及begin/end；task_id与call_id是采集器生成键，不能由邻近时间假造。用同线程嵌套或明确跨线程因果传播把具体服务调用连接任务，存在具体入口和调用才能给出inline_task_observed；缺任务链时只记SCM请求，不因缺sc事件分类为内联。
+      每条调用记录保留单调序号以及来自已验证任务作用域的task_id和连接证据；没有此作用域时task_id保持未知，不用UTC邻近猜测任务归属。
+    en: Run this analytic only in selected carriers with custom capture validated against ABI and module versions, for example
+      using Frida Interceptor entry/return callbacks and safe pointer reading. Record carrier process_id, thread_id, UTC time,
+      and monotonic sequence, joining host and time to a unique Sysmon lifetime. Capture entry_address, task_id, code_hash,
+      and begin/end at known dispatch or actual inline entry. Task_id and call_id are collector-generated keys, never invented
+      from nearby timestamps. Associate particular service calls with tasks through same-thread nesting or explicit cross-thread
+      causal propagation. Require an actual entry and call for inline_task_observed; without the task chain retain an SCM
+      request instead of classifying missing sc events as inline. Each call retains a monotonic sequence, task_id from a validated
+      task scope, and linkage evidence. Without that scope, task_id remains unknown rather than being guessed from UTC proximity.
+- pointer: /defense_candidates/detection_analytics/3/logic/paragraphs/1
+  value:
+    zh: 采集OpenSCManagerA/W的lpMachineName、lpDatabaseName、dwDesiredAccess和非空返回句柄，OpenServiceA/W的manager句柄、lpServiceName、权限和返回句柄，并在CloseServiceHandle结束映射。句柄键按宿主实例、数值与分配代次区分，空machine表示本机，已打开或继承句柄无来源则目标未知。EnumServicesStatusExA/W记录InfoLevel、dwServiceType、dwServiceState、group、cbBufSize和resume输入及输出，QueryServiceStatusEx记录服务句柄、InfoLevel和缓冲尺寸。原始入参只支持请求，返回BOOL和失败时即时last-error单独采集；成功时残留last-error不解释为失败，字符串按A/W编码与边界解码，返回服务PID不当读取者。
+      显式记录lpResumeHandle是否提供，将可选空指针、未捕获值和真实零值分开。
+    en: Capture OpenSCManagerA/W lpMachineName, lpDatabaseName, dwDesiredAccess, and nonnull returned handles; capture OpenServiceA/W
+      manager handle, lpServiceName, rights, and returned handle, ending maps on CloseServiceHandle. Scope handle keys by
+      carrier instance, value, and allocation generation. A null machine means local, while preopened or inherited handles
+      without provenance retain unknown targets. For EnumServicesStatusExA/W retain InfoLevel, dwServiceType, dwServiceState,
+      group, cbBufSize, and input/output resume values; for QueryServiceStatusEx retain the service handle, InfoLevel, and
+      buffer size. Inputs establish requests only. Capture BOOL returns and immediate failure last-error separately; stale
+      last-error after success is not failure. Decode A/W strings within encoding and bounds, and never treat returned service
+      PIDs as readers. Explicitly record whether lpResumeHandle was supplied, separating an optional null pointer, an uncaptured
+      value, and actual zero.
+- pointer: /defense_candidates/detection_analytics/3/logic/paragraphs/2
+  value:
+    zh: 只有输出指针、数组边界与InfoLevel经验证才解析返回结构。枚举中lpServicesReturned给出本页条目数；仅在文档规定的缓冲不足反馈下解释pcbBytesNeeded的剩余所需字节，不将其当作条数或无条件有效的成功字段。ERROR_MORE_DATA是需要续页或仅尺寸探测，不自动成功或空集；保留已验证的本页条目，按已观测的同一enumeration_chain_id与resume续页，链键仅由任务与实际循环因果生成而非相邻时间，任何缺页、截断、错误或无法连接的续页使完整性为partial/unknown。非零成功且实际提供的resume输出已终止，或API已成功且此可选参数确实未提供，才支持所选过滤下完成，零条目也仅是所选权限视图空，逐服务QUERY_STATUS缺权可能静默省略。QueryServiceStatusEx非零才读SERVICE_STATUS_PROCESS；ERROR_INSUFFICIENT_BUFFER不写有效结构。枚举returned_entries内将lpServiceName/lpDisplayName、dwServiceType、dwCurrentState、dwProcessId、dwWin32ExitCode和dwServiceSpecificExitCode映射为service_name/display_name、service_type、current_state、service_pid、win32_exit_code和service_specific_exit_code，保持原始数字；单服务结构没有名称指针，service_name只从已证实句柄映射取得，display_name未知。dwWaitHint为毫秒且不是实际耗时，检查点不是时间，服务自报码不作API错误。STOPPED的PID无效，START/STOP_PENDING时也可能无效，其他有效状态才允许解释服务归属，仍不证明实时健康。
+      类型过滤或返回确认纯driver时分流NJT-0180；Win32服务任务才支持本子项，混合或类型未知只保留相应范围请求与条目，不重计普通服务。 API成功且所有实际提供的续页状态已终止时，仅确认所见请求范围遍历；可选resume指针确实未提供与未采集不同，服务状态在分页间变化也不形成原子全机快照。
+    en: 'Parse return structures only after validating output pointers, array bounds, and InfoLevel. For enumeration lpServicesReturned
+      counts this page. Interpret pcbBytesNeeded as remaining required bytes only for documented insufficient-buffer feedback,
+      never as an entry count or an unconditionally valid successful-return field. ERROR_MORE_DATA means continuation or sizing,
+      not automatic success or emptiness. Preserve validated current-page entries and join continuation by observed enumeration_chain_id
+      and resume values, deriving the chain only from task/loop causality rather than nearby timestamps. Missing pages, truncation,
+      errors, or unlinked continuation make completeness partial/unknown. A nonzero successful call with terminal output for
+      any supplied resume parameter, or an established successful call where that optional pointer was genuinely omitted,
+      supports completion under the selected filters only; zero entries are empty only within the selected authority view,
+      which can silently omit services lacking QUERY_STATUS. Parse SERVICE_STATUS_PROCESS after nonzero QueryServiceStatusEx
+      only; ERROR_INSUFFICIENT_BUFFER provides no valid structure. For enumeration returned_entries map lpServiceName/lpDisplayName,
+      dwServiceType, dwCurrentState, dwProcessId, dwWin32ExitCode, and dwServiceSpecificExitCode to service_name/display_name,
+      service_type, current_state, service_pid, win32_exit_code, and service_specific_exit_code, preserving raw numbers. A
+      single-service structure has no name pointers: obtain service_name only from proven handle mappings and leave display_name
+      unknown. DwWaitHint is milliseconds rather than elapsed duration; checkpoints are not time, and service-reported errors
+      are not API errors. STOPPED PIDs are invalid, START/STOP_PENDING PIDs may be invalid, and only documented valid states
+      permit service ownership interpretation without attesting real-time health. Route confirmed pure-driver filters or returns
+      to NJT-0180. Only Win32-service tasks support this child; retain mixed or unknown-type requests/entries at their actual
+      scope without recounting ordinary services. Successful API completion with terminal states for any supplied continuation
+      confirms traversal of the observed request scope only. A genuinely absent optional resume pointer differs from uncaptured
+      state, and changing services between pages do not form an atomic whole-host snapshot.'
+- pointer: /defense_candidates/detection_analytics/3/data_requirements/1/required_fields
+  value:
+  - host_id
+  - event_time
+  - process_id
+  - thread_id
+  - capture_session
+  - call_id
+  - enumeration_chain_id
+  - phase
+  - api_name
+  - abi
+  - handle_value
+  - handle_generation
+  - manager_handle
+  - service_handle
+  - machine_name
+  - database_name
+  - service_name
+  - desired_access
+  - info_level
+  - service_type_filter
+  - service_state_filter
+  - group_filter
+  - buffer_size
+  - resume_in
+  - resume_out
+  - entries_returned
+  - bytes_needed
+  - bool_return
+  - last_error
+  - returned_entries
+  - pointer_validity
+  - decode_status
+  - capture_completeness
+  - monotonic_sequence
+  - task_id
+  - task_link_evidence
+  - resume_pointer_present

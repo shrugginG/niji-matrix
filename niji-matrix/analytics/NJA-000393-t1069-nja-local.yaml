@@ -1,0 +1,124 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000393
+strategy_ref: DET-000284
+name:
+  zh: 本地组枚举调用方与敏感关系范围关联
+  en: Local Group Enumeration Caller and Sensitive Relationship Scope Correlation
+summary:
+  zh: 区分 4798 与 4799 的查询方向，以调用方、敏感目标和批准任务识别本地组关系调查。
+  en: Distinguish the query directions of 4798 and 4799 and identify local group-relationship surveying through callers, sensitive
+    targets, and approved work.
+domains:
+- enterprise
+platforms:
+- Windows
+logic:
+  paragraphs:
+  - zh: 在启用 Audit User Account Management 与 Audit Security Group Management 成功审核并验证系统版本后，分别选择 4798 与 4799。前者的 TargetSid 表示被查询用户，后者表示被枚举本地组；保留
+      query_direction，不混合成同一种目标。将 SubjectUserSid、SubjectLogonId、CallerProcessId、CallerProcessName 和目标 SID 规范化；CallerProcessId
+      是十六进制指针，必须按值解析而非同字符串十进制 PID 直接相等。
+    en: After enabling successful Audit User Account Management and Audit Security Group Management and validating OS support,
+      select 4798 and 4799 separately. TargetSid identifies the queried user in the former and the enumerated local group
+      in the latter; retain query_direction rather than treating both as the same target. Normalize SubjectUserSid, SubjectLogonId,
+      CallerProcessId, CallerProcessName, and target SID. Parse CallerProcessId as a hexadecimal pointer value rather than
+      comparing its text with a decimal PID.
+  - zh: 在同一设备十五分钟内，以主体、登录标识和调用方聚合所查询的不同用户或组，将高价值 SID、非常规调用路径或来源与批准权限审查任务比较。没有匹配 owner、目标范围和有效时间的任务时输出 group_enumeration_observed
+      并提高调查优先级；单次敏感组枚举也保留，不要求达到统一计数。事件证明枚举操作，不能推断返回了全部成员或已经访问成员拥有的资源。
+    en: Over fifteen minutes on the same device, group distinct queried users or groups by actor, logon identifier, and caller,
+      and compare valuable SIDs and unusual caller paths or origins with approved access-review work. If no task matches owner,
+      target scope, and validity interval, emit group_enumeration_observed and prioritize investigation. Retain single sensitive-group
+      enumerations without a universal count requirement. The event establishes enumeration, not complete returned members
+      or access to resources held by those members.
+  - zh: 若启用进程补充分支，将同机 4688 的 NewProcessId 按生存期与调用 PID 连接，保留创建时间、创建者与命令行；命令行需要单独策略。缺少可消歧的进程创建时仅保留事件自带调用方，不跨重用 PID 或跨设备推断进程谱系。调用方是服务器服务进程时，它不等于远端客户端原始进程。
+    en: If the process-enrichment branch is enabled, join same-host 4688 NewProcessId to the caller PID within the process
+      lifetime and retain creation time, creator, and command line; command-line auditing requires a separate policy. Without
+      a disambiguating process-creation event, retain only the caller in the enumeration record rather than infer lineage
+      across reused PIDs or devices. A server-service caller is not the originating remote-client process.
+data_requirements:
+- source_type: windows-local-group-read
+  name:
+    zh: 已启用相应审核的本地组枚举事件
+    en: Local group enumeration events with applicable auditing enabled
+  channel: Security event 4798 and 4799
+  required_fields:
+  - timestamp
+  - computer
+  - event_id
+  - subject_user_sid
+  - subject_logon_id
+  - target_sid
+  - target_user_name
+  - caller_process_id
+  - caller_process_name
+- source_type: authorized-relationship-review
+  name:
+    zh: 已批准组关系审查任务清单
+    en: Approved group-relationship review inventory
+  channel: Identity governance and support work inventory
+  required_fields:
+  - job_id
+  - owner
+  - actor
+  - source_scope
+  - target_scope
+  - valid_from
+  - valid_to
+- source_type: windows-process-enrichment
+  name:
+    zh: 仅启用进程补充分支时的进程创建与命令行
+    en: Process creation and command line only when process enrichment is enabled
+  channel: Security event 4688 with process auditing and separately enabled command line
+  required_fields:
+  - timestamp
+  - computer
+  - new_process_id
+  - new_process_name
+  - creator_process_id
+  - subject_user_sid
+  - command_line
+observables:
+- zh: 4798 的按用户查询与 4799 的按本地组查询具有不同目标语义
+  en: Per-user queries in 4798 and per-local-group queries in 4799 have different target semantics
+- zh: 非批准调用方触及高价值 SID 或超出任务范围
+  en: Unapproved callers reach valuable SIDs or exceed approved scope
+correlation:
+  window:
+    zh: 以十五分钟调用窗口及三十日职责基线起步，按设备工作负载验证；进程 PID 关联必须限制于同机已验证生存期。
+    en: Start with a fifteen-minute call window and thirty-day duty baseline and validate by device workload; PID joins must
+      remain within a verified same-host process lifetime.
+  dimensions:
+  - computer
+  - subject_user_sid
+  - subject_logon_id
+  - caller_process_id
+  - target_sid
+  - query_direction
+false_positives:
+- zh: 计算机管理、帮助台、备份代理、安装程序和访问审查均可能枚举相同本地组；需核查实际服务 owner 与工单范围。
+  en: Computer Management, help desks, backup agents, installers, and access reviews can enumerate the same local groups;
+    verify the actual service owner and ticket scope.
+blind_spots:
+- zh: 审核未启用、旧系统、不产生此事件的目录接口、已有令牌读取和策略关系替代可能无相应事件；不能用本分析涵盖 Linux、macOS、LDAP 或云读取。
+  en: Disabled auditing, older systems, directory interfaces that do not generate these events, existing-token reads, and
+    policy substitution can lack these records. This analytic does not cover Linux, macOS, LDAP, or cloud reads.
+tuning_guidance:
+  paragraphs:
+  - zh: 先以已知本地用户和组验证两种方向、十六进制 PID 以及审核策略，使用稳定 SID 避免本地化组名误匹配。例外绑定身份、服务或脚本、设备范围和有效时间，不因路径位于 System32 就永久放行。参数与进程补充分支分别测试，记录不可用状态而不伪造输出。
+    en: Validate both directions, hexadecimal PIDs, and audit policies using known local users and groups, and use stable
+      SIDs to avoid localized-name mismatches. Bind exceptions to identity, service or script, device scope, and expiry rather
+      than permanently allowing System32 paths. Test command and process enrichment separately and record unavailability without
+      fabricating results.
+evidence_refs:
+- REF-001285
+- REF-001286
+- REF-000334
+- REF-000623
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-11-06'
+  modified: '2026-11-06'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

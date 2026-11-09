@@ -1,0 +1,120 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000358
+strategy_ref: DET-000267
+name:
+  zh: 私钥操作与可携材料控制证据关联
+  en: Private-Key Operations and Portable-Material Control Evidence Correlation
+summary:
+  zh: 以受信密钥清单连接 KSP 操作、经验证的调用者和材料结果，避免将读取事件升级为窃取成功。
+  en: Join KSP operations, validated callers, and material outcomes through trusted key inventory without promoting a read event into successful
+    theft.
+domains:
+- enterprise
+platforms:
+- Windows
+logic:
+  paragraphs:
+  - zh: 用已验证清单连接主机、ProviderName、KeyName 与认证或 CA 签名证书。按主体、Logon ID、容器、操作和时间关联 5058/5059/5061，对批准备份、续期与服务启动之外的操作产生 key_operation_observed。5059
+      的 export 类事件也可能来自普通读取；成功 ReturnCode、文件扩展名及 System.Execution.ProcessID 均不单独证明材料输出、真实调用者或攻击者控制。
+    en: Map hosts, ProviderName, and KeyName to authentication or CA-signing certificates through verified inventory. Correlate 5058/5059/5061
+      by subject, logon ID, container, operation, and time, emitting key_operation_observed outside approved backup, renewal, and service-start
+      activity. An export-class 5059 may accompany an ordinary read. A successful ReturnCode, filename extension, or System.Execution.ProcessID
+      alone establishes neither material output, the business caller, nor adversary control.
+  - zh: 由实际可提供调用链的 EDR 或受控取证补充业务进程、输出哈希和保管主体，只在确认输出包含可用私钥或经批准的证明验证后标记 private_key_material_supported，再以实际恶意控制证据升级 adversary_control_supported。对应证书后续使用另记
+      authentication_supported；CA 私钥暴露仍只是服务外构造的前提，必须另证新主体证书形成。不向检测日志写入私钥字节或解密口令。
+    en: Use EDR that actually exposes the call chain or controlled forensics to add the business process, output hash, and custodian. Mark
+      private_key_material_supported only after establishing usable key-bearing output or approved proof validation, then escalate to adversary_control_supported
+      using actual control evidence. Separately record authentication_supported for successor use. CA-key exposure remains a prerequisite
+      for off-service construction and requires separate evidence of a new subject certificate. Do not place key bytes or decryption passwords
+      in detection logs.
+data_requirements:
+- source_type: ksp-key-operation-audit
+  name:
+    zh: KSP 密钥操作审计
+    en: KSP Key-Operation Audit
+  channel: Windows Security 5058/5059/5061 for documented Software/Smart Card KSP paths
+  required_fields:
+  - event_time
+  - event_id
+  - event_version
+  - host_id
+  - subject_sid
+  - subject_logon_id
+  - provider_name
+  - key_name
+  - operation
+  - return_code
+- source_type: authentication-key-inventory
+  name:
+    zh: 认证密钥与批准任务清单
+    en: Authentication-Key and Approved-Job Inventory
+  channel: null
+  required_fields:
+  - host_id
+  - provider_name
+  - key_name
+  - certificate_fingerprint
+  - purpose
+  - owner
+  - export_policy
+  - approved_job
+- source_type: controlled-material-assessment
+  name:
+    zh: EDR 与受控材料验证结论
+    en: EDR and Controlled Material-Assessment Findings
+  channel: Product-validated caller telemetry or authorized forensic assessment; no secret values
+  required_fields:
+  - host_id
+  - operation_time
+  - process_identity
+  - output_hash
+  - material_validation_result
+  - custody_assessment
+observables:
+- zh: 未经批准的密钥访问或迁移操作
+  en: Unapproved key access or migration operation
+- zh: 输出材料的私钥存在性与控制主体被分别验证
+  en: Key-bearing output and its controller are separately validated
+correlation:
+  window:
+    zh: 同一密钥操作链先以 10 分钟作演练起点，按备份和异步任务延迟调整；后继认证关联保留完整材料有效期。
+    en: Start exercises with 10 minutes for one key-operation chain, adjusting for backup and asynchronous delays; retain the material lifetime
+      for successor-authentication correlation.
+  dimensions:
+  - host_id
+  - subject_sid
+  - subject_logon_id
+  - provider_name
+  - key_name
+  - operation_time
+  - output_hash
+  - certificate_fingerprint
+false_positives:
+- zh: 证书续期、服务启动、批准的密钥备份、迁移与诊断会正常读用密钥；按确切密钥、调用者和工单期限验证。
+  en: Renewal, service start, approved key backup, migration, and diagnostics legitimately access keys; validate exact keys, callers, and
+    ticket periods.
+blind_spots:
+- zh: 指定 KSP 之外、直接或原始磁盘复制、离线快照、第三方 Provider 与远程硬件可能没有相应事件；现有事件也不保证能定位业务调用者。
+  en: Paths outside the documented KSPs, direct or raw-disk copying, offline snapshots, third-party providers, and remote hardware may lack
+    these events; available events need not identify the business caller.
+tuning_guidance:
+  paragraphs:
+  - zh: 在目标 Provider 上用无生产用途密钥验证普通读取、正常导出、失败操作与材料验证四种样本，记录事件实际覆盖。只允许具体密钥/任务/主机/期限，不能豁免全部系统主体；对不能取得内容结果的读取保留线索等级，不用软件名或新建 PFX 替代调查。
+    en: Exercise ordinary reads, legitimate exports, failures, and material validation with nonproduction keys on each target provider and
+      document actual coverage. Allow only specific key, job, host, and period combinations rather than all system subjects. Retain reads
+      without content outcomes as leads instead of substituting a software name or newly created PFX for investigation.
+evidence_refs:
+- REF-001176
+- REF-001177
+- REF-001178
+- REF-001182
+- REF-001171
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-11-05'
+  modified: '2026-11-05'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

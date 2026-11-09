@@ -1,0 +1,140 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000385
+strategy_ref: DET-000281
+name:
+  zh: Windows 密码规则查询语义与目标策略视图
+  en: Windows Password-Rule Query Semantics and Target Policy View
+summary:
+  zh: 区分本地、域默认与用户有效规则请求，识别不符合任务来源的调查而不把进程创建等同于返回成功。
+  en: Distinguish local, domain-default, and user-resultant rule requests and identify surveying outside expected work without
+    treating process creation as successful retrieval.
+domains:
+- enterprise
+platforms:
+- Windows
+logic:
+  paragraphs:
+  - zh: 基础分支从启用完整命令行的 4688 记录解析 net 或 net1 的 accounts 只读语义，保留 /domain 等目标范围；带设置参数的请求转给策略修改分析，帮助或语法错误保留原状态。按主机、登录 ID、进程 ID
+      和创建时间恢复可验证的进程谱系，避免 PID 重用。事件记录的创建主体不一定代表新进程的实际安全上下文；目标主体字段依版本和记录而定，缺失时保持未知。仅有启动事件时输出 policy_query_attempt，不推断进程退出、读取成功或具体约束。
+    en: The base branch parses read-only accounts semantics in net or net1 from event 4688 with full command lines, retaining
+      scope such as /domain. Route setting arguments to policy-mutation analysis and retain help or syntax-error context.
+      Recover verifiable lineage by host, logon ID, process ID, and creation time to avoid PID reuse. The recorded creator
+      need not represent the new process security context; target-subject fields depend on event version and availability
+      and remain unknown when absent. A launch alone yields policy_query_attempt rather than process completion, read success,
+      or particular constraints.
+  - zh: 在启用 PowerShell 脚本块补充分支时，按脚本块 ID 和分段号重组 4104，识别 Get-ADDefaultDomainPasswordPolicy 与 Get-ADUserResultantPasswordPolicy
+      的实际查询语义并分别保留域或用户目标。结果采集若另行启用，必须验证返回对象、时间和目标，才可提升为 policy_result_observed；默认域对象不升级为用户有效对象。十分钟内与批准的账号支持、合规和目录作业比较，来源、身份或目标越界时提高优先级，正常任务需要范围和到期时间相符。
+    en: When the supplemental PowerShell branch is enabled, reconstruct event 4104 by script-block ID and fragment sequence
+      and identify actual Get-ADDefaultDomainPasswordPolicy and Get-ADUserResultantPasswordPolicy query semantics, retaining
+      domain and user targets separately. If result collection is separately enabled, validate the returned object, time,
+      and target before raising the level to policy_result_observed; a domain-default object must not become a user-resultant
+      object. Compare against approved account-support, compliance, and directory jobs over ten minutes, prioritizing origin,
+      identity, or target deviations. Legitimate work must match scope and expiry.
+data_requirements:
+- source_type: windows-security-process-create
+  name:
+    zh: 启用命令行的进程创建记录
+    en: Process creation with command lines enabled
+  channel: Windows Security event 4688
+  required_fields:
+  - timestamp
+  - device_id
+  - subject_user_sid
+  - subject_logon_id
+  - new_process_id
+  - new_process_name
+  - process_command_line
+  - creator_process_id
+- source_type: approved-account-policy-job
+  name:
+    zh: 批准的账号规则支持与核查任务
+    en: Approved account-rule support and review work
+  channel: change and support job inventory
+  required_fields:
+  - job_id
+  - owner
+  - source_device
+  - principal
+  - target_scope
+  - valid_from
+  - valid_to
+- source_type: powershell-script-block
+  name:
+    zh: 启用补充分支时的完整重组脚本块
+    en: Reconstructed script blocks when the supplemental branch is enabled
+  channel: Microsoft-Windows-PowerShell/Operational event 4104
+  required_fields:
+  - timestamp
+  - device_id
+  - process_id
+  - script_block_id
+  - message_number
+  - message_total
+  - script_block_text
+- source_type: validated-policy-result
+  name:
+    zh: 启用结果分支时的授权输出采集
+    en: Authorized output collection when the result branch is enabled
+  channel: validated result artifact or endpoint instrumentation
+  required_fields:
+  - timestamp
+  - device_id
+  - process_id
+  - target_scope
+  - policy_view
+  - result_content
+  - result_validated
+observables:
+- zh: accounts 只读请求及其本地或域范围
+  en: Read-only accounts requests with local or domain scope
+- zh: 域默认值或指定用户有效策略的脚本请求
+  en: Script requests for domain defaults or a specified user's resultant policy
+- zh: 与批准来源和目标范围不匹配的规则调查
+  en: Rule surveying unmatched to approved origins and target scope
+correlation:
+  window:
+    zh: 以十分钟进程链窗口和三十日任务基线开始验证；这些是工程起点，不是研究证明的恶意阈值。
+    en: Begin validation with a ten-minute process-chain window and thirty-day work baseline; these are engineering starting
+      points rather than research-established malicious thresholds.
+  dimensions:
+  - device_id
+  - subject_logon_id
+  - process_id
+  - process_start_time
+  - principal
+  - target_scope
+  - job_id
+false_positives:
+- zh: 帮助台、账号过期排查、审计、目录迁移和密码管理软件可能执行相同请求。核对具体作业和目标，不因 net.exe 的签名或管理员身份自动放行。
+  en: Help desks, account-expiry troubleshooting, audits, directory migration, and password-management software can issue
+    the same requests. Verify the actual work and target rather than allowing net.exe signatures or administrator identities
+    automatically.
+blind_spots:
+- zh: 原生 API 和自定义目录读取不一定出现这些命令。未启用命令行、截断参数、未记录的脚本运行时及日志丢失降低覆盖；进程或脚本记录本身没有返回规则或完整成功状态。
+  en: Native APIs and custom directory reads need not use these commands. Disabled command-line capture, truncation, unlogged
+    script runtimes, and loss reduce coverage. Process and script records themselves lack returned rules and complete success
+    status.
+tuning_guidance:
+  paragraphs:
+  - zh: 以本地、域默认和细粒度策略目标验证解析，并分别测试帮助、权限拒绝、策略修改和正常读取。将 4688 XML 的 SubjectLogonId、NewProcessId、NewProcessName 与 CommandLine 规范化到上述字段；PID
+      关联必须带创建时间。结果分支缺失时维持尝试等级，批准任务例外必须绑定来源、身份、范围和期限。
+    en: Validate parsing against local, domain-default, and fine-grained targets and separately test help, denied access,
+      mutation, and normal reads. Normalize SubjectLogonId, NewProcessId, NewProcessName, and CommandLine from event 4688
+      XML into the fields above, and include creation time in PID joins. Retain attempt-level evidence without the result
+      branch, and bind approved-work exceptions to origin, identity, scope, and expiry.
+evidence_refs:
+- REF-001049
+- REF-000334
+- REF-000623
+- REF-000463
+- REF-001262
+- REF-001263
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-11-06'
+  modified: '2026-11-06'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

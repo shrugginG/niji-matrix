@@ -1,0 +1,151 @@
+schema_version: 2.0.0
+type: evasion-subtechnique
+id: NJS-0247-001
+name:
+  zh: 进程内连接状态查询
+  en: In-Process Connection-State Query
+summary:
+  zh: 将本次连接状态调查放在已有执行载体的查询代码内，省去独立外部诊断工具的任务创建边界。
+  en: Carry a connection-state inquiry in query code within an executing carrier, removing the task-creation boundary of a
+    separate external diagnostic utility.
+aliases: []
+parent_ref: NJT-0247
+lineage:
+  attck_subtechnique_inherited: false
+definition_and_concept:
+  paragraphs:
+  - zh: 进程内连接状态查询是攻击者把某次 socket 或通信关系调查交给已经运行的客户端或模块中的查询实现，而非为该任务启动独立的外部诊断工具。请求仍然指向操作系统或管理接口提供的连接状态，直接结果仍是网络端点与会话关系；改变的是任务承载位置以及查询与新进程事件的关系，不是获取到的信息种类。
+    en: In-Process Connection-State Query places a particular socket or communication-relationship inquiry in query-implementing
+      code within an already executing client or module instead of starting a separate external diagnostic utility for the
+      task. The request still targets connection state exposed by operating-system or management interfaces and yields endpoint
+      and session relationships. The controlled variable is task-carrier position and its relationship to new-process events
+      rather than the kind of information obtained.
+  - zh: Mafalda 命令 63 将 GetExtendedTcpTable 取得的 TCP 信息组织为带 misc/netstat 时间标签的传输包，为本项提供具体实现依据。该字符串是发给控制端的包名，原始说明不证明同名本地文件。仅发现
+      IP Helper 导入、合法库加载或缺少 netstat 记录均不足以满足边界，必须把具体连接查询与载体中的实现路径关联。
+    en: Mafalda command 63 packages TCP information obtained through GetExtendedTcpTable as a transmitted packet with a timestamped
+      misc/netstat label, providing a concrete implementation. That string names a packet sent to the controller, not a proven
+      local file. An IP Helper import, legitimate library load, or absence of netstat records is insufficient; a particular
+      connection query must be associated with its implementation path inside the carrier.
+stealth_characteristics:
+  paragraphs:
+  - zh: 进程内连接状态查询把发现任务的开始与诊断工具进程的开始分离，使只匹配 netstat 创建的规则无法自然取得这次查询入口。载体可以在多种控制任务之间连续运行，连接读取与其他行为共用进程身份，因而单一进程命令行往往不能说明哪一时刻取得了连接状态。被省去的是独立工具的任务痕迹，而非载体本身的执行、内存和通信痕迹。
+    en: In-Process Connection-State Query separates the start of a discovery task from the start of a diagnostic-utility process,
+      depriving netstat-creation rules of their natural entry for the inquiry. A carrier may continue across different control
+      tasks, sharing process identity between a connection read and other behavior, so its process command line often cannot
+      identify when connection state was acquired. The removed trace is the separate utility's task boundary rather than execution,
+      memory, or communication traces of the carrier itself.
+  - zh: 该差异只对缺少调用语义的观察面有利。若防守方记录查询入口、返回状态与真实调用位置，进程内行为仍可被归属；已知诊断代理也会合法采用同样设计。一次成功函数返回并不自动说明攻击者取得完整表，表内 PID 更不能反推查询者，因此需要结果完整性和载体证据共同约束解释。
+    en: The difference benefits the adversary only where observation lacks invocation semantics. Recording the query entry,
+      return status, and actual call site can still attribute the in-process behavior, and legitimate diagnostic agents use
+      the same design. A successful return does not automatically prove complete table acquisition, and PIDs inside the table
+      cannot identify the reader. Result integrity and carrier evidence must jointly constrain interpretation.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 纳入有正面实现或运行证据的连接查询：任务由既有载体中实现状态读取的代码执行，没有单独外部查询工具的任务边界。控制程序仅启动 netstat、ss 或外部脚本进程并收取输出仍属于父级普通工具路径；netstat 自身内部调用 API
+      也不因实现细节成为本项。Mafalda 的具体命令路径能够支持能力结论，未公开的现场调用仍保持未知。
+    en: Include connection inquiries supported by positive implementation or execution evidence where code in an executing
+      carrier implements state acquisition without a separate external-query-utility task boundary. A controller that merely
+      launches netstat, ss, or an external script process and reads output remains on the parent's ordinary utility path.
+      netstat internally calling APIs does not itself qualify. Mafalda's particular command path establishes capability, while
+      unpublished field invocations remain unknown.
+  - zh: 本项不由 API 名称、内存加载方式、进程年龄或无日志外观定义。适配器与路由读取、进程清单和注册表探索由各自技术承担，不因相同载体重复归类。调用者身份与 socket 所属身份分开，失败和大小查询不升级为连接结果；正常监控、终端诊断和应用自检是相似行为，须按具体查询与批准职责审查。
+    en: The child is not defined by API names, memory-loading technique, process age, or an appearance of missing logs. Adapter
+      and route reads, process lists, and Registry exploration retain their own techniques even in the same carrier. Caller
+      identity is separate from socket ownership, and failure or size inquiries do not become connection results. Monitoring,
+      endpoint diagnostics, and application self-checks are benign counterparts requiring review of the particular query and
+      authorized duty.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: 已部署的交互植入体在控制端请求通信画像时，可以用自身命令处理器取得状态并传回结果，省去临时诊断工具和其独立参数。该方式适用于载体可直接调用相应状态接口、且现有连接足以提供线索的主机。Mafalda 的原始研究给出命令能力和传回对象标签，但未证明所有部署都触发这项命令，也未证明操作者为了某条规则特意选择它。
+      en: When a controller requests a communication profile, a deployed interactive implant can obtain state through its
+        own command handler and return results without a temporary diagnostic utility and separate arguments. The approach
+        fits hosts where the carrier can invoke the state interface directly and existing relationships provide useful clues.
+        Original Mafalda research establishes command capability and a returned-object label without proving use in every
+        deployment or deliberate selection against a particular rule.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者须控制已有执行载体中的查询代码，或者能够调度其中已经实现的功能，并能读取对应接口返回。不能仅凭控制某个进程就假定拥有代码注入、管理员权限或任意模块加载能力；这些能力如被采用，应另有证据。可见范围仍受表类别、地址族、权限与系统视图限制，失败、空表和状态变化可能使查询缺乏价值。
+        en: The attacker must control query code within an executing carrier or dispatch an already implemented feature and
+          receive the interface result. Controlling a process does not automatically confer code injection, administrator
+          authority, or arbitrary module loading; those capabilities require separate evidence if used. Table class, address
+          family, permissions, and system view still constrain scope, and failures, empty tables, or changing state can make
+          the inquiry uninformative.
+    defender_model:
+      paragraphs:
+      - zh: 本项以进程创建为主要任务入口而缺少调用级记录的防守方为观察模型。此时仍能看到载体和可能的控制流量，却不能从它们单独恢复本次状态读取。更强观察需要经验证的调用采集、调用位置与进程生存期映射；一般模块加载、Event 3、静态导入和流量记录不足以替代这些证据。结果缓冲区属于额外敏感数据，应在有需要和实际采集成功时才参与分析。
+        en: The observation model is a defender using process creation as the main task entry without call-level records.
+          The carrier and possible control traffic remain visible but do not independently reconstruct the particular state
+          read. Stronger observation needs validated call capture, call-site attribution, and process-lifetime mapping. General
+          module loads, Event 3, static imports, and flow records cannot substitute. Return buffers are additional sensitive
+          data and should participate only when needed and successfully captured.
+stealth_mechanisms:
+- mechanism_ref: NM-BT
+  role: primary
+  summary:
+    zh: 以载体内查询替代单独诊断任务使连接调查越过进程创建规则入口
+    en: Replace a separate diagnostic task with a carrier-local query outside the entry of process-creation rules
+  analysis:
+    paragraphs:
+    - zh: 攻击者将本次状态读取放入载体命令处理路径，减少了原本可从独立 netstat 启动获得的任务识别事件；规则若仅围绕该启动构建便缺少发现入口。Mafalda 的进程内命令与 TCP 结果组织提供正面依据，官方接口说明其仍是状态读取，Sysmon
+        文档则限定进程事件能够提供的层次。查询调用与调用位置仍可被专门采集，所以本机理不等于读取无法观测；未见具体检测器对照或动态逐机记录，置信度为中等。
+      en: The adversary puts a particular state read in the carrier's command path, removing the task-identification event
+        otherwise supplied by a separate netstat launch. Rules built only around that launch lack an inquiry entry. Mafalda's
+        in-process command and TCP-result packaging supply positive evidence, official interfaces establish state-read semantics,
+        and Sysmon documentation bounds the observation supplied by process events. Dedicated capture can still observe invocation
+        and call site, so the mechanism is not unobservable reading. Without a particular-detector comparison or per-host
+        dynamic records, confidence remains medium.
+  evidence_refs:
+  - REF-001380
+  - REF-001382
+  - REF-000230
+  confidence: medium
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000299
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000253
+evidence:
+  claim_refs:
+  - CLM-001313
+  - CLM-001314
+  - CLM-001309
+  - CLM-001310
+  - CLM-001316
+  - CLM-001317
+  case_refs:
+  - CASE-000381
+  reference_refs:
+  - REF-001380
+  - REF-001382
+  - REF-001383
+  - REF-001384
+  - REF-000230
+  - REF-001387
+  - REF-001388
+research:
+  limitations:
+    paragraphs:
+    - zh: 子项的核心证据来自原始逆向公开的命令实现，不是本研究执行过的样本，也不是受害主机逐次调用日志。报告中的内存承载说明载体条件，命令 63 的 API 与结果描述才说明本次查询路径，两者不能互相替代。传输包标签不证明本地写文件；编译时间不作为真实执行时间。
+      en: The child's core evidence is the command implementation published through original reversing, not a sample executed
+        in this research or per-invocation victim logs. Memory residence establishes carrier conditions, while command 63's
+        API and result description establishes the query path; neither substitutes for the other. A transmission-packet label
+        does not establish a local file write, and compilation timestamps are not execution dates.
+    - zh: 调用仪器化是需另行验证的部署设计，目前没有默认 EDR 兼容性、采集开销和抗规避测试结果。合法代理同样可以进程内查询，被攻陷的批准载体可能匹配正常基线。后续需同时保留具体调用路径、成功与失败返回、结果完整性和独立执行器对照，才能量化其观察影响。
+      en: Call instrumentation is a deployment design requiring separate validation; default EDR compatibility, collection
+        overhead, and evasion resistance have not been tested. Legitimate agents also query in process, and compromised approved
+        carriers may match benign baselines. Quantifying observation effects requires particular call paths, success and failure
+        returns, result integrity, and comparison with an independent diagnostic executor.
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-11-07'
+  modified: '2026-11-07'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

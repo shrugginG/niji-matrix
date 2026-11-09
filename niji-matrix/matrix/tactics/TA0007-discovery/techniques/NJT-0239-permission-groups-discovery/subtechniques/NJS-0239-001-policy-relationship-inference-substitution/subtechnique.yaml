@@ -1,0 +1,149 @@
+schema_version: 2.0.0
+type: evasion-subtechnique
+id: NJS-0239-001
+name:
+  zh: 策略关系推导替代
+  en: Policy-Relationship Inference Substitution
+summary:
+  zh: 有意从中央策略推导目标组配置关系，替代逐主机成员枚举，将关键读取转移到策略服务器并接受现场准确性的损失。
+  en: Deliberately infer target group-configuration relationships from central policy instead of enumerating membership host
+    by host, shifting important reads to policy servers while accepting reduced accuracy about current target state.
+aliases: []
+parent_ref: NJT-0239
+lineage:
+  attck_subtechnique_inherited: false
+definition_and_concept:
+  paragraphs:
+  - zh: 策略关系推导替代是攻击者为调查目标主机的组或本地管理关系，选择读取中央策略中的成员映射及应用线索，并从这些声明推导候选关系，替代对目标主机现场组状态的直接询问。所取得的是配置和适用关系推论，直接服务于权限组发现，而不是证明策略已经施行、成员当前存在或访问权限已经生效。
+    en: Policy-Relationship Inference Substitution is an adversary's choice to survey target-host group or local-administration
+      relationships by reading centrally declared membership mappings and application clues, then inferring candidate relationships
+      instead of querying current group state on those hosts. The acquired facts are configuration and applicability inferences
+      that serve Permission Groups Discovery rather than establishing policy application, present membership, or effective
+      access.
+  - zh: 划分变量是“用中央关系声明替代目标现场查询”，并非某个组策略文件名或某个采集工具。作者记录的 SharpHound 模式提供此变量的具体能力证据：相应本地管理采集从目标主机调用改为目录和 SYSVOL 读取。该例只支持所述采集路径，不能推广到工具的全部功能或任意云配置副本。
+    en: 'The variable is substituting central relationship declarations for a query of target state, not a particular policy
+      filename or collector. An author-described SharpHound mode supplies concrete capability evidence for that variable:
+      the relevant local-administration collection changes from target-host calls to directory and SYSVOL reads. The example
+      supports that collection path, not every tool feature or arbitrary cloud configuration copy.'
+stealth_characteristics:
+  paragraphs:
+  - zh: 策略关系推导替代改变的是关系调查所触达的系统和读取对象。逐主机枚举本来可能在成员主机形成调用和组读取痕迹，替代后此步骤的读取集中发生在中央目录与策略文件端；只在成员主机观察 4798、4799 或远程 SAM 访问的防守方会缺少关键调查面。
+    en: Policy-Relationship Inference Substitution changes which systems and objects a relationship survey touches. Host-by-host
+      enumeration can leave calls and group-read traces on member hosts; the substitute step instead reads the central directory
+      and policy-file servers. A defender observing only 4798, 4799, or remote SAM access on member hosts lacks an important
+      survey surface.
+  - zh: 目录属性读取、策略文件 ReadData、服务器登录和采集进程仍会暴露活动，正常策略处理又是强烈的同形反例。替代只在中央策略含有足够关系信息时有用；未受该策略管理的组、本地手工变更、未应用或筛选掉的策略会使推论不完整。减少直接主机接触并不能证明检测完全失效。
+    en: Directory-property reads, policy-file ReadData, server logons, and collector processes still expose activity, and
+      ordinary policy processing is a strong benign lookalike. Substitution is useful only when central policy contains sufficient
+      relationship information. Unmanaged groups, manual local changes, unapplied policy, and filtering can make the inference
+      incomplete. Reduced direct host contact does not establish complete detection failure.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 纳入有意为回答目标组成员或本地管理关系而读取中央策略映射，并以此替代该范围直接主机枚举的行为。需能解释信息目标、被替代查询、中央读取和对应观察差；只看到策略文件读取或缺少成员主机事件，不足以确认本子项。一般策略清单与设置理解由
+      NJT-0231 负责，相同读取若同时产生独立策略信息可另外记录。
+    en: Include deliberate reads of central policy mappings to answer target membership or local-administration questions
+      in place of direct host enumeration for that scope. The information objective, replaced query, central read, and observation
+      difference must be explainable. A policy-file read or missing member-host events alone cannot confirm this child. General
+      policy inventories and setting interpretation remain NJT-0231, and the same read can be recorded separately when it
+      also produces independent policy information.
+  - zh: 直接 LDAP 读取域组成员、本地令牌组状态检查和既存身份名单文件读取不因触点较少便自动纳入。修改策略以增添成员是变更行为；读取策略中的秘密是凭据取得。正常客户端策略刷新、GPMC、配置合规和授权路径审计都可能按相似顺序读目录与文件，必须用调用主体和任务语境区分，不能把常规架构差异本身认定为攻击者匿迹选择。
+    en: Direct LDAP reads of domain-group membership, local-token group inspection, and reads of an existing identity-list
+      file are not included merely because they use fewer contact points. Changing policy to add members is mutation; obtaining
+      secrets from policy is credential access. Normal client refresh, GPMC, configuration compliance, and authorized path
+      auditing can read the directory and files in similar order. Caller and task context are necessary to distinguish these
+      from an adversary's deliberate substitution.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: 该子项适用于已失陷的域上下文能够读取相关策略，而操作者愿意用中央配置推论筛选目标，减少对多个成员主机的直接关系查询。它可以在尚无逐机管理权或希望控制主机触点时提供有限调查价值，但策略未管理的目标及本地漂移不会自动被发现。
+      en: The child applies when a compromised domain context can read relevant policy and the operator accepts central-configuration
+        inferences for target selection to reduce direct relationship queries to multiple member hosts. It can provide limited
+        survey value before per-host administration rights are available or when the operator wants to constrain host contacts,
+        but it does not automatically reveal unmanaged targets or local drift.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者能够认证至有关目录和文件服务，读取管理组映射、策略标识及应用关系，并在采集器中选择替代路径。它不需要为此修改成员或控制域控制器，但须理解组标识和策略关联；读取权、策略适用信息不足、映射解析错误或没有相关配置都会限制结果。攻击者接受未验证现场成员的代价，不能将推论当作成功授权。
+        en: The adversary can authenticate to the relevant directory and file services, read administrative-group mappings,
+          policy identifiers, and application relationships, and select the substitute path in a collector. This requires
+          neither membership changes nor domain-controller control, but it does require understanding identifiers and policy
+          links. Limited read rights, incomplete applicability information, parsing errors, or absent configuration constrain
+          results. The adversary accepts unverified current membership rather than treating an inference as successful authorization.
+    defender_model:
+      paragraphs:
+      - zh: 匿迹判断针对主要从成员主机的本地组枚举或远程 SAM 行为识别调查的防守模型；该观察面可能完全没有本采集步骤的请求。扩展后的防守方可以在策略服务器观察经 SACL 配置的目录和文件读取，以同服务器会话连接源身份与地址，并用
+          GPO 到文件路径映射区分组关系配置。服务器进程不能冒充原始采集进程，正常刷新与合法审计基线也必须保留。
+        en: The stealth conclusion targets a defender model that recognizes surveys mainly through local-group enumeration
+          or remote SAM on member hosts; that plane can contain no requests from this collection step. An expanded defender
+          can observe SACL-configured directory and file reads on policy servers, join source identity and address within
+          the same server session, and map GPOs to file paths to identify group-relationship configuration. A server process
+          must not be treated as the originating collector, and baselines for normal refresh and authorized audits remain
+          necessary.
+stealth_mechanisms:
+- mechanism_ref: NM-BT
+  role: primary
+  summary:
+    zh: 将组关系调查从目标主机查询移至中央策略读取以避开单一主机观察面
+    en: Move group-relationship surveying from target-host queries to central policy reads outside a host-only observation
+      plane
+  analysis:
+    paragraphs:
+    - zh: 攻击者主动选择关系声明推导，省去该范围对每台目标主机的现场组查询，因此成员主机的本地组枚举传感器不再直接观察到这一步。痕迹转而存在于目录和策略文件服务器，防守方必须跨身份、登录与策略路径恢复调查语义。这一因果链由明确标为匿迹采集的作者能力说明、正常策略读取协议和本地组事件语义共同支持；尚无恶意现场实验，置信度保持中等且不声称日志被删除或查询结果完全相同。
+      en: The adversary deliberately chooses inference from relationship declarations, omitting current-state group queries
+        to each target in that scope. Local-group enumeration sensors on member hosts therefore no longer directly observe
+        the step. Traces instead remain at directory and policy-file servers, requiring the defender to recover survey meaning
+        across identity, logon, and policy-path context. Explicit author documentation of stealth collection, the normal policy-read
+        protocol, and local-group event semantics jointly support this causal chain. Without a malicious field experiment,
+        confidence remains medium and neither log deletion nor equivalent results is claimed.
+  evidence_refs:
+  - REF-001283
+  - REF-001213
+  - REF-001286
+  - REF-001295
+  confidence: medium
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000285
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000240
+evidence:
+  claim_refs:
+  - CLM-001221
+  - CLM-001224
+  - CLM-001225
+  case_refs: []
+  reference_refs:
+  - REF-001283
+  - REF-001294
+  - REF-001286
+  - REF-001213
+  - REF-001214
+  - REF-001215
+  - REF-000379
+  - REF-000377
+  - REF-001295
+research:
+  limitations:
+    paragraphs:
+    - zh: 最直接证据是采集器作者对匿迹模式和替代 API 路径的说明，证明能力与设计目的，不证明任何恶意主体已采用或测得检测收益。报告发表于 2018 年，具体文件解析、策略扩展和默认采集行为可能随版本改变；实现时须核实实际采集器版本，不能只见产品名便套用该路径。
+      en: The strongest evidence is the collector author's description of the stealth mode and substitute API path. It establishes
+        capability and design purpose rather than malicious adoption or measured detection benefit. The publication dates
+        to 2018, and file parsing, policy extensions, and default collection can vary by version. Implementations must verify
+        the actual collector version rather than assign this path from the product name alone.
+    - zh: 中央策略声明和现场组状态之间可能存在漂移、筛选、应用失败和时效差；仅有 GPO 链接或 ReadData 也不能确认已还原目标完整组图。所提检测只识别需调查的关系采集候选，不能从没有主机侧枚举记录自动确证替代意图。
+      en: Central policy declarations can differ from current membership through drift, filtering, application failure, and
+        freshness. A GPO link or ReadData event alone cannot confirm reconstruction of a complete target group graph. The
+        proposed detection identifies relationship-collection candidates for investigation rather than proving substitution
+        intent from absent host-side enumeration records.
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-11-06'
+  modified: '2026-11-06'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

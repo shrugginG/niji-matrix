@@ -1,0 +1,117 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000400
+strategy_ref: DET-000288
+name:
+  zh: 环境性 Registry 查询命令与批准任务差异
+  en: Environmental Registry Query Commands Versus Approved Work
+summary:
+  zh: 从完整命令行识别一般配置探索意图，并输出带主体和执行上下文的待核实查询。
+  en: Identify general configuration-exploration intent from complete command lines and output queries to verify with principal
+    and execution context.
+domains:
+- enterprise
+platforms:
+- Windows
+logic:
+  paragraphs:
+  - zh: 采集启用命令行的 4688 或经过等价字段验证的 Sysmon Event 1，对 image 与参数分别解析；匹配 reg 的 query 动作以及实际可解析的 Registry 读取脚本时，保留目标机器、根键、路径、值参数、递归范围和显式视图标志。按用户、父进程实例、主机角色和批准任务比较，对未知来源查询多个非相关分支、交互式新账户执行异常探索或未批准输出重定向给出复核记录。解析结果以分析派生标签保存，不能伪称原生日志字段。
+    en: Collect 4688 with command lines enabled or Sysmon Event 1 after validating equivalent fields, parsing image and arguments
+      separately. For reg query or a genuinely parsed Registry-read script, preserve target machine, root, path, value arguments,
+      recursive scope, and explicit view flags. Compare user, parent instance, host role, and approved work. Queue unknown
+      callers exploring unrelated branches, unusual exploration by a newly active interactive account, or unapproved output
+      redirection for review. Parser outputs are derived labels rather than native log fields.
+  - zh: 先按直接信息目的路由软件、策略、身份、存储和 secret 查询，再判断剩余一般配置探索；保留原始命令以便复核误路由。命令执行只标为 query-intent，即使进程退出码可用，也不由此推断返回值。与 键读取权限分析 的同主机、同
+      PID 及进程生存期访问关联时可增加 rights-used 层；无读取审计时保留未证实状态，不能以 Sysmon 写入事件代填。
+    en: Route software, policy, identity, storage, and secret queries by direct purpose before evaluating remaining general
+      configuration exploration, retaining the original command for routing review. Execution is labeled query-intent. Even
+      an available exit code does not establish returned values. A join to the key-read-rights analytic by host, PID, and
+      process lifetime can add rights-used evidence. Without read auditing, preserve the unconfirmed state rather than substitute
+      Sysmon mutation events.
+data_requirements:
+- source_type: windows-process-creation
+  name:
+    zh: 已启用命令行的进程创建记录
+    en: Process creation with command-line capture enabled
+  channel: Security 4688 or validated Sysmon Event 1
+  required_fields:
+  - timestamp
+  - host_id
+  - user_sid
+  - process_id
+  - process_image
+  - parent_process_id
+  - command_line
+- source_type: approved-registry-query-tasks
+  name:
+    zh: 组织维护的 Registry 查询任务与角色基线
+    en: Organization-maintained Registry query-task and role baseline
+  channel: null
+  required_fields:
+  - host_id
+  - host_role
+  - user_sid
+  - process_image
+  - approved_registry_scope
+  - task_owner
+  - valid_from
+  - valid_until
+observables:
+- zh: 未批准来源执行 Registry query 参数或明确的读取脚本
+  en: An unapproved caller executes Registry query arguments or an explicit read script
+- zh: 同一谱系探索多个非相关配置分支或重定向查询输出
+  en: One lineage explores unrelated configuration branches or redirects query output
+correlation:
+  window:
+    zh: 同一进程及父子谱系 15 分钟，结合最近 14 日同角色批准任务；这是待本地验证的初始工程窗口。
+    en: Fifteen minutes per process and ancestry with the preceding fourteen days of approved same-role work; these are initial
+      engineering windows requiring local validation.
+  dimensions:
+  - host_id
+  - user_sid
+  - process_id
+  - parent_process_id
+  - registry_scope
+  - time
+false_positives:
+- zh: 故障排查、软件安装、资产盘点和取证可能执行递归读取并重定向输出。
+  en: Troubleshooting, installation, asset inventory, and forensics can recursively read and redirect output.
+blind_spots:
+- zh: 缺少命令行、混淆脚本、未覆盖解释器和进程内直接读取不会被该分析完整恢复。
+  en: Missing command lines, obfuscated scripts, uncovered interpreters, and direct in-process reads are not fully recovered
+    by this analytic.
+- zh: 命令可携带意图却不成功返回数据；目标视图或权限也可能与推测不同。
+  en: A command can express intent without returning data, and its target view or authority can differ from assumptions.
+tuning_guidance:
+  paragraphs:
+  - zh: 按任务 owner、账户、父进程、分支和时间绑定例外，不按 Microsoft 签名或 reg.exe 名称永久放行。逐步完善参数解析和目的路由，保留未知视图与未知结果，不用全 Registry 递归白名单消除异常。PowerShell
+      4104 或 DeviceProcessEvents 仅在实际部署并验证相应字段后作为补充，不能要求它们提供 Registry 返回值。
+    en: Bind exceptions to task owner, account, parent, branch, and time rather than permanently allowing a Microsoft signature
+      or reg.exe name. Improve argument parsing and purpose routing while retaining unknown view and result states. Do not
+      suppress anomalies through whole-Registry recursion allowances. Use PowerShell 4104 or DeviceProcessEvents only as deployed,
+      field-validated supplements without requiring Registry-return data from them.
+  - zh: timestamp/host_id 对应事件 TimeCreated/Computer；4688 的 user_sid、process_id、process_image、parent_process_id、command_line
+      分别来自 SubjectUserSid、NewProcessId、NewProcessName、ProcessId 和 CommandLine。PID 统一十六进制或十进制并保留创建时间；Sysmon 使用 User、ProcessId、Image、ParentProcessId、CommandLine，SID
+      无原始字段时需通过已验证身份解析补充且标明派生。基线是组织维护的数据，不是 Windows 默认字段。若无法获得 SID，可统一改用经验证的 user_id，不能捏造 SID。 registry_scope 为从保留原始命令解析的根、路径和范围组合，time
+      对应统一后的 timestamp。 此处4688的user_sid表示创建主体，不默认等于新进程有效令牌；版本2有不同TargetUserSid时另保留目标身份，未确认同令牌时不能与4663实际读取者直接等同。
+    en: timestamp and host_id map to TimeCreated and Computer. For 4688, user_sid, process_id, process_image, parent_process_id,
+      and command_line map to SubjectUserSid, NewProcessId, NewProcessName, ProcessId, and CommandLine. Normalize hexadecimal
+      or decimal PIDs and retain creation time. Sysmon supplies User, ProcessId, Image, ParentProcessId, and CommandLine;
+      SID requires validated identity resolution with derived provenance when absent natively. The baseline is organization-maintained,
+      not a Windows default field. If SID is unavailable, consistently use a verified user_id rather than inventing one. registry_scope
+      is derived from root, path, and scope parsed from retained commands; time maps to normalized timestamp. Here 4688 user_sid
+      denotes the creator rather than automatically the new process’s effective token. Preserve a distinct TargetUserSid when
+      version 2 supplies one, and do not equate the creator to the actual 4663 reader without same-token evidence.
+evidence_refs:
+- REF-001311
+- REF-000334
+- REF-000623
+- REF-000230
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-11-06'
+  modified: '2026-11-06'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

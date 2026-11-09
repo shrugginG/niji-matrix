@@ -1,0 +1,140 @@
+type: individually-reviewed-handoff-overrides
+candidate: T1124
+content_edits:
+- pointer: /defense_candidates/detection_analytics/0/logic/paragraphs/0
+  value:
+    zh: Windows 从 Sysmon Event 1 的 Computer、UtcTime、ProcessGuid、ProcessId、Image、CommandLine、User、ParentProcessGuid 规范化为主机、事件时间和进程请求，Event
+      5 仅补充该 ProcessGuid 的结束；事件时间不是被查询时钟的返回。Windows PowerShell 5.1 已启用 4104 时，按 Computer、Execution ProcessID、ScriptBlockId
+      和 MessageNumber/MessageTotal 重组 ScriptBlockText；部分片段保留 partial。只有 PID 的脚本事件须与同主机唯一已知生命周期相交，缺少结束或同号复用不能跨空缺强行归属。Linux
+      Audit 按采集器认证的 host_id、boot_id 及 msg=audit 的时间/序列聚合 SYSCALL、EXECVE 和 PROCTITLE，记录 arch、syscall、success、pid、ppid、auid、uid、euid、exe
+      及 argc/argv；按本机 ABI 解码 syscall 与十六进制内容，参数不完整则不声称完整请求。Audit 事件组建立此次 exec 身份，不假设另有完整 Linux 进程树。 boot_id、接收时间和参数完整性是采集器元数据，不能伪称
+      Sysmon 或 Audit 的原生字段；Event 5 不提供的命令内容按事件类型留空。 node可缺省且不作为权威设备键，宿主与启动身份来自采集器登记，不由日志内自报名称猜测。
+    en: On Windows, normalize Sysmon Event 1 Computer, UtcTime, ProcessGuid, ProcessId, Image, CommandLine, User, and ParentProcessGuid
+      into host, event time, and process request; Event 5 supplies only that ProcessGuid's end. Event time is not the queried
+      clock's return. Where Windows PowerShell 5.1 Event 4104 is enabled, assemble ScriptBlockText by Computer, Execution
+      ProcessID, ScriptBlockId, and MessageNumber/MessageTotal, retaining incomplete blocks as partial. PID-only script events
+      require a unique intersecting lifetime on the same host; missing termination or reuse cannot justify joins across gaps.
+      On Linux, group Audit SYSCALL, EXECVE, and PROCTITLE by collector-authenticated host_id, boot_id, and msg=audit time/serial,
+      retaining arch, syscall, success, pid, ppid, auid, uid, euid, exe, and argc/argv. Decode syscall and hexadecimal content
+      for the local ABI and do not assert a complete request from incomplete arguments. The Audit event group identifies that
+      exec, without presuming a complete Linux process tree. boot_id receive time and argument completeness are collector
+      metadata rather than native Sysmon or Audit fields; command fields absent from Event 5 remain null by event type. node
+      is optional rather than an authoritative device key; host and boot identities come from collector enrollment, not guessed
+      self-reported log names.
+- pointer: /defense_candidates/detection_analytics/0/logic/paragraphs/2
+  value:
+    zh: 将可解析请求与另行维护的工作台账核对，台账须给出主体、入口或脚本指纹、允许的命令/参数形状、目标、目的和有效期；不按用户名、签名或系统工具永久放行。偏离台账产生未经解释的时间调查线索，不能仅由台账缺失判为恶意。默认结果级别为 request-observed；进程成功退出和
+      Audit success 只分别表示执行状态或 exec 成功，不证明输出。只有另行部署的会话输出采集明确绑定命令实例、主机/启动实例、真实进程身份、流和执行边界，并给出原始文本、语言/版本、截断及解析状态时，才记录具体 returned-reading；错误文本、格式化给定日期和部分捕获不升级为取得当前时间。
+      可选命令结果还须通过已验收的命令实例映射，将原始请求定位、实际进程出生实例与输出唯一连接；脚本块已处理不证明具体分支执行。多表达式、循环或替代日期输出不能唯一对应当前时间调用时，保留result_unbound，不用时间相邻或同PID代替绑定。映射由独立包装器、会话记录器或经核验的记录关联提供，不是Sysmon原生字段。
+    en: 'Compare parseable requests with a separately maintained work register containing principal, entry or script fingerprint,
+      permitted command/argument shape, target, purpose, and validity. Do not permanently allow by username, signature, or
+      system utility. Deviations yield unexplained inquiry leads, not maliciousness from a missing record alone. The default
+      level is request-observed: successful process exit and Audit success describe execution state or exec success rather
+      than output. Record a returned-reading only where separately deployed session-output collection binds command instance,
+      host/boot, real process identity, stream, and execution boundaries and supplies raw text, language/version, truncation,
+      and parse state. Error text, supplied-date formatting, and partial capture do not establish current-time acquisition.
+      Optional command results also require a validated command-instance map uniquely linking the raw request location, actual
+      process birth instance, and output. A processed script block does not prove execution of a particular branch. Multiple
+      expressions, loops, or supplied-date output that cannot be uniquely bound to the current-time invocation remain result_unbound
+      rather than being joined by proximity or PID. An independent wrapper, session recorder, or validated record association
+      supplies this map; it is not a native Sysmon field.'
+- pointer: /defense_candidates/detection_analytics/0/data_requirements/6
+  append: true
+  value:
+    source_type: optional-temporal-command-instance-map
+    name:
+      zh: 可选时间查询请求与结果实例映射
+      en: Optional temporal-request and result instance mapping
+    channel: separately deployed wrapper, session recorder, or validated request/output association; absent means request-only
+      coverage
+    required_fields:
+    - host_id
+    - boot_id
+    - command_instance_id
+    - request_record_locator
+    - request_kind
+    - process_identity
+    - script_block_id
+    - audit_group_key
+    - expression_locator
+    - binding_method
+    - binding_status
+    - mapping_evidence_locator
+- pointer: /defense_candidates/detection_analytics/1/logic/paragraphs/3
+  value:
+    zh: 把类型明确的调用及所取得结果同该进程有效期内的授权登记比较，核对允许接口、clock_id与用途，保留批准、范围不符或登记未知状态。授权登记是策略语境，不证明登记任务实际执行；本合同不输出实际任务归属或任务完成，默认只声明temporal_read_observed及独立的结果状态。频率、低uptime和后继沉默都不证明恶意或门控。用接收时间、线程内顺序与采集序号重建调用，不只依赖返回墙钟，也不相减来源边界不同的计数。QPC与CPU
+      cycles不在此分析的解码覆盖内，不自动具有UTC含义；性能计数转换需要同源有效频率。结果不证明已上报或被用于条件分支，控制流或通信消费须另有证据。
+    en: Compare typed calls and acquired results with authorization valid for that process, checking allowed interfaces, clock_id,
+      and purpose while retaining approval, scope mismatch, or unknown-registration state. Authorization supplies policy context
+      rather than proof that a registered task executed; this contract emits neither actual task attribution nor task completion,
+      defaulting to temporal_read_observed and an independent result state. Frequency, low uptime, and later silence establish
+      neither malice nor gating. Reconstruct calls from receive time, within-thread order, and collection sequence rather
+      than returned wall clock alone, without subtracting counters across different source boundaries. QPC and CPU cycles
+      are outside this decoder and have no automatic UTC meaning; performance-count conversion needs a valid same-source frequency.
+      Results establish neither reporting nor conditional consumption, which requires separate control-flow or communication
+      evidence.
+- pointer: /defense_candidates/detection_analytics/1/data_requirements/3/required_fields
+  value:
+  - authorization_id
+  - principal
+  - entry_fingerprint
+  - process_identity
+  - allowed_interfaces
+  - allowed_clock_ids
+  - purpose
+  - valid_from
+  - valid_until
+- pointer: /defense_candidates/detection_analytics/0/false_positives/0
+  value:
+    zh: 支持人员的时区与 NTP 偏移排障、正常安装脚本和应用构建日期处理。
+    en: Support troubleshooting of time zones and NTP offsets, legitimate installers, and application build-date processing.
+- pointer: /defense_candidates/detection_analytics/1/false_positives/0
+  value:
+    zh: 日志、超时管理、性能测试、动画与安全软件的正常高频计时。
+    en: Ordinary frequent timekeeping by logging, timeout management, benchmarking, animation, and security software.
+- pointer: /defense_candidates/detection_analytics/1/false_positives/1
+  value:
+    zh: 系统刚启动、挂起恢复、ABI 差异和计数回绕形成的小读数或不连续输出。
+    en: Small or discontinuous readings caused by fresh startup, suspend/resume, ABI differences, or counter wrap.
+- pointer: /defense_candidates/mitigations/0/applications/0/use/paragraphs/0
+  value:
+    zh: 对通过解释器提供的时间支持功能，把 Get-Date、time /t 或经批准的 w32tm 读取包装限定到具体主体、脚本或入口、参数、远端目标和有效期，并保留受保护的内容审计。将给定日期格式转换、当前读数、远端偏移诊断和改时任务分开审批，避免一次常规时间查询授权扩展为任意代码或时钟修改能力。
+    en: For interpreter-exposed time support, bind Get-Date, time /t, or approved w32tm read wrappers to concrete principals,
+      scripts or entry points, parameters, remote targets, and validity periods, retaining protected content audit. Approve
+      supplied-date conversion, current readings, remote-offset diagnostics, and clock modification separately so one routine
+      inquiry does not confer arbitrary code or clock-setting capability.
+- pointer: /defense_candidates/mitigations/0/applications/0/expected_effect/paragraphs/0
+  value:
+    zh: 缩小可借用的任意解释执行面，并使看似普通的时间诊断可与真实任务核对。受控入口之外的表达式、目标或能力使用可产生策略与调查证据；内容审计改善请求解释，但只有另行验证的输出采集才能证明具体读数。
+    en: Narrow arbitrary interpreter execution available for borrowing and make ordinary-looking time diagnostics verifiable
+      against actual work. Expressions, targets, or capabilities outside controlled entries can produce policy and investigative
+      evidence. Content auditing improves request interpretation, while particular readings require separately validated output
+      collection.
+- pointer: /library_candidates/claims/0/statement_en
+  value: Acquisition of system time, time-zone settings, and uptime after access provides environmental facts; original NerbianRAT
+    and DazzleSpy studies separately support current-time acquisition paths.
+- pointer: /library_candidates/claims/2/statement_en
+  value: ESET DazzleSpy info and getSystemDate decompilation support date-time acquisition and Asia/Shanghai reporting display.
+    timeIntervalSinceNow is relative to a date object rather than an unconditional Unix timestamp, and the display zone establishes
+    neither victim zone nor location.
+- pointer: /library_candidates/claims/3/statement_en
+  value: UTC calendar values, FILETIME, Unix seconds, uptime, and performance counts require explicit types, epochs, widths,
+    and sources; numeric or format similarity does not make them interchangeable.
+- pointer: /library_candidates/claims/5/statement_en
+  value: Temporal reading remains separate from analysis-environment gating. Uptime acquisition, a threshold branch, and a
+    changed outcome after defensive rewriting form the original Upatre gate; an arbitrary GetTickCount call or wait does not
+    establish that chain.
+- pointer: /library_candidates/claims/7/statement_en
+  value: Command analysis must distinguish current readings, supplied-date formatting, and modification. Process or exec success
+    does not establish output, and particular returns require separate instance-bound collection.
+- pointer: /library_candidates/claims/8/statement_en
+  value: Validated entry-exit collection can recover selected time getters’ raw returns and bounded output by ABI while handling
+    void returns, zero values, errors, pointers, wraparound, and coverage gaps. It assumes neither default EDR results nor
+    a successor inferred from a read.
+- pointer: /library_candidates/claims/9/statement_en
+  value: Governing interpreter temporal work by principal, entry point, parameters, target, and validity period can narrow
+    arbitrary execution and improve request accountability without blocking basic local getters or replacing reading collection.
+- pointer: /library_candidates/claims/10/statement_en
+  value: Joint advisory Appendix A records net time /dom and publishes logins.ps1 subtracting one day from Get-Date to bound
+    later login-history queries. The literal request and scripted consumption are established, but actual dates, individual
+    executions, and clock-change outcomes are not disclosed.

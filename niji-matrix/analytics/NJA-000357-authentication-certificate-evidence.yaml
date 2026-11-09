@@ -1,0 +1,121 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000357
+strategy_ref: DET-000266
+name:
+  zh: PKINIT 证书与历史权威签发库存差分
+  en: PKINIT Certificate and Historical Authority-Issuance Inventory Differential
+summary:
+  zh: 识别证书接受中的不明签发谱系，要求库存完整性与构造证据独立成立。
+  en: Identify unexplained issuance lineage in certificate acceptance while requiring independent inventory completeness and construction
+    evidence.
+domains:
+- enterprise
+platforms:
+- Windows
+logic:
+  paragraphs:
+  - zh: 选择实际含证书信息的 4768，区分成功和失败，保留事件版本及原始 CertIssuerName、CertSerialNumber、CertThumbprint。按实际指纹算法与 CA 库存 DER 计算结果比较，不能把 SHA-1 事件指纹与 SHA-256
+      摘要直接连接。指纹不足时只有经验证的签发者密钥身份与序列号组合才能回退匹配，签发者显示名称不等于唯一 CA。
+    en: Select 4768 records that actually contain certificate information, separate success from failure, and preserve event version and
+      raw CertIssuerName, CertSerialNumber, and CertThumbprint. Compare actual fingerprint algorithms against DER-derived inventory values;
+      a SHA-1 event thumbprint must not be joined directly to a SHA-256 digest. Fall back only to validated issuer-key identity and serial-number
+      combinations when fingerprints are insufficient; an issuer display name does not uniquely identify a CA.
+  - zh: 将证书接受与覆盖整个有效生命周期的库存比较，纳入退休 CA、合法离线 CA、外部签发者及迁移前记录，并等待本地已验证的最大同步延迟。库存缺口只生成 coverage_gap；库存已解释但证书未匹配时生成 unexplained_issuance_lineage，并附覆盖范围、同步时间和例外。只有另有服务外构造或受信签名来源调查证据，才升级
+      suspected_offservice_construction。过去短窗口没有 4887、认证成功或私钥访问本身都不足以完成该升级。
+    en: Compare acceptance with inventory spanning the certificate lifetime, including retired authorities, authorized offline or external
+      issuers, and pre-migration records, and wait for the locally validated maximum synchronization delay. Inventory gaps emit coverage_gap.
+      An unmatched certificate under explained coverage emits unexplained_issuance_lineage with scope, synchronization times, and exceptions.
+      Escalate to suspected_offservice_construction only with independent construction or trusted-signing provenance evidence. Missing a
+      recent 4887, successful authentication, or key access alone cannot justify escalation.
+data_requirements:
+- source_type: pkinit-authentication-events
+  name:
+    zh: PKINIT 认证证书标识
+    en: PKINIT Authentication Certificate Identifiers
+  channel: Windows Security 4768 on domain controllers; version-aware normalization
+  required_fields:
+  - event_time
+  - host_id
+  - event_version
+  - event_record_id
+  - target_principal
+  - status
+  - preauth_type
+  - source_ip
+  - cert_issuer_name
+  - cert_serial_number
+  - cert_thumbprint
+- source_type: historical-certificate-issuance-inventory
+  name:
+    zh: 历史证书签发库存
+    en: Historical Certificate Issuance Inventory
+  channel: Integrity-protected read-only CA inventory plus DER parser
+  required_fields:
+  - ca_instance_id
+  - issuer_key_identity
+  - certificate_fingerprint
+  - fingerprint_algorithm
+  - serial_number
+  - request_id
+  - issuance_time
+  - not_after
+  - inventory_coverage
+  - last_successful_sync
+- source_type: pki-trust-and-migration-history
+  name:
+    zh: PKI 信任与迁移历史
+    en: PKI Trust and Migration History
+  channel: null
+  required_fields:
+  - issuer_key_identity
+  - approved_scope
+  - migration_period
+  - external_issuer_scope
+  - revocation_state
+observables:
+- zh: 成功 PKINIT 中证书标识在完整库存无匹配
+  en: A successful PKINIT certificate identifier has no match in complete inventory
+- zh: 库存同步或历史覆盖缺口
+  en: Inventory synchronization or historical coverage gap
+correlation:
+  window:
+    zh: 签发匹配覆盖证书整个有效生命周期及迁移历史；缺失判定等待实测库存同步 SLA，不以短时无签发事件设阈值。
+    en: Match across the full certificate lifetime and migration history; defer absence judgments until measured inventory synchronization
+      SLAs have elapsed rather than using a short issuance-event window.
+  dimensions:
+  - issuer_key_identity
+  - certificate_fingerprint
+  - fingerprint_algorithm
+  - serial_number
+  - target_principal
+  - source_ip
+  - event_time
+false_positives:
+- zh: 合法外部或离线 CA、旧证书导入、迁移、数据库裁剪与库存延迟都会形成无匹配，应分别保留批准范围和历史证据。
+  en: Authorized external or offline CAs, imported certificates, migrations, database pruning, and inventory delays create unmatched records
+    and need separate approved scope and historical evidence.
+blind_spots:
+- zh: 无证书标识的认证路径、被伪造库存、错误序列号规范化和未知指纹算法会破坏匹配；既有合法证书私钥被窃时仍能正常匹配库存。
+  en: Authentication paths without certificate identifiers, forged inventories, incorrect serial normalization, and unknown fingerprint algorithms
+    break matching; theft of an existing legitimate certificate key can still match normally.
+tuning_guidance:
+  paragraphs:
+  - zh: 分别测试序列号前导零、字节表示和指纹算法，保留原值及规范值。允许名单绑定具体签发者密钥、序列范围、有效期、迁移和 owner；不因 CA 曾合法而放行全部未知证书。用已知签发、受控导入和故意停采样本验证正常匹配、不明谱系与 coverage_gap 三种结果。
+    en: Test leading zeros, serial representations, and fingerprint algorithms separately and retain original and normalized values. Bind
+      exceptions to issuer keys, serial ranges, validity, migrations, and owners rather than allowing every unknown certificate from a historically
+      legitimate CA. Validate normal matching, unexplained lineage, and coverage_gap with known-issued, controlled-import, and deliberately
+      interrupted collection samples.
+evidence_refs:
+- REF-001172
+- REF-001173
+- REF-000854
+- REF-001179
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-11-05'
+  modified: '2026-11-05'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

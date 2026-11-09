@@ -1,0 +1,123 @@
+strategy:
+  schema_version: 2.0.0
+  type: detection-strategy
+  id: B006-T1615-DET-POLICY-READ
+  name:
+    zh: 组策略信息读取与任务语境关联
+    en: Group Policy Information Read and Task Context Correlation
+  summary:
+    zh: 结合读取主体、策略视图和批准任务识别异常调查，并分别保留查询尝试、目录读取、共享检查与实际文件访问证据。
+    en: Identify abnormal surveying through reader identity, policy view, and approved work while preserving query-attempt, directory-read, share-check, and exercised-file-access evidence separately.
+  description:
+    paragraphs:
+    - zh: 本策略识别组策略信息调查，不以出现策略写入或配置变化为条件。端点分析恢复结果策略请求及可验证输出，目录分析识别 GPO 属性读取，文件分析识别 SYSVOL 模板的共享检查与实际文件访问。三项分析按各自数据前提独立运行，不要求一次调查同时访问本地结果、LDAP 和 SMB。
+      en: This strategy identifies Group Policy information surveying without requiring policy writes or configuration changes. The endpoint analytic recovers resultant-policy requests and verifiable output, the directory analytic identifies GPO property reads, and the file analytic identifies SYSVOL template share checks and exercised file access. Each runs independently with its own data prerequisites; a survey need not access local results, LDAP, and SMB together.
+    - zh: 输出同时保留证据等级和正常任务差分。签名工具、成功认证或正常客户端账户不构成恶意结论，也不能成为永久放行理由；批准诊断需要同源设备、身份、目标范围和有效时间相符。只有调用记录时保留调查尝试，观察到属性或文件访问时报告相应读取事实，取得可验证策略结果后才报告该结果，避免把目录配置直接解释为目标已经生效的设置。
+      en: Outputs retain both evidence level and the difference from expected work. A signed utility, successful authentication, or ordinary client account is neither a malicious verdict nor grounds for permanent allowance. Approved diagnostics must match origin device, identity, target scope, and validity interval. Call records establish an attempt, property or file events establish their respective access facts, and a verified policy result establishes that result. Directory configuration must not be reported as settings already effective on a target.
+  detects_refs: [B006-T1615-PARENT]
+  domains: [enterprise]
+  analytic_refs: [B006-T1615-NJA-ENDPOINT, B006-T1615-NJA-DIRECTORY, B006-T1615-NJA-SYSVOL]
+  evidence_refs: []
+directory_analytic:
+  schema_version: 2.0.0
+  type: detection-analytic
+  id: B006-T1615-NJA-DIRECTORY
+  strategy_ref: B006-T1615-DET-POLICY-READ
+  name:
+    zh: GPO 目录属性读取与主体职责差分
+    en: GPO Directory Property Read and Principal Role Differential
+  summary:
+    zh: 在明确审计覆盖的目录对象上识别属性读取，并结合本机登录关联、对象范围和批准任务评估异常调查。
+    en: Identify property reads on directory objects with verified audit coverage and assess abnormal surveying through same-server logon joins, object scope, and approved work.
+  domains: [enterprise]
+  platforms: [Windows]
+  logic:
+    paragraphs:
+    - zh: 先在选定域控制器确认 Audit Directory Service Access 成功审计及目标对象的读取 SACL 实际生效，再选择成功 4662 中包含 Read Property 0x10 的事件。用独立目录清单把 ObjectType、ObjectName 与 Properties 中的类、对象或属性 GUID 解析到 groupPolicyContainer 和已审计的属性，保留不能解析的值。List Contents、Read Control、Write Property 与 Read Property 分开处理；一次属性读取不证明完整 LDAP 查询、模板文件内容或目标实际生效策略。
+      en: First verify that successful Audit Directory Service Access auditing and the target read SACL work on the selected domain controllers, then select successful event 4662 records containing Read Property 0x10. Resolve class, object, or attribute GUIDs in ObjectType, ObjectName, and Properties to groupPolicyContainer and audited properties through independent directory inventory, retaining unresolved values. Keep List Contents, Read Control, Write Property, and Read Property separate. A property read establishes neither the full LDAP query, template-file content, nor policy actually effective on a target.
+    - zh: 将 SubjectLogonId 与同一域控制器 4624 的 TargetLogonId 连接，并核对主体 SID、会话生命周期和来源字段；不跨服务器或重启直接拼接登录标识。缺少来源或会话事件时只输出 directory_property_read 并标记归属不足。按可解析 GPO 标识、主体和稳定源资产归组，比较职责、预期策略范围、批准管理源与工单有效期；非管理来源读取超出任务范围的策略对象时提高调查优先级。正常策略处理也会访问这些对象，必须保留正常客户端反例，不能仅按对象数量或计算机账户尾缀判恶。
+      en: Join SubjectLogonId to TargetLogonId in event 4624 on the same domain controller and check principal SID, session lifetime, and origin fields; do not join logon identifiers directly across servers or restarts. If origin or session events are missing, emit directory_property_read with incomplete attribution. Group by resolved GPO identity, principal, and stable source asset and compare role, expected policy scope, approved administration origin, and ticket validity. Prioritize nonadministrative origins reading policy objects outside their work scope. Normal policy processing accesses these objects too, so retain normal-client counterexamples rather than judging intent from object count or a computer-account suffix.
+  data_requirements:
+  - source_type: windows-directory-object-read
+    name: {zh: "已配置读取 SACL 的目录对象访问", en: "Directory object access with configured read SACLs"}
+    channel: Domain controller Security event 4662 with success auditing and matching SACL
+    required_fields: [timestamp, dc_id, event_record_id, audit_outcome, subject_user_sid, subject_logon_id, object_type, object_name, access_mask, properties]
+  - source_type: windows-network-logon
+    name: {zh: "同一域控制器的登录会话", en: "Logon sessions on the same domain controller"}
+    channel: Domain controller Security event 4624
+    required_fields: [timestamp, dc_id, target_logon_id, target_user_sid, logon_type, ip_address]
+  - source_type: directory-policy-and-work-inventory
+    name: {zh: "目录策略标识与批准工作清单", en: "Directory policy identity and approved work inventory"}
+    channel: Independent directory or GPMC inventory and approved-job registry
+    required_fields: [gpo_guid, object_guid_or_dn, object_class, attribute_guid_map, source_asset, principal_role, expected_policy_scope, job_id, valid_from, valid_to]
+  observables:
+  - {zh: "审计覆盖对象上的成功 Read Property 及可解析 GPO 标识", en: "Successful Read Property on covered objects with resolved GPO identity"}
+  - {zh: "读取源、主体职责或对象范围与批准任务不一致", en: "Read origin, principal role, or object scope inconsistent with approved work"}
+  correlation:
+    window:
+      zh: 登录关联优先使用同服务器会话生命周期；初始以十五分钟归组策略读取，并用三十日职责与任务基线比较，所有时窗都需按本地负载校准。
+      en: Prefer the same-server session lifetime for logon correlation. Initially group policy reads over fifteen minutes and compare against a thirty-day role and work baseline, calibrating all windows to local workloads.
+    dimensions: [dc_id, subject_user_sid, subject_logon_id, source_asset, gpo_guid, object_guid_or_dn, job_id, time]
+  false_positives:
+  - {zh: "正常登录和后台策略刷新、GPMC 管理、合规盘点及调查取证会读取相同对象，应核对实际来源、任务和策略范围。", en: "Normal sign-in and background refresh, GPMC administration, compliance inventory, and forensics read the same objects; verify actual origin, work, and policy scope."}
+  blind_spots:
+  - {zh: "未配置匹配 SACL 的既往读取无法补采；4662 不保证完整谓词、返回值或原始客户端进程，GUID 映射和会话缺失会降低归属能力。", en: "Past reads without matching SACLs cannot be recovered retrospectively; 4662 does not guarantee full predicates, returned values, or original client processes, and missing GUID mappings or sessions weaken attribution."}
+  - {zh: "本地结果或文件视图可能不触发本分析，域控制器选择、复制、事件丢失和代理来源会造成部分视图，缺失事件不证明没有调查。", en: "Local-result or file views may not trigger this analytic; domain-controller selection, replication, event loss, and proxied origins create partial views, and missing events do not establish absence of surveying."}
+  tuning_guidance:
+    paragraphs:
+    - zh: 先对少量重要 GPO 和实际关心的属性验证读取、列举、写入与拒绝访问各自产生的事件，再扩展覆盖。保存原始权限位与属性 GUID，监测域控制器事件量和丢失。正常例外绑定源资产、职责、对象和到期时间；不把管理员身份、计算机账户或办公时间永久排除。该分析不依赖完整 LDAP 抓包，也不把目录变更日志当作读取覆盖。
+      en: Validate events produced by reads, listing, writes, and denied access on a small set of important GPOs and relevant properties before extending coverage. Preserve raw rights and attribute GUIDs and monitor domain-controller event volume and loss. Bind normal exceptions to source asset, role, object, and expiry rather than permanently excluding administrators, computer accounts, or business hours. The analytic requires neither complete LDAP packet capture nor a claim that directory-change logs cover reads.
+  evidence_refs: [B006-T1615-REF-4662, B006-T1615-REF-PROTOCOL, REF-000341, REF-000377]
+sysvol_analytic:
+  schema_version: 2.0.0
+  type: detection-analytic
+  id: B006-T1615-NJA-SYSVOL
+  strategy_ref: B006-T1615-DET-POLICY-READ
+  name:
+    zh: SYSVOL 策略模板访问检查与实际文件读取分层
+    en: SYSVOL Policy Template Access Check and Exercised File Read Grading
+  summary:
+    zh: 按 GPO 和策略文件解析共享访问，将授权检查与实际使用 ReadData 分开，再结合客户端及批准任务判断调查风险。
+    en: Resolve share access to GPOs and policy files, separate authorization checks from exercised ReadData, and assess survey risk through client and approved-work context.
+  domains: [enterprise]
+  platforms: [Windows]
+  logic:
+    paragraphs:
+    - zh: 在提供 SYSVOL 的域控制器上收集 5145，并用 ShareLocalPath、RelativeTargetName 和独立 GPO 路径清单规范化到 Policies 下的策略 GUID、文件路径与对象种类。保留请求权限和审计结果；0x1 对目录是 ListDirectory，对文件才是 ReadData，目录列举不能提升为策略文件内容读取。允许的 5145 输出 share_access_check，它只表明共享层检查；即使允许，也可能随后被 NTFS 拒绝，不能由它单独宣称文件已返回。
+      en: Collect event 5145 on domain controllers serving SYSVOL and normalize ShareLocalPath and RelativeTargetName through independent GPO path inventory to policy GUID, file path, and object kind beneath Policies. Retain requested rights and audit outcome. Bit 0x1 means ListDirectory for a directory and ReadData for a file, so listing must not be promoted to policy-file content retrieval. An allowed 5145 emits share_access_check and establishes a share-level check only. NTFS can still deny access afterward, so this event alone cannot establish returned file content.
+    - zh: 如已部署文件系统成功审计和匹配的 ReadData SACL，将同服务器、主体 SID、登录标识及规范文件路径的 4663 实际访问与共享检查连接；只对确认是文件的 ReadData 输出 file_read_exercised。服务器侧 ProcessId 和 ProcessName 可属于服务进程，不得标为发起查询的客户端进程。跨面的客户端资产需用共享源地址及有效期内的资产映射恢复；没有 4663 时保留检查等级，只有独立、可验证的返回内容才能进一步说明取得了哪些设置。
+      en: Where successful file-system auditing and a matching ReadData SACL are deployed, join event 4663 exercised access to the share check on the same server, principal SID, logon identifier, and normalized file path. Emit file_read_exercised only for ReadData against a confirmed file. Server ProcessId and ProcessName can belong to a service and must not be labeled as the querying client process. Recover the client asset through share source address and a mapping valid at the event time. Without 4663 retain check-level evidence; only independently verified returned content establishes which settings were obtained.
+    - zh: 按 GPO、主体与源资产归组并比较正常策略处理、GPMC、备份和批准诊断任务。超出预期策略范围、来自异常源且没有有效工作记录的访问提高优先级，但没有对应 LDAP 事件不构成异常条件。读取 gpt.ini 可只取得版本信息，读取一个模板也不证明所有设置已被保存或对目标生效；读取或恢复认证秘密时转入相应凭据取得分类。
+      en: Group by GPO, principal, and source asset and compare normal policy processing, GPMC, backups, and approved diagnostic work. Prioritize access outside expected policy scope from abnormal origins without valid work records, but do not treat absence of a corresponding LDAP event as an anomaly. Reading gpt.ini may yield version information alone, and reading one template establishes neither retention of all settings nor their application to a target. Acquiring or recovering authentication secrets crosses into the corresponding credential-acquisition classification.
+  data_requirements:
+  - source_type: windows-detailed-share-access
+    name: {zh: "SYSVOL 共享访问检查", en: "SYSVOL share access checks"}
+    channel: SYSVOL server Security event 5145 with Audit Detailed File Share enabled
+    required_fields: [timestamp, dc_id, event_record_id, audit_outcome, subject_user_sid, subject_logon_id, ip_address, share_name, share_local_path, relative_target_name, access_mask, access_reason]
+  - source_type: windows-file-exercised-read
+    name: {zh: "启用实际读取确认时的文件对象访问", en: "File object access when exercised-read confirmation is enabled"}
+    channel: SYSVOL server Security event 4663 with Audit File System and matching ReadData SACL
+    required_fields: [timestamp, dc_id, subject_user_sid, subject_logon_id, object_name, object_type, access_mask, process_id, process_name]
+  - source_type: gpo-path-and-client-work-inventory
+    name: {zh: "GPO 文件种类、客户端与任务清单", en: "GPO file kind, client, and work inventory"}
+    channel: Independent GPMC or configuration inventory, asset history, and approved-job registry
+    required_fields: [gpo_guid, canonical_sysvol_path, object_kind, source_ip, client_asset, mapping_valid_interval, principal_role, expected_policy_scope, job_id, valid_from, valid_to]
+  observables:
+  - {zh: "映射到策略 GUID 与具体文件种类的 SYSVOL 访问检查", en: "SYSVOL access checks mapped to policy GUID and concrete object kind"}
+  - {zh: "配置审计后实际使用的文件 ReadData 权限", en: "Exercised file ReadData rights under configured auditing"}
+  - {zh: "文件读取范围与客户端角色或批准工作不符", en: "File-read scope inconsistent with client role or approved work"}
+  correlation:
+    window:
+      zh: 共享检查与文件访问优先按同服务器会话和路径连接；初始十五分钟归组同 GPO 读取，跨域控制器只按稳定资产、主体和策略标识关联，不共享登录标识。
+      en: Prefer same-server session and path for joining share checks to file access. Initially group reads of one GPO over fifteen minutes; correlate across domain controllers only through stable asset, principal, and policy identity, never shared logon identifiers.
+    dimensions: [dc_id, subject_user_sid, subject_logon_id, client_asset, gpo_guid, canonical_sysvol_path, job_id, time]
+  false_positives:
+  - {zh: "登录和后台刷新、GPMC 报表、合规检查、备份与事件响应会读取相同文件；不同扩展或缓存状态可使合法活动只出现在文件面。", en: "Sign-in and background refresh, GPMC reports, compliance checks, backups, and incident response read the same files; extensions or cache state can leave legitimate activity on the file plane alone."}
+  blind_spots:
+  - {zh: "5145 不保证报告 NTFS 拒绝，未配置 SACL 时没有 4663 实际读取确认，二者均不提供完整返回内容或原始客户端进程。", en: "Event 5145 does not guarantee reporting of NTFS denials, missing SACLs remove 4663 exercised-read confirmation, and neither event supplies complete returned content or the original client process."}
+  - {zh: "本地报表、已有副本、文件种类映射错误、共享别名、源地址复用与审计丢失会降低观察和归属，不能由缺失事件否定调查。", en: "Local reports, existing copies, incorrect object-kind mappings, share aliases, reused source addresses, and audit loss weaken observation and attribution; missing events cannot rule out surveying."}
+  tuning_guidance:
+    paragraphs:
+    - zh: 分别验证目录列举、文件 ReadData、共享层拒绝和 NTFS 层拒绝，确认规范路径、权限位及结果分级。实际读取确认分支仅在 4663 前提满足时启用；否则公开标注只能观察共享检查。先覆盖少量重要策略文件再按负载扩展，例外绑定具体源、GPO、任务和时段，保留低量读取以免只依赖批量枚举阈值。
+      en: Separately validate directory listing, file ReadData, share-level denial, and NTFS-level denial to confirm canonical paths, rights, and evidence grading. Enable exercised-read confirmation only when 4663 prerequisites hold; otherwise explicitly report check-only coverage. Start with a small set of important policy files and expand according to load. Bind exceptions to origin, GPO, job, and time, retaining small reads so coverage does not depend solely on bulk-enumeration thresholds.
+  evidence_refs: [B006-T1615-REF-PROTOCOL, REF-000341, REF-000474, REF-000379]

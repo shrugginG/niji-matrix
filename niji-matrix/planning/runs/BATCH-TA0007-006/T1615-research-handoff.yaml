@@ -1,0 +1,733 @@
+handoff_schema_version: "2.0.0"
+type: technique-research-handoff
+batch_ref: BATCH-TA0007-006
+work_item_ref: WORK-TA0007-T1615
+temporary_key_prefix: B006-T1615
+candidate:
+  source_type: attack
+  source_attack_id: T1615
+  name:
+    zh: "组策略发现"
+    en: "Group Policy Discovery"
+recommendation:
+  decision: retain
+  confidence: medium
+  rationale:
+    paragraphs:
+      - zh: "建议保留组策略信息取得这一父级语义。固定版本清单把 T1615 定位为 Windows 环境测绘，直接结果是已配置或实际应用的策略、作用域和相关设置；Microsoft 的管理与协议文档给出可实现的读取路径，ESET 则直接观察到 Turla 操作者执行 gpresult /z 和 /v。攻击者借用合法诊断与策略读取接口会降低单个事件的目的可区分性，但资料没有给出漏报率或证明每次策略读取都为规避监控而设计，因此匿迹判断为中等置信度。"
+        en: "Retain acquisition of Group Policy information as the parent behavior. The fixed inventory places T1615 in Windows Discovery, with configured or applied policy, application scope, and related settings as its direct results. Microsoft administration and protocol documentation establishes implementable read paths, while ESET directly observed Turla operators running gpresult /z and /v. Reusing legitimate diagnostic and policy-reading interfaces reduces the ability to distinguish intent from one event, but the sources neither measure missed detections nor establish that every policy read was designed to evade monitoring, so the stealth conclusion has medium confidence."
+  proposed_scope_notes:
+    paragraphs:
+      - zh: "本建议不将父级改写为策略篡改、权限提升或秘密取得。研究暂不提交正式子技术；本地结果复用、查询范围和时间选择等轴保留为 deferred。没有 ATT&CK 子项并不表示没有开展原生分类研究。"
+        en: "This recommendation does not rewrite the parent as policy mutation, privilege escalation, or secret acquisition. No formal child is proposed; local-result reuse, query scope, and timing remain deferred axes. The absence of ATT&CK children does not mean native taxonomy research was omitted."
+  original_attack_subtechniques_imported: false
+proposed_content:
+  summary:
+    zh: "取得 Windows 组策略的配置、应用范围或实际生效结果，并借用合法策略读取与故障诊断接口降低发现行为的目的可区分性。"
+    en: "Obtain Windows Group Policy configuration, application scope, or applied results while reusing legitimate policy-reading and diagnostic interfaces that make discovery intent harder to distinguish."
+  definition_and_concept:
+    paragraphs:
+      - zh: "组策略发现是攻击者取得组策略对象及其链接、作用范围、权限、设置或实际应用结果，以理解域和端点安全配置并选择后续行动的环境测绘行为。直接目标是策略信息，而不是更改策略、触发载荷或取得认证秘密；发现的结果可以支持识别可操纵对象、评估安全措施及判断某个用户或计算机实际受到哪些配置约束。"
+        en: "Group Policy Discovery is the acquisition of Group Policy objects and their links, application scope, permissions, settings, or applied results to understand domain and endpoint security configuration and select subsequent actions. Its direct objective is policy information rather than changing policy, triggering a payload, or obtaining authentication secrets. Results can support identification of manipulable objects, assessment of security measures, and understanding of configuration constraints actually affecting a user or computer."
+      - zh: "域 GPO 的目录容器与 SYSVOL 模板承载不同组成部分；读取目录属性可取得对象及应用线索，读取策略文件可取得设置内容，而结果策略集提供某个目标实际应用后的视图。几者不能自动互相替代，已配置、可读和已应用也不是同一事实。命令、管理控制台、脚本及原生 API 是信息取得方式，不独立决定匿迹分类。"
+        en: "A domain GPO's directory container and SYSVOL template hold different components. Directory attributes expose objects and application clues, policy files expose setting content, and the Resultant Set of Policy supplies a view after application to a particular target. These views are not automatically interchangeable, and configured, readable, and applied are different facts. Commands, management consoles, scripts, and native APIs are acquisition methods rather than independent stealth categories."
+  stealth_characteristics:
+    paragraphs:
+      - zh: "组策略发现与日常故障诊断、合规核查及正常策略处理共享接口。攻击者执行 gpresult 或读取 GPO 时，单次事件可能仅表现为受信工具的报表请求、目录读取或 SYSVOL 访问；相同主体本来就可能具有相应读取权，因而工具签名、成功认证与授权成功都不能解释其真实目的。匿迹收益来自这种外观和语义上的重叠，而不是策略读取必然没有痕迹。"
+        en: "Group Policy Discovery shares interfaces with routine troubleshooting, compliance checking, and normal policy processing. An adversary's gpresult execution or GPO read can appear in one event as a trusted utility's reporting request, directory read, or SYSVOL access. The principal may already possess the relevant read rights, so a tool signature, successful authentication, or granted authorization does not explain its purpose. The stealth advantage comes from this overlap in appearance and meaning rather than an inherent absence of traces."
+      - zh: "进程谱系、命令参数、经配置的目录或文件访问审计、共享访问检查以及策略处理上下文仍可保留主体和目标线索。读取面之间存在观察差异：目录读取不证明取得模板内容，5145 访问检查不证明返回了字节，已有的本地结果也不代表域中所有 GPO 的当前状态。只有预先验证传感器与审计配置，并把请求主体、源设备、策略标识和批准任务连接起来，才能评估这些重叠对识别的实际影响。"
+        en: "Process lineage, command arguments, configured directory or file auditing, share authorization checks, and policy-processing context can still retain actor and target clues. Read planes have different observation semantics: a directory read does not establish retrieval of template content, a 5145 access check does not establish returned bytes, and an existing local result does not represent the current state of every domain GPO. Assessing the actual effect of the overlap requires validated sensors and audit configuration plus joins across requester, source device, policy identifier, and approved work."
+  scope_boundary_definition:
+    paragraphs:
+      - zh: "纳入以理解组策略为直接目的的 GPO 属性、链接、权限、策略文件和本地或远端结果策略集读取。只有文件名或路径列表而没有策略信息时属于 NJT-0182 文件与目录发现；一般账户、组或域信任枚举分别由相应发现技术负责。查询注册表或文件可以是实现，但必须依据实际返回信息是否表达组策略配置或应用结果来判断，不能仅按命令名称或路径归类。"
+        en: "Include reads of GPO properties, links, permissions, policy files, and local or remote resultant-policy data whose direct purpose is understanding Group Policy. A filename or path listing without policy information belongs to NJT-0182 File and Directory Discovery, while general account, group, or domain-trust enumeration belongs to its respective discovery owner. Registry or file queries can be implementations, but classification depends on whether the returned information expresses Group Policy configuration or application results rather than on a command name or path alone."
+      - zh: "修改 GPO、链接或 SYSVOL 内容属于策略变更边界，可能由 NJT-0100 集中策略与信任状态篡改或 NJT-0125 集中防御策略削弱负责；发现有写权并不证明已经修改。读取首选项文件中的认证秘密属于 NJT-0229 未保护的认证秘密取得，不能因同处 SYSVOL 就归入本技术；策略触发的执行和持久控制同样是后续行为。获批支持、审计、策略建模和正常客户端刷新是强反例，必须有攻击上下文或异常任务关联，不能将普通策略读取直接认定为恶意匿迹。"
+        en: "Changing a GPO, link, or SYSVOL content crosses into policy mutation and can belong to NJT-0100 Central Policy and Trust-State Mutation or NJT-0125 Central Defensive-Policy Impairment; discovering write authority does not establish that a change occurred. Acquiring authentication secrets from preference files belongs to NJT-0229 Unprotected Authentication Secret Acquisition and does not become this technique merely because SYSVOL is involved. Policy-triggered execution and persistent control are also subsequent behaviors. Approved support, auditing, modeling, and normal client refresh are strong counterexamples, so attack context or abnormal task linkage is required before treating an ordinary policy read as malicious evasion."
+  application_scenarios_and_threat_model:
+    application_scenarios:
+      paragraphs:
+        - zh: "在 Windows 主机或域身份已失陷后，操作者可查询当前用户或计算机的结果策略，或进一步读取可达的域策略对象，判断安全设置和管理作用域如何影响下一步活动。ESET 记录的 ComRAT 调查展示了 gpresult 与其他主机、网络和目录调查命令共同出现；它支持入侵后使用该父行为，但未公开完整策略输出、每个命令的成功状态或基于结果选择的具体攻击路径。"
+          en: "After a Windows host or domain identity is compromised, an operator can query resultant policy for the current user or computer or inspect reachable domain policy objects to understand how security settings and management scope affect the next action. ESET's ComRAT investigation shows gpresult among other host, network, and directory survey commands. It supports post-compromise use of the parent behavior but does not publish complete policy output, the success of every command, or the exact attack path selected from the results."
+        - zh: "域策略清单与某台端点的实际生效结果适用于不同问题。前者可揭示可读对象和配置关系，后者可核实本机已应用的约束；安全筛选、继承、客户端扩展及结果时效会造成差异。攻击者必须接受读取权限制和视图不完整的代价，不能仅凭看到一个 GPO 就断言它已作用于某个目标。"
+          en: "A domain policy inventory and the applied result on one endpoint answer different questions. The former reveals readable objects and configuration relationships, while the latter checks constraints applied locally; security filtering, inheritance, client-side extensions, and result freshness can produce differences. The adversary must accept read-right limitations and incomplete views and cannot infer application to a target merely from seeing a GPO."
+    threat_model:
+      attacker_model:
+        paragraphs:
+          - zh: "攻击者具有可执行本地诊断或读取可达策略信息的受陷进程、用户或计算机上下文。域级 LDAP 或 SYSVOL 路径需要可达域控制器及相应认证与读取权，远端结果策略查询还受目标管理权限、防火墙和远程访问授权限制；这些条件并不等价于域管理员权限。攻击者可选择查询对象、范围和输出方式，但不能假定任意用户都能读取所有策略或其他用户的完整结果。"
+            en: "The adversary has a compromised process, user, or computer context capable of running local diagnostics or reading reachable policy information. Domain LDAP or SYSVOL paths require connectivity to a domain controller and the relevant authentication and read rights; remote resultant-policy queries also depend on target administration rights, firewall reachability, and remote-access delegation. These prerequisites do not imply domain-administrator authority. The adversary can choose objects, scope, and output, but arbitrary access to every policy or another user's complete results must not be assumed."
+          - zh: "本父级的匿迹判断假设防守方难以从正常策略读取中区分攻击者的调查目的，而不假设攻击者能关闭审计或控制 Group Policy 服务。若要进一步声称复用本地缓存、只读目录属性或特定时间选择减少了域侧痕迹，必须取得对应执行路径、缓存状态和传感器对照；目前资料不满足这些更窄的结论。"
+            en: "The parent's stealth conclusion assumes defenders have difficulty distinguishing adversarial survey intent within normal policy reads; it does not assume the adversary can disable auditing or control the Group Policy service. A narrower claim that local-cache reuse, directory-only reads, or particular timing reduces domain-side traces requires the corresponding execution path, cache state, and sensor comparison, which the current material does not provide."
+      defender_model:
+        paragraphs:
+          - zh: "防守方可具备客户端进程与脚本记录，以及域控制器侧按对象配置的读取审计。4662 依赖匹配的目录 SACL 和审计策略，记录对象、权限与主体但不保证包含完整 LDAP 谓词或返回值；5145 记录共享权限检查，文件 ReadData 的 4663 需要预设 SACL。服务器侧进程通常不能代表原始客户端进程，登录标识也只能在同一服务器的事件范围内连接。"
+            en: "Defenders can have client process and script records plus object-scoped read auditing on domain controllers. Event 4662 depends on a matching directory SACL and audit policy and records object, rights, and principal without guaranteeing the full LDAP predicate or returned values. Event 5145 records share authorization, while file ReadData event 4663 requires a preconfigured SACL. A server-side process generally does not identify the original client process, and logon identifiers must be joined within the same server's event context."
+          - zh: "有效观察还需要 GPO GUID、目录对象与 SYSVOL 路径的映射，以及用户、计算机、管理源和批准诊断任务的基线。本地结果查询可只留下端点侧信息，遗漏域侧事件不能反推未查询；相反，正常策略处理产生的 LDAP 与共享读取也不能证明操作者主动调查。审计容量、加密流量、代理来源、保留期和客户端进程遥测缺失会限制跨面关联。"
+            en: "Useful visibility also requires mappings across GPO GUIDs, directory objects, and SYSVOL paths plus baselines for users, computers, administration sources, and approved diagnostic jobs. A local result query may leave endpoint-side information alone, so missing domain-side events do not establish that no query occurred; conversely, normal policy-processing LDAP and share reads do not establish an operator's active survey. Audit capacity, encrypted traffic, proxied origins, retention, and missing client process telemetry limit joins across planes."
+  stealth_mechanisms:
+    - mechanism_ref: NM-FD
+      role: primary
+      summary:
+        zh: "借用合法策略诊断和读取接口使恶意调查难与正常管理区分"
+        en: "Reuse legitimate policy diagnostics and read interfaces so adversarial surveying resembles ordinary administration"
+      analysis:
+        paragraphs:
+          - zh: "攻击者以 gpresult 等正常策略诊断工具或已有权读取的策略接口获得配置事实，使痕迹呈现为合法报表、目录或共享读取。Microsoft 文档证明这些接口服务于正常管理，ESET 则直接记录恶意操作者使用同一诊断命令；两者共同支持外观重叠会降低单事件目的可区分性的推断。该机理不依赖隐藏进程、删除日志或伪造策略结果，进程来源、请求范围和任务授权的完整关联仍能恢复识别能力。"
+            en: "The adversary obtains configuration facts through normal policy diagnostics such as gpresult or policy interfaces already readable by its principal, giving the traces the appearance of legitimate reporting, directory, or share reads. Microsoft documents legitimate administration through these interfaces, and ESET directly records adversarial operators using the same diagnostic command. Together they support the inference that appearance overlap reduces intent distinguishability from one event. The mechanism requires neither process concealment, log deletion, nor forged results; complete joins across process origin, requested scope, and task authorization can restore distinction."
+      evidence_keys:
+        - B006-T1615-REF-GPRESULT
+        - B006-T1615-REF-PROTOCOL
+        - REF-001049
+      confidence: medium
+  proposed_subtechnique_taxonomy:
+    narrative:
+      paragraphs:
+        - zh: "已分别审查本地既有结果或缓存复用、目录与文件读取面选择、窄对象或属性范围、时间与客户端来源，以及只保存结果而不写入报表等潜在变量。本地结果与缓存最可能改变观察位置，但能力文档和已有 gpresult 案例没有证明攻击者有意用它替代域侧查询或实际减少哪些事件，其他轴也缺乏同案痕迹和防御对照。"
+          en: "The review separately examined reuse of existing local results or caches, selection between directory and file read planes, narrow object or attribute scope, timing and client origin, and avoiding report-file output. Local results and caches are the most plausible observation-location variable, but capability documentation and the gpresult case do not establish deliberate substitution for domain queries or actual reductions in particular events. The other axes likewise lack same-case trace and defensive comparisons."
+        - zh: "不按 LDAP、SMB、CLI、GUI、产品、策略文件名或目标用户类别机械划分子项。没有候选轴通过有意控制、稳定边界、痕迹变化和结论级证据门禁，因此建议 taxonomy coverage 为 deferred，正式子项为空；后续若取得可验证对照，可重新评估，而不改变父技术准入。"
+          en: "Do not mechanically create children from LDAP, SMB, CLI, GUI, products, policy filenames, or target-user classes. No candidate axis passes the gates for intentional control, stable boundary, trace change, and conclusion-level evidence, so taxonomy coverage should be deferred with an empty formal child set. Verifiable comparisons can reopen a candidate later without changing parent admission."
+    coverage: deferred
+proposed_subtechniques: []
+defense_candidates:
+  detection_strategies:
+    - temporary_key: B006-T1615-DET-POLICY-READ
+      name:
+        zh: "组策略信息读取与任务语境关联"
+        en: "Group Policy Information Read and Task Context Correlation"
+      summary:
+        zh: "识别脱离批准诊断或正常策略处理语境的策略调查，并区分请求、授权检查和读取证据。"
+        en: "Identify policy surveying outside approved diagnostic or normal processing context while separating requests, authorization checks, and read evidence."
+      description:
+        paragraphs:
+          - zh: "本策略覆盖策略信息取得而不是策略写入。端点分析识别结果策略报表和策略查询执行来源，域侧分析连接 GPO 目录与 SYSVOL 访问，再与正常客户端处理和批准任务比较。两者可独立形成不同证据等级，不能强制要求同时出现 LDAP 与 SMB，因为某些操作只读取其中一个视图或本地结果。"
+            en: "This strategy covers acquisition of policy information rather than policy writes. The endpoint analytic identifies origins of resultant-policy reporting and policy-query execution. The domain-side analytic connects GPO directory and SYSVOL access with normal client processing and approved work. Each can independently produce a different evidence level; LDAP and SMB must not both be required because some operations read only one view or local results."
+      detects_keys: [B006-T1615-PARENT]
+      domains: [enterprise]
+      analytic_keys: [B006-T1615-NJA-ENDPOINT, B006-T1615-NJA-DOMAIN]
+      evidence_keys: [B006-T1615-REF-GPRESULT, B006-T1615-REF-PROTOCOL, B006-T1615-REF-4662, REF-001049, REF-000366, REF-000463, REF-000377, REF-000474, REF-000379, REF-000341]
+  detection_analytics:
+    - temporary_key: B006-T1615-NJA-ENDPOINT
+      strategy_key: B006-T1615-DET-POLICY-READ
+      name:
+        zh: "结果策略查询进程与批准诊断任务差分"
+        en: "Resultant Policy Query Process and Approved Diagnostic Task Differential"
+      summary:
+        zh: "将策略结果查询执行同用户、父进程、远端目标与获批任务比较，输出调查候选而不把工具启动等同于成功读取。"
+        en: "Compare policy-result query execution with user, parent process, remote target, and approved work, producing survey candidates without equating launch with successful reads."
+      domains: [enterprise]
+      platforms: [Windows]
+      logic:
+        paragraphs:
+          - zh: "从完整进程创建记录中选择 gpresult 的结果输出请求，要求出现 /r、/v、/z、/h 或 /x；单独 /?、无有效输出参数或明确失败只作为帮助或错误上下文。规范化 /s、/user、/scope 和输出目标，识别本机与远端结果查询。对已启用脚本块日志的 PowerShell，重组同一 ScriptBlockId 的分段，以实际查询 Group Policy 或 RSoP 的语义补充候选；函数名称只作检索入口，不直接形成恶意结论。"
+            en: "Select gpresult result-output requests from complete process-creation records, requiring /r, /v, /z, /h, or /x. Treat /? alone, missing valid output options, and explicit failures only as help or error context. Normalize /s, /user, /scope, and output destination to distinguish local and remote resultant-policy requests. Where PowerShell script-block logging is enabled, reconstruct fragments with the same ScriptBlockId and add candidates from actual Group Policy or RSoP query semantics; function names are search hints rather than malicious verdicts."
+          - zh: "在十五分钟内按资产、用户与进程谱系归组，并与同一来源、目标范围、工单或作业标识及有效时间绑定的诊断清单比较。没有匹配任务且由近期恶意进程、非管理远控或异常脚本来源触发的请求提高优先级；其他账户、网络和文件调查命令可提供上下文，但不作为必要条件。默认输出 policy_query_attempt，只有取得可验证报表或结果遥测才提升为 policy_result_observed；报表文件创建只证明生成了对象，不能单独证明内容有效。"
+            en: "Group activity by asset, user, and process lineage over fifteen minutes and compare it with a diagnostic inventory bound to the same origin, target scope, ticket or job identifier, and validity interval. Prioritize unmatched requests originating from recent malicious processes, nonadministrative remote control, or abnormal scripts. Other account, network, or file survey commands provide context without being mandatory. Emit policy_query_attempt by default and raise it to policy_result_observed only with a validated report or result telemetry. Report-file creation alone establishes an object, not valid contents."
+      data_requirements:
+        - source_type: endpoint-process-create
+          name:
+            zh: "端点完整进程创建"
+            en: "Complete endpoint process creation"
+          channel: Microsoft-Windows-Sysmon/Operational event 1 or validated equivalent
+          required_fields: [timestamp, device_id, process_guid, image, command_line, user, parent_process_guid, parent_image, parent_command_line]
+        - source_type: approved-policy-diagnostic-job
+          name:
+            zh: "已批准策略诊断任务清单"
+            en: "Approved policy diagnostic job inventory"
+          channel: configuration management and support ticket inventory
+          required_fields: [job_id, owner, requester, source_device, target_scope, process_or_script, valid_from, valid_to]
+      optional_data_requirements:
+        - source_type: powershell-script-block
+          name:
+            zh: "已启用并完成重组的脚本块日志"
+            en: "Enabled and reconstructed script-block logs"
+          channel: Microsoft-Windows-PowerShell/Operational event 4104 or PowerShellCore/Operational event 4104 according to runtime
+          required_fields: [timestamp, device_id, process_id, script_block_id, message_number, message_total, script_block_text]
+        - source_type: policy-result-artifact
+          name:
+            zh: "经授权采集的有效结果证据"
+            en: "Authorized collection of validated result evidence"
+          channel: validated EDR or forensic result collection
+          required_fields: [device_id, process_guid, result_observed, target_user_or_computer, observed_time, result_scope]
+      observables:
+        - zh: "带结果输出选项的 gpresult 请求"
+          en: "gpresult request with result-output options"
+        - zh: "实际查询策略或 RSoP 的重组脚本内容"
+          en: "Reconstructed script content that actually queries policy or RSoP"
+        - zh: "查询源、目标范围与批准任务不匹配"
+          en: "Query origin and target scope unmatched to approved work"
+      correlation:
+        window:
+          zh: "初始使用十五分钟进程链窗口和三十日任务基线；它们是待验证的工程起点，不是来源证明的检测阈值。"
+          en: "Start with a fifteen-minute process-chain window and thirty-day work baseline; these are engineering defaults to validate rather than source-established detection thresholds."
+        dimensions: [device_id, user, process_guid, parent_process_guid, target_user_or_computer, job_id, time]
+      false_positives:
+        - zh: "支持人员、登录问题排查、合规评估、策略发布验证和取证都可能运行相同报表或脚本。应核对实际工单和作用域；单凭签名工具、管理员身份或办公时间不能永久放行。"
+          en: "Support staff, sign-in troubleshooting, compliance assessment, policy-release verification, and forensics can run the same reports or scripts. Verify the actual ticket and scope; a signed utility, administrator identity, or business hours must not create a permanent allow rule."
+      blind_spots:
+        - zh: "自定义 API、本地缓存文件读取、WMI 或注入已批准进程的查询可能不出现相应命令行。脚本块记录依赖运行时与配置，截断参数或丢失进程链会降低结论；默认分析无法证明返回值或查询动机。"
+          en: "Custom APIs, local-cache file reads, WMI, and queries injected into approved processes may lack matching command lines. Script-block records depend on runtime and configuration, and truncated arguments or missing lineage weaken the result. The default analytic cannot prove returned values or intent."
+      tuning_guidance:
+        paragraphs:
+          - zh: "用本机用户、计算机及远端目标分别验证参数解析和成功、帮助、权限失败结果；进程字段必须以真实传感器样本确认。例外绑定工单、源设备、身份、目标、脚本与到期时间，保留命中记录。原始命令行可能含敏感参数，应限制分析结果访问并避免把口令复制进告警正文。"
+            en: "Validate parameter parsing against local user, computer, and remote targets plus successful, help, and permission-failure outcomes, and verify process fields against real sensor samples. Bind exceptions to ticket, source device, identity, target, script, and expiry while retaining matches. Raw command lines can contain sensitive arguments, so restrict access to analytic results and avoid copying passwords into alert text."
+      evidence_keys: [B006-T1615-REF-GPRESULT, REF-001049, REF-000366, REF-000463]
+    - temporary_key: B006-T1615-NJA-DOMAIN
+      strategy_key: B006-T1615-DET-POLICY-READ
+      name:
+        zh: "GPO 目录读取与 SYSVOL 访问语义关联"
+        en: "GPO Directory Read and SYSVOL Access Semantic Correlation"
+      summary:
+        zh: "按 GPO 标识关联目录读取、模板访问和正常处理语境，保留读取证据等级与审计覆盖状态。"
+        en: "Correlate directory reads, template access, and normal processing by GPO identifier while retaining read-evidence levels and audit coverage."
+      domains: [enterprise]
+      platforms: [Windows]
+      logic:
+        paragraphs:
+          - zh: "在选定域控制器上预先验证 Audit Directory Service Access 及目标 SACL。选择成功 4662 的 Read Property 0x10，并用独立目录清单把 ObjectType、ObjectName 和 Properties 中可能存在的 GUID 规范化到 groupPolicyContainer 或选定 OU/域的 gpLink、gpOptions 等策略属性。仅有 List Contents、Read Control 或写入事件应保留其本身语义，不能升级为设置内容读取。按同一域控制器的 SubjectLogonId 连接 4624 的目标登录标识恢复主体与源地址；不跨服务器直接拼接 LUID，且无法解析来源时明确标注。"
+            en: "Prevalidate Audit Directory Service Access and target SACLs on selected domain controllers. Select successful event 4662 Read Property 0x10 and use independent directory inventory to resolve possible GUIDs in ObjectType, ObjectName, and Properties to groupPolicyContainer or selected policy attributes such as gpLink and gpOptions on OU or domain objects. Preserve the original meaning of List Contents, Read Control, or writes rather than raising them to setting-content reads. Join SubjectLogonId to the target logon identifier in event 4624 on the same domain controller to recover principal and origin, without joining LUIDs directly across servers and with unresolved sources explicitly marked."
+          - zh: "独立选择 5145 对 SYSVOL 下 Policies/{GPO-GUID} 的访问并记录所请求权限。0x1 对目录可为 ListDirectory，对文件才是 ReadData，必须用对象类型清单或经验证的文件遥测区分；5145 允许项只输出 share_access_check。对已部署 ReadData SACL 的策略文件，再连接同服务器、主体、登录标识和规范路径的 4663 ReadData，输出 file_read_exercised；它仍不证明完整文件被攻击者保存或已正确解析。目录与模板事件可在十五分钟内按 GPO GUID、主体和稳定客户端资产聚合，但任一面单独存在也必须保留。"
+            en: "Independently select event 5145 access to Policies/{GPO-GUID} beneath SYSVOL and retain requested rights. Bit 0x1 can mean ListDirectory for a directory and ReadData for a file, so use object-type inventory or validated file telemetry to distinguish them. An allowed 5145 produces share_access_check only. For policy files with a ReadData SACL, join event 4663 ReadData on the same server, principal, logon identifier, and normalized path to produce file_read_exercised. This still does not prove complete adversarial retention or correct parsing. Directory and template events can be aggregated by GPO GUID, principal, and stable client asset over fifteen minutes, but single-plane observations must also be retained."
+          - zh: "将对象范围、主体职责、源设备和批准任务同正常策略处理清单比较；异常主体从非管理源读取超出预期作用域的多项策略时提高优先级。正常客户端处理、GPMC、合规和备份都可读同样对象，应使用实际设备与任务上下文，而不是仅按账户尾缀或 LSASS/System 外观排除。只有异常语境得到证实才输出 suspicious_policy_information_access，并附 directory_read、share_access_check 或 file_read_exercised 的原始等级；不依赖 5136 或文件创建来证明读取。"
+            en: "Compare object scope, principal duties, origin device, and approved work with the normal policy-processing inventory; prioritize unusual principals reading multiple policies beyond expected scope from nonadministrative origins. Normal clients, GPMC, compliance checks, and backups can read the same objects, so use actual device and work context rather than excluding solely by an account suffix or LSASS/System appearance. Emit suspicious_policy_information_access only after abnormal context is established and attach the original directory_read, share_access_check, or file_read_exercised level. Do not use event 5136 or file creation as proof of reading."
+      data_requirements:
+        - source_type: windows-directory-read-audit
+          name:
+            zh: "已验证的目录读取审计"
+            en: "Validated directory read audit"
+          channel: Security event 4662 on domain controllers with applicable audit policy and SACL
+          required_fields: [timestamp, dc_id, audit_outcome, subject_user_sid, subject_logon_id, object_type, object_name, access_mask, properties]
+        - source_type: windows-detailed-share-access
+          name:
+            zh: "已验证的共享访问检查"
+            en: "Validated share access checks"
+          channel: Security event 5145 on SYSVOL-serving domain controllers
+          required_fields: [timestamp, dc_id, audit_outcome, subject_user_sid, subject_logon_id, ip_address, share_name, share_local_path, relative_target_name, access_mask, access_reason]
+        - source_type: windows-network-logon
+          name:
+            zh: "同一域控制器的网络登录"
+            en: "Network logon on the same domain controller"
+          channel: Security event 4624 on the observed domain controller
+          required_fields: [timestamp, dc_id, target_logon_id, target_user_sid, logon_type, ip_address]
+        - source_type: gpo-read-context-inventory
+          name:
+            zh: "GPO 对象、读取路径与正常任务清单"
+            en: "GPO objects, read paths, and normal work inventory"
+          channel: independent GPMC or configuration inventory and approved-job registry
+          required_fields: [gpo_guid, object_guid_or_dn, object_class, attribute_guid_map, sysvol_path, object_kind, client_asset, principal_role, authorized_scope, approved_job, valid_interval]
+      optional_data_requirements:
+        - source_type: windows-file-exercised-read
+          name:
+            zh: "具 ReadData SACL 的文件实际访问"
+            en: "Exercised access to files with a ReadData SACL"
+          channel: Security event 4663 on the SYSVOL-serving domain controller
+          required_fields: [timestamp, dc_id, subject_user_sid, subject_logon_id, object_name, object_type, access_mask, process_id, process_name]
+        - source_type: client-policy-processing-context
+          name:
+            zh: "经验证的客户端策略处理上下文"
+            en: "Validated client policy-processing context"
+          channel: Microsoft-Windows-GroupPolicy/Operational or validated endpoint process context
+          required_fields: [timestamp, client_asset, policy_processing_interval, user_or_computer, processing_outcome]
+      observables:
+        - zh: "已审计 GPO 属性的成功 Read Property"
+          en: "Successful Read Property against audited GPO attributes"
+        - zh: "SYSVOL 策略对象的共享层权限检查"
+          en: "Share-level authorization checks for SYSVOL policy objects"
+        - zh: "有 SACL 覆盖的策略文件实际使用 ReadData"
+          en: "Exercised ReadData on policy files with SACL coverage"
+        - zh: "读取主体、源设备或对象范围与批准处理不符"
+          en: "Reader principal, origin, or object scope inconsistent with approved processing"
+      correlation:
+        window:
+          zh: "登录与访问优先使用同服务器会话标识；GPO 跨面归组初始十五分钟，另保留三十日职责与任务基线，窗口均须按真实策略处理负载验证。"
+          en: "Prefer same-server session identifiers for logon-to-access joins. Start with fifteen minutes for GPO cross-plane grouping plus thirty days of role and work baseline, validating windows against actual policy-processing workloads."
+        dimensions: [dc_id, subject_user_sid, subject_logon_id, client_asset, gpo_guid, object_guid_or_dn, normalized_sysvol_path, approved_job, time]
+      false_positives:
+        - zh: "登录、启动与后台刷新、策略建模、GPMC 管理、配置评估、备份和调查取证都会产生目录或模板读取。不同扩展、缓存、复制与域控制器选择会使正常活动只出现在一个读取面；不能要求双面完整才认为合法。"
+          en: "Sign-in, boot, background refresh, modeling, GPMC administration, configuration assessment, backup, and forensics generate directory or template reads. Extensions, caching, replication, and domain-controller selection can leave normal activity on one plane, so legitimacy must not require both planes."
+      blind_spots:
+        - zh: "未配置 SACL 或成功审计时无法补采既往读取，4662 通常不给完整谓词和返回内容。5145 只表达共享检查且 NTFS 拒绝不一定生成其失败项，4663 不代表客户端原始进程或完整保存；本地结果、加密流量、代理来源、审计丢失和不完整 GUID 映射均会削弱关联。"
+          en: "Missing SACLs or success auditing cannot be repaired retrospectively, and 4662 generally lacks full predicates and returned content. Event 5145 expresses share checks, and NTFS denials need not generate its failure events. Event 4663 identifies neither the original client process nor complete retention. Local results, encrypted traffic, proxies, audit loss, and incomplete GUID mapping weaken correlation."
+      tuning_guidance:
+        paragraphs:
+          - zh: "先在少量高价值 GPO 和属性试点，分别测试合法刷新、gpresult、本地报表、LDAP 属性读取和 SYSVOL 文件访问，确认哪些事件实际产生。按目录读取、授权检查、实际文件访问和结果证据保存不同等级；采用 owner、来源、对象与到期时间约束例外，并监测事件量与丢失。若使用 1644 作为补充，必须承认它受诊断配置及代价、返回数、耗时阈值限制，不能宣称它记录了所有查询。"
+            en: "Pilot on a small set of high-value GPOs and attributes and separately test legitimate refresh, gpresult, local reports, LDAP attribute reads, and SYSVOL file access to establish actual event generation. Preserve distinct directory-read, authorization-check, exercised-file-access, and result-evidence levels. Constrain exceptions by owner, origin, object, and expiry and monitor volume and loss. If event 1644 is added, acknowledge diagnostic configuration and cost, returned-count, and duration thresholds rather than treating it as a complete query log."
+      evidence_keys: [B006-T1615-REF-4662, B006-T1615-REF-PROTOCOL, B006-T1615-REF-1644, REF-000341, REF-000377, REF-000474, REF-000379]
+  mitigations:
+    - temporary_key: B006-T1615-MIT-READ-GOVERNANCE
+      name:
+        zh: "组策略读取授权与审计治理"
+        en: "Group Policy Read Entitlement and Audit Governance"
+      summary:
+        zh: "减少非必要策略信息读取并建立可验证的读取问责，同时保留策略交付所需权限。"
+        en: "Reduce unnecessary policy-information reads and establish verifiable read accountability while preserving rights required for policy delivery."
+      description:
+        paragraphs:
+          - zh: "组策略信息是客户端和管理员工作所需，不能通过全面禁止读取来可靠消除本技术。控制重点是审查额外读取与远端结果委派，登记批准诊断来源，并对重要 GPO 验证目录和文件读取审计。该控制减少额外暴露、提高识别和取证能力，不保证阻断已失陷合法客户端对必要策略的读取。"
+            en: "Clients and administrators need Group Policy information, so a blanket read prohibition cannot reliably remove the behavior. Review unnecessary reads and remote-result delegation, register approved diagnostic origins, and validate directory and file read auditing for important GPOs. The control reduces additional exposure and improves identification and investigation without guaranteeing prevention of necessary reads by a compromised legitimate client."
+      domains: [enterprise]
+      measures:
+        - key: preserve-required-scope-review-extra-read
+          name:
+            zh: "保留必要读取并审查额外委派"
+            en: "Preserve required reads and review extra delegation"
+          description:
+            paragraphs:
+              - zh: "在 GPMC 中审查策略和远端结果读取委派，移除过期支持身份或无业务必要的额外读取，变更前验证用户与计算机策略都能正常应用。不要把安全筛选中的 Apply Group Policy 与读取权混同；MS16-072 后用户策略交付会使用计算机安全上下文，不能为了减少信息暴露而直接删去必要的 Authenticated Users 或 Domain Computers 读取路径。"
+                en: "Review policy and remote-result read delegation in GPMC and remove expired support identities or unnecessary additional reads, validating normal user and computer policy application before changes. Do not conflate Apply Group Policy in security filtering with read rights. User-policy retrieval uses the computer security context after MS16-072, so required Authenticated Users or Domain Computers read paths must not simply be removed to reduce information exposure."
+          control_type: exposure-reduction
+        - key: approved-diagnostic-source-inventory
+          name:
+            zh: "批准策略诊断来源清单"
+            en: "Approved policy diagnostic origin inventory"
+          description:
+            paragraphs:
+              - zh: "为策略报表、GPMC 与远端结果查询记录 owner、身份、源设备、目标范围、脚本和有效时间，把临时支持访问设为有期限的委派。保留正常工单与作业记录，使合法诊断可以核实，也让复用受信工具的异常来源可被区分。"
+                en: "Record owner, identity, origin device, target scope, script, and validity interval for policy reports, GPMC, and remote-result queries and make temporary support delegation expire. Retain tickets and job records so legitimate diagnostics can be verified and abnormal origins reusing trusted tools can be distinguished."
+          control_type: governance
+        - key: targeted-policy-read-observation
+          name:
+            zh: "定向策略读取观察"
+            en: "Targeted policy-read observation"
+          description:
+            paragraphs:
+              - zh: "为选定 GPO 目录对象与策略属性部署匹配的读取 SACL 和审计策略，为重点 SYSVOL 文件验证 5145 及 ReadData SACL/4663，将同服务器登录与客户端进程上下文独立保留。通过成功、拒绝和正常刷新测试核实事件语义，监测日志容量与丢失，不把策略写入日志当成读取覆盖。"
+                en: "Deploy matching read SACLs and audit policy for selected GPO directory objects and policy attributes, validate 5145 plus ReadData SACL and 4663 on priority SYSVOL files, and independently retain same-server logon and client process context. Verify event semantics through successful, denied, and normal-refresh tests, monitor capacity and loss, and do not count policy-write logs as read coverage."
+          control_type: detective-support
+      applications:
+        - target_key: B006-T1615-PARENT
+          use:
+            paragraphs:
+              - zh: "对组策略发现，围绕实际域策略交付保留必要读取，同时收回无 owner 的报表与远端结果委派；将客户端策略处理和批准诊断任务同 GPO 目录、SYSVOL 与端点请求相连接。优先验证高价值 GPO 的观察覆盖，再根据负载扩展，避免全面审计拖垮域控制器。"
+                en: "For Group Policy Discovery, preserve reads needed for actual domain policy delivery while removing ownerless reporting and remote-result delegation. Join client policy processing and approved diagnostics with GPO directory, SYSVOL, and endpoint requests. Validate visibility on high-value GPOs first and expand according to workload rather than overwhelming domain controllers with comprehensive auditing."
+          expected_effect:
+            paragraphs:
+              - zh: "不必要的策略视图与跨端点报表访问减少，借用合法读取接口的异常来源更容易被归属。经验证的读取证据能将授权检查、目录读取和文件实际访问分层，为后续调查保留可解释上下文；这主要增加攻击者绕过职责与任务检查的成本。"
+                en: "Unnecessary policy views and cross-endpoint report access are reduced, and abnormal origins reusing legitimate read interfaces become easier to attribute. Validated read evidence separates authorization checks, directory reads, and exercised file access while retaining interpretable context for investigation. This primarily increases the cost of bypassing role and work-context checks."
+          limitations:
+            paragraphs:
+              - zh: "已失陷且依法需要读取策略的用户或计算机仍可调查必要设置，错误收紧权限会破坏策略交付。读取审计依赖预先配置并有容量代价，本地已有结果可能继续可读；控制不能撤回已取得的信息，也不能只凭未产生事件证明没有发现活动。"
+                en: "Compromised users or computers legitimately requiring policy reads can still inspect necessary settings, and incorrectly tightened rights can break policy delivery. Read auditing requires advance configuration and consumes capacity, while existing local results may remain readable. The control cannot retract acquired information or establish absence of discovery merely from missing events."
+      evidence_keys: [B006-T1615-REF-MS16-072, B006-T1615-REF-RESULTS, B006-T1615-REF-4662, REF-000341, REF-000474, REF-000379]
+existing_library_reuse:
+  reference_refs: [REF-000341, REF-001049, REF-000366, REF-000463, REF-000377, REF-000474, REF-000379]
+  claim_refs: []
+  case_refs: []
+  strategy_refs: []
+  analytic_refs: []
+  mitigation_refs: []
+  relationship_refs: []
+library_candidates:
+  references:
+    - temporary_key: B006-T1615-REF-ATTACK
+      title:
+        zh: "ATT&CK T1615 组策略发现"
+        en: "ATT&CK T1615 Group Policy Discovery"
+      url: https://attack.mitre.org/techniques/T1615/
+      source_type: official-framework
+      authors: [MITRE ATT&CK]
+      accessed: "2026-11-05"
+      locator: Description, Windows platform and Discovery tactic; fixed workbook row in fixed-baseline-T1615.json
+      evidence_mode: framework-description-checked-against-pinned-workbook
+      supported:
+        zh: "父级信息取得语义与固定基线归属。"
+        en: "Parent information-acquisition semantics and fixed-baseline placement."
+      limits:
+        zh: "v19/v19.1 网页请求不可用；当前页与本地固定清单描述一致，但不能将当前检测条目自动标为 v19.1 原文，更不能以此证明新子项或漏报效果。"
+        en: "v19 and v19.1 page requests were unavailable. The current description matches the pinned local inventory, but current detection entries must not automatically be attributed to v19.1, and neither source establishes native children or missed-detection effects."
+    - temporary_key: B006-T1615-REF-GPRESULT
+      title:
+        zh: "Microsoft gpresult 命令参考"
+        en: "Microsoft gpresult Command Reference"
+      url: https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/gpresult
+      source_type: official-documentation
+      authors: [Microsoft]
+      published: "2024-11-01"
+      accessed: "2026-11-05"
+      locator: Parameters /s /user /scope /r /v /z /h /x and Remarks
+      evidence_mode: documented-platform-capability
+      supported:
+        zh: "本地默认目标、远端选项、结果策略与报表能力。"
+        en: "Default local target, remote options, resultant-policy and reporting capability."
+      limits:
+        zh: "不证明攻击意图、命令成功、所需全部权限或本地操作绝不联系域控制器。"
+        en: "Does not establish malicious intent, command success, every required permission, or that a local operation never contacts a domain controller."
+    - temporary_key: B006-T1615-REF-RESULTS
+      title:
+        zh: "组策略建模与结果"
+        en: "Group Policy Modeling and Results"
+      url: https://learn.microsoft.com/en-us/windows-server/identity/ad-ds/manage/group-policy/group-policy-modeling-results
+      source_type: official-documentation
+      authors: [Microsoft]
+      accessed: "2026-11-05"
+      locator: Prerequisites, Group Policy Results, and Evaluate policy settings from the command line
+      evidence_mode: documented-platform-capability
+      supported:
+        zh: "模拟与实际结果区别、读取权限及远端结果委派、gpresult 本机结果视图。"
+        en: "Modeling versus applied results, read rights and remote-result delegation, and gpresult's local result view."
+      limits:
+        zh: "不能证明任意用户都能读其他目标结果，也不证明攻击者以结果复用规避监控。"
+        en: "Does not establish arbitrary access to other targets' results or adversarial selection of result reuse to evade monitoring."
+    - temporary_key: B006-T1615-REF-PROTOCOL
+      title:
+        zh: "MS-GPOD GPO 查询与响应"
+        en: "MS-GPOD GPO Search and Reply"
+      url: https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-gpod/ed50ecda-fd6a-4424-8650-fa78c1df1a60
+      source_type: official-protocol
+      authors: [Microsoft]
+      published: "2024-10-30"
+      accessed: "2026-11-05"
+      locator: Section 2.1.3.1.4, LDAP reply and subsequent file open/read/close
+      evidence_mode: documented-protocol-behavior
+      supported:
+        zh: "正常客户端使用 LDAP 得到策略属性与文件路径，再访问策略文件；两面语义不同且正常行为也会读取。"
+        en: "Normal clients obtain policy attributes and file paths through LDAP and then access policy files; the planes have different semantics and normal behavior also reads them."
+      limits:
+        zh: "文档所述流程不等于每个诊断工具的实现，不证明每个攻击者都执行完整双面流程。"
+        en: "The documented sequence is not every diagnostic tool's implementation and does not establish a complete dual-plane sequence for every adversary."
+    - temporary_key: B006-T1615-REF-SOM
+      title:
+        zh: "MS-GPOL 域管理范围查询"
+        en: "MS-GPOL Domain SOM Search"
+      url: https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-gpol/08090b22-bc16-49f4-8e10-f27a8fb16d18
+      source_type: official-protocol
+      authors: [Microsoft]
+      published: "2024-04-23"
+      accessed: "2026-11-05"
+      locator: Section 2.2.2 LDAP request attributes gpLink and gpOptions
+      evidence_mode: documented-protocol-behavior
+      supported:
+        zh: "正常策略范围查询会读取域或 OU 的 gpLink/gpOptions。"
+        en: "Normal scope queries read gpLink and gpOptions from domain or OU objects."
+      limits:
+        zh: "不证明窄范围或属性查询是攻击者有意采用的匿迹变量。"
+        en: "Does not establish scoped or attribute-limited queries as an adversarial stealth choice."
+    - temporary_key: B006-T1615-REF-4662
+      title:
+        zh: "Windows 事件 4662 对象操作"
+        en: "Windows Event 4662 Object Operation"
+      url: https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-10/security/threat-protection/auditing/event-4662
+      source_type: official-documentation
+      authors: [Microsoft]
+      accessed: "2026-11-05"
+      locator: Event Description, XML fields, groupPolicyContainer class and Access Mask 0x10 Read Property
+      evidence_mode: documented-observation-semantics
+      supported:
+        zh: "需匹配 SACL；事件包含主体、登录标识、对象及访问权限，可识别策略对象属性读取。"
+        en: "A matching SACL is required; principal, logon identifier, object, and access fields support policy-object property-read observations."
+      limits:
+        zh: "不是默认全量查询日志，不包含客户端原始进程、完整谓词或返回值的保证。"
+        en: "Not a default complete query log and no guarantee of original client process, full predicate, or returned values."
+    - temporary_key: B006-T1615-REF-MS16-072
+      title:
+        zh: "MS16-072 组策略读取安全上下文变更"
+        en: "MS16-072 Group Policy Retrieval Security Context Change"
+      url: https://support.microsoft.com/en-au/servicing/os/windows-server/2016/06/ms16-072-description-of-the-security-update-for-group-policy-june-14-2016
+      source_type: official-documentation
+      authors: [Microsoft]
+      published: "2016-06-14"
+      accessed: "2026-11-05"
+      locator: Known issues, Cause and Resolution
+      evidence_mode: documented-operational-constraint
+      supported:
+        zh: "用户策略读取改用计算机上下文，移除必要读取会使策略应用失败。"
+        en: "User-policy retrieval uses computer context, and removing necessary read rights can break application."
+      limits:
+        zh: "来源是特定补丁的兼容性说明，不支持对所有策略一律删权限或保证最小权限阻断已失陷客户端读取。"
+        en: "A patch compatibility statement, not support for blanket permission removal or guaranteed prevention of reads by compromised clients."
+    - temporary_key: B006-T1615-REF-CACHE
+      title:
+        zh: "ADMX GroupPolicy 缓存配置"
+        en: "ADMX GroupPolicy Caching Configuration"
+      url: https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-admx-grouppolicy
+      source_type: official-documentation
+      authors: [Microsoft]
+      accessed: "2026-11-05"
+      locator: EnableLogonOptimization and EnableLogonOptimizationOnServerSKU
+      evidence_mode: documented-platform-capability
+      supported:
+        zh: "存在可配置的策略缓存，适用版本和客户端/服务器默认情况有差别。"
+        en: "Configurable policy caches exist, with version and client/server-default differences."
+      limits:
+        zh: "文档明确读取缓存时仍可能尝试联系登录域控制器检查链路；它不说明攻击者离线读取方法、缓存 ACL 或没有网络事件。"
+        en: "The documentation explicitly says cache use can still attempt contact with a logon domain controller for link-speed checks. It does not establish adversarial offline access, cache ACLs, or absence of network events."
+    - temporary_key: B006-T1615-REF-1644
+      title:
+        zh: "使用 Event1644Reader 分析 LDAP 查询性能"
+        en: "Analyze LDAP Query Performance with Event1644Reader"
+      url: https://learn.microsoft.com/en-us/troubleshoot/windows-server/active-directory/event1644reader-analyze-ldap-query-performance
+      source_type: official-documentation
+      authors: [Microsoft]
+      accessed: "2026-11-05"
+      locator: About the script and How to use the script
+      evidence_mode: documented-diagnostic-logging-limit
+      supported:
+        zh: "1644 需 Field Engineering 诊断配置，按访问数、返回数或耗时阈值选取查询。"
+        en: "Event 1644 requires Field Engineering diagnostics and selects queries by visited count, returned count, or duration thresholds."
+      limits:
+        zh: "不能将其作为普通低量读取的完整日志；开启详细诊断还带来额外事件量。"
+        en: "Cannot be treated as a complete log of ordinary small reads; verbose diagnostics adds event volume."
+  claims:
+    - temporary_key: B006-T1615-CLM-BEHAVIOR
+      statement:
+        zh: "组策略发现以取得已配置或已应用的策略信息为直接结果，不以更改策略或取得认证秘密为成立条件。"
+        en: "Group Policy Discovery directly obtains configured or applied policy information and requires neither policy mutation nor authentication-secret acquisition."
+      evidence_mode: framework-and-platform-definition
+      confidence: high
+      evidence_keys: [B006-T1615-REF-ATTACK, B006-T1615-REF-GPRESULT, B006-T1615-REF-RESULTS, REF-000341]
+    - temporary_key: B006-T1615-CLM-NATIVE-OVERLAP
+      statement:
+        zh: "Microsoft 文档中的合法策略诊断接口与 ESET 记录的恶意 gpresult 使用相重叠，支持单事件目的可区分性降低的推断，但未测量检测失败。"
+        en: "Legitimate policy diagnostics documented by Microsoft overlap with ESET-observed adversarial gpresult use, supporting reduced intent distinguishability from one event without measured detection failure."
+      evidence_mode: analyst-inference-from-documented-capability-and-observed-use
+      confidence: medium
+      evidence_keys: [B006-T1615-REF-GPRESULT, B006-T1615-REF-PROTOCOL, REF-001049]
+    - temporary_key: B006-T1615-CLM-READ-LEVELS
+      statement:
+        zh: "GPO 属性读取、SYSVOL 共享权限检查和策略文件实际 ReadData 是不同证据层级，均不能单独证明完整结果已被攻击者保存。"
+        en: "GPO property reads, SYSVOL share authorization checks, and exercised policy-file ReadData are distinct evidence levels, none alone establishing complete adversarial retention of the results."
+      evidence_mode: documented-event-semantics-and-bounded-inference
+      confidence: high
+      evidence_keys: [B006-T1615-REF-4662, B006-T1615-REF-PROTOCOL, REF-000474, REF-000379]
+    - temporary_key: B006-T1615-CLM-NECESSARY-READ
+      statement:
+        zh: "有效策略交付依赖适当主体的读取权，全面收回 GPO 读取不能作为无代价的组策略发现预防措施。"
+        en: "Effective policy delivery depends on appropriate principals retaining read rights, so blanket removal of GPO reads is not a cost-free preventive control for Group Policy Discovery."
+      evidence_mode: documented-operational-constraint-and-control-inference
+      confidence: high
+      evidence_keys: [B006-T1615-REF-MS16-072, B006-T1615-REF-RESULTS, REF-000341]
+    - temporary_key: B006-T1615-CLM-TURLA-USE
+      statement:
+        zh: "ESET 在 ComRAT 调查中记录 Turla 操作者执行 gpresult /z 和 /v；公开清单不证明这些命令取得的内容、独立匿迹子项或告警规避。"
+        en: "ESET recorded Turla operators executing gpresult /z and /v during its ComRAT investigation; the public list establishes neither returned contents, a distinct stealth child, nor alert evasion."
+      evidence_mode: directly-reported-operator-behavior
+      confidence: high
+      evidence_keys: [REF-001049]
+  cases:
+    - temporary_key: B006-T1615-CASE-TURLA-POLICY-SURVEY
+      name:
+        zh: "Turla ComRAT 调查中的组策略诊断命令"
+        en: "Group Policy Diagnostic Commands in the Turla ComRAT Investigation"
+      actor_or_campaign: Turla ComRAT v4
+      subject_keys: [B006-T1615-PARENT]
+      description:
+        zh: "ESET 2020 年的调查将 gpresult /z、/v 及其他 Windows、目录和网络调查命令列为操作者已执行的活动；精确执行日、完整输出和检测结果未公开。"
+        en: "ESET's 2020 investigation lists gpresult /z, /v, and other Windows, directory, and network survey commands as operator-executed activity. Exact execution dates, complete output, and detection outcomes were not published."
+      time_range: null
+      target_sectors:
+        zh: [外交与议会机构]
+        en: [Foreign affairs and parliamentary institutions]
+      confidence: high
+      evidence_keys: [REF-001049]
+      resolution_note:
+        zh: "应新建该独立观察事件。CASE-000307 的身份是 Gmail Web UI 命令邮箱，不能因同一报告而扩展其事实到策略调查。"
+        en: "Create this distinct observed event. CASE-000307 is specifically the Gmail Web UI command mailbox and must not have its facts extended to policy surveying merely because the report is shared."
+  detection_strategies: []
+  detection_analytics: []
+  mitigations: []
+  relationships: []
+research:
+  source_verification:
+    accessed: "2026-11-05"
+    fixed_baseline_row: planning/runs/BATCH-TA0007-006/fixed-baseline-T1615.json
+    independently_browsed_primary_urls:
+      - https://attack.mitre.org/techniques/T1615/
+      - https://learn.microsoft.com/en-us/windows-server/identity/ad-ds/manage/group-policy/group-policy-overview
+      - https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/gpresult
+      - https://learn.microsoft.com/en-us/windows-server/identity/ad-ds/manage/group-policy/group-policy-modeling-results
+      - https://learn.microsoft.com/en-us/previous-versions/windows/desktop/policy/group-policy-storage
+      - https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-gpod/ed50ecda-fd6a-4424-8650-fa78c1df1a60
+      - https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-gpol/08090b22-bc16-49f4-8e10-f27a8fb16d18
+      - https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-10/security/threat-protection/auditing/event-4662
+      - https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-10/security/threat-protection/auditing/event-5145
+      - https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-10/security/threat-protection/auditing/event-4663
+      - https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-10/security/threat-protection/auditing/audit-directory-service-access
+      - https://learn.microsoft.com/en-us/sysinternals/downloads/sysmon
+      - https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_logging_windows?view=powershell-7.3
+      - https://learn.microsoft.com/en-us/troubleshoot/windows-server/active-directory/event1644reader-analyze-ldap-query-performance
+      - https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-admx-grouppolicy
+      - https://support.microsoft.com/en-au/servicing/os/windows-server/2016/06/ms16-072-description-of-the-security-update-for-group-policy-june-14-2016
+      - https://www.welivesecurity.com/2020/05/26/agentbtz-comratv4-ten-year-journey/
+      - https://www.welivesecurity.com/wp-content/uploads/2020/05/ESET_Turla_ComRAT.pdf
+    inaccessible_primary_urls:
+      - url: https://attack.mitre.org/versions/v19/techniques/T1615/
+        result: browser internal error; pinned workbook remains baseline authority
+      - url: https://attack.mitre.org/versions/v19.1/techniques/T1615/
+        result: browser internal error; do not invent page contents
+      - url: https://www.cisa.gov/news-events/cybersecurity-advisories/aa24-190a
+        result: HTTP 403; no case conclusion derived from inaccessible content
+  taxonomy_breadth_review:
+    attack_subtechnique_count: 0
+    attack_subtechnique_ids: []
+    represented_dimensions:
+      - zh: "固定父级涵盖域 GPO 与端点结果策略信息，ATT&CK 未提供子级分区。"
+        en: "The fixed parent covers domain GPO and endpoint resultant-policy information with no ATT&CK child partitions."
+    breadth_trigger: ordinary
+    coverage_resolutions:
+      - dimension: Group Policy information acquisition
+        resolution: parent-core
+        evidence_keys: [B006-T1615-REF-ATTACK, B006-T1615-REF-GPRESULT, B006-T1615-REF-PROTOCOL]
+    candidate_stealth_axes_examined:
+      - key: preexisting-local-result-or-cache-reuse
+        resolution: evidence-deferred
+        stable_variable: Deliberately acquire already resident policy information instead of generating a fresh domain-policy read
+        trace_change: Would relocate acquisition evidence from current DC directory and SYSVOL reads to local result or cache access if demonstrated
+        observation_difference: DC-centric detection would need endpoint result or file-read visibility
+        prerequisites: Existing readable results or cache, sufficient local authorization, validated no-refresh path and acceptable staleness
+        evidence_keys: [B006-T1615-REF-GPRESULT, B006-T1615-REF-RESULTS, B006-T1615-REF-CACHE, REF-001049]
+        failed_gates: [intentional-selection-evidence, exact-access-path, same-operation-trace-comparison]
+        notes:
+          zh: "本机 gpresult 与可配置缓存均确实存在，但来源没有证明 Turla 选择它们以规避域侧监测。缓存使用还可能联系域控制器检查链路，因此禁止声称天然离线或零远端事件。"
+          en: "Local gpresult and configurable caches exist, but the sources do not show Turla choosing them to avoid DC monitoring. Cache use can still contact a domain controller to check the link, so claims of inherently offline behavior or zero remote events are prohibited."
+      - key: directory-only-versus-template-content
+        resolution: parent-core
+        stable_variable: Requested information plane
+        trace_change: LDAP attribute reads and file-content reads expose different objects and protocols
+        observation_difference: Directory and share audits have distinct scope and semantics
+        prerequisites: Applicable read rights and information sufficient in the selected plane
+        evidence_keys: [B006-T1615-REF-PROTOCOL, B006-T1615-REF-SOM, B006-T1615-REF-4662, REF-000474]
+        failed_gates: [independent-stealth-choice, comparable-information-result]
+        notes:
+          zh: "读取面和返回信息不同是父行为的实现与可观察性事实，不自动形成同一任务下的规避变量，不能按 LDAP/SMB 名称分 NJS。"
+          en: "Different read planes and returned information are implementation and observation facts of the parent, not automatically an evasion variable for an equivalent task; LDAP and SMB names must not become NJS boundaries."
+      - key: scoped-object-and-attribute-minimization
+        resolution: evidence-deferred
+        stable_variable: Intentional restriction of queried objects or attributes to lower anomalous coverage
+        trace_change: Could reduce query breadth, property accesses or template fetches
+        observation_difference: Broad-enumeration heuristics could require content-sensitive or role-sensitive correlation
+        prerequisites: Prior knowledge of useful GPOs and query API control
+        evidence_keys: [B006-T1615-REF-SOM, B006-T1615-REF-PROTOCOL]
+        failed_gates: [adversary-use-evidence, measured-trace-difference, distinct-child-boundary]
+        notes:
+          zh: "正常客户端已经按作用范围选择 GPO，窄读取本身不能证明匿迹。缺乏攻击者主动收窄以规避检测的直接材料。"
+          en: "Normal clients already select GPOs by application scope, so narrow reads alone do not establish stealth. No direct evidence shows deliberate adversarial narrowing to avoid detection."
+      - key: processing-window-and-client-provenance
+        resolution: evidence-deferred
+        stable_variable: Deliberately synchronize a survey with legitimate policy processing or reuse its client origin
+        trace_change: Would alter timing or apparent request origin within normal client patterns
+        observation_difference: Requires process attribution and processing-context joins rather than source identity alone
+        prerequisites: Control over schedule or client process plus relevant policy scope
+        evidence_keys: [REF-000341, B006-T1615-REF-PROTOCOL, B006-T1615-REF-MS16-072]
+        failed_gates: [policy-query-specific-adversary-evidence, causal-separation-from-normal-refresh]
+        notes:
+          zh: "正常刷新和计算机上下文是平台事实，不是已观察到的 T1615 匿迹设计；通用工作时间或活跃周期不作为本候选子项证据。"
+          en: "Normal refresh and computer context are platform facts rather than observed T1615 stealth designs; generic working hours or activity cycles are not child evidence for this candidate."
+      - key: avoid-persistent-report-output
+        resolution: not-stealth-distinct
+        stable_variable: Output destination
+        trace_change: Console output can avoid creating a particular HTML or XML report file
+        observation_difference: A file-creation-only detector would miss console reporting but process evidence remains
+        prerequisites: Ability to consume standard output without a persistent report
+        evidence_keys: [B006-T1615-REF-GPRESULT, REF-001049]
+        failed_gates: [evasion-intent, stable-sibling-boundary, nontrivial-defense-difference]
+        notes:
+          zh: "输出选项不等于独立匿迹技术；当前证据没有证明攻击者通过特定选项减少取证工件。"
+          en: "Output options do not establish an independent stealth technique; current evidence does not show adversarial selection of an option to reduce forensic artifacts."
+      - key: read-only-versus-change-and-secret-read
+        resolution: adjacent-technique
+        evidence_keys: [REF-000339, REF-001192]
+        notes:
+          zh: "策略修改、执行和认证秘密取得是相邻行为所有权边界，不是此父技术的匿迹子项。"
+          en: "Policy modification, execution, and authentication-secret acquisition are adjacent behavior ownership boundaries rather than stealth children of this parent."
+    second_pass_required: false
+    second_pass_completed: true
+    proposed_niji_child_count: 0
+    breadth_gap_explained: true
+    reviewer_notes:
+      zh: "普通广度门禁下仍开展了多轴搜索及一次补充反证复查。当前最有希望的本地结果轴缺结论级支持，正式分类应 deferred 而非 none-justified；不将实现面或命令输出选项凑成子项。"
+      en: "Multiple axes and a supplementary counter-evidence review were examined despite the ordinary breadth trigger. The most promising local-result axis lacks conclusion-level support, warranting deferred rather than none-justified taxonomy; implementation planes and output options are not used to fill a child count."
+  library_identity_review:
+    inspected_neighbors: [NJT-0100, NJT-0125, NJT-0229, NJT-0182, NJT-0181]
+    query_terms: [Group Policy, SYSVOL, "4662", "5145", gpresult, RSoP, ComRAT]
+    resolutions:
+      - candidate: B006-T1615-REF-PROTOCOL
+        resolution: create
+        reason: Exact URL and protocol section not found in canonical sources; REF-000341 is an overview, not the protocol sequence
+      - candidate: B006-T1615-REF-GPRESULT
+        resolution: create
+        reason: Exact command reference identity not found; confirm final catalog once more before allocation
+      - candidate: B006-T1615-REF-4662
+        resolution: create
+        reason: Exact event reference identity not found; REF-000379 and REF-000474 describe different object/event semantics
+      - candidate: REF-001049
+        resolution: extend
+        reason: Reuse the same author/title/year research publication and preserve canonical article URL; extend locator to article Insight into attacker activity figure 3 and linked whitepaper section 3.4 printed page 8 figure 6
+        canonical_url: https://www.welivesecurity.com/2020/05/26/agentbtz-comratv4-ten-year-journey/
+        additional_locator_url: https://www.welivesecurity.com/wp-content/uploads/2020/05/ESET_Turla_ComRAT.pdf
+        proposed_title_zh: 从 Agent.BTZ 到 ComRAT v4：十年历程
+        identity_limit: Preserve existing C2 locator and meaning; add policy survey locator rather than create duplicate bibliography or repurpose CASE-000307
+      - candidate: B006-T1615-CASE-TURLA-POLICY-SURVEY
+        resolution: create
+        reason: CASE-000307 is a distinct observed Gmail mailbox C2 event and not this survey event
+      - candidate: B006-T1615-DET-POLICY-READ
+        resolution: create
+        reason: DET-000097 and DET-000134 concern mutation and consumer effect; DET-000210 concerns namespace facts rather than policy results
+      - candidate: B006-T1615-NJA-DOMAIN
+        resolution: create
+        reason: NJA-000329 supplies useful 5145/4663 caution, but policy-object directory reads, GPO mapping and normal processing baselines change the analytic identity
+      - candidate: B006-T1615-MIT-READ-GOVERNANCE
+        resolution: create
+        reason: MIT-000192 and MIT-000221 limit namespace/content exposure with different measures; preserving mandatory GPO client reads and governing remote-result delegation require a distinct control
+      - candidate: B006-T1615-REF-CACHE
+        resolution: defer
+        reason: Planning-only counter-evidence for an unsupported child, not required in canonical parent evidence
+      - candidate: B006-T1615-REF-SOM
+        resolution: create
+        reason: Useful exact support if gpLink/gpOptions read filtering is retained in the formal domain analytic; otherwise keep planning-only
+      - candidate: B006-T1615-REF-1644
+        resolution: create
+        reason: Use if 1644 limitations remain in canonical analytic; otherwise keep planning-only
+    additional_reuse_notes:
+      zh: "REF-000831 IdentityQueryEvents 可作为已部署身份传感器环境的替代补充，但不强行要求它提供全量谓词、GPO GUID 或原始客户端进程。REF-000339 与 REF-001192 仅作为既有边界研究资料，不必复制为本父级正文的主要证据。"
+      en: "REF-000831 IdentityQueryEvents can supplement deployments with the relevant identity sensor, but must not be assumed to provide complete predicates, GPO GUIDs, or original client processes. REF-000339 and REF-001192 inform existing boundaries and need not be copied as primary evidence for this parent's content."
+  evidence_coverage:
+    parent_behavior_keys: [B006-T1615-REF-ATTACK, B006-T1615-REF-GPRESULT, B006-T1615-REF-RESULTS, B006-T1615-REF-PROTOCOL, REF-000341, REF-001049]
+    boundary_keys: [B006-T1615-REF-PROTOCOL, REF-000339, REF-001192]
+    mechanism_support:
+      - mechanism_ref: NM-FD
+        evidence_keys: [B006-T1615-REF-GPRESULT, B006-T1615-REF-PROTOCOL, REF-001049]
+        mode: inference from documented ordinary interfaces plus observed adversary use; no measured miss rate
+        confidence: medium
+    child_existence_support: []
+    unsupported_or_deferred:
+      - Intentional use of local cached or resultant policy to suppress fresh domain events
+      - GPO-specific temporal dilution or distributed-origin surveying
+      - Deliberate narrowing of LDAP attributes or policy scope to evade detection
+      - In-process Group Policy client impersonation or report-artifact avoidance as independent children
+      - Returned policy contents, exact command dates and alert outcomes in the ESET case
+  content_depth_review:
+    compared_with_njt_0001: true
+    field_responsibilities_complete: true
+    candidate_specific_prose: true
+    repeated_prose_reviewed: true
+    notes:
+      zh: "已逐项核对定义与读取视图区别、外观重叠与残余观察、修改和秘密取得边界、实际应用场景、攻击者可读权限、防守方审计前提、因果机理和公开证据限制。段落按论证分开，未套用主动扫描的数量、结论或证据。此项为研究交接自查，不能替代主 Agent 的独立语义验收或人工领域评审。"
+      en: "The review checks the definition and differing read views, appearance overlap and residual visibility, mutation and secret boundaries, practical scenarios, attacker read rights, defender audit prerequisites, causal mechanism, and public-evidence limits. Paragraphs follow the argument without copying Active Scanning's counts, conclusions, or evidence. This is handoff self-review, not a substitute for the primary agent's independent semantic acceptance or human domain review."
+  automation_review:
+    canonical_prose_bulk_generated: false
+    mechanical_uses: [Read-only repository search, shared-library lookup, handoff YAML parsing]
+  limitations:
+    paragraphs:
+      - zh: "公开恶意活动证据最明确地支持使用合法 gpresult 进行策略调查，不能由命令存在推断完整返回内容、规避动机或检测失效。Microsoft 文档支持能力、协议与审计语义；本研究将这些事实用于分析外观重叠，而没有把平台能力自动升级为已观察攻击或子技术存在证据。"
+        en: "Public adversarial evidence most clearly supports policy surveying through legitimate gpresult, but command presence does not establish complete returned contents, evasion motive, or failed detection. Microsoft documents capability, protocol, and audit semantics; this research uses those facts to analyze appearance overlap without automatically upgrading platform capability to observed attack or child-existence evidence."
+      - zh: "缓存、结果策略和域中已配置策略有不同范围与时效。缓存存在不证明任意用户可读或完全离线；结果查询也不保证所有扩展都能提供相同信息。未对真实 Windows 域运行实验，因此所有关联窗口、任务基线和异常优先级都是可实施设计建议，仍需按部署版本、权限和日志负载验证。"
+        en: "Caches, resultant policy, and configured domain policy differ in scope and freshness. Cache existence does not establish arbitrary readability or wholly offline operation, and result queries do not guarantee equivalent information from every extension. No live Windows-domain experiment was performed, so correlation windows, work baselines, and anomaly priorities are implementable design proposals that still require validation against deployed versions, rights, and logging workloads."
+      - zh: "研究中 v19/v19.1 ATT&CK 网页和 CISA 通告无法读取，固定基线事实取自仓库内 19.1 工作簿机械摘录；当前网页只作交叉检查。事件文档并不保证部署环境已启用读取审计，传感器缺失不能作为行为透明或零痕迹的证据。"
+        en: "The v19/v19.1 ATT&CK pages and CISA advisory could not be retrieved. Fixed-baseline facts come from the repository's mechanical extraction of the 19.1 workbook, with the current page used only for cross-checking. Event documentation does not guarantee that read auditing is enabled in a deployment, and missing sensors are not evidence of Behavioral Transparency or zero traces."
+  rejected_mechanisms:
+    - mechanism_ref: NM-BT
+      reason:
+        zh: "缺乏针对当前调查行为主动选择读取盲区的证据；配置不全或缺少读取事件本身不足以成立该机理。"
+        en: "Evidence does not establish deliberate selection of a read-observation blind spot for this survey behavior; incomplete configuration or absent read events alone does not establish the mechanism."
+    - mechanism_ref: NM-ST
+      reason:
+        zh: "未发现对 T1615 有结论级支持的时间稀释、来源分散或短暂痕迹设计；普通后台刷新周期不能替代攻击者设计证据。"
+        en: "No conclusion-level T1615 evidence establishes temporal dilution, distributed origins, or transient-trace design; ordinary background-refresh cadence is not evidence of adversarial design."
+    - mechanism_ref: NM-DO
+      reason:
+        zh: "未发现攻击者为本行为主动改变可检查性、编码或加密表示的证据；正常协议保护不能自动映射该机理。"
+        en: "No evidence establishes adversarial alteration of inspectability, encoding, or encrypted representation for this behavior; ordinary protocol protection does not automatically establish this mechanism."
+  open_questions:
+    - Can a future case or controlled experiment establish intentional local-result substitution plus endpoint/DC event comparison without conflating cache processing and information reads?
+    - Which GPO attribute SACLs and client-process sensor fields are supported by the deployment used for implementation validation?
+integration:
+  status: pending
+  resolutions: []

@@ -1,0 +1,263 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000424
+strategy_ref: DET-000302
+name:
+  zh: 时间命令请求与工作范围分析
+  en: Temporal Command Request and Work-Scope Analytic
+summary:
+  zh: 按真实参数区分当前时间读取、给定日期格式化及修改，并保留本地或远端请求的调用者与批准范围。
+  en: Use actual parameters to distinguish current-time reads, supplied-date formatting, and modification while preserving
+    caller and work scope for local or remote requests.
+domains:
+- enterprise
+platforms:
+- Windows
+- Linux
+logic:
+  paragraphs:
+  - zh: Windows 从 Sysmon Event 1 的 Computer、UtcTime、ProcessGuid、ProcessId、Image、CommandLine、User、ParentProcessGuid 规范化为主机、事件时间和进程请求，Event
+      5 仅补充该 ProcessGuid 的结束；事件时间不是被查询时钟的返回。Windows PowerShell 5.1 已启用 4104 时，按 Computer、Execution ProcessID、ScriptBlockId
+      和 MessageNumber/MessageTotal 重组 ScriptBlockText；部分片段保留 partial。只有 PID 的脚本事件须与同主机唯一已知生命周期相交，缺少结束或同号复用不能跨空缺强行归属。Linux
+      Audit 按采集器认证的 host_id、boot_id 及 msg=audit 的时间/序列聚合 SYSCALL、EXECVE 和 PROCTITLE，记录 arch、syscall、success、pid、ppid、auid、uid、euid、exe
+      及 argc/argv；按本机 ABI 解码 syscall 与十六进制内容，参数不完整则不声称完整请求。Audit 事件组建立此次 exec 身份，不假设另有完整 Linux 进程树。 boot_id、接收时间和参数完整性是采集器元数据，不能伪称
+      Sysmon 或 Audit 的原生字段；Event 5 不提供的命令内容按事件类型留空。 node可缺省且不作为权威设备键，宿主与启动身份来自采集器登记，不由日志内自报名称猜测。
+    en: On Windows, normalize Sysmon Event 1 Computer, UtcTime, ProcessGuid, ProcessId, Image, CommandLine, User, and ParentProcessGuid
+      into host, event time, and process request; Event 5 supplies only that ProcessGuid's end. Event time is not the queried
+      clock's return. Where Windows PowerShell 5.1 Event 4104 is enabled, assemble ScriptBlockText by Computer, Execution
+      ProcessID, ScriptBlockId, and MessageNumber/MessageTotal, retaining incomplete blocks as partial. PID-only script events
+      require a unique intersecting lifetime on the same host; missing termination or reuse cannot justify joins across gaps.
+      On Linux, group Audit SYSCALL, EXECVE, and PROCTITLE by collector-authenticated host_id, boot_id, and msg=audit time/serial,
+      retaining arch, syscall, success, pid, ppid, auid, uid, euid, exe, and argc/argv. Decode syscall and hexadecimal content
+      for the local ABI and do not assert a complete request from incomplete arguments. The Audit event group identifies that
+      exec, without presuming a complete Linux process tree. boot_id receive time and argument completeness are collector
+      metadata rather than native Sysmon or Audit fields; command fields absent from Event 5 remain null by event type. node
+      is optional rather than an authoritative device key; host and boot identities come from collector enrollment, not guessed
+      self-reported log names.
+  - zh: 对 cmd 的 time /t、无指定日期的 Get-Date、w32tm /tz、/query 或 /stripchart，以及不带给定输入的 GNU date，按版本语法恢复实际信息对象与目标。time 为 shell 内建，不要求出现
+      time.exe；PowerShell 无新进程时由已采集的脚本语义给出请求。Get-Date -Date 或显式年月日字段、date --date/--reference、帮助及纯格式转换不自动归为当前时间读取；date -s/--set
+      与设置操作数、time 的设置参数、w32tm /config、/resync 或 /unregister 进入修改或混合动作待独立核验。date -u 和输出格式是呈现条件，不能当作机器时区；/query 的配置、来源、状态与 /stripchart
+      的远端偏移也须分开。无法解析的别名、动态表达式或缺失参数保持 unknown，不凭工具名称补全。 对 net time 保留完整远端名、/domain 与 /set 等参数；/set 同步调用端时钟而不是远端服务器。公告原样 /dom
+      作为观察到的请求保存，只有按部署版本验证其缩写语法后才解析为 /domain；无 /set 不推断改时，仍不能从请求推出返回成功。
+    en: 'Restore information object and target using version-specific grammar for cmd time /t, Get-Date without a supplied
+      date, w32tm /tz, /query or /stripchart, and GNU date without supplied input. time is a shell built-in and needs no time.exe;
+      collected script semantics can establish a PowerShell request without a new process. Get-Date -Date or explicit calendar
+      fields, date --date/--reference, help, and pure format conversion do not automatically constitute current-time reads.
+      date -s/--set or setting operands, time setting arguments, and w32tm /config, /resync or /unregister require separate
+      modification or mixed-action validation. date -u and output formats are presentation conditions rather than machine-zone
+      evidence; /query configuration, source and status also differ from /stripchart remote offset. Unresolved aliases, dynamic
+      expressions, and missing arguments remain unknown rather than being completed from utility names. Preserve complete
+      remote names and /domain or /set for net time: /set synchronizes the calling clock rather than changing the remote server.
+      Retain the advisory exact /dom as an observed request and parse it as /domain only after deployed-version abbreviation
+      validation. Absence of /set establishes no clock change and the request still proves no successful return.'
+  - zh: 将可解析请求与另行维护的工作台账核对，台账须给出主体、入口或脚本指纹、允许的命令/参数形状、目标、目的和有效期；不按用户名、签名或系统工具永久放行。偏离台账产生未经解释的时间调查线索，不能仅由台账缺失判为恶意。默认结果级别为 request-observed；进程成功退出和
+      Audit success 只分别表示执行状态或 exec 成功，不证明输出。只有另行部署的会话输出采集明确绑定命令实例、主机/启动实例、真实进程身份、流和执行边界，并给出原始文本、语言/版本、截断及解析状态时，才记录具体 returned-reading；错误文本、格式化给定日期和部分捕获不升级为取得当前时间。
+      可选命令结果还须通过已验收的命令实例映射，将原始请求定位、实际进程出生实例与输出唯一连接；脚本块已处理不证明具体分支执行。多表达式、循环或替代日期输出不能唯一对应当前时间调用时，保留result_unbound，不用时间相邻或同PID代替绑定。映射由独立包装器、会话记录器或经核验的记录关联提供，不是Sysmon原生字段。
+    en: 'Compare parseable requests with a separately maintained work register containing principal, entry or script fingerprint,
+      permitted command/argument shape, target, purpose, and validity. Do not permanently allow by username, signature, or
+      system utility. Deviations yield unexplained inquiry leads, not maliciousness from a missing record alone. The default
+      level is request-observed: successful process exit and Audit success describe execution state or exec success rather
+      than output. Record a returned-reading only where separately deployed session-output collection binds command instance,
+      host/boot, real process identity, stream, and execution boundaries and supplies raw text, language/version, truncation,
+      and parse state. Error text, supplied-date formatting, and partial capture do not establish current-time acquisition.
+      Optional command results also require a validated command-instance map uniquely linking the raw request location, actual
+      process birth instance, and output. A processed script block does not prove execution of a particular branch. Multiple
+      expressions, loops, or supplied-date output that cannot be uniquely bound to the current-time invocation remain result_unbound
+      rather than being joined by proximity or PID. An independent wrapper, session recorder, or validated record association
+      supplies this map; it is not a native Sysmon field.'
+  - zh: 保留源日志时间、接收时间、序列号和经过验证的时钟偏差界限，不将疑似主机读数作为自身关联时钟。w32tm 的远端目标只是请求所指来源，/stripchart 返回偏移不是远端绝对日期；没有绑定输出时不能声称响应内容，网络连接也不能代替它。以命令实例和脚本/exec
+      组为最小单元关联，不用统一跨主机时间阈值推定批量调查；采集健康显示缺日志、丢包或规则未启用时降低覆盖声明，而非据此判定规避。 source_clock_offset_bound 的单位为毫秒，可为未知；缺少可信界限时不假设日志源已同步。
+    en: Preserve source-log time, receive time, sequence, and validated skew bounds without using the suspected host's returned
+      reading as its own correlation clock. A w32tm remote target identifies the requested source, and a /stripchart offset
+      is not its absolute date. Without bound output, neither response contents nor acquisition can be asserted from a network
+      connection. Correlate at command-instance and script/exec-group granularity, without a universal cross-host window implying
+      a campaign. Missing logs, loss, or disabled rules in collection health reduce the coverage claim rather than establish
+      evasion. source_clock_offset_bound is in milliseconds and may be unknown; absent a trusted bound do not assume the log
+      source is synchronized.
+data_requirements:
+- source_type: windows-sysmon-process-lifetime
+  name:
+    zh: 已启用的 Windows 进程请求与寿命事件
+    en: Enabled Windows process-request and lifetime events
+  channel: Microsoft-Windows-Sysmon/Operational Events 1 and 5
+  required_fields:
+  - host_id
+  - event_time
+  - receive_time
+  - event_record_id
+  - process_guid
+  - process_id
+  - image
+  - command_line
+  - user
+  - parent_process_guid
+  - event_kind
+- source_type: powershell-scriptblock-optional
+  name:
+    zh: 已启用的 Windows PowerShell 5.1 脚本块内容
+    en: Enabled Windows PowerShell 5.1 script-block content
+  channel: Microsoft-Windows-PowerShell/Operational Event 4104
+  required_fields:
+  - host_id
+  - event_time
+  - receive_time
+  - process_id
+  - script_block_id
+  - message_number
+  - message_total
+  - script_text
+- source_type: linux-audit-exec
+  name:
+    zh: 已配置的 Linux Audit exec 事件组
+    en: Configured Linux Audit exec event groups
+  channel: Linux Audit SYSCALL EXECVE PROCTITLE
+  required_fields:
+  - host_id
+  - boot_id
+  - event_time
+  - receive_time
+  - audit_serial
+  - arch
+  - syscall
+  - success
+  - pid
+  - ppid
+  - auid
+  - uid
+  - euid
+  - exe
+  - argc
+  - argv
+  - argument_completeness
+- source_type: command-result-capture-optional
+  name:
+    zh: 另行部署并绑定实例的命令输出采集
+    en: Separately deployed instance-bound command-output collection
+  channel: null
+  required_fields:
+  - host_id
+  - boot_id
+  - command_instance_id
+  - process_identity
+  - capture_start
+  - capture_end
+  - stream
+  - raw_text
+  - executable_version
+  - output_locale
+  - truncation_state
+  - parse_state
+  - returned_kind
+  - returned_value
+  - source_target
+- source_type: temporal-work-authorization-register
+  name:
+    zh: 时间诊断与查询工作授权台账
+    en: Time-diagnostic and inquiry work-authorization register
+  channel: null
+  required_fields:
+  - authorization_id
+  - principal
+  - entry_fingerprint
+  - allowed_command_shape
+  - allowed_targets
+  - purpose
+  - valid_from
+  - valid_until
+- source_type: temporal-command-collection-health
+  name:
+    zh: 请求采集部署、时钟与丢失状态
+    en: Request-collection deployment clock and loss state
+  channel: null
+  required_fields:
+  - host_id
+  - boot_id
+  - collector_version
+  - enabled_channels
+  - parser_version
+  - coverage_start
+  - coverage_end
+  - lost_event_count
+  - source_clock_offset_bound
+  - receive_time
+- source_type: optional-temporal-command-instance-map
+  name:
+    zh: 可选时间查询请求与结果实例映射
+    en: Optional temporal-request and result instance mapping
+  channel: separately deployed wrapper, session recorder, or validated request/output association; absent means request-only
+    coverage
+  required_fields:
+  - host_id
+  - boot_id
+  - command_instance_id
+  - request_record_locator
+  - request_kind
+  - process_identity
+  - script_block_id
+  - audit_group_key
+  - expression_locator
+  - binding_method
+  - binding_status
+  - mapping_evidence_locator
+observables:
+- zh: 参数明确指向当前时间、时区、来源或远端偏移的命令或脚本请求。
+  en: Command or script requests whose arguments specify current time, time zone, source, or remote offset.
+- zh: 具体入口、主体、目标或有效期与对应批准工作不一致。
+  en: An entry principal target or validity that departs from the associated approved work.
+- zh: 经实例绑定且未截断的可解析输出，或明确的错误与部分捕获状态。
+  en: Instance-bound untruncated parseable output or explicit error and partial-capture state.
+correlation:
+  window:
+    zh: 按一次进程、脚本块或 Audit exec 组的真实边界关联；可选输出只在已记录的该命令执行边界内绑定。跨主机关联须先验证偏差界限，缺失时不使用统一时间窗口补全身份。
+    en: Correlate within actual process script-block or Audit exec-group boundaries; optional output binds only within the
+      recorded execution boundary of that command. Validate skew bounds before cross-host joins and do not use a universal
+      window to complete missing identity.
+  dimensions:
+  - host_id
+  - boot_id
+  - process_guid
+  - process_id
+  - script_block_id
+  - audit_serial
+  - command_instance_id
+  - principal
+  - source_target
+  - authorization_id
+false_positives:
+- zh: 支持人员的时区与 NTP 偏移排障、正常安装脚本和应用构建日期处理。
+  en: Support troubleshooting of time zones and NTP offsets, legitimate installers, and application build-date processing.
+- zh: 运维台账未及时登记的合法临时查询与自动化参数变更。
+  en: Legitimate ad hoc inquiries and changed automation parameters not yet reflected in the work register.
+blind_spots:
+- zh: 原生进程内 getter、未记录的 shell 内建、未启用的脚本块审计或不完整参数不会被命令分析完整覆盖。
+  en: Native in-process getters unrecorded shell built-ins disabled script-block auditing and incomplete arguments escape
+    complete command coverage.
+- zh: 进程创建、exec 成功和网络连接不含时间输出；被盗批准脚本或身份可能满足现有允许条件。
+  en: Process creation exec success and network connection lack temporal output while stolen approved scripts or identities
+    may satisfy allowances.
+tuning_guidance:
+  paragraphs:
+  - zh: 分别验证每个受支持版本的读取、转换、修改、帮助和错误样例，台账以入口、具体参数、目标和期限收敛。对高频正常计时不设置通用恶意阈值，也不为减少告警而永久放行整个解释器。采集健康、输出截断与解析失败应独立呈现，保留 request-observed，避免把未知结果降成无活动。
+    en: Validate read conversion modification help and error examples separately for each supported version and constrain
+      the register by entry concrete parameters target and validity. Apply no universal malicious threshold to frequent ordinary
+      timing and do not permanently allow an interpreter to reduce alerts. Present collection health output truncation and
+      parse failure separately, retaining request-observed rather than turning an unknown result into no activity.
+evidence_refs:
+- REF-000230
+- REF-000463
+- REF-000201
+- REF-001042
+- REF-001419
+- REF-001420
+- REF-001421
+- REF-001418
+- REF-000025
+- REF-001422
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-11-08'
+  modified: '2026-11-08'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

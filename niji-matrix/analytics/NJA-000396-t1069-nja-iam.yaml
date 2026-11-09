@@ -1,0 +1,115 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000396
+strategy_ref: DET-000284
+name:
+  zh: IAM 组关系读取与调用会话范围差分
+  en: IAM Group Relationship Reads and Calling-Session Scope Differential
+summary:
+  zh: 将 IAM 列组、列组用户和列用户组请求连接到实际调用会话及批准任务。
+  en: Join IAM group-list, group-user, and user-group requests to their actual calling session and authorized work.
+domains:
+- enterprise
+platforms:
+- AWS
+logic:
+  paragraphs:
+  - zh: 验证组织或账户日志覆盖和读管理事件保留后，选择 eventSource 为 iam.amazonaws.com 且 eventName 为 ListGroups、GetGroup 或 ListGroupsForUser 的记录，分别标记组清单、组到用户与用户到组方向。解析
+      requestParameters.groupName、userName 和 marker，若 API 不含某字段则保留为空；不从缺失参数推断整个账户均被读取。eventID 去重，保留 readOnly、errorCode 与 userIdentity
+      原始结构。
+    en: After verifying organization or account logging coverage and retention of read management events, select iam.amazonaws.com
+      records whose eventName is ListGroups, GetGroup, or ListGroupsForUser, labeling group inventory, group-to-user, and
+      user-to-group directions separately. Parse requestParameters.groupName, userName, and marker, retaining absent API-specific
+      fields as null rather than inferring that the whole account was read. Deduplicate eventID and retain readOnly, errorCode,
+      and raw userIdentity.
+  - zh: 在二十分钟内以 recipientAccountId、调用 ARN、principalId 或 accessKeyId 与会话上下文归组，并与身份治理作业的来源、角色和关系范围比较。调用身份是 assumed role 时保留
+      sessionIssuer 和角色会话，不能仅按角色名把多个会话合成一个操作者。错误请求与无错误请求分别输出 relationship_request_denied 或 relationship_request_observed；不要求
+      responseElements 提供成员，不能把无错误等同完整组图或任何资源的授权成功。
+    en: Over twenty minutes, group by recipientAccountId, caller ARN, principalId or accessKeyId, and session context, comparing
+      origin, role, and relationship scope with identity-governance jobs. For assumed-role callers, retain sessionIssuer and
+      the role session instead of merging multiple sessions into one operator by role name alone. Separate failed from non-error
+      requests as relationship_request_denied or relationship_request_observed. Do not require member data in responseElements
+      or equate absence of error with a complete group graph or authorized access to a resource.
+data_requirements:
+- source_type: cloudtrail-iam-group-read
+  name:
+    zh: 已保留读管理事件的 IAM CloudTrail
+    en: IAM CloudTrail with read management events retained
+  channel: CloudTrail management event delivery or validated event history collection
+  required_fields:
+  - event_time
+  - event_id
+  - event_source
+  - event_name
+  - recipient_account_id
+  - aws_region
+  - user_identity
+  - request_parameters
+  - source_ip_address
+  - read_only
+  - error_code
+- source_type: iam-review-task-inventory
+  name:
+    zh: 账户级 IAM 审查任务与会话范围
+    en: Account-scoped IAM review tasks and session scope
+  channel: IAM governance work inventory
+  required_fields:
+  - account_id
+  - approved_principal
+  - source_scope
+  - relationship_scope
+  - owner
+  - job_id
+  - valid_from
+  - valid_to
+observables:
+- zh: 同一会话围绕敏感组或用户发出的方向不同的 IAM 关系读取
+  en: IAM relationship reads in different directions around sensitive groups or users by the same session
+- zh: 请求与批准角色、来源或审查范围不符
+  en: Requests inconsistent with approved role, origin, or review scope
+correlation:
+  window:
+    zh: 使用二十分钟请求序列和三十日角色职责基线作为起点，并保留分页连续性与延迟到达记录，按账户规模验证。
+    en: Start with a twenty-minute request sequence and thirty-day role-duty baseline, retaining paging continuity and delayed
+      records and validating against account size.
+  dimensions:
+  - recipient_account_id
+  - user_identity.arn
+  - user_identity.principal_id
+  - user_identity.access_key_id
+  - source_ip_address
+  - event_name
+  - relationship_scope
+false_positives:
+- zh: 合规清点、权限审查、云管理控制台和基础设施治理工具会读取这些关系，应按具体作业范围核实。
+  en: Compliance inventories, access reviews, cloud consoles, and infrastructure-governance tools read these relationships
+    and require job-specific scope verification.
+blind_spots:
+- zh: 不保留读管理事件、跨账户覆盖或保留不足会缺失记录；已有副本、其他服务 ACL 和未列出的角色策略读取需要独立覆盖。本分析不复原 API 返回成员或证明实际资源权限。
+  en: Omitted read management events, inadequate cross-account coverage, and insufficient retention lose records. Existing
+    copies, other service ACLs, and role-policy reads outside this selector need separate coverage. This analytic reconstructs
+    neither returned members nor effective resource access.
+tuning_guidance:
+  paragraphs:
+  - zh: 对所用收集路径验证 IAM 全局服务事件的实际到达区域和去重方式，不只监听一个假设区域。保留单次 GetGroup 对敏感组的命中，避免只设高计数阈值；例外按账户、会话发行主体、来源、关系范围和工单到期，而非长期放行整个管理员角色。
+    en: Validate the actual arrival region and deduplication of global IAM events for the chosen collection path rather than
+      observing one assumed region. Retain a single GetGroup match on a sensitive group rather than relying only on high counts.
+      Bind exceptions to account, session issuer, origin, relationship scope, and ticket expiry instead of permanently allowing
+      an entire administrative role.
+  - zh: 保留原始 userIdentity，按原生 ARN、principalId 与 accessKeyId 派生规范会话键。errorCode 缺失时显式规范为 null，不能因必需键列表而丢弃成功读取；请求参数按对应 API 允许为空，关系范围也不能由空参数推断为全量。
+    en: Retain raw userIdentity and derive canonical session keys from native ARN, principalId, and accessKeyId. Normalize
+      absent errorCode to null instead of dropping successful reads because of a required-key list. Parameters can be null
+      according to the API, and absent parameters do not imply complete scope.
+evidence_refs:
+- REF-001292
+- REF-001266
+- REF-000523
+- REF-000524
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-11-06'
+  modified: '2026-11-06'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

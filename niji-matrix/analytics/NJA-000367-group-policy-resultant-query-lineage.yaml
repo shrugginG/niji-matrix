@@ -1,0 +1,145 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000367
+strategy_ref: DET-000273
+name:
+  zh: 结果策略查询进程与批准诊断任务差分
+  en: Resultant Policy Query Process and Approved Diagnostic Task Differential
+summary:
+  zh: 将策略结果查询执行同用户、父进程、远端目标与获批任务比较，输出调查候选而不把工具启动等同于成功读取。
+  en: Compare policy-result query execution with user, parent process, remote target, and approved work, producing survey
+    candidates without equating launch with successful reads.
+domains:
+- enterprise
+platforms:
+- Windows
+logic:
+  paragraphs:
+  - zh: 基础查询识别分支使用完整进程创建和批准任务清单，选择 gpresult 带 /r、/v、/z、/h 或 /x 的结果请求，规范化 /s、/user、/scope 与输出目标。单独帮助或无有效查询语义的参数保留为帮助或错误上下文；有效查询即使后来失败也保留
+      policy_query_failed，不由失败反推无攻击意图。Sysmon 事件 1 不包含命令返回内容或可靠的执行成功状态，不能据此判定请求成功。
+    en: The base query-identification branch uses complete process creation and approved-work inventory to select gpresult
+      result requests containing /r, /v, /z, /h, or /x and normalize /s, /user, /scope, and output destination. Help alone
+      or arguments without valid query semantics remain help or error context. Retain policy_query_failed for a valid query
+      that subsequently fails rather than inferring benign intent from failure. Sysmon event 1 contains neither command output
+      nor reliable execution-success status and cannot establish query success.
+  - zh: 在十五分钟内按资产、用户与进程谱系归组，并与同一来源、目标范围、工单或作业标识及有效时间绑定的诊断清单比较。没有匹配任务且由近期恶意进程、非管理远控或异常脚本来源触发的请求提高优先级；其他账户、网络和文件调查命令可提供上下文，但不作为必要条件。成功或失败未知时输出
+      policy_query_attempt，证实失败时保留 policy_query_failed；只有取得可验证报表或结果遥测才提升为 policy_result_observed，报表文件创建只证明生成了对象，不能单独证明内容有效。
+    en: Group activity by asset, user, and process lineage over fifteen minutes and compare it with a diagnostic inventory
+      bound to the same origin, target scope, ticket or job identifier, and validity interval. Prioritize unmatched requests
+      originating from recent malicious processes, nonadministrative remote control, or abnormal scripts. Other account, network,
+      or file survey commands provide context without being mandatory. Emit policy_query_attempt when success or failure is
+      unknown and retain policy_query_failed when failure is established. Raise the level to policy_result_observed only with
+      a validated report or result telemetry; report-file creation alone establishes an object, not valid contents.
+  - zh: 脚本与结果确认是按部署能力启用的补充分支，不是基础分支默认存在的数据。启用 Windows PowerShell 4104 时按 ScriptBlockId、MessageNumber 和 MessageTotal 重组同一脚本，再依据实际
+      Group Policy 或 RSoP 查询语义识别请求，不仅匹配函数名称；其他运行时须另验通道。启用结果采集时，用进程、生成时间和目标范围确认报表或输出内容有效；文件创建、已有同名报表或空结果均不足以升级证据。不能取得该补充数据时明确保持查询尝试等级。
+    en: Script and result confirmation are supplemental branches enabled according to deployment capability, not data assumed
+      by the base branch. With Windows PowerShell event 4104 enabled, reconstruct each script using ScriptBlockId, MessageNumber,
+      and MessageTotal and identify actual Group Policy or RSoP query semantics rather than function names alone; validate
+      channels separately for other runtimes. With result collection enabled, validate report or output content using process,
+      generation time, and target scope. File creation, a preexisting report with the same name, or an empty result cannot
+      raise the evidence level. Without supplemental data explicitly retain attempt-level evidence.
+data_requirements:
+- source_type: endpoint-process-create
+  name:
+    zh: 端点完整进程创建
+    en: Complete endpoint process creation
+  channel: Microsoft-Windows-Sysmon/Operational event 1 or validated equivalent
+  required_fields:
+  - timestamp
+  - device_id
+  - process_guid
+  - image
+  - command_line
+  - user
+  - parent_process_guid
+  - parent_image
+  - parent_command_line
+- source_type: approved-policy-diagnostic-job
+  name:
+    zh: 已批准策略诊断任务清单
+    en: Approved policy diagnostic job inventory
+  channel: configuration management and support ticket inventory
+  required_fields:
+  - job_id
+  - owner
+  - requester
+  - source_device
+  - target_scope
+  - process_or_script
+  - valid_from
+  - valid_to
+- source_type: powershell-script-block
+  name:
+    zh: 启用补充分支时的已启用并完成重组的脚本块日志
+    en: 'When the supplemental branch is enabled: Enabled and reconstructed script-block logs'
+  channel: Microsoft-Windows-PowerShell/Operational event 4104 for Windows PowerShell; validate other runtimes separately
+  required_fields:
+  - timestamp
+  - device_id
+  - process_id
+  - script_block_id
+  - message_number
+  - message_total
+  - script_block_text
+- source_type: policy-result-artifact
+  name:
+    zh: 启用补充分支时的经授权采集的有效结果证据
+    en: 'When the supplemental branch is enabled: Authorized collection of validated result evidence'
+  channel: validated EDR or forensic result collection
+  required_fields:
+  - device_id
+  - process_guid
+  - result_observed
+  - target_user_or_computer
+  - observed_time
+  - result_scope
+observables:
+- zh: 带结果输出选项的 gpresult 请求
+  en: gpresult request with result-output options
+- zh: 实际查询策略或 RSoP 的重组脚本内容
+  en: Reconstructed script content that actually queries policy or RSoP
+- zh: 查询源、目标范围与批准任务不匹配
+  en: Query origin and target scope unmatched to approved work
+correlation:
+  window:
+    zh: 初始使用十五分钟进程链窗口和三十日任务基线；它们是待验证的工程起点，不是来源证明的检测阈值。
+    en: Start with a fifteen-minute process-chain window and thirty-day work baseline; these are engineering defaults to validate
+      rather than source-established detection thresholds.
+  dimensions:
+  - device_id
+  - user
+  - process_guid
+  - parent_process_guid
+  - target_user_or_computer
+  - job_id
+  - time
+false_positives:
+- zh: 支持人员、登录问题排查、合规评估、策略发布验证和取证都可能运行相同报表或脚本。应核对实际工单和作用域；单凭签名工具、管理员身份或办公时间不能永久放行。
+  en: Support staff, sign-in troubleshooting, compliance assessment, policy-release verification, and forensics can run the
+    same reports or scripts. Verify the actual ticket and scope; a signed utility, administrator identity, or business hours
+    must not create a permanent allow rule.
+blind_spots:
+- zh: 自定义 API、本地缓存文件读取、WMI 或注入已批准进程的查询可能不出现相应命令行。脚本块记录依赖运行时与配置，截断参数或丢失进程链会降低结论；默认分析无法证明返回值或查询动机。
+  en: Custom APIs, local-cache file reads, WMI, and queries injected into approved processes may lack matching command lines.
+    Script-block records depend on runtime and configuration, and truncated arguments or missing lineage weaken the result.
+    The default analytic cannot prove returned values or intent.
+tuning_guidance:
+  paragraphs:
+  - zh: 用本机用户、计算机及远端目标分别验证参数解析和成功、帮助、权限失败结果；进程字段必须以真实传感器样本确认。例外绑定工单、源设备、身份、目标、脚本与到期时间，保留命中记录。原始命令行可能含敏感参数，应限制分析结果访问并避免把口令复制进告警正文。
+    en: Validate parameter parsing against local user, computer, and remote targets plus successful, help, and permission-failure
+      outcomes, and verify process fields against real sensor samples. Bind exceptions to ticket, source device, identity,
+      target, script, and expiry while retaining matches. Raw command lines can contain sensitive arguments, so restrict access
+      to analytic results and avoid copying passwords into alert text.
+evidence_refs:
+- REF-001211
+- REF-001049
+- REF-000366
+- REF-000463
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-11-05'
+  modified: '2026-11-05'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

@@ -1,0 +1,245 @@
+schema_version: 2.0.0
+type: technique
+id: NJT-0247
+name:
+  zh: 系统网络连接发现
+  en: System Network Connections Discovery
+summary:
+  zh: 在已访问系统读取现存网络端点和会话关系，借助正常诊断外观或既有进程内查询，增加连接调查的识别与归属难度。
+  en: Read existing network-endpoint and session relationships on an accessed system, making connection inquiries harder to
+    distinguish and attribute through ordinary diagnostic appearance or queries inside an executing process.
+aliases: []
+classification:
+  tactic_refs:
+  - TA0007
+  origin:
+    kind: attack-retained
+    source_attack_id: T1049
+    source_attack_version: '19.1'
+  decision_ref: DEC-TA0007-T1049
+definition_and_concept:
+  paragraphs:
+  - zh: 系统网络连接发现是攻击者在取得主机执行、会话或设备管理访问后，查询该系统保存的 socket、传输连接或网络会话关系，以理解哪些本地端点与其他端点存在或曾被记录为存在通信联系的行为。直接结果可以包括协议、本地和远端地址与端口、连接状态，以及可用时的端点所属进程。它支持识别现有管理通道、选择后续调查对象和理解当前通信结构，但本身不建立新服务连接，也不证明后续行动已经成功。
+    en: System Network Connections Discovery queries socket, transport-connection, or network-session relationships held by
+      a system after an adversary gains execution, session, or device-management access. It identifies local endpoints that
+      have, or have been recorded as having, communication relationships with other endpoints. Direct results can include
+      protocol, local and remote addresses and ports, connection state, and endpoint-owning processes where available. These
+      facts support identification of management channels, selection of later investigation targets, and understanding of
+      communication structure without themselves establishing new service connections or successful follow-on activity.
+  - zh: 连接状态由观察时刻、调用者视图和接口语义共同限定。netstat、ss、程序内表查询与管理设备会话显示均可承载这一信息对象，但工具名称不决定结果。请求一个表不等于读到每一行，socket 所属 PID 不是表查询者，监听端点与
+      UDP 端点也不是已建立的双向 TCP 连接。即使取得 ESTABLISHED 行，也不能代替实际业务数据或持续对端可达性的证据。
+    en: Connection state is bounded by observation time, caller view, and interface semantics. netstat, ss, in-process table
+      queries, and appliance session displays can all carry the information object, but tool names do not determine results.
+      Requesting a table does not establish acquisition of every row; the socket-owner PID is not the table reader; listeners
+      and UDP endpoints are not established bidirectional TCP connections. Even an ESTABLISHED row does not substitute for
+      evidence of application data or continuing peer reachability.
+stealth_characteristics:
+  paragraphs:
+  - zh: 系统网络连接发现复用了故障排查、性能分析和安全调查常用的状态显示功能。攻击者执行 netstat -ano 时，其签名工具、显示参数与合法排障高度重合；局部命令外观很难解释请求服务于维修还是入侵后的通信调查。读取现有状态也无需为每个表项新发一轮服务探测，但辅助名称解析、远程管理和后继验证仍可能产生网络活动，不能把整个操作链描述为无网络。
+    en: System Network Connections Discovery reuses state displays common in troubleshooting, performance analysis, and security
+      investigation. An adversary's netstat -ano invocation closely resembles legitimate troubleshooting in utility identity
+      and display parameters, making local command appearance insufficient to distinguish maintenance from post-compromise
+      communication inquiries. Reading existing state also does not require a fresh service probe for every row, although
+      auxiliary name resolution, remote management, and later validation may generate traffic; the complete operation is not
+      therefore network-free.
+  - zh: 查询载体可以进一步改变任务痕迹。Mafalda 的命令处理代码直接取得 TCP 表并组织结果传输，省去为这次调查另起 netstat 等外部查询工具的边界；只从这些工具的创建事件进入调查的规则会缺少预期入口。连接表读取、调用来源、植入体和控制通信仍可观察，原始研究也正是通过样本分析恢复其行为。这是特定观察模型的缺口，不是
+      API 无痕、所有产品漏报或特定检测率下降的证明。
+    en: The query carrier can further alter task traces. Mafalda's command-handling code obtains a TCP table and packages
+      results without launching an external query utility such as netstat for that inquiry. Rules entering investigation only
+      through creation of those utilities lack their expected entry. Table access, call provenance, the implant, and control
+      communications remain observable, and the original researchers recovered the behavior through sample analysis. This
+      is a gap in a particular observation model rather than proof of traceless APIs, universal product misses, or a measured
+      detection-rate reduction.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 纳入对当前系统或被管理系统现存 socket 与通信会话关系的读取，以及有出处和时间的历史连接记录查询。表项必须保留地址族、状态、作用域、过滤条件和观察时间；仅有调用时记录为查询尝试，失败、空结果和截断结果分别保存。GetExtendedTcpTable
+      的缓冲区大小询问不是连接清单，LISTEN 行的远端地址与端口无意义；Linux /proc/net/tcp 的 uid 与 socket inode 描述端点，不是读取者身份，TIME_WAIT 行还可能缺少部分字段。
+    en: Include reads of existing socket and communication-session relationships on the current or managed system, together
+      with queries of historical connection records whose provenance and time are known. Preserve address family, state, scope,
+      filters, and observation time. Invocation alone remains an inquiry attempt, with failure, empty returns, and truncation
+      stored separately. A GetExtendedTcpTable buffer-size inquiry is not a connection list, and LISTEN remote addresses and
+      ports are meaningless. Linux /proc/net/tcp uid and socket inode describe endpoints rather than the reader, and TIME_WAIT
+      rows may omit some fields.
+  - zh: 接口、路由和地址配置归 T1016，远端主机候选识别归 NJT-0242，主动服务探测归 NJT-0234，原始报文捕获归 NJT-0236，账户与用户身份枚举归 T1033。netstat -r 的路由表以及 -e 或 -s
+      的统计不能仅凭工具名纳入；云资源拓扑归 NJT-0139，客体内实际连接表才提供本技术事实。诊断、监控、支持工单和安全响应均可产生相同读取，须结合实际主体与授权工作判断，不能因数值显示、进程内调用或读取范围有限便推定恶意。
+    en: Interface, route, and address configuration belong to T1016; remote-host candidates to NJT-0242; active service probing
+      to NJT-0234; raw-packet capture to NJT-0236; and account or user enumeration to T1033. netstat -r routes and -e or -s
+      statistics do not qualify merely through the utility name. NJT-0139 owns cloud-resource topology, whereas actual guest
+      connection tables provide this technique's facts. Diagnostics, monitoring, support work, and security response produce
+      similar reads, requiring context about the real principal and authorized work rather than treating numeric output, in-process
+      calls, or narrow scope as malicious.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: 攻击者在已访问的终端、服务器、虚拟化主机或设备上，可以先观察现有通信，再决定调查管理端点、会话路径或相应进程。管理连接繁多的主机能够提供较丰富线索，临时空表或隔离的命名空间则可能几乎没有可用信息。联合公告附录给出了 netstat
+        -ano 的真实活动锚点；LunarWeb 已恢复命令包中的连接调查也支持父行为，但未公开逐项返回内容。
+      en: On an accessed endpoint, server, hypervisor host, or appliance, an adversary can inspect existing communications
+        before deciding which management endpoints, session paths, or associated processes to investigate. Hosts with many
+        management connections may provide rich clues, while a temporarily empty table or isolated namespace may offer little.
+        The joint advisory's appendix anchors netstat -ano in real activity, and connection inquiries in LunarWeb's recovered
+        command package also support the parent behavior without publishing row-level results.
+    - zh: 已部署的交互植入体可以把连接调查作为控制命令交给既有执行载体，避免单独的诊断工具任务。Mafalda 命令 63 提供此能力的样本级依据，不能据此补出每台受害主机实际接到该命令的时间、查询行数或流量内容。设备 CLI 与远程会话读取仍需相应管理访问；它们可能把观察位置移至受管系统，但不自动构成新的匿迹子项。
+      en: A deployed interactive implant can dispatch a connection inquiry through its existing execution carrier as a control
+        command, avoiding a separate diagnostic-utility task. Mafalda command 63 provides sample-level support for that capability
+        without supplying per-victim invocation times, row counts, or traffic contents. Appliance CLI and remote-session reads
+        require corresponding management access. They may move observation to the managed system without automatically defining
+        a separate evasion child.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者需要能发起状态查询并获得结果的进程、会话或管理身份。基本本机连接显示不一概要求管理员，但进程归属、其他用户资源、远程设备和跨命名空间可见性受具体权限与平台限制。攻击者可选择外部诊断器或在已有代码中实现查询，也可选择地址族、状态与协议范围；这种选择不使其能够伪造内核状态、跨越所有隔离边界或取得未保留的旧连接。
+        en: The attacker needs a process, session, or management identity able to request state and obtain results. Basic
+          local connection displays do not universally require administrator access, but process attribution, other users'
+          resources, remote devices, and cross-namespace visibility remain platform- and permission-dependent. The attacker
+          can select an external diagnostic executor or query code within an executing carrier and choose address-family,
+          state, and protocol scope. These choices do not confer control over kernel state, access across all isolation boundaries,
+          or recovery of unretained old connections.
+      - zh: 可用知识受到连接快速变化、缓冲区竞争、表类别、IPv4 与 IPv6 支持以及命名空间的约束。攻击者若要继续利用发现的关系，仍需独立的身份与服务访问条件。数值输出可减少名称补全，但本研究没有把该常见选项的性能或去解析用途一概解释为规避；被动读取现状也不能保证观察窗口内没有其他程序在建立连接。
+        en: Rapid state changes, buffer races, table class, IPv4 and IPv6 support, and namespaces constrain available knowledge.
+          Exploiting a discovered relationship still requires independent identity and service access. Numeric output can
+          reduce name completion, but this research does not universally reinterpret its performance or resolution-control
+          purposes as evasion. Reading current state also does not ensure that other programs are not establishing connections
+          during the observation window.
+    defender_model:
+      paragraphs:
+      - zh: 防守方可能保留 Sysmon 进程创建、Linux Audit 的 EXECVE 与 SYSCALL 记录、设备管理命令以及批准诊断作业台账。这些来源能够恢复显式查询请求、执行者和会话，却通常不含命令输出、返回缓冲区或完整连接表。Sysmon
+          Event 3 是经配置的进程网络连接事件，不是所有状态的连续快照，也不直接表示谁读取过连接表；网络流记录同样不能证明表查询或实际业务交付。
+        en: Defenders may retain Sysmon process creation, Linux Audit EXECVE and SYSCALL records, appliance management commands,
+          and approved diagnostic-job registers. These sources can reconstruct explicit inquiries, executors, and sessions
+          but normally omit command output, return buffers, and complete connection tables. Configured Sysmon Event 3 records
+          process network connections rather than continuous snapshots of all states or the identity of table readers. Flow
+          records likewise do not establish table queries or application delivery.
+      - zh: 更细的进程内观察需要另行部署并验证调用级仪器化，记录查询调用者、调用位置、地址族、表类别、返回状态和采集完整性；结果行只能在实际捕获成功时使用。PID 必须按主机和进程生存期解析，socket 所属 PID 与查询进程分别保存。Linux
+          结果还需事件时的网络命名空间证据，不能用后来的 /proc 或当前进程表补作攻击时刻快照。未部署这些观测时，应明确保留进程内和结果层盲区。
+        en: Finer in-process observation requires separately deployed and validated call instrumentation recording the query
+          caller, call site, address family, table class, return status, and capture integrity. Result rows are usable only
+          when actually captured. Resolve PIDs within host and process lifetimes and store socket-owner PIDs separately from
+          the query process. Linux results additionally require event-time network-namespace evidence; later /proc reads or
+          current process tables cannot backfill attack-time snapshots. Without those sensors, in-process and result-level
+          gaps remain explicit.
+stealth_mechanisms:
+- mechanism_ref: NM-FD
+  role: primary
+  summary:
+    zh: 借用正常连接诊断的工具身份和显示语义承载恶意通信调查
+    en: Carry hostile communication inquiries through ordinary connection-diagnostic utility identity and display semantics
+  analysis:
+    paragraphs:
+    - zh: 攻击者以原生连接显示工具读取状态，使发现请求在可见命令身份和只读诊断语义上接近批准排障。联合公告直接记录 netstat -ano，官方命令文档则说明其正常显示功能；相同外观可以服务不同操作目的，削弱只靠工具名称区分恶意调查的能力。查询者身份、父链和批准作业仍能提供差异，不应因此放行签名工具。证据支持外观重合与恶意采用，未测量这一查询对特定检测器的规避效果，故保持中等置信。
+      en: The adversary uses native connection-display tools so discovery resembles approved troubleshooting in visible utility
+        identity and read-oriented diagnostic semantics. The joint advisory directly records netstat -ano, while official
+        command documentation describes legitimate display functions. The same appearance can serve different operational
+        purposes, weakening tool-name-only discrimination. Caller identity, ancestry, and approved work still provide differentiating
+        evidence and signed utilities should not receive blanket allowances. The evidence establishes appearance overlap and
+        malicious adoption without measuring evasion of a particular detector, supporting medium confidence.
+  evidence_refs:
+  - REF-000025
+  - REF-001371
+  confidence: medium
+- mechanism_ref: NM-BT
+  role: secondary
+  summary:
+    zh: 将连接表读取置于已有执行载体内省去独立查询工具的任务边界
+    en: Place connection-table reads inside an executing carrier to remove the separate query-utility task boundary
+  analysis:
+    paragraphs:
+    - zh: 本次连接调查由既有植入体代码直接调用状态接口并组织结果，使依赖新 netstat 任务的观察面缺少该入口。Mafalda 命令 63 明确给出 GetExtendedTcpTable、TCP 信息与 misc/netstat
+        时间标记传输包的关联；载体加载和命令处理证据共同限定其承载位置。官方表接口及进程事件文档支持调用语义和观察层差异，但不证明 API 全程不可见。调用级仪器化可以恢复这次读取，因此仅在任务创建观察模型下形成缺口，置信度为中等。
+      en: Executing implant code directly invokes state interfaces and packages results for a particular inquiry, leaving
+        observers keyed to a new netstat task without that entry. Mafalda command 63 explicitly connects GetExtendedTcpTable,
+        TCP information, and a timestamp-labeled misc/netstat transmission packet. Carrier loading and command handling together
+        establish execution position. Official table and process-event documentation supports call semantics and the observation-layer
+        difference without establishing invisible APIs. Call instrumentation can recover the read, so this is a gap in task-creation
+        observation with medium confidence.
+  evidence_refs:
+  - REF-001380
+  - REF-001382
+  - REF-000230
+  confidence: medium
+subtechnique_taxonomy:
+  coverage: established
+  subtechnique_refs:
+  - NJS-0247-001
+  narrative:
+    paragraphs:
+    - zh: 本技术建立进程内连接状态查询一项子技术，按本次调查相对于独立外部诊断工具的承载位置划分。它要求连接状态请求与既有执行载体中实现查询的代码之间有正面关联；普通 netstat 或 ss 任务仍由父级覆盖。一个工具最终会调用 API
+        不是充分条件，同一信息对象也不因操作系统、表字段或接口名称而分裂为子项。
+      en: The technique establishes In-Process Connection-State Query, partitioned by where a particular inquiry is carried
+        relative to a separate external diagnostic utility. It requires positive association of a connection-state request
+        with query-implementing code in an executing carrier. Ordinary netstat or ss tasks remain in the parent. A tool eventually
+        calling an API is insufficient, and the information object is not split into children by operating system, table field,
+        or interface name.
+    - zh: 本地状态读取是父级的正常获取方式，不能重新复制远端主机知识复用子项。数值显示、状态过滤和采样时序可影响痕迹，但目前没有足以建立独立稳定分类的本候选恶意实施与防御差异。后续如取得直接操控这些变量的证据，可以重新审查；现有分类不把未证实的缺席事件当作匿迹事实。
+      en: Local-state reading is an ordinary acquisition mode of the parent and does not duplicate the remote-host-knowledge
+        reuse child. Numeric displays, state filters, and sampling cadence can affect traces, but candidate-specific malicious
+        implementation and defensive differences are not sufficient for independent stable categories here. Direct evidence
+        of deliberate control of those variables can justify later review; the current taxonomy does not treat unverified
+        missing events as stealth facts.
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000298
+    - DET-000299
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000253
+evidence:
+  claim_refs:
+  - CLM-001307
+  - CLM-001308
+  - CLM-001309
+  - CLM-001310
+  - CLM-001311
+  - CLM-001312
+  - CLM-001313
+  - CLM-001314
+  - CLM-001315
+  - CLM-001316
+  - CLM-001317
+  case_refs:
+  - CASE-000382
+  - CASE-000381
+  reference_refs:
+  - REF-000625
+  - REF-000025
+  - REF-000639
+  - REF-001380
+  - REF-001371
+  - REF-001381
+  - REF-001382
+  - REF-001383
+  - REF-001384
+  - REF-001385
+  - REF-001386
+  - REF-000230
+  - REF-000201
+  - REF-001042
+  - REF-000840
+  - REF-001387
+  - REF-001388
+research:
+  limitations:
+    paragraphs:
+    - zh: 联合公告公开了具体 netstat 请求而没有逐行输出，LunarWeb 仅公开恢复命令包的连接调查类别。Mafalda 原始逆向较明确地说明进程内命令能力和结果组织，但没有给出每台受害主机上命令 63 的动态调用证据、完整缓冲区、检测率或执行器对照。本技术因此区分恶意活动、样本能力和匿迹推断，不用总体隐蔽性评价替代本查询的量化证据。
+      en: The joint advisory publishes a particular netstat request without row-level output, and LunarWeb reporting identifies
+        connection inquiries only as a category in a recovered command package. Original Mafalda reversing more specifically
+        establishes in-process command capability and result packaging, but supplies no per-victim dynamic command-63 invocation,
+        complete buffer, detection rate, or executor comparison. The technique therefore distinguishes malicious activity,
+        sample capability, and stealth inference rather than substituting overall stealth assessments for query-specific measurements.
+    - zh: 防御实现的主要可部署部分是显式命令的执行上下文关联，进程内分析依赖单独部署和验证的调用级采集合同。现有证据没有证明默认 EDR 捕获连接表返回，也没有为 macOS、ESXi、云管理面或所有设备 CLI 给出同等实案与字段覆盖。表视图、丢失与截断、动态状态和批准身份被盗都限制结论；未来需要带返回状态、载体、结果完整性与观察面配置的受控对照来提高置信度。
+      en: The main directly deployable defensive component is execution-context correlation for explicit commands. In-process
+        analysis depends on a separately deployed and validated call-collection contract. The evidence does not establish
+        default EDR capture of returned connection tables or equivalent incident and field coverage for macOS, ESXi, cloud
+        management, or every appliance CLI. Views, loss and truncation, changing state, and stolen approved identities constrain
+        conclusions. Controlled comparisons retaining return status, carrier, result integrity, and observation configuration
+        are needed to increase confidence.
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-11-07'
+  modified: '2026-11-07'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

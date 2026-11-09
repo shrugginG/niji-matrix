@@ -1,0 +1,164 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000361
+strategy_ref: DET-000268
+name:
+  zh: 票据构造输出与签发对象连续性检验
+  en: Ticket Construction Output and Issued-Object Continuity Analysis
+summary:
+  zh: 把确切票据对象、构造输入输出及授权状态连接，以分级判断伪造与模板承袭，而不是由缺少短时签发事件下结论。
+  en: Join exact ticket objects, construction inputs and outputs, and authorization state to grade forgery and template inheritance without
+    treating missing recent issuance as proof.
+domains:
+- enterprise
+platforms:
+- Windows
+- Active Directory
+logic:
+  paragraphs:
+  - zh: 收集全部相关realm/DC的成功4768/4769、票据续期与跨域路径，并记录审计策略、事件版本、丢失与保留情况。Windows Server 2016及以后在2025-01-14或之后累计更新下才使用经本地验证的新字段分支：4768样例XML是ResponseTicket，文字称response
+      ticket hash；4769为RequestTicketHash/ResponseTicketHash。按安全规范化哈希比较4768发出的TGT与4769提交对象，只对确知相同计算口径且不为N/A的数据作强键。缺少匹配只输出ticket_lineage_gap，须排除已有缓存、续期、跨域、采集缺口和超出保留的原始请求。
+      覆盖范围和丢失状态由审计策略、采集器健康与保留清单补充，不是 Security 事件的原生字段。
+    en: 'Collect successful 4768 and 4769 from all relevant realms and DCs, renewal and cross-realm paths, and audit policy, event version,
+      loss, and retention state. Enable the new-field branch only for Windows Server 2016 or later with January 14, 2025 or later cumulative
+      updates and locally validated fields: the 4768 XML sample uses ResponseTicket while its prose calls it a response ticket hash; 4769
+      uses RequestTicketHash and ResponseTicketHash. Compare issued TGTs with objects submitted in 4769 using safely normalized hashes only
+      when calculation semantics match and values are not N/A. A missing match yields only ticket_lineage_gap, accounting for cached tickets,
+      renewal, cross-realm paths, collection gaps, and original requests outside retention. Coverage and loss state come from audit-policy,
+      collector-health, and retention inventories rather than native Security-event fields.'
+  - zh: 构造确认分支需受限取证检验：把输入票据、输出票据、构造进程和实际密钥使用证据关联，确认输出是有效格式且存在攻击者控制的身份或授权语义变化。若输入确为正规签发且不需改变的字段被保留，可确认模板承袭；仅有正常时限或先行4768不足以分类。可用的后继服务事件用于核对目标principal与授权结果，并明确归NJT-0184/NJT-0061。标准事件不暴露PAC组时不得凭空比较组字段；服务端没有对应4769也不能单独证明服务票据伪造，PAC验证路径与补丁可能另有域控交互。
+    en: Construction confirmation requires restricted forensic inspection joining input ticket, output ticket, construction process, and
+      actual key-use evidence, establishing a valid-format output and adversary-controlled identity or authorization changes. A genuinely
+      issued input with retained unmodified fields can establish template inheritance; normal lifetimes or a prior 4768 alone cannot classify
+      it. Available successor service events validate target principal and authorization outcome and remain attributed to NJT-0184 or NJT-0061.
+      Do not invent PAC group comparisons when standard events omit those groups. A service event lacking matching 4769 cannot alone prove
+      service-ticket forgery, and PAC validation paths or patches can cause other DC interactions.
+data_requirements:
+- source_type: kdc-issuance-audit
+  name:
+    zh: KDC 原始签发审计
+    en: Native KDC Issuance Audit
+  channel: Windows Security/4768,4769; locally verified version-aware native field normalization
+  required_fields:
+  - system.timecreated
+  - system.computer
+  - system.version
+  - targetusername
+  - targetdomainname
+  - servicename
+  - ipaddress
+  - status
+- source_type: kdc-audit-coverage-inventory
+  name:
+    zh: 域控审计覆盖与采集健康清单
+    en: DC Audit Coverage and Collection Health Inventory
+  channel: Audit policy, collector health/loss, and retention inventory; not native 4768/4769 data
+  required_fields:
+  - issuing_dc
+  - realm
+  - event_ids
+  - coverage_start
+  - coverage_end
+  - audit_enabled
+  - collector_loss_state
+- source_type: ticket-hash-capability-gated
+  name:
+    zh: 经验证的扩展票据标识
+    en: Validated extended ticket identifiers
+  channel: 4768 v2 ResponseTicket and 4769 updated RequestTicketHash/ResponseTicketHash; conditional branch
+  required_fields:
+  - event_version
+  - raw_xml_field_name
+  - normalized_ticket_digest
+  - digest_semantics_validated
+  - value_available
+- source_type: construction-artifact-inspection
+  name:
+    zh: 构造输入输出与语义检验
+    en: Construction input-output and semantic inspection
+  channel: restricted incident/lab ticket parsing, endpoint evidence; not ordinary Security log
+  required_fields:
+  - inspection_time
+  - construction_host
+  - process_start_key
+  - input_artifact_id
+  - input_ticket_digest
+  - output_artifact_id
+  - output_ticket_digest
+  - principal_and_realm
+  - service
+  - semantic_changes
+  - retained_fields
+  - key_use_evidence
+  - format_validation_result
+  - custody
+- source_type: historical-authorization-state
+  name:
+    zh: 历史身份授权与验证配置
+    en: Historical identity authorization and verifier configuration
+  channel: versioned directory and service policy inventory
+  required_fields:
+  - valid_from
+  - valid_to
+  - identity_sid
+  - group_or_authorization_state
+  - service_account
+  - trust_path
+  - pac_validation_state
+  - os_build
+  - patch_state
+observables:
+- zh: 构造进程读取真实签发输入后产生不同票据对象，检验确认身份或授权内容改变且其他模板字段保留。
+  en: A construction process reads a genuinely issued input and produces a different ticket object with inspected identity or authorization
+    changes and retained template fields.
+- zh: 经验证的扩展票据标识不能连接签发与提交对象，但此信号仍只是谱系缺口。
+  en: Validated extended ticket identifiers fail to link issuance and submission, which remains only a lineage gap.
+correlation:
+  window:
+    zh: 构造输入到输出默认十五分钟，签发谱系回看至少覆盖实际最大票据及renew-till寿命并保留采集延迟；后继使用独立回看一小时，不以任意五分钟缺口定伪造。
+    en: Default fifteen minutes from construction input to output; look back over at least actual maximum ticket and renew-till lifetimes
+      plus collection delay. Inspect successor use independently over one hour, without treating an arbitrary five-minute gap as forgery.
+  dimensions:
+  - realm
+  - issuing_dc
+  - event_version
+  - normalized_ticket_digest
+  - principal
+  - service
+  - construction_host
+  - process_start_key
+  - input_artifact_id
+  - output_artifact_id
+  - authorization_validity_interval
+false_positives:
+- zh: 票据续期、跨域referral、负载均衡、正常缓存使用、审计丢失或版本差异会造成签发缺口；故障排查与获批研究也会产生票据解析和重编码。
+  en: Renewal, cross-realm referrals, load balancing, normal cached use, missing audit, and version differences cause issuance gaps. Troubleshooting
+    and approved research can also parse and re-encode tickets.
+blind_spots:
+- zh: 持有全部密钥的攻击者可构造符合检查的字段，且离线构造主机可能无传感器。标准日志不含完整PAC；不能借时间与账户相同代替确切票据对象。
+  en: An adversary holding all keys can construct conforming fields on an uninstrumented offline host. Standard logs omit full PACs; matching
+    account and time cannot replace exact ticket-object identity.
+- zh: 旧版或未更新DC没有扩展哈希，官方文档中的ResponseTicket命名也需解析器验证。密钥轮换、RODC与跨域验证增加对象连续性的解释成本。
+  en: Older or unpatched DCs lack extended hashes, and the documented ResponseTicket naming needs parser validation. Key rotation, RODCs,
+    and cross-realm validation add continuity ambiguity.
+tuning_guidance:
+  paragraphs:
+  - zh: 先用批准测试取得原始XML并验证事件版本、哈希生成对象、规范化及跨DC一致性。所有缺口先走数据质量与票据生命周期检查，不以存在一次4768自动排除模板构造。构造确认依赖语义变化和控制证据，重编码但语义未改变保持正常或未定；对PAC验证更新按实际OS build记录，避免套用历史Silver行为。
+    en: First obtain raw XML through approved testing to validate event versions, hashed objects, normalization, and cross-DC consistency.
+      Route gaps through data-quality and ticket-lifecycle checks, and do not clear template construction merely because a 4768 exists. Construction
+      confirmation depends on semantic changes and control evidence; re-encoding without semantic changes remains legitimate or unresolved.
+      Record PAC validation updates by actual OS build rather than applying historical Silver behavior universally.
+evidence_refs:
+- REF-000854
+- REF-000855
+- REF-001184
+- REF-001187
+- REF-001190
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-11-05'
+  modified: '2026-11-05'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

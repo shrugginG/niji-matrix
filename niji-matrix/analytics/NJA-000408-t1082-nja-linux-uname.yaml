@@ -1,0 +1,173 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000408
+strategy_ref: DET-000293
+name:
+  zh: Linux uname 调用与画像职责分析
+  en: Linux uname Invocation and Profiling-Duty Analytic
+summary:
+  zh: 以预先配置的系统调用审计识别异常上下文的 uname 调用，区分调用成功与实际属性值。
+  en: Use preconfigured syscall auditing to identify uname calls in unusual contexts, separating successful invocation from
+    actual attribute values.
+domains:
+- enterprise
+platforms:
+- Linux
+logic:
+  paragraphs:
+  - zh: 在支持 Linux Audit 的目标按实际 ABI 配置 uname 的 syscall exit 规则，并确认没有 never,task 等规则使其失效；原型为 -a always,exit -F arch=b64 -S uname
+      -k host_profile_query，存在兼容 ABI 时单独核验其 syscall 名称与规则。按同一 audit_event_id 合并 SYSCALL 记录并保留 success、exit、pid、ppid、auid、uid、ses
+      与 exe。success=yes 且 exit=0 只输出 observed_successful_uname_call，失败输出 observed_failed_call；缓冲区指针、PROCTITLE 或进程名不提供返回属性内容。
+    en: On Linux Audit targets, configure uname syscall-exit rules for the actual ABI and verify that rules such as never,task
+      do not disable them. A prototype is -a always,exit -F arch=b64 -S uname -k host_profile_query; verify syscall names
+      and rules separately for any compatibility ABI. Merge SYSCALL records by audit_event_id and retain success, exit, pid,
+      ppid, auid, uid, ses, and exe. success=yes with exit=0 emits only observed_successful_uname_call; failure emits observed_failed_call.
+      A buffer pointer, PROCTITLE, or process name does not reveal returned attributes.
+  - zh: 由采集器 enrollment 将 native_node 映射为 host_id，按事件时间将 effective_uid 映射为调用有效主体 principal_id，并分别保留 real_uid、audit_login_uid
+      与 audit_session_id；unset auid 不回填为实际登录操作者。先按 host_id、audit_event_id 与事件时间形成自足调用记录，再按主机、审计会话和已解析有效主体在五分钟内比较请求与批准 query_scope。仅在已部署的进程生存期映射给出唯一匹配时加入
+      process_key 与父链；同 PID 跨重启、跨生存期或命名空间映射不明时不得合并。批准台账缺失时输出 context_unknown。
+    en: Map native_node to host_id through collector enrollment and effective_uid to the event-time effective principal_id,
+      retaining real_uid, audit_login_uid, and audit_session_id separately. Do not fill unset auid with an assumed login operator.
+      First form self-contained call records by host_id, audit_event_id, and event time, then compare calls with approved
+      query_scope over five minutes by host, audit session, and resolved effective principal. Add process_key and ancestry
+      only when a deployed process-lifetime map supplies a unique match; never merge a reused PID across boots, lifetimes,
+      or unresolved namespaces. Missing approval records yield context_unknown.
+  - zh: 对不承担画像职责的应用出现 uname 调用、同一已解析会话中的未登记画像请求，或批准范围明显不符的调用输出调查项，同时保留原始事件与规则版本。此分析不读取调用者缓冲区，不消费 /proc 内容、命令输出或资产库结果，不能报告实际内核字符串或物理机身份。采集健康不完整、lost
+      增长或相关 ABI 未覆盖时标记 coverage_incomplete，缺少事件不能作为没有查询的证据。
+    en: Report calls requiring investigation when an application without profiling duties invokes uname, an identified session
+      makes unregistered profiling requests, or a call clearly departs from approved scope, retaining raw-event and rule-version
+      references. The analytic does not read caller buffers or consume /proc contents, command output, or inventory results
+      and cannot report actual kernel strings or physical-machine identity. Mark coverage_incomplete when health is incomplete,
+      lost counts rise, or a relevant ABI is uncovered; missing events do not establish absence of querying.
+data_requirements:
+- source_type: linux-audit-uname-syscall
+  name:
+    zh: 预先配置的 Linux uname 系统调用审计
+    en: Preconfigured Linux uname syscall audit
+  channel: audit.log SYSCALL events selected by deployed uname exit rules
+  required_fields:
+  - native_node
+  - event_time
+  - audit_event_id
+  - arch
+  - syscall
+  - success
+  - exit_code
+  - process_id
+  - parent_process_id
+  - audit_login_uid
+  - real_uid
+  - effective_uid
+  - audit_session_id
+  - executable
+  - audit_rule_key
+- source_type: event-time-linux-identity-map
+  name:
+    zh: Linux 事件时间设备与身份映射
+    en: Linux event-time device and identity map
+  channel: Collector enrollment and time-scoped NSS/directory mapping
+  required_fields:
+  - native_node
+  - host_id
+  - native_uid
+  - principal_id
+  - valid_from
+  - valid_until
+  - identity_state
+- source_type: linux-process-lifetime-map
+  name:
+    zh: 已部署的 Linux 进程生存期映射
+    en: Deployed Linux process-lifetime map
+  channel: Deployment-validated endpoint lifecycle collector
+  required_fields:
+  - host_id
+  - boot_id
+  - process_id
+  - process_key
+  - parent_process_key
+  - process_start_time
+  - process_end_time
+  - pid_namespace_id
+  - mapping_completeness
+- source_type: approved-system-profile-register
+  name:
+    zh: 批准系统画像作业与应用职责台账
+    en: Approved system-profiling work and application-duty register
+  channel: Deployment-maintained inventory and application-role register
+  required_fields:
+  - host_id
+  - principal_id
+  - executable
+  - query_scope
+  - job_id
+  - valid_from
+  - valid_until
+  - register_completeness
+  - policy_version
+- source_type: linux-audit-collection-health
+  name:
+    zh: Linux Audit 规则与采集健康
+    en: Linux Audit rule and collection health
+  channel: auditctl -l and auditctl -s plus collector enrollment metadata
+  required_fields:
+  - host_id
+  - event_time
+  - boot_id
+  - rule_set_hash
+  - covered_arches
+  - enabled
+  - lost_count
+  - backlog
+  - collector_version
+  - clock_error_bound
+  - collection_gap
+observables:
+- zh: 不承担系统画像职责的执行文件或会话发起 uname，且核验后不在批准范围。
+  en: An executable or session without profiling duties invokes uname outside a verified approved scope.
+- zh: 原始系统调用记录明确返回成功，但实际属性内容仍未知。
+  en: A raw syscall record explicitly reports success while actual attribute content remains unknown.
+correlation:
+  window:
+    zh: 五分钟组合初始调用，身份和作业按事件时刻生效，进程关联受生存期与重启边界限制；此窗口未作性能验证。
+    en: Five minutes for initial call grouping, with event-time identity and job validity and process joins constrained by
+      lifetime and boot boundaries. The window has no performance validation.
+  dimensions:
+  - host_id
+  - audit_event_id
+  - audit_session_id
+  - principal_id
+  - process_key
+  - boot_id
+  - executable
+  - query_scope
+  - event_time
+  - policy_version
+false_positives:
+- zh: libc 初始化、兼容性库、编译器、软件安装与诊断代理经常合法调用 uname，即使没有命令行工具。
+  en: libc initialization, compatibility libraries, compilers, installers, and diagnostic agents frequently call uname legitimately
+    without a command-line utility.
+blind_spots:
+- zh: 规则未生效、兼容 ABI 漏采、Audit 丢失或被关闭、主机 PID 与容器 PID 未对齐会破坏判断；读取 /proc 或已有文件不在此分析内，uname 也不返回完整修补记录。
+  en: Ineffective rules, uncovered compatibility ABIs, Audit loss or disabling, and unaligned host/container PIDs break interpretation.
+    /proc or existing-file reads are outside this analytic, and uname does not return a complete patch record.
+tuning_guidance:
+  paragraphs:
+  - zh: 先用已知成功与失败调用验证 syscall 名称、exit 与 success 的规范化，再按应用职责而非 uname 二进制名称建立基线。采集进程生存期的产品和命名空间映射必须由部署方实际验证；缺少时只保留自足调用，不把 PPID
+      自动解释为可信父链。控制审计成本并持续检查 lost/backlog，避免为压低事件量而豁免所有已签名或常驻应用。
+    en: Validate syscall naming and normalization of exit and success with known successful and failed calls before baselining
+      by application duty rather than the uname binary name. Deployers must validate their actual process-lifecycle product
+      and namespace mapping. Without those, retain self-contained calls and do not turn PPID automatically into trusted ancestry.
+      Control audit cost and monitor lost/backlog without reducing volume by exempting every signed or resident application.
+evidence_refs:
+- REF-001348
+- REF-001349
+- REF-000840
+- REF-001042
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-11-07'
+  modified: '2026-11-07'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

@@ -1,0 +1,133 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000384
+strategy_ref: DET-000280
+name:
+  zh: 捕获解释模式与主动名称补全抑制证据关联
+  en: Capture Interpretation Mode and Active Name-Enrichment Suppression Evidence Correlation
+summary:
+  zh: 以完整参数、有效模式和捕获结果识别关闭主动补全的观察配置，避免把合法数字输出或 DNS 缺席直接判恶。
+  en: Identify observation settings that disable active enrichment through complete arguments, effective mode, and capture
+    results without treating legitimate numeric output or absent DNS as malicious.
+domains:
+- enterprise
+platforms:
+- Linux
+- macOS
+logic:
+  paragraphs:
+  - zh: 先由父级逻辑证明真实捕获或独立观察关系，再从已部署执行传感器恢复主机、进程开始键、可核查工具版本或 hash、完整 argv、输入模式和输出模式。对已验证的 tcpdump 4.99.5 参数模型区分大小写的 -n 与 -N，并判断实际是否进行解析打印；-w
+      纯保存且没有解析打印不能提升为本会发生的补全被抑制，单独 -r 也需既有捕获关系。命名过滤器的预先解析和其他程序查询分开记录。
+    en: First establish a real capture or independent observation relationship through the parent logic. Recover host, process-start
+      key, verifiable tool version or hash, complete argv, and input and output mode from deployed execution telemetry. Under
+      the validated tcpdump 4.99.5 option model distinguish case-sensitive -n from -N and determine whether parsed printing
+      actually occurs. Raw saving with -w and no parsed printing does not establish suppression of otherwise occurring enrichment,
+      and -r alone still needs the capture relationship. Keep upfront named-filter resolution and other programs' queries
+      separate.
+  - zh: 将正面的有效补全设置与同会话捕获范围、包记录和批准的采集策略连接，输出 enrichment_suppression_configured；不能确认模式时保留 interpretation_unknown。受限分析员从捕获解码出数字端点仅为
+      facts-exposed，只有攻击者输出或等效结果证据含有对应事实时才为 fact-return-confirmed。对未批准主体、范围或结果去向提高调查优先级，但 -n 或没有 DNS 都不能单独成为恶意条件；若有按进程归属的解析遥测，仅用于一致性核对。
+    en: Join positive effective-enrichment settings to same-session capture scope, packet records, and approved capture policy,
+      emitting enrichment_suppression_configured. Retain interpretation_unknown when the mode cannot be verified. Restricted
+      analyst decoding of numeric endpoints establishes facts-exposed only; matching adversary output or equivalent result
+      evidence is required for fact-return-confirmed. Prioritize unapproved principals, scope, or result destinations, without
+      making -n or absent DNS an independent malicious condition. Use process-attributed resolution only to corroborate consistency
+      where available.
+data_requirements:
+- source_type: capture-execution-and-effective-configuration
+  name:
+    zh: 已部署采集器执行及有效解释配置
+    en: Deployed collector execution and effective interpretation configuration
+  channel: Linux audit exec records or validated macOS execution collector plus versioned capture configuration
+  required_fields:
+  - timestamp
+  - host_id
+  - process_start_key
+  - principal_id
+  - tool_version_or_hash
+  - argument_vector
+  - effective_enrichment_setting
+  - input_mode
+  - output_mode
+  - parent_process
+- source_type: capture-linked-fact-provenance
+  name:
+    zh: 捕获关联事实和返回证据
+    en: Capture-linked facts and return evidence
+  channel: Restricted capture/runtime store and separately preserved result evidence
+  required_fields:
+  - capture_session_id
+  - process_start_key
+  - capture_interval
+  - source_artifact_hash
+  - result_locator
+  - observed_numeric_endpoints
+  - fact_class
+  - inference_level
+  - result_origin
+  - return_evidence_locator
+- source_type: approved-capture-and-enrichment-policy
+  name:
+    zh: 获批捕获与名称补全策略
+    en: Approved capture and name-enrichment policy
+  channel: Diagnostic job and configuration registry
+  required_fields:
+  - ticket_id
+  - owner
+  - principal_id
+  - asset_scope
+  - allowed_capture_and_enrichment_settings
+  - output_destination
+  - valid_from
+  - valid_to
+observables:
+- zh: 已证实捕获关系中的明确主动补全禁用设置及解析模式
+  en: Explicit active-enrichment suppression and interpretation mode within an established capture relationship
+- zh: 与捕获会话关联的数字事实和可区分来源的返回证据
+  en: Numeric facts linked to capture sessions with distinguishable return-evidence origins
+correlation:
+  window:
+    zh: 以进程开始键与完整捕获会话为主关联范围，初始容忍两分钟配置时差，结果产物按 hash 和会话保留七日后续关联；时窗须本地验证。
+    en: Join primarily by process-start key and capture lifetime, initially allowing two minutes of configuration timing tolerance
+      and seven days for hash- and session-linked result artifacts; validate windows locally.
+  dimensions:
+  - host_id
+  - principal_id
+  - process_start_key
+  - capture_session_id
+  - tool_version_or_hash
+  - input_mode
+  - output_mode
+  - source_artifact_hash
+  - ticket_id
+  - time
+false_positives:
+- zh: 获批数字输出用于性能、可复现性、隐私和避免解析干扰，运维默认参数也可能包含 -n。
+  en: Approved numeric output serves performance, reproducibility, privacy, and avoidance of resolution interference; operational
+    defaults can contain -n.
+blind_spots:
+- zh: 自定义实现、进程注入、代理解析、未记录的有效模式和无持久结果会降低归属；普通 audit 不自动提供配置或结果正文，缓存及静态映射也会使 DNS 对照失效。
+  en: Custom implementations, injection, brokered resolution, unrecorded effective modes, and nonpersistent results weaken
+    attribution. Ordinary audit does not automatically supply configuration or result content, and caches or static mappings
+    can invalidate DNS comparisons.
+tuning_guidance:
+  paragraphs:
+  - zh: 用目标版本的解析打印、纯写包、-n、-N、静态名称、缓存和空流量分别验证分级。先确认完整 argv 与运行配置的采集能力，缺失则降级；将批准绑定主体、源范围、解析模式、目的地和到期时间。不强制采集器开启 DNS，也不将捕获文件里的
+      DNS 报文当成采集器自身补全。
+    en: Validate grading against target-version parsed printing, raw saving, -n, -N, static names, caches, and no traffic.
+      Confirm complete argv and runtime-configuration collection first and downgrade when absent. Scope approval to principal,
+      source range, interpretation mode, destination, and expiry. Do not force DNS on collectors or treat DNS inside a capture
+      as enrichment generated by the collector.
+evidence_refs:
+- REF-001258
+- REF-001260
+- REF-000796
+- REF-000840
+- REF-001225
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-11-05'
+  modified: '2026-11-05'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

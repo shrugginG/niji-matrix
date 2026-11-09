@@ -1,0 +1,157 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000366
+strategy_ref: DET-000272
+name:
+  zh: 可信浏览器控制与 Cookie 返回证据关联
+  en: Trusted Browser Control to Cookie Return Evidence Correlation
+summary:
+  zh: 关联未批准调试或进程控制与实际 Cookie 返回，只有控制机会时保留疑似状态。
+  en: Join unapproved debugging or process control to an actual cookie return, retaining suspected status when only a control opportunity
+    is visible.
+domains:
+- enterprise
+platforms:
+- windows
+logic:
+  paragraphs:
+  - zh: 用 Sysmon 1 找浏览器调试端口或管道启动，解析实际 user-data-dir 并连接受管版本清单，避免把 Chrome 136 以后新目录启动当作旧会话可读。对没有开关的活动浏览器，另用 Sysmon 10 和可得的 8 标记未批准进程控制；不能要求所有注入都产生远程线程。连接
+      Sysmon 3 中同设备、同进程生命周期的控制端连接，但先验证部署确实记录 loopback；端口监听或连接只说明机会，不说明 API 已被调用；缺乏端口到目标进程的实际归属证据时，不把同机 loopback 连接自动接到浏览器。
+    en: Use Sysmon 1 to find browser debugger-port or pipe launches, parse the actual user-data-dir, and join managed version inventory to
+      avoid treating a new-directory launch after Chrome 136 as access to old sessions. For a live browser without flags, separately use
+      Sysmon 10 and available Event 8 to identify unapproved process control without requiring a remote thread for all injection. Join control
+      connections in Sysmon 3 by device and process lifetime after validating that the deployment records loopback. A listener or connection
+      proves opportunity rather than an API call. Without actual port-to-process attribution, do not automatically join a same-host loopback
+      connection to the browser.
+  - zh: 在事件取证或批准的验证环境内，从实际控制端通信、输出文件或调用记录保全 Cookie 返回。验证请求 ID 与响应、完整值存在、实际配置、受控收件者和未批准用途；仅列标签页、截图、代理浏览或空 getCookies 返回不能确认。常规端点事件没有 API 正文时输出“疑似可信客户端取值”，只有该值承载链闭合才输出“已确认
+      Cookie 材料取得”。扩展 API 路径同样需要实际返回证据，不以权限清单代替调用结果。
+    en: During incident forensics or approved validation, preserve cookie returns from actual controller communications, output files, or
+      call records. Verify request-to-response identity, complete-value presence, actual profile, controlled recipient, and unauthorized
+      purpose. Tab listing, screenshots, proxy browsing, or an empty getCookies return does not confirm acquisition. Without API bodies,
+      routine endpoint events yield suspected trusted-client retrieval; only closure of the value-bearing chain yields confirmed cookie-material
+      acquisition. Extension API paths equally require actual return evidence rather than a permission inventory.
+data_requirements:
+- source_type: browser-process-start
+  name:
+    zh: 浏览器启动与父进程
+    en: Browser Launch and Parent Process
+  channel: Microsoft-Windows-Sysmon/Operational Event 1
+  required_fields:
+  - timestamp
+  - device_id
+  - process_guid
+  - process_id
+  - image_path
+  - command_line
+  - parent_process_guid
+  - user
+- source_type: browser-process-control
+  name:
+    zh: 浏览器进程访问
+    en: Browser Process Access
+  channel: Microsoft-Windows-Sysmon/Operational Event 10
+  required_fields:
+  - timestamp
+  - device_id
+  - source_process_guid
+  - target_process_guid
+  - source_image
+  - target_image
+  - granted_access
+- source_type: browser-controller-connection
+  name:
+    zh: 控制端到浏览器连接
+    en: Controller to Browser Connection
+  channel: Microsoft-Windows-Sysmon/Operational Event 3; verify local and loopback capture before deployment
+  required_fields:
+  - timestamp
+  - device_id
+  - process_guid
+  - image_path
+  - source_ip
+  - source_port
+  - destination_ip
+  - destination_port
+- source_type: managed-browser-inventory
+  name:
+    zh: 受管浏览器版本及批准配置
+    en: Managed Browser Version and Approved Configuration
+  channel: Enterprise software inventory with explicitly collected profile and debugger approvals
+  required_fields:
+  - device_id
+  - image_path
+  - browser_version
+  - profile_path
+  - approved_controller
+  - approval_id
+  - collected_at
+- source_type: restricted-cookie-return-evidence
+  name:
+    zh: 实际 Cookie 返回取证记录
+    en: Actual Cookie Return Forensic Record
+  channel: Preserved controller response or output; derived evidence fields, not default browser logging
+  required_fields:
+  - evidence_id
+  - observed_at
+  - device_id
+  - browser_process_id
+  - profile_id
+  - request_id
+  - response_id
+  - method
+  - complete_value_present
+  - cookie_count
+  - recipient_control
+  - authorization_result
+observables:
+- zh: 未批准的浏览器调试启动或活动进程控制
+  en: Unapproved browser debugging launch or live-process control
+- zh: 与该浏览器配置关联的真实 Cookie 值返回
+  en: An actual cookie-value return associated with that browser profile
+- zh: 完整材料与攻击者控制收件者形成可验证链
+  en: A verifiable chain from complete material to an adversary-controlled recipient
+correlation:
+  window:
+    zh: 调试或进程控制后十五分钟作为起始窗口，按进程生命周期保持配置关联；长驻扩展按安装版本和实际调用时间连接，窗口需本地验证。
+    en: Start with fifteen minutes after debugging or process control and preserve profile association by process lifetime; join long-lived
+      extensions by installed version and actual call time. Validate the window locally.
+  dimensions:
+  - device_id
+  - browser_process_guid
+  - controller_process_guid
+  - profile_id
+  - request_id
+  - response_id
+  - evidence_id
+false_positives:
+- zh: VSCode 调试、Chrome for Testing 和受批准的浏览器自动化
+  en: VSCode debugging, Chrome for Testing, and approved browser automation
+- zh: 用户主动导出、Cookie 管理扩展与远程支持
+  en: User-initiated exports, cookie-management extensions, and remote support
+blind_spots:
+- zh: 默认没有 Cookie API 正文审计，只有连接元数据不能确认返回
+  en: Cookie API bodies are not audited by default and connection metadata cannot confirm a return
+- zh: 内存启用调试没有启动开关，替代注入可能没有 Event 8，loopback 记录可能不完整
+  en: In-memory debugger enablement lacks launch flags, alternative injection may lack Event 8, and loopback records may be incomplete
+- zh: 已批准扩展失陷与浏览器内调用可能只有普通浏览器外连
+  en: Compromised approved extensions and in-browser calls may leave only ordinary browser egress
+tuning_guidance:
+  paragraphs:
+  - zh: 在当前浏览器版本与配置上用专用测试账户验证三种负例：仅开启调试、只截图或代理访问、以及空 Cookie 存储；均不得输出已取得。再用授权的含值返回验证确认分支及证据权限。审批清单绑定控制程序、配置、目标域和期限，不仅按浏览器签名或端口放行；将未具备正文捕获的部署明确标为机会检测。
+    en: 'With a dedicated test account on current versions and profiles, verify three negative cases: debugging alone, screenshot or proxy
+      access alone, and an empty cookie store. None may yield acquired status. Then use an authorized value-bearing return to validate confirmation
+      and evidence permissions. Approval binds controller, profile, target domain, and expiry rather than browser signature or port alone;
+      label deployments without body capture as opportunity detection.'
+evidence_refs:
+- REF-000366
+- REF-001207
+- REF-001208
+- REF-001209
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-11-05'
+  modified: '2026-11-05'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

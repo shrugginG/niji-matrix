@@ -1,0 +1,159 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000376
+strategy_ref: DET-000276
+name:
+  zh: 职责外内部连接覆盖与协议证据分层分析
+  en: Role-Deviant Internal Connection Coverage and Protocol Evidence Grading
+summary:
+  zh: 按来源职责聚合内部探测覆盖，并输出尝试、监听响应或协议确认的证据等级。
+  en: Aggregate internal probe coverage by source role and emit evidence levels for attempts, listener responses, and protocol
+    confirmation.
+domains:
+- enterprise
+platforms:
+- Windows
+- Linux
+- macOS
+- Containers
+- IaaS
+- Network Devices
+logic:
+  paragraphs:
+  - zh: 先按事件时间用资产及地址映射确定发起设备、源网络区域和目标设备，避免把 NAT 后一个地址当作单一操作者。保留未采样 conn.log 的五元组、连接状态、history、字节数、missed_bytes 和解析器确认的 service。每十五分钟分别计算同源到同服务端口的不同目标数及到同目标的不同端口数，同时保留二十四小时并集。以至少十个目标或十个端口作为初始审阅门槛，要求超出相应角色基线且没有匹配的批准扫描作业；门槛是部署建议，并非恶意或漏检率的经验定律。
+    en: Resolve the initiating device, source zone, and destination device using event-time asset and address mappings, avoiding
+      attribution of a NAT address to one operator. Retain unsampled conn.log endpoint tuples, connection state, history,
+      byte counts, missed_bytes, and parser-confirmed service. In fifteen-minute windows calculate distinct destinations per
+      source and service port, and distinct ports per source and destination, also retaining twenty-four-hour unions. An initial
+      review gate can be ten destinations or ten ports, provided the pattern exceeds the relevant role baseline and lacks
+      a matching approved scan job. These are deployment proposals, not empirical laws of malice or detection accuracy.
+  - zh: 为每条关联记录分别输出证据层级：无应答或拒绝只证明尝试；SYN-ACK 等响应支持路径上的监听反馈，但不能直接确认已完成握手；完整状态与 history 支持连接建立；service 只有由协议解析器确认时才能成为协议证据，不能从目标端口赋值。抓包缺失或仅中途观测时降低等级。把职责外覆盖、短而重复的交互或后继少量目标访问组合成调查线索，不输出“存在漏洞”或“已利用”。若额外连接已启用的
+      Sysmon 1、3，按设备、ProcessGuid、时间与五元组补充进程来源；Event 3 不补全失败探测或服务版本，也不作为必需网络结果源。
+    en: 'Grade each joined observation separately: no reply or rejection establishes an attempt; a SYN-ACK or similar response
+      supports listener feedback along the path but does not by itself establish a completed handshake; complete state and
+      history support connection establishment; service becomes protocol evidence only when confirmed by a parser, never by
+      assigning the destination port''s conventional name. Lower the grade for packet loss or midstream observation. Combine
+      role-deviant coverage, brief repeated exchanges, or later access to a smaller target set into a survey lead without
+      asserting vulnerability or exploitation. If enabled Sysmon 1 and 3 are additionally joined, use device, ProcessGuid,
+      time, and endpoint tuple for process provenance. Event 3 neither reconstructs failed probes nor supplies service versions
+      and is not the required network-outcome source.'
+data_requirements:
+- source_type: east-west-connection-records
+  name:
+    zh: 未采样东西向连接及协议记录
+    en: Unsampled East-West Connection and Protocol Records
+  channel: Zeek conn.log from internal observation points
+  required_fields:
+  - timestamp
+  - connection_uid
+  - source_ip
+  - source_port
+  - destination_ip
+  - destination_port
+  - transport
+  - connection_state
+  - transport_history
+  - originator_bytes
+  - responder_bytes
+  - confirmed_service
+  - missed_bytes
+- source_type: event-time-asset-address-map
+  name:
+    zh: 事件时资产地址与扫描批准记录
+    en: Event-Time Asset Address and Scan Approval Records
+  channel: CMDB plus DHCP or cloud/workload address history and approved scan-job registry
+  required_fields:
+  - device_id
+  - valid_from
+  - valid_to
+  - ip_address
+  - network_zone
+  - device_role
+  - approved_source
+  - approved_destination_scope
+  - approved_service_scope
+  - approved_window
+- source_type: optional-sysmon-process-origin
+  name:
+    zh: 启用进程归属补充时的 Sysmon 创建事件
+    en: Sysmon creation events when process-origin enrichment is enabled
+  channel: Microsoft-Windows-Sysmon/Operational event 1 when configured
+  required_fields:
+  - computer
+  - utc_time
+  - process_guid
+  - process_id
+  - image
+  - command_line
+  - parent_process_guid
+- source_type: optional-sysmon-network-origin
+  name:
+    zh: 启用进程归属补充时的 Sysmon 连接事件
+    en: Sysmon network events when process-origin enrichment is enabled
+  channel: Microsoft-Windows-Sysmon/Operational event 3 when configured
+  required_fields:
+  - computer
+  - utc_time
+  - process_guid
+  - protocol
+  - source_ip
+  - source_port
+  - destination_ip
+  - destination_port
+observables:
+- zh: 普通终端或工作负载访问超出职责范围的一组内部服务候选
+  en: An endpoint or workload contacting a set of internal-service candidates outside its approved role
+- zh: 同源同端口跨目标覆盖或同源同目标跨端口覆盖
+  en: Cross-destination coverage of one port or cross-port coverage of one destination from one source
+- zh: 连接状态、首部历史和解析器确认协议提供不同结果等级
+  en: Connection state, transport history, and parser-confirmed protocols providing distinct outcome grades
+correlation:
+  window:
+    zh: 采用十五分钟审阅窗口与二十四小时目标并集，并至少保留七天职责基线；这些时窗是待本地验证的部署初值。
+    en: Use fifteen-minute review windows, twenty-four-hour target unions, and at least seven days of role baseline; these
+      are deployment starting values requiring local validation.
+  dimensions:
+  - device_id
+  - source_zone
+  - destination_device
+  - destination_port
+  - transport
+  - timestamp
+  - connection_uid
+false_positives:
+- zh: 获准漏洞扫描、资产盘点或事件响应
+  en: Authorized vulnerability assessment, inventory, or incident response
+- zh: 服务网格、备份代理、健康检查和故障切换造成的跨目标连接
+  en: Service meshes, backup agents, health checks, and failover connecting across destinations
+blind_spots:
+- zh: 同链路或容器内路径不经过传感器、流采样、非对称路由及丢包可破坏覆盖与结果判断
+  en: Same-link or intra-container paths bypassing sensors, flow sampling, asymmetric routing, and packet loss can invalidate
+    coverage and outcome grading
+- zh: 单目标少端口调查可能低于门槛；公告浏览也不必生成任何候选监听连接
+  en: Single-target sparse surveys can remain below the gate, while advertisement browsing need not create candidate-listener
+    connections
+- zh: 被盗批准扫描身份可能保持正常外观，端口或加密会话不足以确认产品和版本
+  en: A stolen approved scanner identity can preserve normal appearance, while ports or encrypted sessions cannot establish
+    products and versions
+tuning_guidance:
+  paragraphs:
+  - zh: 先验证传感器对 IPv4、IPv6、同 VLAN 与关键工作负载路径的可见性，再用本地批准作业校准十目标或十端口的起始门槛。允许规则绑定来源设备、目标集合、服务和时间范围，不对某个扫描器程序名永久放行。保留低量级线索供长窗口调查，并与公告查询分支并列展示，避免通过升高流量阈值去补偿错误基线。
+    en: Validate IPv4, IPv6, same-VLAN, and critical-workload visibility before calibrating the initial ten-destination or
+      ten-port gate against approved local jobs. Bind exceptions to source devices, destinations, services, and time instead
+      of permanently allowing a scanner executable name. Retain lower-volume leads for longer investigations and display the
+      advertisement branch alongside connection results, avoiding compensation for a poor baseline by simply raising traffic
+      thresholds.
+evidence_refs:
+- REF-000634
+- REF-000819
+- REF-001243
+- REF-001244
+- REF-000366
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-11-05'
+  modified: '2026-11-05'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

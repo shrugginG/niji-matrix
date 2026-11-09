@@ -1,0 +1,128 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000388
+strategy_ref: DET-000281
+name:
+  zh: 不依赖域句柄前序的 SAMR 策略直接请求识别
+  en: Direct SAMR Policy Request Identification Without Domain-Handle Preconditions
+summary:
+  zh: 直接检测策略操作 56，避免因没有 OpenDomain 前序而漏掉请求，同时不把 SMB 成功解释为规则返回。
+  en: Identify policy operation 56 directly instead of requiring preceding OpenDomain activity, without interpreting SMB success
+    as returned rules.
+domains:
+- enterprise
+platforms:
+- Windows
+logic:
+  paragraphs:
+  - zh: 在可见的 DCERPC 流量上，依据已成功协商的接口 UUID 12345778-1234-abcd-ef00-0123456789ac 与操作号 56 识别 SamrGetDomainPasswordInformation 请求；可使用经验证的
+      Suricata dcerpc.iface 与 dcerpc.opnum 精确匹配输出请求命中。规则不要求先见 SamrConnect、OpenDomain 或用户枚举，因为该方法不需要域对象 context handle。RPC
+      binding handle 仍然存在，不能将其表述为没有网络会话或绕过服务器访问检查。
+    en: On visible DCERPC traffic, identify SamrGetDomainPasswordInformation using successfully negotiated interface UUID
+      12345778-1234-abcd-ef00-0123456789ac and operation 56. A validated Suricata implementation can emit request matches
+      using exact dcerpc.iface and dcerpc.opnum conditions. Do not require prior SamrConnect, OpenDomain, or user enumeration
+      because this method needs no domain-object context handle. An RPC binding handle still exists, so this is neither absence
+      of a network session nor bypass of the server-wide access check.
+  - zh: 以精确接口与操作匹配的告警作为请求证据，flow_id、源/目的地址以及可得的 SMB session_id 和 RPC call_id 用于上下文旁证，不作为跨多个命名管道或绑定的唯一调用标识。绑定事件中的接口列表不能证明同流每个请求都属于该接口；基础分支依赖解析器正确执行接口匹配，关联条件不足时保持请求命中而不重建完整调用。对未登记来源或偏离正常密码管理流程的请求产生调查候选。SMB
+      status 和 RPC RESPONSE 只证明对应层状态；本分析不输出 SAMR 应用成功或密码约束内容，需要返回值时另部署经过 NDR 验证的解码与结果来源。
+    en: Use alerts from exact interface and operation matching as request evidence. flow_id, endpoint addresses, and available
+      SMB session_id and RPC call_id provide context rather than a unique call identity across multiple named pipes or bindings.
+      An interface list in a bind event does not assign every request in the flow to that interface. The base branch relies
+      on correct parser interface matching; inadequate association retains the request hit without reconstructing a complete
+      call. Investigate unregistered origins or deviations from normal password-management work. SMB status and RPC RESPONSE
+      establish their respective layer states. This analytic does not report SAMR application success or password constraints;
+      returned values require separately deployed NDR-validated decoding and result data.
+data_requirements:
+- source_type: suricata-samr-request-match
+  name:
+    zh: 精确接口与操作匹配产生的请求事件
+    en: Request events from exact interface and operation matching
+  channel: Suricata 8.0.2 EVE alert with validated DCERPC rule
+  required_fields:
+  - timestamp
+  - flow_id
+  - src_ip
+  - src_port
+  - dest_ip
+  - dest_port
+  - alert.signature_id
+  - alert.signature
+- source_type: suricata-smb-dcerpc
+  name:
+    zh: 启用关联分支时的 SMB 与 RPC 事件
+    en: SMB and RPC events when the correlation branch is enabled
+  channel: Suricata 8.0.2 EVE SMB dcerpc and bind events
+  required_fields:
+  - timestamp
+  - flow_id
+  - src_ip
+  - dest_ip
+  - smb.session_id
+  - smb.dcerpc.request
+  - smb.dcerpc.call_id
+  - smb.dcerpc.opnum
+- source_type: approved-password-management-origin
+  name:
+    zh: 允许的密码管理调用来源与目标
+    en: Approved password-management callers and targets
+  channel: workload and network-management inventory
+  required_fields:
+  - owner
+  - source_asset
+  - destination_asset
+  - workload_purpose
+  - valid_from
+  - valid_to
+observables:
+- zh: 经接口上下文验证的 SAMR 操作 56 请求
+  en: SAMR operation 56 requests verified against interface context
+- zh: 与已登记密码管理来源不一致的调用
+  en: Calls inconsistent with registered password-management origins
+- zh: 无需依赖域对象打开序列即可识别的策略请求
+  en: Policy requests identifiable without a domain-object opening sequence
+correlation:
+  window:
+    zh: 按实际 RPC/SMB 会话关联，初始保留十五分钟来源语境；超长会话或不完整抓包必须明确降级。
+    en: Correlate by actual RPC/SMB session and initially retain fifteen minutes of origin context; explicitly degrade long-lived
+      sessions or incomplete captures.
+  dimensions:
+  - flow_id
+  - src_ip
+  - dest_ip
+  - smb.session_id
+  - smb.dcerpc.call_id
+  - source_asset
+false_positives:
+- zh: 合法密码更新客户端、兼容性工具、管理软件和授权测试可能使用同一操作。命中证明请求，不证明恶意采用、匿名性或具体匿迹意图。
+  en: Legitimate password-change clients, compatibility tools, management software, and authorized tests can use the same
+    operation. A match proves a request rather than malicious use, anonymity, or a particular evasion intent.
+blind_spots:
+- zh: SMB 加密、RPC 隐私、未见绑定的中途抓包、未覆盖的直连 TCP 与本地调用会降低或消除可解析性。SMB/RESPONSE 状态不是方法返回状态，解析器版本差异和多接口绑定需要实测。
+  en: SMB encryption, RPC privacy, midstream capture without binds, uncovered direct TCP, and local calls reduce or remove
+    inspectability. SMB/RESPONSE states are not method return status; parser-version differences and multiple-interface bindings
+    require validation.
+tuning_guidance:
+  paragraphs:
+  - zh: 在已安装版本用授权测试验证 SAMR UUID 与 56 的正例，并用其他接口的相同操作号、拒绝、匿名及认证会话作为反例。基础规则输出自身 signature_id 即可标识已验证的条件，不能虚构 EVE 在每个请求都包含接口
+      UUID 或规则返回值。保留网络来源与目标、适当限制抓包访问；需要返回内容时另部署经过 NDR 验证的补充分支，不让结果缺失阻止请求级调查。
+    en: Validate positive SAMR UUID and operation-56 cases on the installed version using authorized tests, with the same
+      opnum on other interfaces, denials, anonymous sessions, and authenticated sessions as controls. The base rule's signature_id
+      identifies its verified conditions; do not invent an interface UUID or rule return in every EVE request. Retain origins
+      and targets and restrict capture access. Deploy an NDR-validated supplemental branch when results are needed without
+      letting absent output block request-level investigation.
+  - zh: 关联分支中的 request、opnum 和接口字段按事件类型允许为空；接口信息主要位于绑定记录。用同流多命名管道和多接口测试确认规则引擎的关联，不能只用 flow_id 与 call_id 推定应用层结果。
+    en: Allow request, opnum, and interface fields to be null according to event kind in the correlation branch; interface
+      information mainly occurs in bind records. Test multiple named pipes and interfaces in one flow to verify rule-engine
+      association, and never infer application results from flow_id and call_id alone.
+evidence_refs:
+- REF-001269
+- REF-001271
+- REF-001041
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-11-06'
+  modified: '2026-11-06'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

@@ -1,0 +1,168 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000418
+strategy_ref: DET-000300
+name:
+  zh: Windows身份命令与脚本请求分析
+  en: Windows Identity Command and Script Request Analysis
+summary:
+  zh: 从已记录命令和脚本语义识别身份或会话调查请求，结合实际作业范围输出可核验线索。
+  en: Identify identity or session-inquiry requests in recorded commands and script semantics and produce leads checked against
+    actual work scope.
+domains:
+- enterprise
+platforms:
+- windows
+logic:
+  paragraphs:
+  - zh: 在已部署Sysmon的主机上收集Operational通道事件1与5。将System.Computer映射host_id，UtcTime映射UTC event_time，ProcessGuid映射process_guid，ProcessId映射十进制process_id，Image、CommandLine、User与ParentProcessGuid分别映射image、command_line、process_account和parent_process_guid；事件5只结束对应实例。解析实际命令标记和引用关系，匹配whoami无参数或/user、/all、/upn、/fqdn、/logonid及query.exe
+      user或query.exe session语义，排除帮助文本、仅/groups或/priv的独立请求。保留命令中的远端/server目标为target_host，缺省为记录主机；该输入目标不是已证实访问结果。 仅对已核验的实际whoami/query执行入口和脚本表达式应用这些解析语义，不把其他工具参数中的引用字符串自动当成本地身份查询。包含/node或process
+      call create的WMIC远程启动包装不在本分析解析合同内，不能将其内部whoami字符串默认归属为日志宿主上的实际查询。
+    en: On hosts with Sysmon deployed, collect Operational events 1 and 5. Map System.Computer to host_id, UtcTime to UTC
+      event_time, ProcessGuid to process_guid, ProcessId to decimal process_id, and Image, CommandLine, User, and ParentProcessGuid
+      to image, command_line, process_account, and parent_process_guid. Event 5 closes only that instance. Parse actual command
+      tokens and quoting to match whoami without arguments or with /user, /all, /upn, /fqdn, or /logonid, plus query.exe user
+      or query.exe session semantics. Exclude help and isolated /groups or /priv requests. Preserve a /server target as target_host,
+      defaulting to the logged host; an input target is not a proven access result. Apply these semantics only to validated
+      actual whoami/query execution entries and script expressions, without treating quoted strings in other tools as local
+      identity inquiries. WMIC remote-launch wrappers containing /node or process call create are outside this parser contract;
+      their embedded whoami text must not default to an actual inquiry on the logging host.
+  - zh: Windows PowerShell 5.1需预先启用脚本块日志。4104的System.Computer、TimeCreated.SystemTime和Execution.ProcessID映射主机、UTC时间和本地十进制PID，ScriptBlockId、MessageNumber、MessageTotal、ScriptBlockText分别映射script_block_id、part_number、part_total、script_text。按主机、PID和脚本块ID组装全部片段，再同事件时间覆盖该PID的唯一Sysmon实例连接；保留WindowsIdentity.GetCurrent().Name、Environment.UserName、用户名环境读取及明确的会话命令语义。代码中存在表达式只证明脚本块被处理，既不保证该分支执行，也不保证返回；片段缺失、加密内容未解密或PID实例不唯一则标为部分或来源未知。
+    en: Windows PowerShell 5.1 requires script-block logging enabled in advance. For 4104, map System.Computer, TimeCreated.SystemTime,
+      and Execution.ProcessID to host, UTC time, and local decimal PID; map ScriptBlockId, MessageNumber, MessageTotal, and
+      ScriptBlockText to script_block_id, part_number, part_total, and script_text. Reassemble every part by host, PID, and
+      script-block ID, then join to the unique Sysmon instance covering that PID and time. Retain WindowsIdentity.GetCurrent().Name,
+      Environment.UserName, username-environment reads, and explicit session-command semantics. An expression in a processed
+      block guarantees neither branch execution nor a return. Missing fragments, undecrypted protected content, or ambiguous
+      PID lifetimes produce partial or origin-unknown states.
+  - zh: 对每项请求查询独立维护的批准作业台账，精确比较host_id、完整域账户、image或批准脚本身份、查询语义、target_host与有效UTC区间。台账版本和owner必须可追溯，缺少条目只表示未找到批准依据；台账离线或账户缺域时标为批准未知，不直接归为恶意。保留同一实例或父实例五分钟内重复身份与会话检查作为可选排序信号，不把该窗口或次数当作恶意阈值，也不消费未声明的凭据访问或网络事件。
+    en: For each request, query a separately maintained approved-work register and compare host_id, fully qualified account,
+      image or approved script identity, inquiry semantics, target_host, and valid UTC interval. Register version and owner
+      must be traceable. No matching entry means approval was not found; an unavailable register or unqualified account makes
+      approval unknown rather than malicious. Repeated identity and session checks within five minutes for one instance or
+      its parent are an optional ranking signal, not a maliciousness threshold. No undeclared credential-access or network
+      events are consumed.
+  - zh: 输出request_observed、result_unknown和来源或批准状态，明确区分进程账户与请求要读取的身份。本分析不解析标准输出，不存在“空用户名”“无登录用户”或调用成功的结论；启动成功和脚本处理都不能提供API状态。采集健康台账必须声明通道启用区间、版本、时钟偏差上界、丢失与截断计数和最后心跳；记录不完整时保留命中但降低归属，不从无事件推断无行为。原始TimeCreated与UtcTime均为时间点而非持续时间，五分钟只用于事件时间排序。
+    en: Emit request_observed, result_unknown, and origin or approval states, separating process account from the requested
+      identity. This analytic parses no stdout and makes no conclusion of an empty username, no logged-on users, or call success;
+      a successful launch and a processed block supply no API status. A collection-health register must state enabled-channel
+      intervals, versions, maximum clock skew, loss and truncation counts, and last heartbeat. Incomplete collection retains
+      hits with degraded attribution and cannot establish absence from missing events. TimeCreated and UtcTime are time instants
+      rather than durations; five minutes is only an event-time ranking window.
+data_requirements:
+- source_type: sysmon-process-lifecycle
+  name:
+    zh: 已部署Sysmon的进程创建与终止
+    en: Deployed Sysmon process creation and termination
+  channel: Microsoft-Windows-Sysmon/Operational
+  required_fields:
+  - host_id
+  - event_time
+  - event_id
+  - process_guid
+  - process_id
+  - image
+  - command_line
+  - process_account
+  - parent_process_guid
+- source_type: powershell-scriptblock
+  name:
+    zh: 经策略启用的Windows PowerShell 5.1脚本块
+    en: Policy-enabled Windows PowerShell 5.1 script blocks
+  channel: Microsoft-Windows-PowerShell/Operational
+  required_fields:
+  - host_id
+  - event_time
+  - process_id
+  - script_block_id
+  - part_number
+  - part_total
+  - script_text
+- source_type: approved-identity-work-register
+  name:
+    zh: 外部维护的身份调查作业台账
+    en: Externally maintained identity-inquiry work register
+  channel: null
+  required_fields:
+  - register_version
+  - owner
+  - host_id
+  - principal_name
+  - approved_content_identity
+  - inquiry_semantics
+  - target_host
+  - valid_from
+  - valid_until
+  - register_status
+- source_type: collection-health-register
+  name:
+    zh: 日志转发与解析健康台账
+    en: Log-forwarding and parser-health register
+  channel: null
+  required_fields:
+  - host_id
+  - channel
+  - collector_version
+  - enabled_from
+  - enabled_until
+  - clock_skew_bound_ms
+  - dropped_count
+  - truncated_count
+  - last_heartbeat
+observables:
+- zh: 完整命令标记指向当前身份或已有会话检查，进程账户不作为返回值。
+  en: Complete command tokens address current identity or existing sessions, while the process account is not treated as a
+    return.
+- zh: 处理过的完整脚本块含身份读取表达式，分支执行与结果保持未知。
+  en: A completely reconstructed processed script block contains an identity-read expression, with execution and result unknown.
+- zh: 精确作业范围不匹配或批准状态未知的请求可进入核查队列。
+  en: Requests outside exact approved-work scope or with unknown approval enter a review queue.
+correlation:
+  window:
+    zh: 使用实际进程出生至终止的实例区间；请求在五分钟内按事件时间排序，台账按请求时点有效期比较，均需当地基线验证。
+    en: Use actual process birth-to-termination intervals, rank requests over five event-time minutes, and compare register
+      validity at the request instant; validate these choices locally.
+  dimensions:
+  - host_id
+  - process_guid
+  - parent_process_guid
+  - process_id
+  - script_block_id
+  - event_time
+  - target_host
+false_positives:
+- zh: 帮助台、登录脚本、安装器和远程桌面管理例行检查身份或会话。
+  en: Help desks, logon scripts, installers, and Remote Desktop administration routinely check identity or sessions.
+- zh: 调试脚本包含未执行的身份表达式，或批准台账更新滞后。
+  en: Debug scripts contain identity expressions that never execute, or the approved-work register lags legitimate changes.
+blind_spots:
+- zh: 非脚本原生读取、进程内任务和未启用的日志通道不在此请求观察面。
+  en: Native nonscript reads, in-process tasks, and disabled channels lie outside this request surface.
+- zh: 日志不含标准输出与API返回，无法判定成功、失败、空集、身份差异或会话分页完整性。
+  en: Logs contain neither stdout nor API returns and cannot determine success, failure, empty sets, identity disagreement,
+    or complete session pagination.
+- zh: WMIC远程启动包装和其他未验收的管理入口需要独立参数解析与目标归属，单凭内部whoami字样不能覆盖。
+  en: WMIC remote-launch wrappers and other unvalidated management entries need separate argument parsing and target attribution;
+    embedded whoami text alone supplies no coverage.
+tuning_guidance:
+  paragraphs:
+  - zh: 按实际工作登记具体脚本身份、账户、目标与到期时间，避免永久放行whoami或PowerShell路径。先用合法样本验证引号、/all与组权限专用参数、4104分片、PID重用和保护日志解密的区别；这些是部署验收条件，本研究没有执行该验收。缺失台账或健康信息必须显示为未知，不用关闭此类命中改善表面误报率。
+    en: Register concrete scripts, accounts, targets, and expiry for actual work instead of permanently allowing whoami or
+      PowerShell paths. Validate quoting, /all versus group- or privilege-only parameters, 4104 fragments, PID reuse, and
+      protected-log decryption with benign examples. These are deployment acceptance conditions and were not performed in
+      this research. Missing approval or health information must remain unknown rather than be suppressed to improve apparent
+      false-positive rates.
+evidence_refs:
+- REF-001341
+- REF-001293
+- REF-000366
+- REF-000463
+- REF-001399
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-11-08'
+  modified: '2026-11-08'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

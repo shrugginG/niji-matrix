@@ -1,0 +1,13 @@
+# Shared-library identity resolutions
+
+The generated catalog and exact canonical URLs were checked after the complete research handoff. Existing policy-mutation, defensive-impairment, namespace and secret-acquisition objects were compared by behavior and data requirements, not just title.
+
+* **Reuse:** REF-000341 for GPO architecture; REF-000366 for Sysmon process lineage; REF-000377 for same-server 4624 logon correlation; REF-000474 for 5145 access-check semantics; REF-000379 for 4663 exercised access. These sources retain their identities.
+* **Extend:** REF-001049 is the same ESET author/title/year research publication as its linked report. Preserve its canonical article URL and all Gmail C2 support, broaden the Chinese title to the actual research title, and add the exact policy-reconnaissance report locator and PDF URL. Do not create a duplicate report bibliography or extend the distinct Gmail-mailbox CASE-000307.
+* **Extend:** REF-000625's locator includes the fixed Enterprise 19.1 T1615 parent and zero-child inventory. The local versioned workbook extraction remains the batch's mechanical provenance record; fixed ATT&CK evidence anchors parent behavior only.
+* **Create:** six distinct Microsoft sources for gpresult, policy modeling/results and delegation, the GPO LDAP/file protocol sequence, event 4662, MS16-072's read-context constraint, and policy-cache capability/counter-evidence. The cache source supports limitations and taxonomy review without establishing an adversarial child.
+* **Create:** five atomic Claims, a narrowly scoped observed ComRAT policy-diagnostic-command Case, one policy-information-read Strategy, three data-specific Analytics and one policy-read/delegation/observation Mitigation. Existing mutation/consumer, generic namespace, network-share-content and authentication-secret objects have different objectives, observation semantics or controls and are not extended by name substitution.
+* **Defer:** independent local-cache/result reuse, scope minimization, timing/client borrowing and report-artifact avoidance. No NJS or Relationship is created without an independently supported identity.
+* **Planning-only:** the current live ATT&CK page, SOM-specific attribute details and event-1644 diagnostics remain research context. Canonical prose does not claim complete LDAP-query capture or depend on those extra sources.
+
+All official IDs are allocated centrally only after these decisions. Five Claim subjects distinguish parent relevance, the calibrated NM-FD inference, read-evidence levels, necessary client read rights and the observed case. Analytic windows and role baselines are explicit local engineering starting points, never source-established performance thresholds.

@@ -1,0 +1,190 @@
+schema_version: 2.0.0
+type: evasion-subtechnique
+id: NJS-0242-001
+name:
+  zh: 本地既存主机知识复用
+  en: Local Host-Knowledge Reuse
+summary:
+  zh: 读取本机已经保存的远端系统知识形成初始候选，避免为候选形成阶段新增逐目标验证，并将关键调查痕迹转为本地访问。
+  en: Read remote-system knowledge already stored locally to form initial candidates without fresh per-target validation at
+    that stage, moving key surveying traces to local access.
+aliases: []
+parent_ref: NJT-0242
+lineage:
+  attck_subtechnique_inherited: false
+definition_and_concept:
+  paragraphs:
+  - zh: 本地既存主机知识复用是攻击者从当前已访问系统上已经存在的地址映射、名称记录或连接配置中提取远端系统标识，在不为这些初始候选新增目标存活或服务验证的阶段完成候选形成。它复用先前通信或管理配置留下的知识，并不主动创造新的远端观测事实。
+    en: Local Host-Knowledge Reuse extracts remote-system identifiers from address mappings, name records, or connection configuration
+      already present on the accessed system, forming initial candidates without fresh target-liveness or service validation
+      at that stage. It reuses knowledge left by previous communication or administration rather than actively creating new
+      observations of remote systems.
+  - zh: 变量是候选知识的取得方式，而不是某种缓存、文件、命令或平台。读取 GetIpNetTable 返回的已有映射和解析 SSH 已知主机资料可以具有相同变量；清空缓存后主动重建、向目标发 ARP 或邻居请求、以及后续连接确认不属于这段复用行为。后继验证可以与本项组合，但必须分开记录。
+    en: The variable is how candidate knowledge is obtained, not a cache, file, command, or platform. Reading existing mappings
+      returned by GetIpNetTable and parsing SSH known-host material can share the variable. Flushing and actively repopulating
+      a cache, sending ARP or neighbor requests, and later connection confirmation are outside this reuse stage. Later validation
+      can coexist with it but must be recorded separately.
+stealth_characteristics:
+  paragraphs:
+  - zh: 本地既存主机知识复用把初始候选形成的痕迹从逐目标网络交互转为本机数据读取。仅依靠扫描扇出、拒绝连接或目标服务日志的防守方，没有预期的新增目标接触序列可以用来还原这段调查；需要进程、文件或特定接口观察来识别谁在消费已有知识。该效果不要求读取工具的名称与正常工具相似，也不证明它已绕过所有检测。
+    en: Local Host-Knowledge Reuse changes initial candidate formation from per-target interaction into local data access.
+      A defender relying only on scan fan-out, rejected connections, or target-service logs lacks the expected fresh contact
+      sequence for reconstructing this stage and needs process, file, or interface-specific observation of who consumes existing
+      knowledge. The effect does not require a tool name resembling benign software and does not prove bypass of all detection.
+  - zh: 代价是知识受当前系统历史与保存状态限制。旧名称、静态配置、无效映射和哈希标识都可能使结果不足以直接使用；普通 DNS 解析又可能转而产生网络请求或缓存命中遥测。读取命令、审计记录和后续精确目标连接仍可暴露活动。没有结果内容时，防守方只能确认资料访问或命令意图，不能声称已经恢复攻击者的候选集合。
+    en: Knowledge is limited by the system's history and stored state. Old names, static configuration, invalid mappings,
+      and hashed identifiers can make results unusable directly, while ordinary DNS resolution can introduce network requests
+      or cached-query telemetry. Read commands, audit records, and later connections to selected targets remain revealing.
+      Without result content, defenders can establish material access or command intent but cannot claim recovery of the adversary's
+      candidate set.
+scope_boundary_definition:
+  paragraphs:
+  - zh: 纳入对既存本地主机知识的读取和候选提取，前提是该阶段没有为形成这些候选新发目标验证。Windows 的 GetIpNetTable 与 GetIpNetTable2 是表读取；ResolveIpNetEntry2 则会清除匹配邻居项并发送
+      ARP 或 IPv6 邻居请求，不能视为同一种只读行为。Get-DnsClientCache 默认读取本机缓存，但远程 CimSession 会改变访问位置；普通解析调用也不因可能命中缓存而自动归本项。
+    en: Include reading existing local host knowledge and extracting candidates when no fresh target validation is added to
+      form them at that stage. Windows GetIpNetTable and GetIpNetTable2 retrieve tables; ResolveIpNetEntry2 instead flushes
+      a matching entry and sends ARP or IPv6 neighbor solicitation, so it is not the same read-only behavior. Get-DnsClientCache
+      defaults to the local cache, but a remote CimSession changes access location. Ordinary resolution does not qualify merely
+      because it might hit cache.
+  - zh: 本项不覆盖被动捕获正在流动的报文、查询远端目录、列举服务公告或解析日志。读取本机配置只得到本机地址时也不够；必须取得指向其他系统的标识或有明确提取意图。SSH known_hosts 可含哈希、通配或历史项，ARP 表可空或含无效项，均不能直接解释为当前在线主机。故障排查、备份与客户端正常读取是重要正常反例。
+    en: This child excludes passive capture of packets in transit, remote-directory queries, service-advertisement enumeration,
+      and log parsing. Local configuration yielding only the local address is insufficient; identifiers of other systems or
+      explicit extraction intent are required. SSH known_hosts can contain hashed, pattern-based, or historical entries, and
+      ARP tables can be empty or contain invalid entries; these are not directly interpreted as currently live systems. Troubleshooting,
+      backup, and routine client reads are important benign counterparts.
+application_scenarios_and_threat_model:
+  application_scenarios:
+    paragraphs:
+    - zh: 本项适用于已访问系统留有先前远端交互记录而攻击者希望先缩小调查范围的阶段。管理工作站可能留有服务器别名，容器或被侵账户可能留有 SSH 连接资料，普通终端可能保存已解析地址。攻击者可以先得到少量候选再决定是否验证；缺少这些既存记录时，本项无法凭空生成系统知识。
+      en: This child applies when an accessed system retains earlier remote-interaction knowledge and the adversary first
+        wants to narrow investigation. Management workstations may retain server aliases, containers or compromised accounts
+        may retain SSH connection material, and endpoints may hold resolved addresses. A small candidate set can precede a
+        validation decision; absent existing records, the child cannot generate system knowledge from nothing.
+    - zh: Kinsing 案例支持从本地 SSH 与历史资料提取目标而未识别到额外主动扫描。HermeticWizard 支持先使用本地已知 IP 的阶段，但它混用了其他枚举 API 并继续主动连接，不能作为整个发现过程零网络的案例。两种案例只支持各自报告的资料来源和阶段，不证明攻击者因避免某项告警而作出选择。
+      en: Kinsing supports extracting targets from local SSH and history material without identified additional active scanning.
+        HermeticWizard supports a stage using locally known IP addresses, but mixes other enumeration APIs and proceeds to
+        active connections; it does not demonstrate an entirely network-silent discovery process. The cases support their
+        reported materials and stages, not a decision specifically made to avoid a particular alert.
+  threat_model:
+    attacker_model:
+      paragraphs:
+      - zh: 攻击者须能以当前身份读取某种已有记录，并理解其中哪些值代表其他系统。可用范围不超过账户权限、挂载视图、缓存内容与记录可解析程度；获取其他用户资料可能需要额外权限。哈希已知主机名不是可直接还原的名称，空表也不是成功取得候选。初始候选阶段无需逐目标回包，但后续行动通常需要另行解决地址和访问条件。
+        en: The adversary must read existing records under its current identity and identify values representing other systems.
+          Scope is limited by account authority, mount views, cache contents, and parseable records; other users' material
+          can need additional privilege. Hashed known-host names are not directly recovered names, and an empty table is not
+          successful candidate acquisition. Per-target responses are unnecessary at the initial stage, but later action usually
+          requires separate address and access resolution.
+      - zh: 攻击者可以接受不完整和过期候选，也可以在读取后继续主动确认；其选择的阶段边界应以实际操作为依据。不能假定调用未公开 DNS 枚举函数在所有 Windows 版本上语义相同，也不能把 WNetOpenEnumW、NetServerEnum
+          等同于不会联网的本地读取。没有实现或抓包证据时，保留这些具体路径的未知状态。
+        en: The adversary may tolerate incomplete, stale candidates and may actively confirm them after reading; stage boundaries
+          follow actual operations. Undocumented DNS-enumeration functions cannot be assumed semantically identical across
+          Windows versions, and WNetOpenEnumW or NetServerEnum cannot be treated as network-free local reads. Without implementation
+          or capture evidence, those particular paths remain uncertain.
+    defender_model:
+      paragraphs:
+      - zh: 本项针对只看目标交互的观察缺口，防守方仍可能在当前系统看到读取进程、命令参数、审计路径和会话身份。Linux Audit 的已配置读访问规则可记录相关系统调用及路径，但成功打开可读文件不证明完整内容已被读走。Windows
+          文件系统审计同样需要成功审核与匹配 SACL；两者均不是任意内存缓存 API 的返回结果遥测。
+        en: The child addresses a gap in target-interaction observation, while defenders may still see the reading process,
+          arguments, audited path, and session identity on the current system. Configured Linux Audit read-access rules record
+          related syscalls and paths, but successful read-capable opening does not prove complete content consumption. Windows
+          file-system auditing likewise needs success auditing and a matching SACL. Neither provides return-result telemetry
+          for arbitrary in-memory cache APIs.
+      - zh: 进程及会话基线可以区分已批准排障与从异常载体消费主机知识的情形，后续目标连接可以补充调查，但不能反推出未保存的读取结果。DNS 缓存查询可能触发 Event 22，系统后台维护也可能与读取并发。跨这几个观察面关联时，应区分本次读取、后台流量和后继验证，并对缺失数据保留明确盲区。
+        en: Process and session baselines can distinguish approved troubleshooting from host-knowledge consumption by an unusual
+          carrier. Later destination connections strengthen investigation but cannot recover unstored read results by inference.
+          Cached DNS queries can trigger Event 22, and operating-system maintenance can coincide with reads. Correlation across
+          these surfaces must separate the read, background traffic, and later validation and preserve explicit gaps where
+          data is absent.
+stealth_mechanisms:
+- mechanism_ref: NM-BT
+  role: primary
+  summary:
+    zh: 以已有记录读取替代初始目标验证使发现留在网络扫描逻辑之外
+    en: Substitute existing-record reads for initial target validation outside network-scan logic
+  analysis:
+    paragraphs:
+    - zh: 读取当前系统已经持有的远端系统标识，可以形成候选而不在这一步新发逐目标存活或服务确认。原本用于发现目标的网络接触序列被本地读取替代，使只观察扫描请求的防守方缺少该阶段的事件。官方表读取与主动解析接口提供明确的操作对照，Kinsing
+        记录提供实际恶意采用；端点审计仍能覆盖一部分读取，所以这是一种特定观察模型下的缺口，而非彻底无痕。具体告警规避意图和检测率未经实测，置信度为中等。
+      en: Reading remote-system identifiers already held by the current system can form candidates without fresh per-target
+        liveness or service confirmation at that step. Local access replaces the contact sequence that would otherwise acquire
+        candidates, leaving scan-request-only observers without events for this stage. Official table-read versus active-resolution
+        semantics provide an operational contrast and Kinsing establishes adversarial use. Endpoint auditing still covers
+        some reads, so this is a gap in a particular observation model rather than absence of all traces. Specific alert-evasion
+        intent and detection rates are unmeasured, supporting medium confidence.
+  evidence_refs:
+  - REF-001323
+  - REF-001324
+  - REF-001325
+  - REF-001328
+  - REF-000230
+  confidence: medium
+defense:
+  detections:
+    coverage: available
+    strategy_refs:
+    - DET-000290
+    - DET-000291
+  mitigations:
+    coverage: available
+    mitigation_refs:
+    - MIT-000250
+evidence:
+  claim_refs:
+  - CLM-001245
+  - CLM-001246
+  - CLM-001247
+  - CLM-001248
+  - CLM-001249
+  - CLM-001250
+  - CLM-001251
+  - CLM-001252
+  case_refs:
+  - CASE-000371
+  - CASE-000372
+  reference_refs:
+  - REF-000201
+  - REF-000230
+  - REF-000379
+  - REF-000614
+  - REF-000625
+  - REF-000840
+  - REF-000988
+  - REF-001042
+  - REF-001079
+  - REF-001198
+  - REF-001250
+  - REF-001323
+  - REF-001324
+  - REF-001325
+  - REF-001326
+  - REF-001327
+  - REF-001328
+  - REF-001329
+  - REF-001330
+  - REF-001331
+  - REF-001332
+  - REF-001333
+  - REF-001334
+  - REF-001335
+research:
+  limitations:
+    paragraphs:
+    - zh: Kinsing 资料是对特定脚本和受控运行的分析，其未发现额外主动扫描不能推广为所有变种均无扫描。HermeticWizard 的多个 API 中仅有已核实的表读取路径用于说明本地复用；DNSGetCacheDataTable
+        缺少这里可依赖的稳定公开接口合同，其他枚举函数也可能联网，因此不据整个 API 清单作零网络结论。
+      en: Kinsing reporting analyzes a particular script and controlled execution; absence of identified additional scanning
+        does not establish scan-free behavior in every variant. Only verified table-retrieval paths in HermeticWizard's API
+        set illustrate local reuse. DNSGetCacheDataTable lacks a stable public contract relied on here, and other enumeration
+        functions can contact the network, so the full API list does not support a network-free conclusion.
+    - zh: 官方文档支持读取与主动刷新在操作语义上的差异，未提供对目标检测系统的漏检实验。过期、无效和哈希记录限制候选可用性，本机高权限攻击者又可读取用户私有资料或削弱审计。未来需要带实际返回结果与前后网络捕获的实验，才能提高特定接口路径和量化匿迹效果的置信度。
+      en: Official documentation establishes operational differences between reading and active refresh, not miss-rate experiments
+        against a target detector. Stale, invalid, and hashed records limit candidate usefulness, while locally privileged
+        adversaries can read private material or weaken auditing. Experiments retaining actual results and before-and-after
+        network captures are needed to increase confidence in particular interface paths and quantified stealth effects.
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-11-07'
+  modified: '2026-11-07'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

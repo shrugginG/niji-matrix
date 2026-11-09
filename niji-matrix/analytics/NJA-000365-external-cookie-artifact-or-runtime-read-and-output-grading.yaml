@@ -1,0 +1,164 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000365
+strategy_ref: DET-000272
+name:
+  zh: 外部 Cookie 工件或运行态读取与输出分级
+  en: External Cookie Artifact or Runtime Read and Output Grading
+summary:
+  zh: 从敏感对象或浏览器进程访问建立疑似链，仅在值承载输出和收件者控制确认后报告取得。
+  en: Build a suspected chain from sensitive-object or browser-process access and report acquisition only after confirming value-bearing
+    output and recipient control.
+domains:
+- enterprise
+platforms:
+- windows
+logic:
+  paragraphs:
+  - zh: 按设备和实际用户配置路径维护 Cookie 工件清单，在配置审计策略与文件 SACL 后筛选 4663 的文件 ReadData 位，排除仅目录枚举及 ReadAttributes。把十六进制 ProcessId 规范化，以主机、PID 与进程开始和结束范围连接
+      Sysmon 1；不能仅按 PID 跨重启连接。另从 Sysmon 10 提取对目标浏览器的访问，按 GrantedAccess 区分查询与可读内存权限，但保留“访问能力”结论。将未批准读取连接同一进程谱系后续输出文件创建或出站连接，形成疑似材料获取告警。
+    en: Inventory cookie artifacts by device and actual user-profile path. With audit policy and file SACLs configured, select the file ReadData
+      bit in 4663, excluding directory enumeration and ReadAttributes alone. Normalize hexadecimal ProcessId and join Sysmon 1 by host, PID,
+      and process start-to-end interval rather than across restarts. Separately select Sysmon 10 access to target browsers and distinguish
+      query-only from memory-readable rights using GrantedAccess while retaining an access-capability conclusion. Join unapproved access
+      to later output-file creation or egress in the same process lineage to produce a suspected-acquisition alert.
+  - zh: 只有事件响应保全的输出实际包含完整会话材料，并在受限环境与相应配置的会话材料建立值匹配或受控 HMAC 匹配，且接收者控制和业务未批准已确认时，才标为取得。密文数据库备份、解密键、掩码值或导出格式名称不足。没有独立输出工件时明确保持疑似，即使同时有外连；有效性和后继资源接受另记，不自动在生产会话上试用材料。
+    en: Mark acquisition only when preserved incident output contains complete session material, matches the appropriate profile's material
+      directly or through a controlled HMAC in a restricted environment, and recipient control plus lack of authorization are established.
+      An encrypted database backup, decryption key, masked value, or export-format name is insufficient. Without independent output evidence,
+      retain suspected status even with egress. Record usability and later resource acceptance separately without automatically testing material
+      on production sessions.
+data_requirements:
+- source_type: windows-object-access
+  name:
+    zh: 配置审计后的文件对象访问
+    en: Audited File Object Access
+  channel: Windows Security Event 4663
+  required_fields:
+  - timestamp
+  - device_id
+  - subject_logon_id
+  - process_id
+  - process_name
+  - object_type
+  - object_path
+  - access_mask
+- source_type: process-lineage
+  name:
+    zh: 进程创建与结束
+    en: Process Creation and Termination
+  channel: Microsoft-Windows-Sysmon/Operational Event 1; Event 5 optionally provides process-end time
+  required_fields:
+  - timestamp
+  - device_id
+  - process_guid
+  - process_id
+  - image_path
+  - user
+  - parent_process_guid
+- source_type: process-access
+  name:
+    zh: 对浏览器进程的访问
+    en: Access to Browser Processes
+  channel: Microsoft-Windows-Sysmon/Operational Event 10
+  required_fields:
+  - timestamp
+  - device_id
+  - source_process_guid
+  - target_process_guid
+  - source_image
+  - target_image
+  - granted_access
+- source_type: output-artifact-creation
+  name:
+    zh: 输出创建或写入线索
+    en: Output Creation or Overwrite Leads
+  channel: Microsoft-Windows-Sysmon/Operational Event 11
+  required_fields:
+  - timestamp
+  - device_id
+  - process_guid
+  - image_path
+  - target_filename
+- source_type: process-egress
+  name:
+    zh: 读取进程的出站连接
+    en: Reader Process Egress
+  channel: Microsoft-Windows-Sysmon/Operational Event 3; enable configured collection
+  required_fields:
+  - timestamp
+  - device_id
+  - process_guid
+  - image_path
+  - source_ip
+  - source_port
+  - destination_ip
+  - destination_port
+- source_type: restricted-forensic-output
+  name:
+    zh: 受限取证材料验证记录
+    en: Restricted Forensic Material Verification Record
+  channel: Explicit incident-response evidence worksheet; not a native Windows event
+  required_fields:
+  - evidence_id
+  - device_id
+  - process_guid
+  - observed_at
+  - recipient_control
+  - authorization_result
+  - material_kind
+  - complete_value_present
+  - source_profile_id
+  - material_match_result
+observables:
+- zh: 非批准进程对确切 Cookie 文件使用 ReadData 权限
+  en: An unapproved process exercises ReadData on a specific cookie file
+- zh: 对浏览器的可读内存权限访问和同谱系输出线索
+  en: Memory-readable access to a browser and output leads in the same lineage
+- zh: 受限工件中完整值与源配置匹配且接收者受控
+  en: Complete values in restricted evidence match the source profile and reach a controlled recipient
+correlation:
+  window:
+    zh: 初始读取到输出采用十分钟工程起点，并在同一登录会话内保留进程生命周期；按本地测试调整，不视为来源给出的实测阈值。
+    en: Use ten minutes from initial read to output as an engineering starting point and retain process lifetimes within the logon session;
+      tune through local testing rather than treating this as a measured source threshold.
+  dimensions:
+  - device_id
+  - process_guid
+  - parent_process_guid
+  - subject_logon_id
+  - source_profile_id
+  - object_path
+  - evidence_id
+false_positives:
+- zh: 批准的浏览器迁移、备份、取证和用户导出
+  en: Approved browser migration, backup, forensics, and user export
+- zh: 辅助功能、安全产品或诊断工具合法访问浏览器进程
+  en: Legitimate browser-process access by accessibility, security, or diagnostic tools
+blind_spots:
+- zh: 未配置 SACL、用户数据在未受管设备、或数据经原始卷绕过文件审计
+  en: Missing SACLs, unmanaged devices, or raw-volume reads bypassing file auditing
+- zh: Sysmon 10 不给内存返回内容，Sysmon 11 不记录普通文件读取，缺少保全工件则无法确认值控制
+  en: Sysmon 10 lacks returned memory content and Event 11 lacks ordinary reads; without preserved artifacts value control cannot be confirmed
+- zh: 浏览器内部取值与真实 TLS 代理流可能没有外部文件读取
+  en: Browser-internal retrieval and real TLS proxy flows may have no external file read
+tuning_guidance:
+  paragraphs:
+  - zh: 用无生产权限的测试会话验证 4663 ReadData、进程 PID 归并及输出取证流程，比较备份、正常浏览和授权提取。白名单绑定签名、版本、用途与目标路径，不永久允许整个浏览器目录或同用户名。报警中保留材料阶段和缺失证据，确认所需原始值只进入受控证据库；更改浏览器版本或审计配置后复核覆盖。
+    en: Validate 4663 ReadData, PID joins, and output-forensics workflow with non-production test sessions against backups, ordinary browsing,
+      and authorized extraction. Allow rules bind signature, version, purpose, and target path rather than whole browser directories or usernames.
+      Preserve material stage and missing evidence in alerts, keep raw confirmation values only in a controlled evidence store, and reassess
+      coverage after browser or audit-configuration changes.
+evidence_refs:
+- REF-000366
+- REF-000379
+- REF-001078
+- REF-001206
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-11-05'
+  modified: '2026-11-05'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

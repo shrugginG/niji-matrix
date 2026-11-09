@@ -1,0 +1,201 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000414
+strategy_ref: DET-000297
+name:
+  zh: 原生网络配置查询者与有限结果核验
+  en: Native Network-Configuration Caller and Bounded-Result Verification
+summary:
+  zh: 用独立部署的接口入口与返回观测确认查询者、所请求视图和有限成功结果。
+  en: Use separately deployed API entry-and-return observation to establish the querier, requested view, and bounded successful
+    result.
+domains:
+- enterprise
+platforms:
+- Windows
+logic:
+  paragraphs:
+  - zh: 本分析要求组织预先部署并验证 GetAdaptersInfo、GetAdaptersAddresses、WlanGetAvailableNetworkList 和 WlanGetProfile 的入口与返回采集；这是一项自定义部署合同，不是任意
+      EDR 的默认能力。可按 Microsoft Detours 的同签名与调用约定合同实现入口/返回包装，但必须验证实际位数、API、返回布局和安全加载。将调用匹配到 request_id，保留每个 API 的真实输入和返回解析状态。GetAdaptersAddresses
+      的 Family/Flags 决定请求视图，保留的 all-compartments 标志不构成完整跨分区保证；WLAN API 记录指定接口和 flags，profile 仅保留非秘密元数据，不采集明文 key。
+    en: This analytic requires predeployed and validated entry-and-return capture for GetAdaptersInfo, GetAdaptersAddresses,
+      WlanGetAvailableNetworkList, and WlanGetProfile. It is a custom contract rather than arbitrary EDR default capability.
+      Microsoft Detours provides an equal-signature and calling-convention basis for wrappers, but bitness, API, layouts,
+      and safe loading need actual validation. Match calls by request_id and retain real inputs and parse status per API.
+      GetAdaptersAddresses Family/Flags select views, with no complete cross-compartment guarantee from its reserved flag.
+      WLAN calls retain interface and flags, and profiles retain only nonsecret metadata rather than plaintext keys.
+  - zh: 对实际有恶意实现证据的 GetAdaptersInfo，入口记录 AdapterInfo 是否为空与 SizePointer 的输入大小，返回保留原始状态和输出大小。ERROR_BUFFER_OVERFLOW 只是大小反馈，只有成功且缓冲区布局验证通过才遍历
+      IP_ADAPTER_INFO，按 AddressLength 解析硬件地址并遍历 IpAddressList 和 GatewayList，保留实际条数、截断与解析状态。该结果固定为 IPv4 适配器视图，不把缺少 loopback、IPv6
+      或接口顺序差异当成匿迹，不以可变化 Index 做跨时间主键。
+    en: For GetAdaptersInfo, which has direct malicious-implementation evidence, record whether AdapterInfo is null and the
+      input SizePointer value, retaining raw status and output size. ERROR_BUFFER_OVERFLOW supplies only size feedback. Traverse
+      IP_ADAPTER_INFO only after success and layout validation, interpreting hardware addresses through AddressLength and
+      following IpAddressList and GatewayList while preserving counts, truncation, and parse status. The result is an IPv4
+      adapter view. Missing loopback or IPv6 and changing order are not evasion, and mutable Index is not a cross-time identity
+      key.
+  - zh: 用采集器记录的进程开始时间、PID 与目标主机连接到进程 GUID，并保存调用时线程有效主体；不能用提供服务的 provider PID 或后来的同号进程替代调用者。按照批准台账检查查询范围、真实执行体与身份，对非预期进程的配置调查或返回范围与批准任务不符生成可解释事件。输出分别标为
+      attempted、failed、empty、returned 或 unknown，并保留 result_kind；返回配置不提升为端到端连接成功、真实远端存在或密码取得。采集器覆盖无效、丢失、版本不兼容或身份映射失败时降为 unknown，不把缺失返回当成空集。
+    en: Join the collector's process start time, PID, and target host to a process GUID and retain the thread's effective
+      principal at call time. A service provider PID or a later process reusing that PID is not the caller. Compare query
+      scope, real carrier, and identity with approved work, generating explainable events for unexpected callers or returned
+      scopes outside approval. Label outcomes attempted, failed, empty, returned, or unknown, preserving result_kind. Returned
+      configuration does not become end-to-end connectivity, remote-host existence, or password acquisition. Invalid coverage,
+      loss, incompatible builds, or failed identity joins degrade to unknown rather than treating missing returns as empty
+      sets.
+  - zh: 对驻留内联调查，原生路径可揭示即使没有每任务诊断进程仍发生的实际读取，并核验真实载体职责；若只有一次 getter 或长期进程年龄而缺少正面任务承载证据，不直接给出子项归类。Metador packet 标签也不进入文件查找条件，本分析不消费未声明的文件、控制端包内容或内存来源证据。
+    en: For resident inline surveys, native observation can expose actual reads without a per-task diagnostic and verify the
+      real carrier duty. One getter or an old process alone does not assign the child without positive task-carriage evidence.
+      Metador packet labels are not file-search conditions, and this analytic consumes no undeclared files, controller packet
+      contents, or memory-origin evidence.
+data_requirements:
+- source_type: custom-native-network-query-observation
+  name:
+    zh: 自定义部署的网络 API 入口与返回观测
+    en: Custom-deployed network API entry-and-return observation
+  channel: Organization-deployed and validated API tracing
+  required_fields:
+  - timestamp
+  - asset_id
+  - request_id
+  - process_id
+  - process_start_time
+  - thread_id
+  - effective_principal_sid
+  - effective_logon_id
+  - api_name
+  - address_family
+  - request_flags
+  - interface_guid
+  - profile_name
+  - return_code
+  - result_status
+  - result_kind
+  - result_count
+  - result_metadata
+  - key_material_state
+  - collector_id
+  - collector_version
+  - collection_status
+  - input_buffer_present
+  - input_buffer_size
+  - returned_size_value
+  - captured_entry_count
+  - capture_truncated
+  - decode_status
+- source_type: process-instance-lifetime-map
+  name:
+    zh: 实际调用进程的实例和生存期映射
+    en: Instance and lifetime map for the actual calling process
+  channel: Organization-maintained Sysmon Event 1 and 5 lifetime join
+  required_fields:
+  - asset_id
+  - process_id
+  - process_guid
+  - process_start_time
+  - process_end_time
+  - image
+  - image_hashes
+  - parent_process_guid
+  - mapping_status
+- source_type: approved-network-diagnostic-register
+  name:
+    zh: 查询入口与视图范围批准台账
+    en: Approved query-entry and view-scope register
+  channel: Organization-maintained support and inventory register
+  required_fields:
+  - approval_id
+  - asset_id
+  - effective_principal_sid
+  - approved_api_set
+  - approved_image_hash
+  - approved_query_scope
+  - valid_from
+  - valid_to
+  - approval_status
+- source_type: native-query-collector-deployment-state
+  name:
+    zh: 查询采集器部署与覆盖状态
+    en: Query-collector deployment and coverage state
+  channel: Organization-maintained collector configuration and health
+  required_fields:
+  - asset_id
+  - collector_id
+  - collector_version
+  - os_build
+  - covered_api_set
+  - capture_start
+  - capture_end
+  - coverage_validation_status
+  - loss_status
+observables:
+- zh: 指定地址族或 flags 的适配器读取，以及指定无线接口或 profile 的配置请求。
+  en: Adapter reads with explicit address family or flags and configuration requests for particular wireless interfaces or
+    profiles.
+- zh: 可核验的成功返回、大小重试、空结果、失败或未知解析状态。
+  en: Verifiable successful returns, size retries, empty results, failures, or unknown parse states.
+- zh: 调用时有效主体、真实进程实例或返回视图与批准任务的偏差。
+  en: Differences between effective caller, real process instance, or returned view and approved work.
+- zh: GetAdaptersInfo 成功缓冲区中的有限 IPv4 适配器结果，及其大小反馈、截断或未知解析状态。
+  en: Bounded IPv4 adapter results in a successful GetAdaptersInfo buffer, with size feedback, truncation, or unknown decode
+    states.
+correlation:
+  window:
+    zh: 在单次调用及其重试链内关联入口与返回，以 10 分钟窗口组合相关配置请求，并保留调用进程的完整生存期和采集器覆盖区间；超时值必须按实际实现验证。
+    en: Join entries and returns within each call and retry chain, combine related configuration requests over 10 minutes,
+      and retain complete caller lifetimes and collector-coverage intervals. Validate timeouts against the actual implementation.
+  dimensions:
+  - asset_id
+  - request_id
+  - process_guid
+  - thread_id
+  - effective_principal_sid
+  - effective_logon_id
+  - api_name
+  - address_family
+  - request_flags
+  - interface_guid
+  - result_kind
+  - timestamp
+false_positives:
+- zh: 网络管理代理、VPN 客户端、应用启动、自适应连接与合法无线诊断。
+  en: Network-management agents, VPN clients, application initialization, adaptive connectivity, and legitimate wireless diagnostics.
+- zh: 地址变化或接口热插拔导致的正常缓冲区重试和重复读取。
+  en: Ordinary buffer retries and repeated reads caused by address changes or interface hotplug.
+blind_spots:
+- zh: 未部署或未经验证的采集不能提供此覆盖，直接系统调用、其他 getter、设备 CLI 与其他操作系统不在本合同内。
+  en: Absent or unvalidated deployment provides no such coverage. Direct syscalls, other getters, appliance CLIs, and other
+    operating systems are outside this contract.
+- zh: 已控制的采集器或受信客户端、线程冒用身份缺失、PID 生存期丢失和返回缓冲区竞态会削弱归属或结果解析。
+  en: Compromised collectors or trusted clients, missing impersonation identity, lost PID lifetimes, and return-buffer races
+    weaken attribution or parsing.
+tuning_guidance:
+  paragraphs:
+  - zh: 先用批准网络工具验证成功、失败、空集、大小重试、IPv4/IPv6、断开接口和受限无线权限各分支，记录哪些字段实际可采。以实际产品版本、进程身份、API 集、接口范围和任务期限建立例外；不把合法模块加载或 API 名称作为调查完成证据。高频连接管理应按职责单列，但仍保留异常返回范围和有效线程主体的偏差，避免固定频率阈值掩盖单次调查。
+    en: Validate success, failure, empty sets, size retries, IPv4/IPv6, disconnected interfaces, and restricted wireless permissions
+      with approved tools, documenting fields actually captured. Bind exceptions to product version, process identity, API
+      set, interface scope, and work validity. Module loading or an API name is not evidence of completed investigation. Baseline
+      high-frequency connection management by duty while preserving deviations in returned scope and effective thread identity,
+      rather than hiding one-off surveys behind fixed-frequency thresholds.
+  - zh: 额外用 GetAdaptersInfo 验证多地址、多网关、不同 AddressLength、接口重新启用后的 Index 变化与链表截断分支。对每种 API 分别声明 address_family、request_flags
+      和 interface_guid 的适用性，不为旧接口伪造不存在的输入参数。API 调用来源可明确为进程但未知内部任务，须保留这种归属层级。
+    en: Additionally validate multiple addresses and gateways, different AddressLength values, Index changes after interface
+      re-enablement, and truncated lists for GetAdaptersInfo. Declare address_family, request_flags, and interface_guid applicability
+      per API rather than inventing inputs for the legacy call. Attribution can identify a process while leaving its internal
+      task unknown; preserve that distinction.
+evidence_refs:
+- REF-001370
+- REF-001373
+- REF-001374
+- REF-000230
+- REF-001380
+- REF-001378
+- REF-001379
+- REF-001387
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-11-07'
+  modified: '2026-11-07'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

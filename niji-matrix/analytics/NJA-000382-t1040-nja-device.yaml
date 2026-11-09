@@ -1,0 +1,138 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000382
+strategy_ref: DET-000279
+name:
+  zh: 设备抓包缓冲与测绘结果关联
+  en: Device Capture Buffer and Mapping-Result Correlation
+summary:
+  zh: 重建设备本地抓包、缓冲读取和导出，核实环境字段是否实际返回。
+  en: Reconstruct device-local capture, buffer reads, and export to verify whether environmental fields actually returned.
+domains:
+- enterprise
+platforms:
+- Network Devices
+logic:
+  paragraphs:
+  - zh: 从集中命令记账或管理会话记录恢复 monitor capture 的 capture name、接口、方向、过滤器、限制和起止操作，并用 show monitor capture 运行输出验证状态和包数。按 device_id、管理会话及
+      capture name 连接 buffer dump 与 export；配置命令不能证明存在有效包，export 命令不能证明传输成功。与批准接口、期限和目的地不符时报告观察面异常。
+    en: Reconstruct capture name, interface, direction, filter, limits, and start or stop operations for monitor capture from
+      centralized command accounting or management-session records, then validate state and packet count with show monitor
+      capture output. Join buffer dump and export by device_id, administration session, and capture name. Configuration does
+      not establish packet receipt, and an export command does not establish successful transfer. Report observation-surface
+      anomalies when interfaces, duration, or destination differ from approval.
+  - zh: 保全会话实际返回的缓冲解码或后续解析输出，将地址、链路字段和通信对端逐项连接到 capture name、包记录与时间。buffer dump 只返回原始字节时保留 packet-received 或 facts-exposed；只有返回的已解释环境事实才达到
+      fact-return-confirmed。存在认证内容时另按 NJT-0176 门禁评估，不能因流量包含 TCP/49 就以凭据结果代替环境事实。
+    en: Preserve buffer decoding actually returned in the session or subsequent parser output and trace addresses, link fields,
+      and peers to capture name, packet record, and time. Raw buffer bytes retain packet-received or facts-exposed status;
+      interpreted environmental facts in a returned result are needed for fact-return-confirmed. Assess authentication content
+      separately through NJT-0176's gates rather than using TCP/49 traffic as a substitute for environmental facts.
+data_requirements:
+- source_type: device-management-session
+  name:
+    zh: 网络设备管理命令与会话返回
+    en: Network-device management commands and session returns
+  channel: remote AAA command accounting and separately retained session transcript
+  required_fields:
+  - timestamp
+  - device_id
+  - admin_session_id
+  - actor_id
+  - command
+  - command_outcome
+  - returned_output_locator
+- source_type: device-capture-runtime
+  name:
+    zh: 设备抓包运行状态
+    en: Device capture runtime state
+  channel: show monitor capture parameter and buffer output
+  required_fields:
+  - timestamp
+  - device_id
+  - capture_name
+  - interface_id
+  - direction
+  - filter
+  - state
+  - packet_count
+  - buffer_parameters
+- source_type: device-capture-export-assessment
+  name:
+    zh: 设备导出与结果溯源
+    en: Device export and result provenance
+  channel: transfer logs and restricted forensic assessment
+  required_fields:
+  - device_id
+  - capture_name
+  - artifact_hash
+  - destination
+  - transfer_outcome
+  - record_locator
+  - fact_class
+  - inference_level
+  - result_origin
+  - return_evidence_locator
+- source_type: device-diagnostic-approval
+  name:
+    zh: 设备诊断批准
+    en: Device diagnostic approval
+  channel: change management
+  required_fields:
+  - ticket_id
+  - owner
+  - actor_id
+  - device_id
+  - interface_scope
+  - filter_scope
+  - output_destination
+  - valid_from
+  - valid_to
+observables:
+- zh: 未批准管理员跨关键接口建立捕获并读取缓冲，返回记录显示多个内部对端或协议字段
+  en: An unapproved administrator captures across critical interfaces and reads a buffer whose returned records contain multiple
+    internal peers or protocol fields
+- zh: 本地抓包在短期内导向未登记管理目的地，且删除后现态已无 capture 对象
+  en: Local capture exports to an unregistered management destination and is deleted so current state no longer contains the
+    capture object
+correlation:
+  window:
+    zh: 从首条捕获定义命令前十五分钟覆盖完整 capture 生命周期，连接其后七日内按 hash 可识别的导出或解析结果；按设备运行与重启边界处理名称复用。
+    en: Begin fifteen minutes before the first capture-definition command, span the capture lifecycle, and join hash-identifiable
+      exports or parsed results for seven days afterward; account for capture-name reuse across device and reboot boundaries.
+  dimensions:
+  - device_id
+  - admin_session_id
+  - actor_id
+  - capture_name
+  - interface_id
+  - artifact_hash
+  - destination
+  - ticket_id
+  - time
+false_positives:
+- zh: 厂商支持、链路诊断、变更验证、安全流量分析和事件响应
+  en: Vendor support, link diagnostics, change validation, security traffic analysis, and incident response
+blind_spots:
+- zh: AAA 通常只记命令而不保留返回正文；未另行保全会话输出时不能证明事实返回。固件级嗅探、日志篡改、直接内存读取和未捕获接口也超出此分析。
+  en: AAA commonly records commands without returned content; fact return cannot be established without separately preserved
+    session output. Firmware sniffing, log tampering, direct memory reads, and uncovered interfaces also fall outside this
+    analytic.
+tuning_guidance:
+  paragraphs:
+  - zh: 按设备型号验证 show 输出解析，不把所有厂商映射成相同字段。批准必须限定 capture 主体、接口、过滤器、输出目的地和有效期；集中命令日志与受限会话记录分离保留，避免通过普通 SIEM 共享敏感报文。抓包名只是局部关联键，不能跨重启无限关联。
+    en: Validate show-output parsing by device model rather than assigning identical fields to every vendor. Limit approval
+      to capture principal, interface, filter, output destination, and validity. Retain centralized commands separately from
+      restricted session recordings to avoid exposing sensitive packets through general SIEM access. Capture names are local
+      join keys, not permanent identifiers across reboots.
+evidence_refs:
+- REF-000794
+- REF-000792
+- REF-000801
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-11-05'
+  modified: '2026-11-05'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

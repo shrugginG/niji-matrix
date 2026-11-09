@@ -1,0 +1,137 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000386
+strategy_ref: DET-000281
+name:
+  zh: Linux 期限查询与实际规则文件访问关联
+  en: Linux Aging Queries and Actual Rule-File Access Correlation
+summary:
+  zh: 保留期限查询、文件访问与规则有效性之间的差异，并按登录会话核对读取来源。
+  en: Preserve distinctions among aging queries, file access, and rule effectiveness while checking read provenance by login
+    session.
+domains:
+- enterprise
+platforms:
+- Linux
+logic:
+  paragraphs:
+  - zh: 预先验证审计规则覆盖目标架构的 execve 与 execveat，并对实际部署的 PAM 密码栈及 pwquality 配置路径设置定向读取审计。用 audit 事件序号重组 SYSCALL、EXECVE、CWD 和 PATH，区分带
+      -l 或 --list 的 chage 读取与修改参数。若只得到进程记录，输出 expiry_query_attempt；execve 的成功只证明执行系统调用成功，不能解释为 chage 返回了有效期限。
+    en: Prevalidate audit coverage of execve and execveat on the deployed architectures and configure targeted read auditing
+      for the actual PAM password stack and pwquality paths. Reconstruct SYSCALL, EXECVE, CWD, and PATH records by audit serial
+      and distinguish chage -l or --list from mutation arguments. Process records alone yield expiry_query_attempt. A successful
+      execve establishes the execution syscall rather than a valid aging result from chage.
+  - zh: 文件分支要求匹配实际路径和成功的读取相关访问记录，不只匹配 cat、grep 或文件名字符串；记录 auid、uid、会话、PID 及进程起点，保留 open 与实际内容取得的证据差异。在十五分钟内与账号维护和合规作业比较，账号切换、来源不符或成组读取提高优先级。配置文件只表示该视图，模块参数覆盖和外部目录规则另行解释；不得把对
+      /etc/shadow 的访问直接纳入普通规则读取，以免混淆秘密提取。
+    en: The file branch requires actual path matches and successful read-related access records rather than cat, grep, or
+      filename strings alone. Retain auid, uid, session, PID, and process start while distinguishing opening from acquisition
+      of content. Compare with account-maintenance and compliance work over fifteen minutes, prioritizing identity changes,
+      origin deviations, or clustered reads. A configuration file establishes its view only; module-argument overrides and
+      external directory rules need separate interpretation. Do not classify /etc/shadow access automatically as ordinary
+      rule reading and conflate it with secret extraction.
+data_requirements:
+- source_type: linux-audit-execution
+  name:
+    zh: 已启用并按事件重组的 Linux 执行审计
+    en: Enabled Linux execution audit reconstructed by event
+  channel: auditd SYSCALL EXECVE CWD records
+  required_fields:
+  - timestamp
+  - host_id
+  - audit_serial
+  - auid
+  - uid
+  - ses
+  - pid
+  - ppid
+  - exe
+  - syscall
+  - success
+  - argv
+  - cwd
+- source_type: linux-targeted-rule-read
+  name:
+    zh: 文件分支启用时的定向规则读取审计
+    en: Targeted rule-read audit when the file branch is enabled
+  channel: auditd configured read-related syscall and PATH records
+  required_fields:
+  - timestamp
+  - host_id
+  - audit_serial
+  - auid
+  - uid
+  - ses
+  - pid
+  - exe
+  - syscall
+  - success
+  - exit
+  - path
+  - inode
+  - audit_key
+- source_type: approved-account-policy-job
+  name:
+    zh: 正常账号维护任务与实际认证栈清单
+    en: Normal account-maintenance work and actual authentication-stack inventory
+  channel: configuration and job inventory
+  required_fields:
+  - host_id
+  - owner
+  - principal
+  - service
+  - policy_paths
+  - job_id
+  - valid_from
+  - valid_to
+observables:
+- zh: 指定账号的 chage 只读期限请求
+  en: Read-only chage aging requests for an account
+- zh: 实际密码栈和强度配置路径的读取相关访问
+  en: Read-related access to actual password-stack and strength-configuration paths
+- zh: 登录身份与执行身份变化或读取来源越界
+  en: Changes between login and execution identity or out-of-scope read origins
+correlation:
+  window:
+    zh: 初始使用十五分钟会话窗口；文件与进程必须先按同一主机的 audit 序号正确重组，再做跨事件关联。
+    en: Start with a fifteen-minute session window; reconstruct file and process records by same-host audit serial before
+      correlating different events.
+  dimensions:
+  - host_id
+  - audit_serial
+  - auid
+  - ses
+  - pid
+  - process_start_time
+  - path
+  - job_id
+false_positives:
+- zh: 用户核对自身期限、合规扫描、账号修复、镜像构建和配置管理会产生相同执行或文件访问。服务定时读取规则与交互式调查应分别建基线。
+  en: Users checking their expiry, compliance scanning, account repair, image building, and configuration management produce
+    the same executions or accesses. Baseline routine service reads separately from interactive surveying.
+blind_spots:
+- zh: 审计必须预先配置，现成缓存、容器挂载、未覆盖架构、日志积压及其他身份后端会留下缺口。路径访问不证明读取者解释了规则，chage 输出只反映 shadow 期限视图。
+  en: Audit must be configured in advance. Existing caches, container mounts, uncovered architectures, backlog, and other
+    identity backends leave gaps. Path access does not establish interpretation of rules, and chage output reflects only the
+    shadow aging view.
+tuning_guidance:
+  paragraphs:
+  - zh: 根据部署的发行版和服务找出实际 include 栈、模块参数与配置路径，避免以固定 common-password 文件名替代环境核查。使用成功、拒绝和规则覆盖测试验证 audit_key 与事件拼接，监控丢失计数；仅对需要的文件启用读取规则，避免全文件系统审计的容量代价。将审计原生
+      serial、ses、auid 和 PATH.name 映射到规范键并保留原始证据。
+    en: Resolve the actual include stack, module arguments, and configuration paths for the deployed distribution and service
+      instead of substituting a fixed common-password filename for environment verification. Test successful and denied access
+      plus rule coverage to validate audit keys and record joins, and monitor lost counts. Target required files rather than
+      imposing filesystem-wide read auditing. Map native serial, ses, auid, and PATH.name to canonical keys while retaining
+      raw evidence.
+evidence_refs:
+- REF-001267
+- REF-001268
+- REF-000840
+- REF-001225
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-11-06'
+  modified: '2026-11-06'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

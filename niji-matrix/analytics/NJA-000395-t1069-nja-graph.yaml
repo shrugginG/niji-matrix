@@ -1,0 +1,114 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000395
+strategy_ref: DET-000284
+name:
+  zh: Graph 成员与目录角色关系请求语义关联
+  en: Graph Membership and Directory Role Relationship Request Correlation
+summary:
+  zh: 将 Graph 关系读取路径、应用或用户与批准作业比较，并区分直接、传递和角色分配请求。
+  en: Compare Graph relationship-read paths and application or user identities with approved jobs while distinguishing direct,
+    transitive, and role-assignment requests.
+domains:
+- enterprise
+platforms:
+- Microsoft Entra ID
+- Office 365
+logic:
+  paragraphs:
+  - zh: 先确认许可、诊断导出、表接收与保留已启用，再从 MicrosoftGraphActivityLogs 解析 RequestMethod 为 GET 的 RequestUri。按 /groups/{id}/members、/groups/{id}/transitiveMembers
+      和 /roleManagement/directory/roleAssignments 的路径与类型筛选规范化关系种类，保留 $filter、$select、$expand 与分页请求的原始 URI。单纯 /users 名单查询不作为此分析命中，未解析的路径保留未知类型而不靠组名猜测。
+    en: First verify licensing, diagnostic export, ingestion, and retention, then parse RequestUri for GET records in MicrosoftGraphActivityLogs.
+      Normalize relationship kind from /groups/{id}/members, /groups/{id}/transitiveMembers, and /roleManagement/directory/roleAssignments,
+      retaining raw URIs including $filter, $select, $expand, and paging requests. Plain /users lists do not match this analytic,
+      and unparsed paths retain unknown kind rather than relying on group-name guesses.
+  - zh: 按 AadTenantId、UserId 或 ServicePrincipalId、AppId 和可用 SessionId 聚合二十分钟请求，并用 RequestId 去重、OperationId 保留批次联系，避免重复计数。将敏感组或角色目标、应用首次出现、来源变化和批准治理作业比较。2xx
+      记录标为 relationship_request_succeeded，拒绝记录为 relationship_request_denied，两者分别保留；成功不证明完整返回或有效授权，日志中的 Roles/Scopes 也不能被误当作目标组的返回成员列表。
+    en: Aggregate twenty-minute requests by AadTenantId, UserId or ServicePrincipalId, AppId, and available SessionId. Deduplicate
+      by RequestId and retain OperationId batch linkage to avoid double counting. Compare sensitive group or role targets,
+      newly seen applications, origin changes, and authorized governance work. Mark 2xx records relationship_request_succeeded
+      and denied records relationship_request_denied and retain both separately. Success does not prove complete returned
+      data or effective authorization, and Roles or Scopes in the log must not be mistaken for the target group's returned
+      member list.
+data_requirements:
+- source_type: graph-relationship-request
+  name:
+    zh: 已配置并已接收的 Graph 活动请求
+    en: Configured and ingested Graph activity requests
+  channel: Azure Monitor MicrosoftGraphActivityLogs
+  required_fields:
+  - time_generated
+  - aad_tenant_id
+  - request_id
+  - operation_id
+  - request_method
+  - request_uri
+  - response_status_code
+  - app_id
+  - user_id
+  - service_principal_id
+  - session_id
+  - ip_address
+- source_type: approved-cloud-relationship-job
+  name:
+    zh: Graph 应用与敏感关系作业清单
+    en: Graph application and sensitive-relationship work inventory
+  channel: Application governance and access review inventory
+  required_fields:
+  - tenant_id
+  - app_id
+  - principal_id
+  - allowed_relationship_scope
+  - source_scope
+  - job_id
+  - valid_from
+  - valid_to
+observables:
+- zh: 直接成员、传递成员或目录角色分配的 GET 请求路径
+  en: GET request paths for direct members, transitive members, or directory role assignments
+- zh: 应用、调用主体或来源与关系范围的批准基线不符
+  en: Application, caller, or origin differs from the approved baseline for the relationship scope
+correlation:
+  window:
+    zh: 初始以二十分钟分页与请求序列关联及三十日应用职责基线运作，按批次语义和导出延迟验证；这是设计参数而非来源证实阈值。
+    en: Start with a twenty-minute paging and request-sequence window and thirty-day application-duty baseline, validating
+      batch semantics and export delay; these are design parameters rather than source-established thresholds.
+  dimensions:
+  - aad_tenant_id
+  - user_id
+  - service_principal_id
+  - app_id
+  - session_id
+  - request_id
+  - operation_id
+  - relationship_kind
+false_positives:
+- zh: 权限审查、Teams 或组同步、身份治理和目录管理门户可能发出相同请求；委派与应用身份应分别建立有效期基线。
+  en: Access reviews, Teams or group synchronization, identity governance, and directory administration portals can issue
+    the same requests; baseline delegated and application identities separately with expiry.
+blind_spots:
+- zh: 缺少 P1/P2、诊断导出或接收时本分析不可运行；旧接口、其他云 API、离线副本和未解析批请求不保证覆盖。2xx 与响应大小不揭示成员完整性，隐藏成员、分页和索引时效须另核查。
+  en: The analytic cannot run without P1/P2, diagnostic export, or ingestion. Legacy interfaces, other cloud APIs, offline
+    copies, and unparsed batch requests are not guaranteed coverage. A 2xx response or response size does not reveal membership
+    completeness; hidden members, paging, and index freshness require separate verification.
+tuning_guidance:
+  paragraphs:
+  - zh: 验证实际表中每个字段和空值规则，UserId 与 ServicePrincipalId 允许按调用类型为空，不能将空用户过滤掉全部应用身份。例外绑定应用 owner、权限、主体、目标组或角色范围和期限；按 RequestId 去重但保留不同分页，不用永久
+      UserAgent 白名单消除覆盖。
+    en: Verify every field and null rule in the deployed table; UserId and ServicePrincipalId can be empty according to caller
+      type, so filtering empty users must not discard all application identities. Bind exceptions to application owner, permissions,
+      principal, group or role scope, and expiry. Deduplicate RequestId while retaining distinct pages, and do not remove
+      coverage through a permanent UserAgent allowlist.
+evidence_refs:
+- REF-000833
+- REF-001289
+- REF-001290
+- REF-001291
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-11-06'
+  modified: '2026-11-06'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

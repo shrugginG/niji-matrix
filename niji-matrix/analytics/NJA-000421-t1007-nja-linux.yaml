@@ -1,0 +1,169 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000421
+strategy_ref: DET-000301
+name:
+  zh: Linux服务视图与cron列表请求分析
+  en: Linux Service-View and Cron-Listing Request Analysis
+summary:
+  zh: 从完整审计执行参数区分已加载服务、已安装unit文件与指定用户cron表请求。
+  en: Distinguish requests for loaded services, installed unit files, and a specified user's cron table from complete audited
+    execution arguments.
+domains:
+- enterprise
+platforms:
+- linux
+logic:
+  paragraphs:
+  - zh: 预先按实际32/64位ABI部署execve/execveat审计，确认没有never-task等规则排除。将采集器同一host_id/boot_id与msg=audit(epoch:serial)的SYSCALL、EXECVE、PROCTITLE按事件ID组合；epoch按秒转换UTC，串行号不作时间，arch、exe、pid、ppid、auid、uid、euid、ses、success和exit原样保留，EXECVE的argc/a0至aN组成argv。host_id与boot_id由采集器主机和启动元数据提供，不能由PID猜测；PROCTITLE需要按编码解码且不替代缺失参数。审计成功只说明执行系统调用成功，不含后继查询退出码和stdout。
+      host_id与boot_id由采集器已认证的宿主/启动登记附加到审计记录；node可能未配置，只保留其原始可选值，不用它作为权威设备标识或补造同名主机。
+    en: Preconfigure execve/execveat auditing for actual 32/64-bit ABIs and verify exclusions such as never-task. Join SYSCALL,
+      EXECVE, and PROCTITLE by collector host_id/boot_id and msg=audit(epoch:serial). Convert epoch seconds to UTC without
+      treating the serial as time. Retain arch, exe, pid, ppid, auid, uid, euid, ses, success, and exit; construct argv from
+      EXECVE argc and a0 through aN. Supply host_id and boot_id through collector host/boot metadata rather than guessing
+      from a PID. Decode PROCTITLE according to encoding without replacing missing arguments. Audit success establishes execution-syscall
+      success, not the later inquiry exit code or stdout. Attach host_id and boot_id to audit records from the collector’s
+      authenticated host/boot registration. node may be unconfigured; preserve it only as optional raw context rather than
+      an authoritative device identity or a reason to invent a same-named host.
+  - zh: 解析systemctl实际子命令，匹配明确服务unit的list-units、list-unit-files、show、status与无子命令但--type=service的缺省list-units；本分析不接收start/stop/enable/disable/restart、set-property或daemon变更。保留--user/--system、--host、--machine、--type、--state、--all、unit与pattern，区分内存中unit、安装文件和请求的manager。crontab只接收-l与可选-u用户，排除-e、-r及安装文件或标准输入；无-u只是执行者表的请求，不是全系统cron清单。只看命令而不能解析目标时标范围未知。
+    en: Parse the actual systemctl subcommand, matching list-units, list-unit-files, show, or status with explicit service
+      units, and default list-units when --type=service appears without a subcommand. Exclude start/stop/enable/disable/restart,
+      set-property, and daemon mutations. Preserve --user/--system, --host, --machine, --type, --state, --all, units, and
+      patterns to distinguish in-memory units, installed files, and the requested manager. For crontab accept only -l with
+      optional -u, excluding -e, -r, installation files, and stdin replacement. Without -u, the request addresses the executing
+      user's table rather than all system cron entries. Unparsed targets retain unknown scope.
+  - zh: 用独立批准台账比较host_id、exe或内容身份、查询动作、manager或用户目标与有效区间。auid是登录审计身份，uid与euid保留各自语义，未设置auid不强行映射成人；本地用户名解析若不另有事件时间映射就只保留数值。五分钟内同host_id/boot_id/pid/ppid/审计session的多次请求仅供排序，这些键不当作跨exec或PID重用的永久进程身份。批准缺失或台账离线分别输出未找到与未知，不直接定性恶意。
+    en: Compare host_id, exe or content identity, inquiry action, manager or user target, and validity against an independent
+      approval register. Auid is login audit identity; retain uid and euid separately, and do not force unset auid into a
+      person. Preserve numeric identities without an additional event-time name map. Repeated requests within five minutes
+      by host_id/boot_id/pid/ppid/audit session support ranking only; these keys are not permanent identities across exec
+      or PID reuse. Missing approval and an unavailable register produce not-found and unknown states respectively rather
+      than maliciousness.
+  - zh: 输出request_observed与result_unknown，不确认服务存在、运行、cron空表或分页完整。健康输入包括audit启用区间、规则哈希、覆盖ABI、lost/backlog、转发丢失、参数分段缺失、时钟误差和心跳；积压与缺失降低覆盖而不抹去已见请求。systemctl默认列表不等于全部安装服务，cron.allow/deny只管crontab工具使用，也不证明已有作业停止。未声明stdout、D-Bus、文件读取或任务执行数据不参与结论。
+    en: Emit request_observed and result_unknown without confirming service existence, running state, empty cron tables, or
+      complete paging. Health inputs include enabled intervals, rule hash, covered ABIs, lost/backlog, forwarding loss, missing
+      argument fragments, clock error, and heartbeat. Backlog and loss degrade coverage without erasing observed requests.
+      A default systemctl list is not every installed service. Cron.allow/deny governs utility use and does not establish
+      stopped existing jobs. Undeclared stdout, D-Bus, file-read, and task-execution data are not consumed.
+data_requirements:
+- source_type: linux-audit-execution
+  name:
+    zh: 预配置Linux执行审计组合事件
+    en: Preconfigured composite Linux execution-audit events
+  channel: audit.log
+  required_fields:
+  - host_id
+  - boot_id
+  - audit_epoch
+  - audit_serial
+  - record_type
+  - arch
+  - exe
+  - pid
+  - ppid
+  - auid
+  - uid
+  - euid
+  - ses
+  - success
+  - exit
+  - argc
+  - argv
+  - proctitle
+  - argument_completeness
+- source_type: collector-host-boot-metadata
+  name:
+    zh: 采集器提供的主机与启动元数据
+    en: Collector-supplied host and boot metadata
+  channel: null
+  required_fields:
+  - host_id
+  - boot_id
+  - metadata_valid_from
+  - metadata_valid_until
+- source_type: approved-management-inquiry-register
+  name:
+    zh: 外部维护的服务与cron查询批准台账
+    en: Externally maintained service and cron inquiry approval register
+  channel: null
+  required_fields:
+  - register_version
+  - register_status
+  - owner
+  - host_id
+  - principal_scope
+  - content_identity
+  - target_scope
+  - inquiry_scope
+  - valid_from
+  - valid_until
+- source_type: linux-audit-health-register
+  name:
+    zh: Linux规则与采集健康台账
+    en: Linux rule and collection-health register
+  channel: null
+  required_fields:
+  - host_id
+  - boot_id
+  - collector_version
+  - rule_hash
+  - covered_abis
+  - enabled_from
+  - enabled_until
+  - lost_count
+  - backlog_count
+  - forwarding_drop_count
+  - missing_argument_count
+  - clock_skew_bound_ms
+  - last_heartbeat
+observables:
+- zh: 完整argv请求服务unit、unit文件或特定用户cron表，manager和过滤范围保持独立。
+  en: Complete argv requests service units, unit files, or a particular user's cron table with manager and filter scopes distinct.
+- zh: 操作与已登记维护范围不符，可形成需要核实的请求线索。
+  en: Operations outside registered maintenance scope can form request leads requiring verification.
+correlation:
+  window:
+    zh: 按审计epoch时点与台账有效期比较，五分钟排序只在同主机启动与审计session范围使用，不建立永久PID身份。
+    en: Compare audit-epoch instants with register validity; use five-minute ranking only within one host boot and audit session
+      without creating permanent PID identity.
+  dimensions:
+  - host_id
+  - boot_id
+  - audit_serial
+  - audit_epoch
+  - pid
+  - ppid
+  - ses
+  - inquiry_scope
+  - target_scope
+false_positives:
+- zh: 服务支持、包管理、审计与用户检查自身调度都需要这些读取。
+  en: Service support, package maintenance, audits, and users checking their schedules require these reads.
+- zh: 参数不兼容或当前manager不可达的正常诊断也会留下执行请求。
+  en: Benign diagnostics with incompatible options or unreachable managers still leave execution requests.
+blind_spots:
+- zh: 直接库、D-Bus或文件读取与macOS执行审计不由本分析覆盖。
+  en: Direct libraries, D-Bus or file reads, and macOS execution auditing are outside this analytic.
+- zh: 执行审计不包含命令完成、stdout或服务结果，参数缺失还会损害范围解释。
+  en: Execution auditing contains no command completion, stdout, or service results; missing arguments also degrade scope
+    interpretation.
+tuning_guidance:
+  paragraphs:
+  - zh: 先用良性调用验证本机systemd和Cronie版本的参数顺序、--user目标、默认子命令、分段argv与ABI规则，再按服务角色登记维护范围。不得因systemctl常见就整体放行，也不把-u root或未设置auid单独定性。没有完整参数与健康数据时显示部分或未知，本研究未执行本机采集实验。
+    en: Validate argument order, --user targets, default subcommands, fragmented argv, and ABI rules against local systemd/Cronie
+      versions using benign calls before registering role-specific maintenance. Do not allow all systemctl because it is common
+      or label -u root or unset auid malicious alone. Display partial or unknown states without complete arguments and health;
+      no local capture experiment was conducted here.
+evidence_refs:
+- REF-001407
+- REF-001408
+- REF-000840
+- REF-001042
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-11-08'
+  modified: '2026-11-08'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []

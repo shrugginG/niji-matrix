@@ -1,0 +1,158 @@
+schema_version: 2.0.0
+type: detection-analytic
+id: NJA-000398
+strategy_ref: DET-000286
+name:
+  zh: Windows 进程查询命令与登录任务关联
+  en: Windows Process-Inquiry Commands and Logon-Task Correlation
+summary:
+  zh: 输出具有原始参数、进程实例与结果等级的异常进程调查线索。
+  en: Produce anomalous process-survey leads with original arguments, process instances, and evidence levels.
+domains:
+- enterprise
+platforms:
+- Windows
+logic:
+  paragraphs:
+  - zh: 从DeviceProcessEvents的已验证ProcessCreated动作中解析tasklist的完整参数，保留/s、/u、/fi和输出格式；帮助请求不算已执行盘点。对powershell.exe仅在命令行或已重组的Windows
+      PowerShell 5.1脚本块能恢复Get-Process、其内置别名gps/ps的实际解析以及Name/Id等目标时生成process_query_attempt；自定义同名函数和不可见交互脚本保留未知。模块或版本请求保留详情访问类别，不把Stop-Process、WMI
+      Create/Terminate或单纯软件清单误当成进程查询。
+    en: Parse full tasklist arguments from validated ProcessCreated actions in DeviceProcessEvents, preserving /s, /u, /fi,
+      and output format. Help requests do not establish an executed inventory. For powershell.exe, generate process_query_attempt
+      only when command lines or reconstructed Windows PowerShell 5.1 script blocks recover Get-Process, actual resolution
+      of built-in gps/ps aliases, and Name/Id targets. Keep custom same-name functions and invisible interactive scripts unknown.
+      Retain module or version inquiries as detail requests, and exclude Stop-Process, WMI Create/Terminate, and software-only
+      inventories.
+  - zh: 将DeviceId、Timestamp、ProcessId、ProcessCreationTime、AccountSid、LogonId、ProcessCommandLine、InitiatingProcessId及InitiatingProcessCreationTime分别映射host_id、timestamp、process_id、process_start、principal_id、logon_id、command_line、parent_process_id与parent_process_start，ActionType映射event_action、FolderPath与FileName构成image_path。event_id由原始DeviceName+Timestamp+ReportId构成，不能拿ReportId当进程身份。4104补充分支按ScriptBlockId、MessageNumber与MessageTotal重组ScriptBlockText，进程字段来自事件System
+      Execution并以同机生命周期关联；它记录处理过的脚本，不记录完整输出。
+    en: Map DeviceId, Timestamp, ProcessId, ProcessCreationTime, AccountSid, LogonId, ProcessCommandLine, InitiatingProcessId,
+      and InitiatingProcessCreationTime to host_id, timestamp, process_id, process_start, principal_id, logon_id, command_line,
+      parent_process_id, and parent_process_start. Map ActionType to event_action and FolderPath plus FileName to image_path.
+      Construct event_id from original DeviceName, Timestamp, and ReportId rather than treating ReportId as process identity.
+      The supplemental 4104 branch reassembles ScriptBlockText by ScriptBlockId, MessageNumber, and MessageTotal and joins
+      System Execution process metadata to the same-host lifetime. It records processed script content rather than complete
+      output.
+  - zh: 在十分钟内按主体、主机、登录与进程实例连接批准支持或监控作业，比较目标主机、属性和时间范围。未知管理来源、超出职责的高价值进程定位及已知入侵会话提高优先级；输出仅为请求线索。重定向临时路径只作为工件位置，即使文件创建或进程退出成功也不升级结果；只有另外解析到与同一查询和时点匹配的可信输出时才报告process_rows_observed，并保留字段缺失和部分返回。
+    en: Within ten minutes, join approved support or monitoring work by principal, host, logon, and process instance, comparing
+      target host, properties, and time scope. Unknown management origins, high-value process targeting outside duties, and
+      known intrusion sessions raise priority; the output remains a request lead. A redirected temporary path only locates
+      an artifact. File creation or a successful exit does not upgrade the evidence. Report process_rows_observed only when
+      independent trusted output is parsed and matched to the same inquiry and time, preserving missing fields and partial
+      returns.
+data_requirements:
+- source_type: endpoint-process-event
+  name:
+    zh: MDE进程创建及谱系
+    en: MDE process creation and lineage
+  channel: DeviceProcessEvents
+  required_fields:
+  - host_id
+  - timestamp
+  - event_action
+  - event_id
+  - process_id
+  - process_start
+  - image_path
+  - command_line
+  - principal_id
+  - logon_id
+  - parent_process_id
+  - parent_process_start
+- source_type: powershell-script-block
+  name:
+    zh: 可选Windows PowerShell 5.1脚本语义分支
+    en: Optional Windows PowerShell 5.1 script-semantics branch
+  channel: Microsoft-Windows-PowerShell/Operational
+  required_fields:
+  - host_id
+  - timestamp
+  - process_id
+  - script_block_id
+  - message_number
+  - message_total
+  - script_block_text
+- source_type: approved-work-record
+  name:
+    zh: 批准监控与支持任务
+    en: Approved monitoring and support work
+  channel: null
+  required_fields:
+  - principal_id
+  - host_id
+  - target_scope
+  - valid_from
+  - valid_until
+  - owner
+- source_type: conditional-process-query-output
+  name:
+    zh: 仅启用结果确认时的可信进程查询输出
+    en: Trusted process-query output only when result confirmation is enabled
+  channel: Separately deployed authorized stdout or result-artifact capture
+  required_fields:
+  - host_id
+  - timestamp
+  - process_instance_id
+  - target_host
+  - query_semantics
+  - result_content
+  - collector_id
+  - result_validated
+observables:
+- zh: 含真实过滤和远端目标的tasklist请求。
+  en: Tasklist requests with actual filters and remote targets.
+- zh: 可见Get-Process脚本语义与详情访问参数。
+  en: Visible Get-Process semantics and detail-query arguments.
+- zh: 调查主体、进程祖先和批准任务范围之间的差异。
+  en: Differences among querying principal, ancestry, and approved work scope.
+correlation:
+  window:
+    zh: 十分钟关联一次查询与登录任务，进程身份须从创建起保留到终止；十分钟是初始工程值而非恶意阈值。
+    en: Join an inquiry with logon work over ten minutes, retaining process identity from creation to termination. Ten minutes
+      is an initial engineering value rather than a maliciousness threshold.
+  dimensions:
+  - host_id
+  - principal_id
+  - logon_id
+  - process_id
+  - process_start
+  - target_host
+  - query_semantics
+false_positives:
+- zh: 任务管理、EDR和软件监控的定期盘点。
+  en: Task management, EDR, and software-monitoring inventories.
+- zh: 故障处理、凭据保护检查与远程支持。
+  en: Troubleshooting, credential-protection checks, and remote support.
+blind_spots:
+- zh: API、GUI和驻留查询不一定新建工具进程；没有本规则命中不排除进程发现。
+  en: APIs, GUIs, and resident inquiries need not launch utilities; no match does not exclude discovery.
+- zh: MDE未部署、创建动作或参数缺失、4104未开启或内容丢段，均降低请求可恢复性；本分支不覆盖PowerShell 7事件通道。
+  en: Absent MDE, missing creation actions or arguments, disabled or incomplete 4104, and fragment loss reduce recoverability.
+    This branch does not cover PowerShell 7 channels.
+- zh: PID重用、同名函数与过滤显示可使字段含义错误；命令及脚本不证明实际返回。
+  en: PID reuse, same-name functions, and output filtering can mislead interpretation; commands and scripts do not establish
+    returned facts.
+tuning_guidance:
+  paragraphs:
+  - zh: 先验证一个普通清单、特定PID查询、拒绝详情、远端失败和帮助请求，确认normalizer保留原始参数与状态。缺脚本源时仍运行命令分支但标注脚本盲区；批准任务必须绑定身份、目标、职责与有效期，不能永久放行签名工具或所有管理账户。4688可作为替代采集实现，但须开启Audit
+      Process Creation及命令行、解释版本和创建者/目标主体，并重建创建时间，不能假装字段与MDE完全等同。
+    en: Validate a normal inventory, a specific-PID inquiry, denied details, a failed remote request, and help output to confirm
+      retention of original arguments and state. Without the script source, run the command branch while marking its script
+      gap. Approved work must bind identity, target, duty, and expiry; do not permanently allow signed tools or all administrators.
+      Event 4688 can implement an alternative collector, but requires process-creation and command-line auditing, version
+      and creator/target-subject interpretation, and reconstructed creation time rather than assumed MDE field equivalence.
+evidence_refs:
+- REF-001296
+- REF-001297
+- REF-001230
+- REF-000598
+- REF-000334
+- REF-000623
+- REF-000463
+lifecycle:
+  status: review
+  version: 0.1.0
+  created: '2026-11-06'
+  modified: '2026-11-06'
+  contributors:
+  - Niji Matrix Research
+  reviewers: []
